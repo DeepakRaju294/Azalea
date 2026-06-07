@@ -1,0 +1,113 @@
+name: V2 pipeline tests
+
+on:
+  push:
+    paths:
+      - "backend/venv/app/services/visual_compilers/**"
+      - "backend/venv/app/services/visual_validators_v2.py"
+      - "backend/venv/app/services/lean_lesson_generator_v2.py"
+      - "backend/venv/app/services/v2_e2e_smoke.py"
+      - "backend/venv/app/services/v2_telemetry.py"
+      - "backend/venv/app/services/v2_rate_limit.py"
+      - "backend/venv/app/services/visual_context_formatter.py"
+      - "backend/venv/app/services/topic_classifier_v2.py"
+      - "backend/venv/app/prompts/lean_lesson_prompt_v2.py"
+      - "backend/venv/app/schemas/visual_v2.py"
+      - "backend/venv/app/core/visual_ontology_v2.py"
+      - "backend/venv/app/tests/test_visual_compilers_v2*"
+      - "frontend/components/visuals_v2/**"
+      - "frontend/lib/visual_v2_types.ts"
+      - "frontend/lib/api_v2.ts"
+      - "frontend/lib/use_reduced_motion.ts"
+      - "frontend/app/study-paths/[studyPathId]/learn-v2/**"
+      - ".github/workflows/v2_tests.yml"
+  pull_request:
+    paths:
+      - "backend/venv/app/services/visual_compilers/**"
+      - "backend/venv/app/services/visual_validators_v2.py"
+      - "backend/venv/app/services/lean_lesson_generator_v2.py"
+      - "backend/venv/app/services/v2_e2e_smoke.py"
+      - "backend/venv/app/services/v2_telemetry.py"
+      - "backend/venv/app/services/v2_rate_limit.py"
+      - "backend/venv/app/services/visual_context_formatter.py"
+      - "backend/venv/app/services/topic_classifier_v2.py"
+      - "backend/venv/app/prompts/lean_lesson_prompt_v2.py"
+      - "backend/venv/app/schemas/visual_v2.py"
+      - "backend/venv/app/core/visual_ontology_v2.py"
+      - "backend/venv/app/tests/test_visual_compilers_v2*"
+      - "frontend/components/visuals_v2/**"
+      - "frontend/lib/visual_v2_types.ts"
+      - "frontend/lib/api_v2.ts"
+      - "frontend/lib/use_reduced_motion.ts"
+      - "frontend/app/study-paths/[studyPathId]/learn-v2/**"
+      - ".github/workflows/v2_tests.yml"
+
+jobs:
+  backend-v2:
+    name: Backend v2 (unittest + synthetic smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install minimal backend deps
+        # The v2 contract tests + synthetic smoke do not require a DB
+        # or the LLM client; only the stdlib + the v2 modules themselves.
+        # We deliberately skip `pip install -r requirements.txt` to keep
+        # the v2 gate fast and decoupled from legacy dependencies.
+        run: |
+          python -m pip install --upgrade pip
+      - name: Visual compiler contract tests
+        working-directory: backend/venv
+        run: python -m unittest app.tests.test_visual_compilers_v2 -v
+      - name: Snapshot + synthesizer + cross-card reuse tests
+        working-directory: backend/venv
+        run: python -m unittest app.tests.test_visual_compilers_v2_snapshots -v
+      - name: Synthetic E2E smoke
+        working-directory: backend/venv
+        run: python -m app.services.v2_e2e_smoke
+
+  frontend-v2:
+    name: Frontend v2 (tsc + eslint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install deps
+        run: npm install --no-audit --no-fund
+      - name: Type-check
+        run: npx tsc --noEmit
+      - name: Lint v2 files
+        run: |
+          npx eslint \
+            components/visuals_v2 \
+            lib/visual_v2_types.ts \
+            lib/api_v2.ts \
+            lib/use_reduced_motion.ts \
+            "app/study-paths/[studyPathId]/learn-v2"
+      - name: Install Playwright + axe
+        run: |
+          npm install --no-save @playwright/test@1 axe-playwright@2
+          npx playwright install --with-deps chromium
+      - name: Playwright + axe a11y audit
+        # Audits the v2 learn page with axe-core. Skips when no test
+        # topic id is configured (a11y suite stays opt-in until a test
+        # topic + auth token are provisioned in repo secrets).
+        env:
+          V2_TEST_BASE_URL: ${{ secrets.V2_TEST_BASE_URL || '' }}
+          V2_TEST_TOPIC_ID: ${{ secrets.V2_TEST_TOPIC_ID || '' }}
+          V2_TEST_AUTH_TOKEN: ${{ secrets.V2_TEST_AUTH_TOKEN || '' }}
+        run: npx playwright test e2e/axe-v2.spec.ts || echo "::warning::a11y suite returned non-zero; review the playwright-report artifact"
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 7

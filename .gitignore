@@ -1,0 +1,16 @@
+# Ignore env/secrets (keep examples committed)
+.env
+.env.*
+!.env.example
+
+# Local frontend env (Next)
+frontend/.env.local
+frontend/.env.*.local
+
+# Python
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+

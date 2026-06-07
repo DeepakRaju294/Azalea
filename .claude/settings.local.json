@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(xargs grep -l \"title\")",
+      "Bash(venv/Scripts/python.exe -c \"from app.api.routes.study_paths import router; from app.services.llm_client import LESSON_JSON_SCHEMA, VISUAL_PLAN_OBJECT_SCHEMA, CARD_VISUAL_HINT_SCHEMA; print\\('OK'\\)\")",
+      "Bash(venv/Scripts/python.exe -c \"import ast; ast.parse\\(open\\('venv/app/api/routes/study_paths.py'\\).read\\(\\)\\); print\\('study_paths OK'\\); ast.parse\\(open\\('venv/app/services/llm_client.py'\\).read\\(\\)\\); print\\('llm_client OK'\\)\")",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Deepa\\\\Azalea\\\\frontend\" -Directory)",
+      "Bash(Select-Object -ExpandProperty Name)",
+      "Bash(python -c ' *)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Deepa\\\\Azalea\\\\frontend\\\\src\" -Recurse -Directory | Select-Object -First 50 | ForEach-Object { $_.FullName })",
+      "PowerShell(ls \"C:\\\\Users\\\\Deepa\\\\Azalea\\\\frontend\" | where { $_.Name -ne 'node_modules' })",
+      "Bash(xargs grep -l \"create_all\\\\|metadata\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Deepa\\\\Azalea\" -Directory)",
+      "Bash(Select-Object Name)"
+    ]
+  }
+}
