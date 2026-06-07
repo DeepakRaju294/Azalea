@@ -1,20 +1,23 @@
 name: V2 pipeline tests
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 on:
   push:
     paths:
-      - "backend/venv/app/services/visual_compilers/**"
-      - "backend/venv/app/services/visual_validators_v2.py"
-      - "backend/venv/app/services/lean_lesson_generator_v2.py"
-      - "backend/venv/app/services/v2_e2e_smoke.py"
-      - "backend/venv/app/services/v2_telemetry.py"
-      - "backend/venv/app/services/v2_rate_limit.py"
-      - "backend/venv/app/services/visual_context_formatter.py"
-      - "backend/venv/app/services/topic_classifier_v2.py"
-      - "backend/venv/app/prompts/lean_lesson_prompt_v2.py"
-      - "backend/venv/app/schemas/visual_v2.py"
-      - "backend/venv/app/core/visual_ontology_v2.py"
-      - "backend/venv/app/tests/test_visual_compilers_v2*"
+      - "backend/app/services/visual_compilers/**"
+      - "backend/app/services/visual_validators_v2.py"
+      - "backend/app/services/lean_lesson_generator_v2.py"
+      - "backend/app/services/v2_e2e_smoke.py"
+      - "backend/app/services/v2_telemetry.py"
+      - "backend/app/services/v2_rate_limit.py"
+      - "backend/app/services/visual_context_formatter.py"
+      - "backend/app/services/topic_classifier_v2.py"
+      - "backend/app/prompts/lean_lesson_prompt_v2.py"
+      - "backend/app/schemas/visual_v2.py"
+      - "backend/app/core/visual_ontology_v2.py"
+      - "backend/app/tests/test_visual_compilers_v2*"
       - "frontend/components/visuals_v2/**"
       - "frontend/lib/visual_v2_types.ts"
       - "frontend/lib/api_v2.ts"
@@ -23,18 +26,18 @@ on:
       - ".github/workflows/v2_tests.yml"
   pull_request:
     paths:
-      - "backend/venv/app/services/visual_compilers/**"
-      - "backend/venv/app/services/visual_validators_v2.py"
-      - "backend/venv/app/services/lean_lesson_generator_v2.py"
-      - "backend/venv/app/services/v2_e2e_smoke.py"
-      - "backend/venv/app/services/v2_telemetry.py"
-      - "backend/venv/app/services/v2_rate_limit.py"
-      - "backend/venv/app/services/visual_context_formatter.py"
-      - "backend/venv/app/services/topic_classifier_v2.py"
-      - "backend/venv/app/prompts/lean_lesson_prompt_v2.py"
-      - "backend/venv/app/schemas/visual_v2.py"
-      - "backend/venv/app/core/visual_ontology_v2.py"
-      - "backend/venv/app/tests/test_visual_compilers_v2*"
+      - "backend/app/services/visual_compilers/**"
+      - "backend/app/services/visual_validators_v2.py"
+      - "backend/app/services/lean_lesson_generator_v2.py"
+      - "backend/app/services/v2_e2e_smoke.py"
+      - "backend/app/services/v2_telemetry.py"
+      - "backend/app/services/v2_rate_limit.py"
+      - "backend/app/services/visual_context_formatter.py"
+      - "backend/app/services/topic_classifier_v2.py"
+      - "backend/app/prompts/lean_lesson_prompt_v2.py"
+      - "backend/app/schemas/visual_v2.py"
+      - "backend/app/core/visual_ontology_v2.py"
+      - "backend/app/tests/test_visual_compilers_v2*"
       - "frontend/components/visuals_v2/**"
       - "frontend/lib/visual_v2_types.ts"
       - "frontend/lib/api_v2.ts"
@@ -59,13 +62,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
       - name: Visual compiler contract tests
-        working-directory: backend/venv
+        working-directory: backend
         run: python -m unittest app.tests.test_visual_compilers_v2 -v
       - name: Snapshot + synthesizer + cross-card reuse tests
-        working-directory: backend/venv
+        working-directory: backend
         run: python -m unittest app.tests.test_visual_compilers_v2_snapshots -v
       - name: Synthetic E2E smoke
-        working-directory: backend/venv
+        working-directory: backend
         run: python -m app.services.v2_e2e_smoke
 
   frontend-v2:
@@ -78,7 +81,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
       - name: Install deps
         run: npm install --no-audit --no-fund
       - name: Type-check
