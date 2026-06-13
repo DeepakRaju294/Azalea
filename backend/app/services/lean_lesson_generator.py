@@ -484,6 +484,27 @@ def _lean_card_to_legacy(
         lean_card.get("highlight_lines_per_step"),
         code_snippet=code_snippet,
     )
+    # Normalize the snippet's layout (helper indented into the class, two blank
+    # lines between sibling functions) and remap highlight ranges to the new line
+    # numbers. Deterministic, so worked-example cards keep identical snippets.
+    if code_snippet and blueprint_key in ("code_walkthrough", "worked_example"):
+        # Repair indentation first (a body line wrongly at column 0) so the AST-based
+        # passes below can run, then fix missing main / broken recursion. These change
+        # line numbers, so the LLM's highlights are cleared (recomputed downstream).
+        _dedented = _fix_dedented_body_lines(code_snippet)
+        if _dedented != code_snippet:
+            code_snippet = _dedented
+            highlight_lines_per_step = []
+        _synth = _synthesize_main_for_helper(code_snippet)
+        if _synth != code_snippet:
+            code_snippet = _synth
+            highlight_lines_per_step = []
+        _split = _split_accumulator_recursion(code_snippet)
+        if _split != code_snippet:
+            code_snippet = _split
+            highlight_lines_per_step = []
+        code_snippet, _layout_line_map = _fix_code_layout(code_snippet)
+        highlight_lines_per_step = _remap_line_ranges(highlight_lines_per_step, _layout_line_map)
     if code_snippet:
         styled_elements.append({
             "type": "code_trace",
@@ -1481,6 +1502,295 @@ def _validated_highlight_lines_per_step(
             end = min(end, max_line)
         ranges.append([start, end])
     return ranges
+
+
+class _AccumulatorRewriter(ast.NodeTransformer):
+    """Rewrites a broken single-function recursion into the helper body: renames the
+    structure param to `node`, turns `self`-discarded recursive calls into
+    `helper(x, acc)`, and strips the value from base-case returns."""
+
+    def __init__(self, fname: str, helper: str, struct: str, node: str, acc: str) -> None:
+        self.fname, self.helper, self.struct, self.node, self.acc = fname, helper, struct, node, acc
+
+    def visit_Name(self, node: ast.Name) -> ast.AST:
+        if node.id == self.struct:
+            return ast.copy_location(ast.Name(id=self.node, ctx=node.ctx), node)
+        return node
+
+    def visit_Call(self, node: ast.Call) -> ast.AST:
+        self.generic_visit(node)
+        if isinstance(node.func, ast.Name) and node.func.id == self.fname:
+            node.func = ast.Name(id=self.helper, ctx=ast.Load())
+            node.args = list(node.args) + [ast.Name(id=self.acc, ctx=ast.Load())]
+        return node
+
+    def visit_Return(self, node: ast.Return) -> ast.AST:
+        return ast.copy_location(ast.Return(value=None), node)
+
+
+def _fix_dedented_body_lines(code: str) -> str:
+    """Repair the common LLM indentation error: a statement wrongly placed at column
+    0 that belongs to the preceding function body (e.g. `mid = (low + high) // 2`
+    flush-left between indented lines). Only runs when the code does NOT parse, and
+    only keeps the repair if the result parses — so it can never worsen valid code.
+    """
+    try:
+        ast.parse(code)
+        return code
+    except SyntaxError:
+        pass
+    out: list[str] = []
+    prev_indent = 0
+    for line in code.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            out.append(line)
+            continue
+        cur_indent = len(line) - len(line.lstrip(" "))
+        is_header = re.match(r"(def|class|async|import|from|@|#)\b", stripped) is not None
+        if cur_indent == 0 and not is_header and prev_indent > 0:
+            out.append(" " * prev_indent + stripped)  # pull into the enclosing block
+        else:
+            out.append(line)
+        prev_indent = len(out[-1]) - len(out[-1].lstrip(" "))
+    fixed = "\n".join(out)
+    try:
+        ast.parse(fixed)
+        return fixed
+    except SyntaxError:
+        return code
+
+
+def _strip_module_level_strays(code: str) -> str:
+    """Remove stray module-level statements (e.g. a bare `traverse(node.left, result)`
+    call left OUTSIDE the functions) that the walkthrough accumulation can append
+    after the function bodies. Keeps defs / classes / imports / `if __name__` blocks.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return code
+    keep_types = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import, ast.ImportFrom, ast.If)
+    kept = [n for n in tree.body if isinstance(n, keep_types)]
+    if len(kept) == len(tree.body) or not kept:
+        return code
+    new_tree = ast.Module(body=kept, type_ignores=[])
+    ast.fix_missing_locations(new_tree)
+    try:
+        return ast.unparse(new_tree)
+    except Exception:  # noqa: BLE001
+        return code
+
+
+def _ast_args(names: list[str]) -> "ast.arguments":
+    return ast.arguments(posonlyargs=[], args=[ast.arg(arg=n) for n in names], vararg=None,
+                         kwonlyargs=[], kw_defaults=[], kwarg=None, defaults=[])
+
+
+def _synthesize_main_for_helper(code: str) -> str:
+    """When the code is ONLY a standalone recursive helper taking an accumulator
+    (e.g. `def postorder_helper(node, result): ... result.append(...)`) with no main
+    entry point, synthesize the main that creates the accumulator, calls the helper,
+    and returns it. Targets a single self-recursive 2-arg function whose 2nd param is
+    an accumulator. Leaves correct main+helper / OOP / non-matching code untouched.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return code
+    if any(isinstance(n, ast.ClassDef) for n in tree.body):
+        return code
+    funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef)]
+    if len(funcs) != 1:
+        return code
+    fn = funcs[0]
+    if len(fn.args.args) != 2:
+        return code
+    if not any(isinstance(s, ast.Call) and isinstance(s.func, ast.Name) and s.func.id == fn.name for s in ast.walk(fn)):
+        return code  # not self-recursive
+
+    params = [a.arg for a in fn.args.args]
+    acc_param, uses_set = None, False
+    for p in params:
+        for s in ast.walk(fn):
+            if (isinstance(s, ast.Call) and isinstance(s.func, ast.Attribute)
+                    and isinstance(s.func.value, ast.Name) and s.func.value.id == p
+                    and s.func.attr in ("append", "add")):
+                acc_param = p
+                uses_set = s.func.attr == "add"
+    if acc_param is None:
+        return code
+    node_param = next((p for p in params if p != acc_param), params[0])
+
+    name = fn.name
+    if name.endswith("_helper"):
+        main_name = name[: -len("_helper")]
+    elif name.lower().endswith("helper"):
+        main_name = name[: -len("helper")].rstrip("_") or "solve"
+    else:
+        main_name = f"{name}_main"
+    root_param = "root" if node_param != "root" else "tree"
+    acc_value = ast.Call(func=ast.Name(id="set", ctx=ast.Load()), args=[], keywords=[]) if uses_set else ast.List(elts=[], ctx=ast.Load())
+
+    main_fn = ast.FunctionDef(
+        name=main_name, args=_ast_args([root_param]),
+        body=[
+            ast.Assign(targets=[ast.Name(id=acc_param, ctx=ast.Store())], value=acc_value),
+            ast.Expr(value=ast.Call(func=ast.Name(id=name, ctx=ast.Load()),
+                                    args=[ast.Name(id=root_param, ctx=ast.Load()), ast.Name(id=acc_param, ctx=ast.Load())], keywords=[])),
+            ast.Return(value=ast.Name(id=acc_param, ctx=ast.Load())),
+        ], decorator_list=[])
+    new_tree = ast.Module(body=[main_fn, fn], type_ignores=[])
+    ast.fix_missing_locations(new_tree)
+    try:
+        return ast.unparse(new_tree)
+    except Exception:  # noqa: BLE001
+        return code
+
+
+def _split_accumulator_recursion(code: str) -> str:
+    """Fix the broken single-function accumulator-recursion pattern by splitting it
+    into a correct main + helper. Targets ONLY: one top-level function taking one
+    structure arg, with a local `acc = []`, that calls ITSELF with the recursive
+    results discarded and does `acc.append(...)`. Leaves correct functional/concat
+    styles and existing main+helper code untouched. Best-effort; returns the input
+    on any anomaly.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return code
+    if any(isinstance(n, ast.ClassDef) for n in tree.body):
+        return code  # OOP code is intentional — leave it
+    funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef)]
+    if len(funcs) != 1:
+        return code
+    fn = funcs[0]
+    if len(fn.args.args) != 1:
+        return code
+    struct = fn.args.args[0].arg
+
+    acc, acc_stmt = None, None
+    for stmt in fn.body:
+        if (isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.List) and not stmt.value.elts
+                and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name)):
+            acc, acc_stmt = stmt.targets[0].id, stmt
+            break
+    if acc is None:
+        return code
+
+    self_recursive = any(
+        isinstance(s, ast.Call) and isinstance(s.func, ast.Name) and s.func.id == fn.name
+        for s in ast.walk(fn)
+    )
+    has_append = any(
+        isinstance(s, ast.Call) and isinstance(s.func, ast.Attribute) and s.func.attr == "append"
+        and isinstance(s.func.value, ast.Name) and s.func.value.id == acc
+        for s in ast.walk(fn)
+    )
+    has_discarded_recursion = any(
+        isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+        and isinstance(stmt.value.func, ast.Name) and stmt.value.func.id == fn.name
+        for stmt in ast.walk(fn)
+    )
+    if not (self_recursive and has_append and has_discarded_recursion):
+        return code  # correct concatenation style or not the broken pattern
+
+    helper = "traverse" if fn.name != "traverse" else "visit"
+    node = "node" if struct != "node" else "cur"
+    rewriter = _AccumulatorRewriter(fn.name, helper, struct, node, acc)
+    helper_body = [rewriter.visit(stmt) for stmt in fn.body if stmt is not acc_stmt] or [ast.Pass()]
+
+    def _args(names: list[str]) -> ast.arguments:
+        return ast.arguments(posonlyargs=[], args=[ast.arg(arg=n) for n in names], vararg=None,
+                             kwonlyargs=[], kw_defaults=[], kwarg=None, defaults=[])
+
+    main_fn = ast.FunctionDef(
+        name=fn.name, args=_args([struct]),
+        body=[
+            ast.Assign(targets=[ast.Name(id=acc, ctx=ast.Store())], value=ast.List(elts=[], ctx=ast.Load())),
+            ast.Expr(value=ast.Call(
+                func=ast.Name(id=helper, ctx=ast.Load()),
+                args=[ast.Name(id=struct, ctx=ast.Load()), ast.Name(id=acc, ctx=ast.Load())], keywords=[])),
+            ast.Return(value=ast.Name(id=acc, ctx=ast.Load())),
+        ], decorator_list=[])
+    helper_fn = ast.FunctionDef(name=helper, args=_args([node, acc]), body=helper_body, decorator_list=[])
+
+    new_tree = ast.Module(body=[main_fn, helper_fn], type_ignores=[])
+    ast.fix_missing_locations(new_tree)
+    try:
+        return ast.unparse(new_tree)
+    except Exception:  # noqa: BLE001
+        return code
+
+
+def _fix_code_layout(code: str) -> tuple[str, dict[int, int]]:
+    """Normalize a coding snippet's layout: pull a stray module-level `self` method
+    back INSIDE the class above it, and put exactly two blank lines between sibling
+    functions/methods. Returns (new_code, line_map) mapping each original 1-indexed
+    line to its new 1-indexed line so highlight ranges can be remapped. Layout-only
+    (never edits tokens); deterministic so identical input yields identical output.
+    """
+    if not code.strip():
+        return code, {}
+    lines = code.split("\n")
+    has_class = any(re.match(r"class\s+\w+", l.strip()) for l in lines)
+
+    # Pass 1: indent a stray top-level `def f(self, ...)` (and its body) into the
+    # class. Line-preserving — only leading indentation changes.
+    work = list(lines)
+    if has_class:
+        i = 0
+        while i < len(work):
+            stripped = work[i].lstrip(" ")
+            indent = len(work[i]) - len(stripped)
+            if indent == 0 and re.match(r"def\s+\w+\s*\(\s*self\b", stripped):
+                work[i] = "    " + work[i]
+                j = i + 1
+                while j < len(work):
+                    body = work[j]
+                    if body.strip() == "":
+                        j += 1
+                        continue
+                    if len(body) - len(body.lstrip(" ")) == 0:
+                        break  # back at top level — this function ended
+                    work[j] = "    " + body
+                    j += 1
+                i = j
+            else:
+                i += 1
+
+    # Pass 2: exactly two blank lines before each sibling def/class; build the map.
+    result: list[str] = []
+    line_map: dict[int, int] = {}
+    for idx, line in enumerate(work, start=1):
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip(" "))
+        if re.match(r"(def|class)\b", stripped) and result:
+            while result and result[-1].strip() == "":
+                result.pop()
+            prev = next((r for r in reversed(result) if r.strip()), "")
+            prev_indent = len(prev) - len(prev.lstrip(" "))
+            prev_is_header = bool(re.match(r"(def|class)\b", prev.strip()))
+            # First member directly under its class/def header gets no blank lines;
+            # a sibling that follows a previous body gets two.
+            if not (prev_is_header and prev_indent < indent):
+                result.extend(["", ""])
+        line_map[idx] = len(result) + 1
+        result.append(line)
+    return "\n".join(result), line_map
+
+
+def _remap_line_ranges(ranges: list[list[int]], line_map: dict[int, int]) -> list[list[int]]:
+    if not line_map:
+        return ranges
+    out: list[list[int]] = []
+    for r in ranges:
+        if isinstance(r, list) and len(r) == 2:
+            out.append([line_map.get(r[0], r[0]), line_map.get(r[1], r[1])])
+        else:
+            out.append(r)
+    return out
 
 
 def _validated_visual_table(
@@ -2732,16 +3042,38 @@ def _normalize_lean_card_order(
                 background_index + 1,
             )
 
+    # Enforce the topic type's blueprint card set: drop any card whose blueprint_key
+    # is not part of this topic type's structure (e.g. a worked_example/edge_case/
+    # components card in a study-path intro, which the blueprint forbids).
+    normalized = _enforce_blueprint_cards(normalized, topic_type)
+
     if topic_type == "study_path_introduction":
-        non_roadmap = [
-            card for card in normalized if _lean_card_key(card) != "roadmap"
-        ]
-        roadmap = [
-            card for card in normalized if _lean_card_key(card) == "roadmap"
-        ]
-        normalized = [*non_roadmap, *roadmap]
+        # Intro = background(s) then roadmap(s); everything else has been filtered out.
+        backgrounds = [c for c in normalized if _lean_card_key(c) == "background"]
+        roadmaps = [c for c in normalized if _lean_card_key(c) == "roadmap"]
+        others = [c for c in normalized if _lean_card_key(c) not in ("background", "roadmap")]
+        normalized = [*backgrounds, *others, *roadmaps]
 
     return normalized
+
+
+def _enforce_blueprint_cards(cards: list[dict[str, Any]], topic_type: str) -> list[dict[str, Any]]:
+    """Keep only cards whose blueprint_key belongs to this topic type's blueprint
+    (default + optional + continuation sequences). Returns the original list if the
+    blueprint is unavailable or the filter would remove everything."""
+    try:
+        from app.core.course_blueprints import get_topic_blueprint
+
+        blueprint = get_topic_blueprint(topic_type)
+    except Exception:  # noqa: BLE001
+        return cards
+    allowed: set[str] = set()
+    for key in ("default_card_sequence", "optional_cards", "continuation_card_sequence", "continuation_optional_cards"):
+        allowed |= set(blueprint.get(key) or [])
+    if not allowed:
+        return cards
+    filtered = [c for c in cards if _lean_card_key(c) in allowed]
+    return filtered if filtered else cards
 
 
 def _forbidden_key_terms_for_topic(topic: Topic) -> set[str]:
@@ -2902,6 +3234,81 @@ def _apply_canonical_steps_to_single_process_card(
         focus = {}
         card["visual_focus"] = focus
     focus["active_step"] = 0
+
+
+_EDGE_CASE_TRACE_MARKERS = ("call stack", "current:", "output:", "stack:", "queue:", "call stack:")
+
+
+def _strip_misplaced_code_visuals(legacy_cards: list[dict[str, Any]]) -> None:
+    """Remove code-trace visuals from cards that must not show code — only
+    code_walkthrough and worked_example cards carry one. Fixes components_terms /
+    process / background cards rendering an empty code panel. Mutates in place.
+    """
+    for card in legacy_cards:
+        key = str(card.get("blueprint_key") or card.get("card_type") or "").lower()
+        if key in ("code_walkthrough", "worked_example"):
+            continue
+        visual = card.get("visual_plan") if isinstance(card.get("visual_plan"), dict) else {}
+        vtype = str(card.get("visual_type") or "").lower()
+        plan_type = str(visual.get("type") or "").lower()
+        if not (vtype in ("code_trace", "code") or plan_type in ("code_trace", "code") or visual.get("code")):
+            continue
+        card["visual_type"] = "none"
+        card["code_snippet"] = ""
+        card["highlight_lines_per_step"] = []
+        if isinstance(card.get("visual_plan"), dict):
+            card["visual_plan"] = {}
+        card["styled_elements"] = [
+            e for e in (card.get("styled_elements") or [])
+            if str((e or {}).get("type") if isinstance(e, dict) else "").lower() != "code_trace"
+        ]
+
+
+def _drop_trace_style_edge_cases(legacy_cards: list[dict[str, Any]]) -> None:
+    """Remove edge_case cards that are actually worked-example TRACE STEPS — a
+    running-state bullet (call stack / current / output) or a "Visit N" / "Reaching
+    … Node N" / "Step N" title. These violate the edge-case card shape (an edge case
+    DESCRIBES a boundary, it does not trace it) and duplicate a step the worked
+    example already showed. Mutates in place.
+    """
+    def key(card: dict[str, Any]) -> str:
+        return str(card.get("blueprint_key") or card.get("card_type") or "").lower()
+
+    kept: list[dict[str, Any]] = []
+    for card in legacy_cards:
+        if key(card) == "edge_case":
+            title = str(card.get("title") or "").lower()
+            points_text = " ".join(str(p) for p in (card.get("points") or [])).lower()
+            is_trace_step = (
+                re.search(r"\bstep\s+\d+\b", title) is not None
+                or re.search(r"\bvisit\s+\w+", title) is not None
+                or re.search(r"reaching\b.*\bnode\b", title) is not None
+                or any(marker in points_text for marker in _EDGE_CASE_TRACE_MARKERS)
+            )
+            if is_trace_step:
+                continue  # redundant trace masquerading as an edge case — drop it
+        kept.append(card)
+    legacy_cards[:] = kept
+
+
+def _group_edge_cases_after_worked_examples(legacy_cards: list[dict[str, Any]]) -> None:
+    """Edge-case cards must come AFTER the complete worked example, never spliced
+    BETWEEN its step cards. Moves any edge_case card that sits before the last
+    worked_example card to just after the worked-example block. Mutates in place.
+    """
+    def key(card: dict[str, Any]) -> str:
+        return str(card.get("blueprint_key") or card.get("card_type") or "").lower()
+
+    worked_indices = [i for i, c in enumerate(legacy_cards) if key(c) == "worked_example"]
+    if not worked_indices:
+        return
+    last_we = worked_indices[-1]
+    moved = [c for i, c in enumerate(legacy_cards) if key(c) == "edge_case" and i < last_we]
+    if not moved:
+        return
+    kept = [c for i, c in enumerate(legacy_cards) if not (key(c) == "edge_case" and i < last_we)]
+    insert_at = max(i for i, c in enumerate(kept) if key(c) == "worked_example") + 1
+    legacy_cards[:] = kept[:insert_at] + moved + kept[insert_at:]
 
 
 def _unify_process_card_steps(
@@ -4886,6 +5293,45 @@ def _flatten_nested_functions(code: str) -> str:
         return code
 
 
+def _is_bare_helper(code: str) -> bool:
+    """True when `code` is a single self-recursive function that takes an
+    accumulator parameter (e.g. `def traverse(node, result): ... traverse(...)`) —
+    i.e. a helper with no main entry point that creates the accumulator."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return False
+    funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef)]
+    classes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
+    if not funcs and len(classes) == 1:
+        funcs = [n for n in classes[0].body if isinstance(n, ast.FunctionDef)]
+    if len(funcs) != 1:
+        return False
+    fn = funcs[0]
+    if len(fn.args.args) < 2:  # needs an accumulator beyond the node/self arg
+        return False
+    for sub in ast.walk(fn):
+        if isinstance(sub, ast.Call):
+            target = sub.func
+            if isinstance(target, ast.Name) and target.id == fn.name:
+                return True
+            if isinstance(target, ast.Attribute) and target.attr == fn.name:
+                return True
+    return False
+
+
+def _complete_code_from_worked_examples(legacy_cards: list[dict[str, Any]]) -> str | None:
+    """The most complete code_snippet carried by a worked_example card (which
+    reliably holds the full main+helper program), or None."""
+    best = ""
+    for card in legacy_cards:
+        if str(card.get("blueprint_key") or card.get("card_type") or "").lower() == "worked_example":
+            snippet = str(card.get("code_snippet") or "").strip()
+            if len(snippet) > len(best):
+                best = snippet
+    return best or None
+
+
 def _accumulate_code_walkthrough_visuals(legacy_cards: list[dict[str, Any]]) -> None:
     """Make code_walkthrough cards show CUMULATIVE code growing across the
     topic, with each card highlighting the lines it newly introduces.
@@ -4988,6 +5434,24 @@ def _accumulate_code_walkthrough_visuals(legacy_cards: list[dict[str, Any]]) -> 
         full_code = flattened
         full_lines = full_code.split("\n")
     total_lines = len(full_lines)
+
+    # Guard: a code_walkthrough must show the MAIN entry function, not only the
+    # helper. If the assembled code collapsed to a bare self-recursive helper but a
+    # worked_example carries the complete main+helper program containing this
+    # helper, adopt the complete program so both functions are walked through.
+    if _is_bare_helper(full_code):
+        complete = _complete_code_from_worked_examples(legacy_cards)
+        helper_sig = next((l.strip() for l in full_lines if l.strip().startswith("def ")), "")
+        if (
+            complete
+            and helper_sig
+            and helper_sig in complete
+            and not _is_bare_helper(complete)
+            and len(complete.split("\n")) > total_lines
+        ):
+            full_code = _fix_code_layout(complete)[0]
+            full_lines = full_code.split("\n")
+            total_lines = len(full_lines)
 
     # Step 2: compute per-card max_line.
     #
@@ -5123,6 +5587,14 @@ def _expand_coding_code_walkthroughs_to_one_line_cards(
             continue
 
         full_code = max(code_candidates, key=lambda code: len(code.splitlines()))
+        # Clean the canonical code before expanding: repair indentation, drop stray
+        # module-level lines, synthesize a missing main, split broken recursion.
+        full_code = _fix_dedented_body_lines(full_code)
+        full_code = _strip_module_level_strays(full_code)
+        full_code = _synthesize_main_for_helper(full_code)
+        full_code = _split_accumulator_recursion(full_code)
+        # Iterate one real (non-blank) line per card; blank separators are restored
+        # in the displayed cumulative code via _fix_code_layout below.
         full_lines = [line for line in full_code.splitlines() if line.strip()]
         if not full_lines:
             continue
@@ -5151,7 +5623,10 @@ def _expand_coding_code_walkthroughs_to_one_line_cards(
                 line_title = f"Line {line_index}"
             line_title = line_title.rstrip(":")
             explanation = _derive_explanation_from_code(code_line)
-            cumulative_code = "\n".join(full_lines[:line_index])
+            # Restore 2-blank-line separation between functions in the displayed code,
+            # and remap this card's highlight to the (shifted) line number.
+            cumulative_code, _layout_map = _fix_code_layout("\n".join(full_lines[:line_index]))
+            highlight_line = _layout_map.get(line_index, line_index)
 
             card = dict(template)
             card["id"] = f"{str(template.get('id') or 'code')}-line-{line_index}"
@@ -5166,7 +5641,7 @@ def _expand_coding_code_walkthroughs_to_one_line_cards(
             card["code_snippet"] = cumulative_code
             card["code_language"] = language
             card["visual_type"] = "code_trace"
-            card["highlight_lines_per_step"] = [[line_index, line_index]]
+            card["highlight_lines_per_step"] = [[highlight_line, highlight_line]]
             card["continuation_group_id"] = group_id
             card["continuation_index"] = line_index
             card["continuation_total"] = total
@@ -6419,6 +6894,13 @@ def _convert_lean_to_legacy(
         topic_type=_topic_type_key(topic),
     )
     _ensure_generic_worked_example_setup_cards(legacy_cards)
+    # Non-code cards (components_terms / process / background) must not carry a code
+    # visual — strip any empty/misplaced code panels.
+    _strip_misplaced_code_visuals(legacy_cards)
+    # Edge cases must DESCRIBE a boundary, not re-trace the example: drop trace-style
+    # edge cases, then group the rest AFTER the worked example (never between steps).
+    _drop_trace_style_edge_cases(legacy_cards)
+    _group_edge_cases_after_worked_examples(legacy_cards)
 
     empty_report = {"is_valid": True, "requires_regeneration": False, "issues": []}
 
@@ -6467,7 +6949,13 @@ def _ensure_generic_worked_example_setup_cards(cards: list[dict[str, Any]]) -> N
             continue
 
         previous = cards[index - 1] if index > 0 else None
-        if isinstance(previous, dict) and _is_generic_worked_example_setup_card(previous):
+        # One setup per worked-example RUN: skip if the previous card is already part
+        # of the worked example (a prior step OR its setup). This prevents splicing a
+        # setup card between consecutive worked-example step cards.
+        if isinstance(previous, dict) and (
+            str(previous.get("blueprint_key") or "").strip().lower() == "worked_example"
+            or _is_generic_worked_example_setup_card(previous)
+        ):
             index += 1
             continue
 
@@ -6521,17 +7009,24 @@ def _generic_worked_example_setup_card(first_card: dict[str, Any], index: int) -
     src_plan = first_card.get("visual_plan") if isinstance(first_card.get("visual_plan"), dict) else {}
     src_type = str(first_card.get("visual_type") or src_plan.get("type") or "").strip().lower()
     src_nodes = src_plan.get("nodes") or first_card.get("visual_nodes")
-    if "node_link" in src_type and src_nodes:
-        setup_visual_type = "node_link_diagram"
-        setup_visual_plan = _copy.deepcopy(src_plan) if src_plan.get("nodes") else {
-            "type": "node_link_diagram",
-            "nodes": _copy.deepcopy(first_card.get("visual_nodes") or []),
-            "edges": _copy.deepcopy(first_card.get("visual_edges") or []),
-        }
-        setup_visual_plan["type"] = "node_link_diagram"
-        setup_visual_nodes = _copy.deepcopy(setup_visual_plan.get("nodes") or [])
-        setup_visual_edges = _copy.deepcopy(setup_visual_plan.get("edges") or [])
-        setup_visual_desc = "The example structure at rest, before the first step runs."
+    # Inherit the first worked card's visual so the setup SHOWS the problem at rest
+    # (the array, grid, graph, etc.) instead of being a text-only card — for EVERY
+    # visual type, not just node_link.
+    has_visual = bool(src_type) and src_type != "none" and bool(src_plan or src_nodes)
+    if has_visual:
+        is_node_link = "node_link" in src_type
+        setup_visual_type = "node_link_diagram" if is_node_link else src_type
+        setup_visual_plan = _copy.deepcopy(src_plan) if src_plan else {}
+        if is_node_link:
+            setup_visual_plan = setup_visual_plan if setup_visual_plan.get("nodes") else {
+                "type": "node_link_diagram",
+                "nodes": _copy.deepcopy(first_card.get("visual_nodes") or []),
+                "edges": _copy.deepcopy(first_card.get("visual_edges") or []),
+            }
+            setup_visual_plan["type"] = "node_link_diagram"
+        setup_visual_nodes = _copy.deepcopy(setup_visual_plan.get("nodes") or first_card.get("visual_nodes") or [])
+        setup_visual_edges = _copy.deepcopy(setup_visual_plan.get("edges") or first_card.get("visual_edges") or [])
+        setup_visual_desc = "The problem at rest, before the first step runs."
     else:
         setup_visual_type = "none"
         setup_visual_plan = {}

@@ -2179,3 +2179,31 @@ def generate_lean_structured_lesson_streaming(
     except json.JSONDecodeError as exc:
         raise RuntimeError("OpenAI returned invalid lean lesson JSON (stream)") from exc
     yield ("lesson", lesson)
+
+
+# Focused single-card slot generation (EXAMPLE_SYSTEM_SPEC §6/§8.1). One tiny call
+# per card slot — the model writes only that card's prose, never the structure.
+CARD_SLOT_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "points": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["title", "points"],
+    "additionalProperties": False,
+}
+
+
+def generate_card_slot(system_prompt: str, user_prompt: str) -> dict[str, Any]:
+    """Generate one card's {title, points} from a focused prompt."""
+    response = _create_with_usage(
+        "card_slot",
+        model=OPENAI_MODEL,
+        input=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        text={"format": {"type": "json_schema", "name": "azalea_card_slot",
+                          "schema": CARD_SLOT_JSON_SCHEMA, "strict": True}},
+    )
+    return json.loads(response.output_text)

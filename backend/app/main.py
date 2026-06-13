@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -268,12 +270,24 @@ ensure_lesson_generation_status_schema()
 
 app = FastAPI(title="Azalea API")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+
+def _allowed_cors_origins() -> list[str]:
+    defaults = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-    ],
+    ]
+    configured = os.getenv("CORS_ORIGINS", "")
+    extra = [
+        origin.strip().rstrip("/")
+        for origin in configured.split(",")
+        if origin.strip()
+    ]
+    return list(dict.fromkeys(defaults + extra))
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

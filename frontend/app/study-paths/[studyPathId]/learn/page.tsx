@@ -354,6 +354,16 @@ type LessonFlowCard = {
   visual_v2_ref?: {
     visual_model_id?: string;
     frame_index?: number;
+    // One frame per bullet: as each point reveals, the highlight (and variable
+    // panel) advance to the line that point describes.
+    frame_index_per_point?: number[];
+    source?: string;
+  };
+  // Optional supporting diagram for code-lens worked examples (the array/pointer
+  // view alongside the executing code), shown via the Diagram/Code toggle.
+  diagram_v2_ref?: {
+    visual_model_id?: string;
+    frame_index?: number;
     source?: string;
   };
 };
@@ -938,10 +948,19 @@ export default function StudyPathLearnPage() {
     const ref = currentStep.card?.visual_v2_ref;
     if (!ref?.visual_model_id) return null;
     const model = legacyV2ModelsById.get(ref.visual_model_id);
-    const frameIndex =
+    let frameIndex =
       typeof ref.frame_index === "number" && ref.frame_index >= 0
         ? ref.frame_index
         : 0;
+    // Per-bullet frames: as each point reveals, advance the frame so the
+    // highlighted line (and variables) match the bullet being read.
+    const perPoint = ref.frame_index_per_point;
+    if (Array.isArray(perPoint) && perPoint.length > 0) {
+      const revealed = Array.isArray(currentStep.bullets) ? currentStep.bullets.length : 0;
+      const idx = Math.min(perPoint.length - 1, Math.max(0, revealed - 1));
+      const candidate = perPoint[idx];
+      if (typeof candidate === "number" && candidate >= 0) frameIndex = candidate;
+    }
     // Diagnostic: a flow_card that carries a visual_v2_ref but resolves to no
     // renderable model/frame is why a worked-example visual goes blank. Surface
     // the exact failing check rather than silently returning null.
@@ -962,6 +981,19 @@ export default function StudyPathLearnPage() {
       );
       return null;
     }
+    return { model, frameIndex };
+  }, [currentStep, legacyV2ModelsById]);
+
+  // Supporting diagram for code-lens worked examples (e.g. the array + pointer
+  // view that accompanies the executing code), resolved like the focus visual.
+  const currentV2DiagramVisual = useMemo(() => {
+    if (currentStep?.type !== "flow_card") return null;
+    const ref = currentStep.card?.diagram_v2_ref;
+    if (!ref?.visual_model_id) return null;
+    const model = legacyV2ModelsById.get(ref.visual_model_id);
+    const frameIndex =
+      typeof ref.frame_index === "number" && ref.frame_index >= 0 ? ref.frame_index : 0;
+    if (!model || !model.frames?.[frameIndex]) return null;
     return { model, frameIndex };
   }, [currentStep, legacyV2ModelsById]);
 
@@ -4935,7 +4967,7 @@ export default function StudyPathLearnPage() {
                       {/* A single border around the whole visual; no inner
                           scroller, so the visual fills the workspace width and
                           the left workspace itself is the one scroll container. */}
-                      {workedExampleCode && (
+                      {(workedExampleCode || currentV2DiagramVisual) && (
                         <div className="mb-3 flex justify-center">
                           <div className="inline-flex items-center gap-1 rounded-full border border-[#E5DFF0] bg-[#F6F2FF] p-1">
                             {(["diagram", "code"] as const).map((view) => {
@@ -4959,7 +4991,25 @@ export default function StudyPathLearnPage() {
                           </div>
                         </div>
                       )}
-                      {workedExampleCode && workedExampleVisualView === "code" ? (
+                      {currentV2DiagramVisual && workedExampleVisualView === "diagram" ? (
+                        <V2VisualRenderer
+                          model={currentV2DiagramVisual.model}
+                          frameIndex={currentV2DiagramVisual.frameIndex}
+                          onElementClick={(element) => {
+                            const frame =
+                              currentV2DiagramVisual.model.frames[currentV2DiagramVisual.frameIndex] ??
+                              currentV2DiagramVisual.model.frames[0];
+                            if (frame) {
+                              handleLegacyV2VisualClick(
+                                element,
+                                currentV2DiagramVisual.model,
+                                frame,
+                              );
+                            }
+                          }}
+                          selectedElementId={activeVisualContext?.element.element_id ?? null}
+                        />
+                      ) : workedExampleCode && workedExampleVisualView === "code" ? (
                         <div className="overflow-hidden rounded-2xl border border-[#E2DDEC] bg-white shadow-sm">
                           <div className="flex items-center justify-between border-b border-[#E8E3EF] px-4 py-3">
                             <span className="text-sm font-black text-foreground">
@@ -8797,39 +8847,10 @@ function getContinueLabel({
   nextStep?: LearningStep;
   isLastStep: boolean;
 }) {
-  if (isLastStep) {
-    return "Finish topic";
-  }
-
-  if (currentStep?.nextCardLabel && currentStep.type !== "practice") {
-    return currentStep.nextCardLabel;
-  }
-
-  if (!nextStep) {
-    return "Continue";
-  }
-
-  if (nextStep.type === "practice") {
-    return "Do a quick check";
-  }
-
-  if (nextStep.cardType === "method_process") {
-    return "Show me the method";
-  }
-
-  if (nextStep.cardType === "worked_example") {
-    return "Try an example";
-  }
-
-  if (nextStep.cardType === "edge_case") {
-    return "Show the tricky case";
-  }
-
-  if (nextStep.cardType === "bridge_to_next_topic") {
-    return "Continue to next topic";
-  }
-
-  return "Continue";
+  void currentStep;
+  void nextStep;
+  void isLastStep;
+  return "Next";
 }
 
 function shouldShowStepForStartingMode(

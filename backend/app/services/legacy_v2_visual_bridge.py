@@ -57,6 +57,42 @@ _DYNAMIC_TRACE_BASE_TYPES = {
 }
 
 
+def _apply_node_link_empty_state_policy(
+    lesson_json: dict[str, Any], context: "CompileContext"
+) -> None:
+    """§6.2 + T5 display policy (PROJECTOR_SYSTEM_SPEC). A node_link worked-example
+    card whose model has empty per-step state (no node ever active/visited — the
+    MST-style bug) is (a) recorded as `empty_node_state` telemetry and (b) rendered
+    **text-only**: its broken progressive diagram ref is dropped rather than shipped.
+    A known-broken visual is worse than none. Failure-safe."""
+    try:
+        from app.services.visual_v2.invariant_metrics import GLOBAL as INV
+        from app.services.visual_v2.validators import node_link_state_is_empty
+
+        models = {
+            str(m.get("id")): m
+            for m in (lesson_json.get("visual_models") or [])
+            if isinstance(m, dict)
+        }
+        application = str(context.get("topic_hint") or "") or None
+        for card in lesson_json.get("lesson_cards") or []:
+            if not isinstance(card, dict):
+                continue
+            if str(card.get("blueprint_key") or card.get("card_type") or "").lower() != "worked_example":
+                continue
+            ref = card.get("visual_v2_ref") or {}
+            model = models.get(str(ref.get("visual_model_id") or ""))
+            if model is None or not node_link_state_is_empty(model):
+                continue
+            INV.record_empty_node_state(application=application)
+            card.pop("visual_v2_ref", None)
+            meta = card.setdefault("metadata", {})
+            if isinstance(meta, dict):
+                meta["v2_visual_suppressed"] = "empty_node_state"
+    except Exception:  # noqa: BLE001 — telemetry/policy must never break a lesson
+        pass
+
+
 def attach_v2_visuals_to_legacy_lesson(
     lesson_json: dict[str, Any],
     *,
@@ -180,6 +216,15 @@ def attach_v2_visuals_to_legacy_lesson(
         dynamic_status_by_base_type[base_type] = "attached"
 
     if visual_models:
+        # Provenance (§10.1): anything the legacy bridge built is the T5 `legacy_raw`
+        # source. `stamp_if_absent` never relabels a model already stamped by the
+        # computed path (e.g. an example-ontology model carried in on the lesson).
+        from app.services.visual_v2.provenance import make_provenance, stamp_if_absent
+
+        legacy_provenance = make_provenance("legacy_raw")
+        for model in visual_models:
+            stamp_if_absent(model, legacy_provenance)
+
         existing_models = [
             model
             for model in (lesson_json.get("visual_models") or [])
@@ -190,6 +235,10 @@ def attach_v2_visuals_to_legacy_lesson(
             _dedupe_models(visual_models),
             cards=cards,
         )
+        # §6.2 + T5 display policy: a node_link worked example that resolves to empty
+        # per-step state (the MST-style "nothing highlights" bug) is flagged AND its
+        # broken progressive diagram is suppressed (text-only) rather than shipped.
+        _apply_node_link_empty_state_policy(lesson_json, context)
     if visual_models or blueprint_visual_card_count:
         lesson_json.setdefault("metadata", {})
         if isinstance(lesson_json["metadata"], dict):
@@ -316,6 +365,17 @@ def _single_frame_plan_from_card(
             "visual_blueprint": "",
             "problem_setup": problem_setup,
         }
+        # Output/result panel: the traversal result as it grows — every node
+        # visited so far (the completed set) plus the current node, shown by value
+        # (label) rather than id. Without this the panel stays empty across steps.
+        _label_by_id = {
+            str(node.get("id")): str(node.get("label") or node.get("id"))
+            for node in nodes
+            if isinstance(node, dict)
+        }
+        _output = [_label_by_id.get(node_id, node_id) for node_id in completed]
+        if active_node:
+            _output.append(_label_by_id.get(active_node, active_node))
         state_after = {
             "active_node": active_node,
             "completed_nodes": completed,
@@ -324,7 +384,7 @@ def _single_frame_plan_from_card(
             "active_edge_to": "",
             "completed_edges_from": [],
             "completed_edges_to": [],
-            "runtime_state": {"call_stack": [], "output": [], "frontier": [], "variables": []},
+            "runtime_state": {"call_stack": [], "output": _output, "frontier": [], "variables": []},
             "attention_note": str(card.get("what_to_notice") or description),
         }
     elif base_type == "indexed_sequence_diagram":
@@ -1119,7 +1179,17 @@ def _backfill_missing_node_link_structure(
         nodes = visual_plan.get("nodes") or card.get("visual_nodes") or []
         return len(nodes) if isinstance(nodes, list) else 0
 
-    cards_with_structure = [card for card in node_link_cards if _node_count(card) > 0]
+    def _edge_count(card: dict[str, Any]) -> int:
+        visual_plan = card.get("visual_plan") if isinstance(card.get("visual_plan"), dict) else {}
+        edges = visual_plan.get("edges") or card.get("visual_edges") or []
+        return len(edges) if isinstance(edges, list) else 0
+
+    # A node_link card needs repair when it has no nodes OR has nodes but NO edges
+    # (a graph of disconnected dots — the MST-background bug). A valid donor must
+    # have BOTH nodes and edges so the copy actually carries the connectivity.
+    cards_with_structure = [
+        card for card in node_link_cards if _node_count(card) > 0 and _edge_count(card) > 0
+    ]
     if not cards_with_structure:
         return
     worked_donors = [
@@ -1144,7 +1214,11 @@ def _backfill_missing_node_link_structure(
         return
 
     for card in node_link_cards:
-        if _node_count(card) > 0:
+        # Repair cards missing connectivity: no nodes, or nodes-but-no-edges. A card
+        # that already has edges is left alone (it's its own valid graph).
+        if _edge_count(card) > 0:
+            continue
+        if card is donor:
             continue
         visual_plan = card.get("visual_plan")
         if not isinstance(visual_plan, dict):
@@ -2334,12 +2408,20 @@ def _detect_traversal_code_lines(code_snippet: str) -> dict[str, int]:
         queue_ctx = "queue" in low or ".popleft" in low or re.search(r"\bq\.", low) is not None
         value_token = bool(re.search(r"\.(val|value|data|key)\b", low))
         bracket_visit = bool(re.search(r"\[\s*\w+\.(val|value|data|key)\b", low))
-        if (
-            "base_case" not in found
-            and re.search(r"\bif\s+(not\s+)?\w+\s*:", line)
+        # Base-case guard: an `if` on the root/node that returns early. Matches all
+        # common forms — `if not node:`, `if node:`, `if node is None:`,
+        # `if node == None:`, `if root is None:` — so the check line highlights even
+        # when the node exists (the condition is evaluated, just not taken).
+        is_base_guard = (
+            re.match(r"if\b", low) is not None
             and ("root" in low or "node" in low)
-            and not is_append
-        ):
+            and (
+                "none" in low
+                or " not " in f" {low} "
+                or re.search(r"\bif\s+\w+\s*:", line) is not None
+            )
+        )
+        if "base_case" not in found and is_base_guard and not is_append:
             found["base_case"] = n
         if "dequeue" not in found and re.search(r"\.popleft\s*\(|\.pop\s*\(\s*0\s*\)", low):
             found["dequeue"] = n
@@ -2394,13 +2476,31 @@ def _coding_trace_bullets(
         if enqueue:
             add(f"{active}'s children are added to the back of the queue to be visited on later passes.", enqueue)
     else:
+        visit_line = code_lines.get("visit")
+        left_line = code_lines.get("recurse_left")
+        right_line = code_lines.get("recurse_right")
         add(f"State: current node is {active} — result goes from {before} to {after}.", None)
-        add(f"{active} is a real node, so the base-case check passes and the body runs.", code_lines.get("base_case"))
-        add(f"{active}'s value is appended to the result — the {label} visit — giving {after}.", code_lines.get("visit"))
-        if next_active:
-            recurse = code_lines.get("recurse_right") if traversal == "inorder" else code_lines.get("recurse_left")
-            if recurse:
-                add(f"The function then recurses toward {next_active}, continuing the traversal.", recurse)
+        add(f"{active} is a real node, so the base-case check evaluates to false and the body runs.", code_lines.get("base_case"))
+        # Cover the recursion lines in the order they execute for this traversal,
+        # so every line of the function is highlighted across the trace.
+        if traversal == "preorder":
+            add(f"{active}'s value is appended to the result — the preorder visit — giving {after}.", visit_line)
+            if left_line:
+                add("The function then recurses into the left child first.", left_line)
+            if right_line:
+                add("After the left subtree finishes, it recurses into the right child.", right_line)
+        elif traversal == "postorder":
+            if left_line:
+                add("First the function recurses into the left subtree.", left_line)
+            if right_line:
+                add("Then it recurses into the right subtree.", right_line)
+            add(f"Only after both children does {active}'s value get appended — the postorder visit — giving {after}.", visit_line)
+        else:  # inorder
+            if left_line:
+                add("The left subtree is visited first — the recursive left call returns before this node is touched.", left_line)
+            add(f"{active}'s value is appended to the result — the inorder visit — giving {after}.", visit_line)
+            if right_line:
+                add("The function then recurses into the right subtree to continue the traversal.", right_line)
     return points, highlights
 
 
@@ -2411,15 +2511,19 @@ def _coding_setup_bullets(
     root_id: str,
 ) -> tuple[list[str], list[list[int]]]:
     """Setup-card bullets for a coding worked example: the problem statement plus
-    each initialization/setup line — base case, container inits, queue/stack seed,
-    and the outer function calling its helper — with the matching code line
-    highlighted as that bullet is discussed. Stops before the traversal work (the
-    loop, the recursion, or a separate helper definition) begins.
+    each initialization/setup line — the entry method's container inits, the
+    queue/stack seed, and the call into the helper — with the matching code line
+    highlighted as that bullet is discussed. Handles the LeetCode `class Solution`
+    shape: it covers the FIRST (entry) method and stops at the SECOND `def` (the
+    helper). For inorder it also previews the implicit descent to the leftmost node
+    (the recursive left call that runs before anything is visited).
     """
     label = _traversal_label(traversal).replace(" Traversal", "").lower()
     points: list[str] = []
     highlights: list[list[int]] = []
     seen_result_init = False
+    def_count = 0
+    code_lines = _detect_traversal_code_lines(code_snippet)
 
     def add(point: str, line: int | None) -> None:
         points.append(point)
@@ -2432,24 +2536,44 @@ def _coding_setup_bullets(
         n = idx + 1
         if not line:
             continue
-        if idx > 0 and re.match(r"def\s+\w+", line):
-            break  # a separate helper begins — setup is the outer function only
+        if re.match(r"class\s+\w+", line):
+            continue  # the class wrapper is not itself a setup action line
+        if re.match(r"def\s+\w+", line):
+            def_count += 1
+            if def_count >= 2:
+                break  # the helper begins — setup is the entry method only
+            add("Define the entry method, which receives the tree's root and returns the collected result.", n)
+            continue
+        # Inside the entry method. Stop once the traversal work proper begins.
         if re.search(r"\bwhile\b|\bfor\b", low) or ".left" in low or ".right" in low:
-            break  # the traversal work begins
+            break
         if re.search(r"\.append\s*\(", low) and re.search(r"\.(val|value|data|key)\b", low):
-            break  # the visit begins
-        if idx == 0 and re.match(r"def\s+\w+\s*\(", line):
-            add("Define the traversal function, which receives the tree's root node.", n)
-        elif re.search(r"\bif\b.*\b(none|root|node)\b", low) and "return" not in low:
-            add("Base case: if the tree or subtree is empty, return immediately with an empty result.", n)
-        elif re.search(r"=\s*\[\s*\]", line) and not seen_result_init:
+            break
+        if re.search(r"=\s*\[\s*\]", line) and not seen_result_init:
             seen_result_init = True
-            add("Initialize an empty list to collect the traversal output.", n)
-        elif re.search(r"=\s*(\[|deque\()", low) and "root" in low:
+            add("Initialize an empty list to collect the traversal output before any node is visited.", n)
+        elif re.search(r"=\s*(\[|deque\()", low) and ("root" in low or "start" in low):
             container = "queue" if ("queue" in low or "deque" in low) else ("stack" if "stack" in low else "container")
             add(f"Seed the {container} with the root node so the traversal has a starting point.", n)
-        elif re.match(r"\w+\s*\(", line) and "return" not in low:
-            add("The outer function calls its helper to perform the traversal and fill the result.", n)
+        elif re.search(r"\bif\b.*\b(none|root|node)\b", low) and "return" not in low:
+            add("Base case: if the tree or subtree is empty, return immediately with an empty result.", n)
+        elif re.match(r"(self\.)?\w+\s*\(", line) and "return" not in low and "append" not in low:
+            add("The entry method calls the helper to perform the traversal and fill the result list.", n)
+
+    # Preview the implicit first move so the descent is not a silent jump from the
+    # setup to the first visited node.
+    if traversal == "inorder" and code_lines.get("recurse_left"):
+        add(
+            "When the helper runs, inorder recurses left as far as possible first — "
+            "so the very first node actually visited is the tree's smallest (leftmost) value.",
+            code_lines.get("recurse_left"),
+        )
+    elif traversal in ("level_order", "levelorder", "bfs") and code_lines.get("dequeue"):
+        add(
+            "The loop then repeatedly takes the front node off the queue to process it, "
+            "level by level.",
+            code_lines.get("dequeue"),
+        )
     return points, highlights
 
 
@@ -2587,6 +2711,76 @@ def _first_highlight_range(card: dict[str, Any], line_count: int) -> list[int]:
 def _has_v2_ref(card: dict[str, Any]) -> bool:
     ref = card.get("visual_v2_ref")
     return isinstance(ref, dict) and bool(ref.get("visual_model_id"))
+
+
+_CODE_BASE_TYPES = ("code_execution_panel", "code_trace")
+
+
+def _legacy_visual_is_degenerate(model: dict[str, Any]) -> bool:
+    """Shape-agnostic validity gate (PROJECTOR_SYSTEM_SPEC INV-RENDER, applied to the
+    legacy/static path which the projector pipeline never sees). True = malformed and
+    should not ship: a graph with <2 nodes or dangling/duplicate/blank-label edges (the
+    phantom-ring background bug), an empty array, or an empty grid."""
+    if not isinstance(model, dict):
+        return True
+    base = model.get("base") or {}
+    base_type = str(model.get("base_type") or "")
+    if base_type == "node_link_diagram":
+        nodes = base.get("nodes") or []
+        if len([n for n in nodes if isinstance(n, dict)]) < 2:
+            return True  # a "graph" of one node is not a graph
+        try:
+            from app.services.visual_v2.validators import validate_node_link_render
+            return bool(validate_node_link_render(model))  # dangling edges, blank/dupe labels
+        except Exception:  # noqa: BLE001 — never let the gate break a lesson
+            return False
+    if base_type == "indexed_sequence_diagram":
+        return not (base.get("values"))
+    if base_type == "grid_matrix_diagram":
+        rows = base.get("rows") or base.get("cells") or base.get("grid") or []
+        return not rows
+    return False
+
+
+def gate_legacy_visuals(lesson_json: dict[str, Any]) -> None:
+    """Final, shape-agnostic guardrail over EVERY visual model in the lesson (so the
+    legacy/static path is gated like the computed one). Drops (a) malformed/degenerate
+    visuals and (b) a diagram slot that points at a CODE model (never show code as the
+    'Diagram'). Cards whose visual is dropped simply render without it. Failure-safe."""
+    import logging
+    _gate_log = logging.getLogger(__name__)
+    try:
+        if not isinstance(lesson_json, dict):
+            return
+        models = {
+            str(m.get("id")): m
+            for m in (lesson_json.get("visual_models") or [])
+            if isinstance(m, dict) and m.get("id")
+        }
+        bad: set[str] = {mid for mid, m in models.items() if _legacy_visual_is_degenerate(m)}
+
+        for card in lesson_json.get("lesson_cards") or []:
+            if not isinstance(card, dict):
+                continue
+            # A diagram slot must hold a DIAGRAM, never a code model (INV-DUAL-SLOT).
+            dref = card.get("diagram_v2_ref")
+            if isinstance(dref, dict):
+                dm = models.get(str(dref.get("visual_model_id") or ""))
+                if dm is not None and str(dm.get("base_type") or "") in _CODE_BASE_TYPES:
+                    card.pop("diagram_v2_ref", None)
+            for ref_key in ("visual_v2_ref", "diagram_v2_ref"):
+                ref = card.get(ref_key)
+                if isinstance(ref, dict) and str(ref.get("visual_model_id") or "") in bad:
+                    card.pop(ref_key, None)
+
+        if bad:
+            lesson_json["visual_models"] = [
+                m for m in (lesson_json.get("visual_models") or [])
+                if isinstance(m, dict) and str(m.get("id")) not in bad
+            ]
+            _gate_log.info("visual gate: dropped %d malformed visual(s)", len(bad))
+    except Exception as exc:  # noqa: BLE001 — the gate must never break a lesson
+        _gate_log.warning("visual gate failed: %s", exc)
 
 
 def _is_worked_example_setup_card(card: dict[str, Any]) -> bool:

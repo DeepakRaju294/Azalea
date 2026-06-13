@@ -37,6 +37,59 @@ type Props = {
 
 const CELL_WIDTH_PCT = 100 / 12; // ~12 cells fit; auto-scales otherwise
 
+// Composite (multiple-array) state — divide & conquer / multi-collection algorithms
+// (merge sort's left/right/result). Each sub-array is rendered as its own labelled row.
+type SubArray = {
+  label: string;
+  values: string[];
+  pointers?: { id: string; position: number; label: string }[];
+  highlighted_cells?: number[];
+};
+
+function MultiSequenceView({ sequences }: { sequences: SubArray[] }) {
+  return (
+    <div className="space-y-4 rounded-2xl border border-[#E5DFEE] bg-white p-5 shadow-sm">
+      {sequences.map((seq, si) => {
+        const cellPct = Math.min(CELL_WIDTH_PCT, 100 / Math.max(seq.values.length, 1));
+        const highlighted = new Set(seq.highlighted_cells || []);
+        return (
+          <div key={`${seq.label}-${si}`} className="overflow-x-auto">
+            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              {seq.label}
+            </div>
+            <div className="relative h-5">
+              {(seq.pointers || []).map((p, pi) => (
+                <div
+                  key={`${p.id}-${pi}`}
+                  className="absolute text-[11px] font-semibold text-[#7C4EF0]"
+                  style={{ left: `${p.position * cellPct}%`, width: `${cellPct}%`, textAlign: "center" }}
+                >
+                  ↓{p.label}
+                </div>
+              ))}
+            </div>
+            <div className="flex">
+              {seq.values.map((v, ci) => (
+                <div
+                  key={ci}
+                  className="flex items-center justify-center border border-[#E5DFEE] py-2 text-sm font-semibold"
+                  style={{
+                    width: `${cellPct}%`,
+                    backgroundColor: highlighted.has(ci) ? "#EDE7FF" : "#FFFFFF",
+                    color: "#3A2870",
+                  }}
+                >
+                  {v}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function IndexedSequenceVisual({
   model,
   frame,
@@ -59,6 +112,12 @@ export function IndexedSequenceVisual({
   const ariaLabelFor = interactivity.ariaLabelFor;
   const tabIndexFor = interactivity.tabIndexFor;
 
+  // Composite multi-array frame (merge sort / partition): render each sub-array stacked.
+  const sequences = (frame.state as { sequences?: SubArray[] }).sequences;
+  if (Array.isArray(sequences) && sequences.length > 0) {
+    return <MultiSequenceView sequences={sequences} />;
+  }
+
   return (
     <div className="rounded-2xl border border-[#E5DFEE] bg-white p-5 shadow-sm">
       <div
@@ -66,47 +125,59 @@ export function IndexedSequenceVisual({
         role="group"
         aria-label={`Indexed sequence: ${base.values.length} cells`}
       >
-        {/* Pointers row */}
-        <div className="relative h-8">
-          {(state.pointers || []).map((ptr) => {
-            const left = ptr.position * cellPct;
-            const elementId = `pointer_${ptr.id}`;
-            const selected = selectedElementId === elementId;
-            return (
-              <motion.button
-                key={elementId}
-                type="button"
-                onClick={() => handleClick(elementId)}
-                disabled={!onElementClick}
-                aria-label={ariaLabelFor(
-                  elementId,
-                  `Pointer ${ptr.label || ptr.id} at index ${ptr.position}`,
-                )}
-                aria-pressed={selected}
-                tabIndex={onElementClick ? tabIndexFor(elementId) : -1}
-                className={[
-                  "absolute top-0 flex flex-col items-center text-xs font-bold motion-safe:transition-all duration-400 ease-in-out",
-                  onElementClick ? "cursor-pointer hover:scale-110" : "cursor-default",
-                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD96B]",
-                ].join(" ")}
-                style={{ left: `${left}%`, width: `${cellPct}%` }}
-                {...motionProps[elementId]}
-              >
-                <span
-                  className={[
-                    "rounded-md px-2 py-0.5 text-[10px]",
-                    selected
-                      ? "bg-[#FFD96B] text-[#3A2870]"
-                      : "bg-[#7C4EF0] text-white",
-                  ].join(" ")}
-                >
-                  {ptr.label}
-                </span>
-                <span aria-hidden="true" className="text-[#7C4EF0]">▼</span>
-              </motion.button>
-            );
-          })}
-        </div>
+        {/* Pointers row — stack pointers that share an index so none is hidden */}
+        {(() => {
+          const counts: Record<number, number> = {};
+          (state.pointers || []).forEach((p) => {
+            counts[p.position] = (counts[p.position] || 0) + 1;
+          });
+          const maxStack = Math.max(1, ...Object.values(counts));
+          const seen: Record<number, number> = {};
+          return (
+            <div className="relative" style={{ height: `${maxStack * 1.4 + 0.5}rem` }}>
+              {(state.pointers || []).map((ptr) => {
+                const left = ptr.position * cellPct;
+                const stackIndex = seen[ptr.position] ?? 0;
+                seen[ptr.position] = stackIndex + 1;
+                const elementId = `pointer_${ptr.id}`;
+                const selected = selectedElementId === elementId;
+                return (
+                  <motion.button
+                    key={elementId}
+                    type="button"
+                    onClick={() => handleClick(elementId)}
+                    disabled={!onElementClick}
+                    aria-label={ariaLabelFor(
+                      elementId,
+                      `Pointer ${ptr.label || ptr.id} at index ${ptr.position}`,
+                    )}
+                    aria-pressed={selected}
+                    tabIndex={onElementClick ? tabIndexFor(elementId) : -1}
+                    className={[
+                      "absolute flex flex-col items-center text-xs font-bold motion-safe:transition-all duration-400 ease-in-out",
+                      onElementClick ? "cursor-pointer hover:scale-110" : "cursor-default",
+                      "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD96B]",
+                    ].join(" ")}
+                    style={{ left: `${left}%`, width: `${cellPct}%`, top: `${stackIndex * 1.4}rem` }}
+                    {...motionProps[elementId]}
+                  >
+                    <span
+                      className={[
+                        "rounded-md px-2 py-0.5 text-[10px]",
+                        selected
+                          ? "bg-[#FFD96B] text-[#3A2870]"
+                          : "bg-[#7C4EF0] text-white",
+                      ].join(" ")}
+                    >
+                      {ptr.label}
+                    </span>
+                    <span aria-hidden="true" className="text-[#7C4EF0]">▼</span>
+                  </motion.button>
+                );
+              })}
+            </div>
+          );
+        })()}
         {/* Cells row */}
         <div className="flex" role="row">
           {base.values.map((value, i) => {

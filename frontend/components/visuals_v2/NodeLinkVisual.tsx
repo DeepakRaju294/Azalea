@@ -128,6 +128,69 @@ function edgeStyle(state: ResolvedEdgeState) {
   }
 }
 
+// Human labels for each node/edge state, in display order. The legend shows ONLY the
+// states actually present in the current frame, so it stays accurate and uncluttered.
+const NODE_LEGEND: { state: ResolvedNodeState; label: string }[] = [
+  { state: "current", label: "Current" },
+  { state: "newly_discovered", label: "Just discovered" },
+  { state: "discovered", label: "In frontier" },
+  { state: "completed", label: "Visited" },
+  { state: "skipped", label: "Skipped" },
+  { state: "unvisited", label: "Unvisited" },
+];
+
+function NodeLinkLegend({
+  base,
+  frameState,
+}: {
+  base: NodeLinkBase;
+  frameState: NodeLinkFrameState;
+}) {
+  const presentNodeStates = new Set(base.nodes.map((n) => resolveNodeState(n.id, frameState)));
+  const nodeItems = NODE_LEGEND.filter((it) => presentNodeStates.has(it.state));
+
+  const presentEdgeStates = new Set(
+    base.edges.map((e) => resolveEdgeState(e.from, e.to, frameState)),
+  );
+  const edgeItems: { state: ResolvedEdgeState; label: string }[] = [];
+  if (presentEdgeStates.has("active")) edgeItems.push({ state: "active", label: "Edge in focus" });
+  if (presentEdgeStates.has("traversed") || presentEdgeStates.has("completed")) {
+    edgeItems.push({ state: "traversed", label: "Selected edge" });
+  }
+
+  if (nodeItems.length === 0 && edgeItems.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-[11px] text-slate-500">
+      <span className="font-semibold uppercase tracking-wide text-slate-400">Key</span>
+      {nodeItems.map((it) => {
+        const s = nodeStyle(it.state);
+        return (
+          <span key={`n-${it.state}`} className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block h-3 w-3 shrink-0 rounded-full"
+              style={{ backgroundColor: s.fill, border: `1.5px solid ${s.stroke}` }}
+            />
+            {it.label}
+          </span>
+        );
+      })}
+      {edgeItems.map((it) => {
+        const s = edgeStyle(it.state);
+        return (
+          <span key={`e-${it.state}`} className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block h-[3px] w-4 shrink-0 rounded"
+              style={{ backgroundColor: s.stroke, opacity: s.opacity }}
+            />
+            {it.label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 export function NodeLinkVisual({ model, frame, onElementClick, selectedElementId }: Props) {
   const base = model.base as NodeLinkBase;
   const frameState = frame.state as NodeLinkFrameState;
@@ -182,10 +245,11 @@ export function NodeLinkVisual({ model, frame, onElementClick, selectedElementId
 
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-stretch">
-      <div
-        className="relative flex-1 overflow-hidden bg-transparent"
-        style={{ height: "min(52vh, 440px)" }}
-      >
+      <div className="flex flex-1 flex-col gap-2">
+        <div
+          className="relative overflow-hidden bg-transparent"
+          style={{ height: "min(52vh, 440px)" }}
+        >
         <svg
           viewBox={contentViewBox}
           preserveAspectRatio="xMidYMid meet"
@@ -351,6 +415,8 @@ export function NodeLinkVisual({ model, frame, onElementClick, selectedElementId
             );
           })}
         </svg>
+        </div>
+        <NodeLinkLegend base={base} frameState={frameState} />
       </div>
       {/* Side panel: current runtime variables */}
       {shouldShowRuntimePanel && (

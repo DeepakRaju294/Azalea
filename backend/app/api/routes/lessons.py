@@ -166,11 +166,29 @@ def build_legacy_lesson_with_v2_visuals(
     chunks: list[ContentChunk],
     feedback: str | None = None,
 ) -> dict:
-    lesson_json = build_lean_lesson_from_topic_and_chunks(
-        topic=topic,
-        chunks=chunks,
-        feedback=feedback,
+    # Phase 5 (EXAMPLE_SYSTEM_SPEC §6): blueprint skeleton-fill generation — code
+    # lays out the cards, the LLM writes only per-card prose. Flag-gated + reversible;
+    # the legacy single-call generator is the default. Falls back on any failure.
+    from app.services.examples.skeleton_fill import (
+        fill_skeleton_lesson,
+        llm_slot_filler,
+        skeleton_fill_enabled,
     )
+
+    lesson_json = None
+    if skeleton_fill_enabled():
+        try:
+            lesson_json = fill_skeleton_lesson(topic=topic, chunks=chunks, slot_filler=llm_slot_filler)
+        except Exception:  # noqa: BLE001 — fall back to the proven generator
+            import logging
+            logging.getLogger(__name__).exception("skeleton_fill generation failed for topic %s", topic.id)
+            lesson_json = None
+    if lesson_json is None:
+        lesson_json = build_lean_lesson_from_topic_and_chunks(
+            topic=topic,
+            chunks=chunks,
+            feedback=feedback,
+        )
     enrich_legacy_lesson_with_v2_visuals(topic=topic, lesson_json=lesson_json)
     return lesson_json
 
@@ -188,6 +206,47 @@ def enrich_legacy_lesson_with_v2_visuals(
         topic_type=str(getattr(topic, "course_type", None) or "concept_intuition"),
         visual_domain=None,
     )
+
+    # Visual System V2 pilot (default-OFF). For a flag-enabled graph-traversal
+    # topic, replace the worked-example trace with a simulator-authoritative V2
+    # trace. Inert unless AZALEA_VISUAL_V2_MODES is set; failures never break the
+    # lesson (the legacy path above already produced a complete lesson).
+    try:
+        from app.services.examples.handoff import (
+            apply_fixture_to_lesson,
+            ensure_worked_example_setup,
+            validate_and_order_cards,
+        )
+        from app.services.visual_v2.code_lesson_integration import apply_code_execution_to_lesson
+
+        _v2_topic = {
+            "id": str(topic.id),
+            "title": topic.title or "",
+            "topic_type": str(getattr(topic, "course_type", None) or getattr(topic, "topic_type", "") or ""),
+        }
+        # Example-ontology path first (EXAMPLE_SYSTEM_SPEC §4.5) — the unified,
+        # fixture-driven adapter. The binary-search and graph ad-hoc adapters are
+        # RETIRED (spec §7): the fixture path fully covers their topics with richer
+        # output. The code adapter remains as the fallback for coding topics whose
+        # title has no fixture yet (it traces the lesson's own code).
+        if not apply_fixture_to_lesson(lesson_json, _v2_topic):
+            apply_code_execution_to_lesson(lesson_json, _v2_topic)
+
+        # Deterministic guarantees, ANY path: a concept worked example always opens
+        # with a setup card stating the problem, and the final card set matches the
+        # topic type's blueprint keys + order (CardValidator, spec §5.3 #5).
+        ensure_worked_example_setup(lesson_json, _v2_topic)
+        validate_and_order_cards(lesson_json, _v2_topic)
+        # Final shape-agnostic guardrail over EVERY visual (legacy + computed): drop
+        # malformed/degenerate diagrams and any diagram slot that points at code.
+        from app.services.legacy_v2_visual_bridge import gate_legacy_visuals
+
+        gate_legacy_visuals(lesson_json)
+    except Exception:  # noqa: BLE001 — V2 is additive; never let it break legacy
+        import logging
+
+        logging.getLogger(__name__).exception("visual_v2 apply failed for topic %s", topic.id)
+
     return lesson_json
 
 
@@ -201,6 +260,40 @@ def lesson_json_needs_hybrid_visual_refresh(lesson_json: Any) -> bool:
         return True
     bridge_metadata = metadata.get("visual_v2_bridge")
     return not isinstance(bridge_metadata, dict)
+
+
+def lesson_json_needs_example_ontology_refresh(lesson_json: Any, topic: Topic) -> bool:
+    """A cached lesson should be upgraded on read when the example-ontology path
+    (EXAMPLE_SYSTEM_SPEC §4.5) applies to this topic but hasn't been applied yet —
+    so existing lessons pick up new fixtures without a manual regeneration."""
+    if not isinstance(lesson_json, dict) or not isinstance(lesson_json.get("lesson_cards"), list):
+        return False
+    metadata = lesson_json.get("metadata") or {}
+    try:
+        from app.services.examples.declaration import declare_example, pick_fixture
+        from app.services.examples.handoff import APPLY_VERSION, pipeline_mode, resolve_visual
+        from app.services.visual_v2.flags import is_v2_enabled
+
+        applied = metadata.get("visual_v2_example_ontology") if isinstance(metadata, dict) else None
+
+        declared = declare_example({
+            "id": str(topic.id),
+            "title": topic.title or "",
+            "topic_type": str(getattr(topic, "course_type", None) or getattr(topic, "topic_type", "") or ""),
+        })
+        if declared is None:
+            # Stale apply (e.g. an intro that got an example before the blueprint
+            # gate existed) → re-enrich so the cleanup pass removes it.
+            return isinstance(applied, dict)
+        if isinstance(applied, dict) and int(applied.get("version") or 1) >= APPLY_VERSION:
+            return False  # already applied at the current quality level
+        fixture = pick_fixture(declared)
+        if fixture is None:
+            return False
+        _base, mode = resolve_visual(fixture)
+        return is_v2_enabled(pipeline_mode(mode), declared.application)
+    except Exception:  # noqa: BLE001 — never block a lesson read
+        return False
 
 
 @router.post("/topics/{topic_id}/lesson", response_model=LessonRead)
@@ -268,7 +361,7 @@ def get_topic_lesson(
             # Never let a migration failure block lesson read.
             pass
 
-    if lesson_json_needs_hybrid_visual_refresh(lesson.lesson_json):
+    if lesson_json_needs_hybrid_visual_refresh(lesson.lesson_json) or lesson_json_needs_example_ontology_refresh(lesson.lesson_json, topic):
         try:
             from sqlalchemy.orm.attributes import flag_modified
             enrich_legacy_lesson_with_v2_visuals(topic=topic, lesson_json=lesson.lesson_json)
@@ -428,6 +521,17 @@ def stream_topic_lesson(
         try:
             cached = sdb.query(Lesson).filter(Lesson.topic_id == topic_pk).first()
             if cached and cached.generation_status == "ready" and cached.lesson_json:
+                # Upgrade a cached lesson on read when the example-ontology path now
+                # applies but wasn't recorded at generation time (flag-gated, safe).
+                if lesson_json_needs_example_ontology_refresh(cached.lesson_json, topic):
+                    try:
+                        from sqlalchemy.orm.attributes import flag_modified
+                        enrich_legacy_lesson_with_v2_visuals(topic=topic, lesson_json=cached.lesson_json)
+                        flag_modified(cached, "lesson_json")
+                        sdb.commit()
+                        sdb.refresh(cached)
+                    except Exception:  # noqa: BLE001 — never block the cached read
+                        pass
                 yield _event({"type": "complete", "lesson": cached.lesson_json})
                 return
             if cached and cached.generation_status in {"generating", "pending"}:
