@@ -4967,91 +4967,105 @@ export default function StudyPathLearnPage() {
                       {/* A single border around the whole visual; no inner
                           scroller, so the visual fills the workspace width and
                           the left workspace itself is the one scroll container. */}
-                      {(workedExampleCode || currentV2DiagramVisual) && (
-                        <div className="mb-3 flex justify-center">
-                          <div className="inline-flex items-center gap-1 rounded-full border border-[#E5DFF0] bg-[#F6F2FF] p-1">
-                            {(["diagram", "code"] as const).map((view) => {
-                              const active = workedExampleVisualView === view;
-                              return (
-                                <button
-                                  key={view}
-                                  type="button"
-                                  onClick={() => setWorkedExampleVisualView(view)}
-                                  className={[
-                                    "rounded-full px-4 py-1.5 text-sm font-black transition",
-                                    active
-                                      ? "bg-primary text-primary-foreground shadow-sm"
-                                      : "text-primary hover:bg-white",
-                                  ].join(" ")}
-                                >
-                                  {view === "diagram" ? "Diagram" : "</> Code"}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                      {currentV2DiagramVisual && workedExampleVisualView === "diagram" ? (
-                        <V2VisualRenderer
-                          model={currentV2DiagramVisual.model}
-                          frameIndex={currentV2DiagramVisual.frameIndex}
-                          onElementClick={(element) => {
-                            const frame =
-                              currentV2DiagramVisual.model.frames[currentV2DiagramVisual.frameIndex] ??
-                              currentV2DiagramVisual.model.frames[0];
-                            if (frame) {
-                              handleLegacyV2VisualClick(
-                                element,
-                                currentV2DiagramVisual.model,
-                                frame,
-                              );
-                            }
-                          }}
-                          selectedElementId={activeVisualContext?.element.element_id ?? null}
-                        />
-                      ) : workedExampleCode && workedExampleVisualView === "code" ? (
-                        <div className="overflow-hidden rounded-2xl border border-[#E2DDEC] bg-white shadow-sm">
-                          <div className="flex items-center justify-between border-b border-[#E8E3EF] px-4 py-3">
-                            <span className="text-sm font-black text-foreground">
-                              {workedExampleCode.language}
-                            </span>
-                            {workedExampleCode.highlight && (
-                              <span className="rounded-full border border-primary/15 bg-[#F3EEFF] px-3 py-1 text-[11px] font-black text-primary">
-                                Active line{workedExampleCode.highlight[0] !== workedExampleCode.highlight[1] ? "s" : ""}{" "}
-                                {workedExampleCode.highlight[0]}
-                                {workedExampleCode.highlight[1] !== workedExampleCode.highlight[0]
-                                  ? `–${workedExampleCode.highlight[1]}`
-                                  : ""}
-                              </span>
+                      {(() => {
+                        // Strict slot separation: the Diagram view renders ONLY a real
+                        // diagram (diagram_v2_ref); the Code view renders ONLY code. The
+                        // toggle appears only when BOTH exist, so "Diagram" can never
+                        // fall back to showing code (and vice versa).
+                        const diagramAvailable = !!currentV2DiagramVisual;
+                        const codeAvailable = !!workedExampleCode;
+                        const view =
+                          workedExampleVisualView === "diagram" && diagramAvailable
+                            ? "diagram"
+                            : workedExampleVisualView === "code" && codeAvailable
+                              ? "code"
+                              : diagramAvailable
+                                ? "diagram"
+                                : codeAvailable
+                                  ? "code"
+                                  : "focus";
+                        return (
+                          <>
+                            {diagramAvailable && codeAvailable && (
+                              <div className="mb-3 flex justify-center">
+                                <div className="inline-flex items-center gap-1 rounded-full border border-[#E5DFF0] bg-[#F6F2FF] p-1">
+                                  {(["diagram", "code"] as const).map((v) => {
+                                    const active = view === v;
+                                    return (
+                                      <button
+                                        key={v}
+                                        type="button"
+                                        onClick={() => setWorkedExampleVisualView(v)}
+                                        className={[
+                                          "rounded-full px-4 py-1.5 text-sm font-black transition",
+                                          active
+                                            ? "bg-primary text-primary-foreground shadow-sm"
+                                            : "text-primary hover:bg-white",
+                                        ].join(" ")}
+                                      >
+                                        {v === "diagram" ? "Diagram" : "</> Code"}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
                             )}
-                          </div>
-                          <CodeWithHighlight
-                            code={workedExampleCode.code}
-                            language={workedExampleCode.language}
-                            highlightLines={workedExampleCode.highlight}
-                            variant="light"
-                            showHeader={false}
-                          />
-                        </div>
-                      ) : (
-                        <V2VisualRenderer
-                          model={currentV2FocusVisual.model}
-                          frameIndex={currentV2FocusVisual.frameIndex}
-                          onElementClick={(element) => {
-                            const frame =
-                              currentV2FocusVisual.model.frames[currentV2FocusVisual.frameIndex] ??
-                              currentV2FocusVisual.model.frames[0];
-                            if (frame) {
-                              handleLegacyV2VisualClick(
-                                element,
-                                currentV2FocusVisual.model,
-                                frame,
-                              );
-                            }
-                          }}
-                          selectedElementId={activeVisualContext?.element.element_id ?? null}
-                        />
-                      )}
+                            {view === "diagram" && currentV2DiagramVisual ? (
+                              <V2VisualRenderer
+                                model={currentV2DiagramVisual.model}
+                                frameIndex={currentV2DiagramVisual.frameIndex}
+                                onElementClick={(element) => {
+                                  const frame =
+                                    currentV2DiagramVisual.model.frames[currentV2DiagramVisual.frameIndex] ??
+                                    currentV2DiagramVisual.model.frames[0];
+                                  if (frame) {
+                                    handleLegacyV2VisualClick(element, currentV2DiagramVisual.model, frame);
+                                  }
+                                }}
+                                selectedElementId={activeVisualContext?.element.element_id ?? null}
+                              />
+                            ) : view === "code" && workedExampleCode ? (
+                              <div className="overflow-hidden rounded-2xl border border-[#E2DDEC] bg-white shadow-sm">
+                                <div className="flex items-center justify-between border-b border-[#E8E3EF] px-4 py-3">
+                                  <span className="text-sm font-black text-foreground">
+                                    {workedExampleCode.language}
+                                  </span>
+                                  {workedExampleCode.highlight && (
+                                    <span className="rounded-full border border-primary/15 bg-[#F3EEFF] px-3 py-1 text-[11px] font-black text-primary">
+                                      Active line{workedExampleCode.highlight[0] !== workedExampleCode.highlight[1] ? "s" : ""}{" "}
+                                      {workedExampleCode.highlight[0]}
+                                      {workedExampleCode.highlight[1] !== workedExampleCode.highlight[0]
+                                        ? `–${workedExampleCode.highlight[1]}`
+                                        : ""}
+                                    </span>
+                                  )}
+                                </div>
+                                <CodeWithHighlight
+                                  code={workedExampleCode.code}
+                                  language={workedExampleCode.language}
+                                  highlightLines={workedExampleCode.highlight}
+                                  variant="light"
+                                  showHeader={false}
+                                />
+                              </div>
+                            ) : (
+                              <V2VisualRenderer
+                                model={currentV2FocusVisual.model}
+                                frameIndex={currentV2FocusVisual.frameIndex}
+                                onElementClick={(element) => {
+                                  const frame =
+                                    currentV2FocusVisual.model.frames[currentV2FocusVisual.frameIndex] ??
+                                    currentV2FocusVisual.model.frames[0];
+                                  if (frame) {
+                                    handleLegacyV2VisualClick(element, currentV2FocusVisual.model, frame);
+                                  }
+                                }}
+                                selectedElementId={activeVisualContext?.element.element_id ?? null}
+                              />
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   ) : currentFocusVisual ? (
                     <VisualRenderer visual={currentFocusVisual} index={0} focusState={currentVisualFocus} />

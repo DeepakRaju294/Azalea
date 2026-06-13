@@ -17,6 +17,11 @@ import copy
 import re
 from typing import Any
 
+# Bump when the bridge/gate/diagram logic improves, so cached lessons re-enrich on read
+# (lessons.py `lesson_json_needs_hybrid_visual_refresh`). v3 = broadened input extraction
+# + drop-reason telemetry + suppress the misleading legacy array_state worked-example guess.
+VISUAL_BRIDGE_VERSION = 3
+
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan
 from app.services.visual_compilers import get_compiler
@@ -244,6 +249,7 @@ def attach_v2_visuals_to_legacy_lesson(
         if isinstance(lesson_json["metadata"], dict):
             lesson_json["metadata"]["visual_v2_bridge"] = {
                 "enabled": True,
+                "version": VISUAL_BRIDGE_VERSION,
                 "model_count": len(lesson_json.get("visual_models") or []),
                 "blueprint_visual_card_count": blueprint_visual_card_count,
                 "cards_with_v2_ref_count": sum(
@@ -2708,6 +2714,22 @@ def _first_highlight_range(card: dict[str, Any], line_count: int) -> list[int]:
     return [0, 0]
 
 
+def needs_visual_refresh(lesson_json: Any) -> bool:
+    """A cached lesson should re-enrich on read when it has no bridge metadata or was
+    stamped by an OLDER `VISUAL_BRIDGE_VERSION` — so existing lessons pick up the latest
+    fixes (real-content extraction, diagram/code separation, the gate, completion audit)
+    without manual regeneration. Pure; importable without DB deps."""
+    if not isinstance(lesson_json, dict) or not isinstance(lesson_json.get("lesson_cards"), list):
+        return False
+    metadata = lesson_json.get("metadata")
+    if not isinstance(metadata, dict):
+        return True
+    bridge = metadata.get("visual_v2_bridge")
+    if not isinstance(bridge, dict):
+        return True
+    return int(bridge.get("version") or 1) < VISUAL_BRIDGE_VERSION
+
+
 def _has_v2_ref(card: dict[str, Any]) -> bool:
     ref = card.get("visual_v2_ref")
     return isinstance(ref, dict) and bool(ref.get("visual_model_id"))
@@ -2768,6 +2790,23 @@ def gate_legacy_visuals(lesson_json: dict[str, Any]) -> None:
                 dm = models.get(str(dref.get("visual_model_id") or ""))
                 if dm is not None and str(dm.get("base_type") or "") in _CODE_BASE_TYPES:
                     card.pop("diagram_v2_ref", None)
+            # A LEGACY `array_state` guess on a worked example (the bridge's static
+            # `_card_N` model) is misleading for sorting/array code — it shows one static
+            # array, often the sorted output, with arbitrary pointers. The trace path
+            # produces the real visual; when it didn't run, drop the guess (code-only)
+            # rather than ship a wrong array. Fixture/projector models (non-`_card_`) are
+            # left untouched.
+            if str(card.get("blueprint_key") or card.get("card_type") or "").lower() == "worked_example":
+                vref = card.get("visual_v2_ref")
+                vm = models.get(str((vref or {}).get("visual_model_id") or "")) if isinstance(vref, dict) else None
+                if (
+                    vm is not None
+                    and str(vm.get("base_type") or "") == "indexed_sequence_diagram"
+                    and str(vm.get("mode") or "") == "array_state"
+                    and "_card_" in str(vm.get("id") or "")
+                ):
+                    card.pop("visual_v2_ref", None)
+                    bad.add(str(vm.get("id")))
             for ref_key in ("visual_v2_ref", "diagram_v2_ref"):
                 ref = card.get(ref_key)
                 if isinstance(ref, dict) and str(ref.get("visual_model_id") or "") in bad:

@@ -116,10 +116,12 @@ class TestBinarySearchCodeExecution(unittest.TestCase):
 
     def test_binary_search_traces_via_array(self):
         os.environ["AZALEA_VISUAL_V2_MODES"] = "all"
+        # The array comes from the lesson's OWN content (no hardcoded values).
         lesson = {
             "lesson_cards": [
                 {"id": "1", "blueprint_key": "background"},
-                {"id": "2", "blueprint_key": "worked_example", "code_snippet": BINARY_SEARCH},
+                {"id": "2", "blueprint_key": "worked_example", "code_snippet": BINARY_SEARCH,
+                 "points": ["Search the array [1, 3, 5, 7, 9, 11, 13] for the target 13."]},
                 {"id": "3", "blueprint_key": "practice"},
             ],
             "visual_models": [],
@@ -139,8 +141,12 @@ class TestBinarySearchCodeExecution(unittest.TestCase):
             self.assertEqual(card["visual_v2_ref"]["source"], "v2_code_execution")
 
     def test_broken_code_falls_back_to_canonical(self):
-        # The exact screenshot bug: no def, no mid, scrambled indentation → unparseable.
+        # The canonical fallback is now an OPT-IN escape hatch (hardcoded contents are
+        # off by default so real LLM performance is visible). With the flag ON, broken
+        # code still falls back to a canonical implementation.
         os.environ["AZALEA_VISUAL_V2_MODES"] = "all"
+        os.environ["AZALEA_CODE_CANONICAL_FALLBACK"] = "1"
+        self.addCleanup(lambda: os.environ.pop("AZALEA_CODE_CANONICAL_FALLBACK", None))
         broken = "left = 0\n    right = len(arr) - 1\nwhile left <= right:\nif arr[mid] == target:\n    return mid"
         lesson = {
             "lesson_cards": [

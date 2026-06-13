@@ -47,11 +47,12 @@ SUM = '''def total(arr):
 _GRAPH = {"A": ["B", "C"], "B": ["A", "D"], "C": ["A", "E"], "D": ["B", "E"], "E": ["C", "D"]}
 
 
-def _lesson(code):
+def _lesson(code, points=None):
+    # The example INPUT is stated in the lesson's own content (no hardcoded values).
     return {"lesson_cards": [
         {"id": "1", "blueprint_key": "background"},
         {"id": "2", "blueprint_key": "code_walkthrough", "code_snippet": code},
-        {"id": "3", "blueprint_key": "worked_example", "code_snippet": code},
+        {"id": "3", "blueprint_key": "worked_example", "code_snippet": code, "points": points or []},
         {"id": "4", "blueprint_key": "practice"}], "visual_models": []}
 
 
@@ -85,8 +86,11 @@ class TestAttachDegrade(unittest.TestCase):
 
 
 class TestEndToEnd(unittest.TestCase):
+    def setUp(self):
+        os.environ["AZALEA_VISUAL_V2_MODES"] = "all"  # robust against test ordering
+
     def test_dfs_fallback_gets_code_and_diagram_to_completion(self):
-        lesson = _lesson(DFS)
+        lesson = _lesson(DFS, points=[f"Trace DFS on the graph {_GRAPH}, starting from node A."])
         ok = apply_code_execution_to_lesson(
             lesson, {"id": "t", "title": "Implement DFS", "topic_type": "coding_implementation"}, sandboxed=False
         )
@@ -103,7 +107,7 @@ class TestEndToEnd(unittest.TestCase):
         self.assertEqual(visited, set("ABCDE"))
 
     def test_non_graph_coding_is_code_only(self):
-        lesson = _lesson(SUM)
+        lesson = _lesson(SUM, points=["Sum the array [1, 2, 3, 4]."])
         ok = apply_code_execution_to_lesson(
             lesson, {"id": "t", "title": "Sum an Array", "topic_type": "coding_implementation"}, sandboxed=False
         )

@@ -30,6 +30,7 @@ class InvariantMetrics:
     empty_by_application: Counter = field(default_factory=Counter)
     inference: Counter = field(default_factory=Counter)           # accepted:<band> | rejected
     confidence_bands: Counter = field(default_factory=Counter)    # high|medium|low
+    worked_example_regens: Counter = field(default_factory=Counter)  # regen-count -> times hit limit
 
     def record_invariant_failure(self, code: str, *, application: Optional[str] = None) -> None:
         self.invariant_failures[code] += 1
@@ -53,6 +54,16 @@ class InvariantMetrics:
         else:
             self.inference["rejected"] += 1
 
+    def record_incomplete_worked_example(self, *, regenerations: int) -> None:
+        """A worked example that's still incomplete after the regeneration cap shipped."""
+        self.fallbacks["incomplete_worked_example"] += 1
+        self.worked_example_regens[str(regenerations)] += 1
+
+    def record_code_drop(self, reason: str) -> None:
+        """A coding worked example fell to legacy instead of the traced one — WHY
+        (no_code | no_input | trace_failed | no_milestones). Makes the gap measurable."""
+        self.fallbacks[f"code_execution_drop:{reason}"] += 1
+
     def snapshot(self) -> dict[str, Any]:
         return {
             "invariant_failures": dict(self.invariant_failures),
@@ -61,11 +72,13 @@ class InvariantMetrics:
             "empty_by_application": dict(self.empty_by_application),
             "inference": dict(self.inference),
             "confidence_bands": dict(self.confidence_bands),
+            "worked_example_regens": dict(self.worked_example_regens),
         }
 
     def reset(self) -> None:
         for counter in (self.invariant_failures, self.fallbacks, self.by_tier,
-                        self.empty_by_application, self.inference, self.confidence_bands):
+                        self.empty_by_application, self.inference, self.confidence_bands,
+                        self.worked_example_regens):
             counter.clear()
 
 

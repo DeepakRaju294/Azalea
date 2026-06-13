@@ -20,7 +20,7 @@ _log = logging.getLogger(__name__)
 
 # Bump when the apply output improves (richer prose, supporting diagram, ...);
 # cached lessons stamped with an older version are re-enriched on read.
-APPLY_VERSION = 15
+APPLY_VERSION = 16
 
 Visual = tuple[str, str]
 

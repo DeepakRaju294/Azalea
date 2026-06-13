@@ -266,8 +266,30 @@ def _is_scalar_list(val: Any) -> bool:
     )
 
 
+def _pointer_array_map(code: Optional[str]) -> dict[str, str]:
+    """Light AST: which array each pointer indexes — `left[i]` → {"i": "left"}. Lets the
+    multi-array view show a cursor on ITS array, not on every array it happens to fit."""
+    if not code:
+        return {}
+    import ast
+
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return {}
+    mapping: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name):
+            idx = node.slice
+            if isinstance(idx, ast.Index):  # py<3.9 compatibility
+                idx = idx.value
+            if isinstance(idx, ast.Name):
+                mapping.setdefault(idx.id, node.value.id)
+    return mapping
+
+
 def build_multi_sequence_diagram_from_trace(
-    trace_steps: list[dict[str, Any]], *, model_id: str, max_frames: int = 16
+    trace_steps: list[dict[str, Any]], *, model_id: str, max_frames: int = 16, code: Optional[str] = None
 ) -> Optional[dict[str, Any]]:
     """Composite (multiple-array) diagram for divide-and-conquer / multi-collection code
     (merge sort's left/right/result, partition, k-way merge). Each frame carries a LIST of
@@ -277,6 +299,7 @@ def build_multi_sequence_diagram_from_trace(
         from app.services.visual_v2.projectors.node_link import locals_of
         from app.services.visual_v2.provenance import make_provenance, stamp
 
+        ptr_map = _pointer_array_map(code)
         frames: list[dict[str, Any]] = []
         prev_sig = None
         for step in trace_steps:
@@ -292,7 +315,9 @@ def build_multi_sequence_diagram_from_trace(
             for aname, avals in arrays.items():
                 cursors = [
                     {"id": p, "position": v, "label": p}
-                    for p, v in pointers.items() if 0 <= v < len(avals)
+                    for p, v in pointers.items()
+                    # show a mapped pointer ONLY on its array; an unmapped one on any it fits
+                    if 0 <= v < len(avals) and ptr_map.get(p, aname) == aname
                 ]
                 sequences.append({
                     "label": str(aname),
@@ -333,13 +358,119 @@ def build_multi_sequence_diagram_from_trace(
         return None
 
 
-def build_diagram_from_trace(trace_steps: list[dict[str, Any]], *, model_id: str) -> Optional[dict[str, Any]]:
-    """The shape dispatcher: node_link (graph) → single array → multi-array (composite).
-    Returns the first that validates, or None (→ clean code-only)."""
+def derive_grid_from_trace(trace_steps: list[dict[str, Any]]) -> Optional[tuple[str, int, int]]:
+    """Find a 2-D table variable (a rectangular list-of-lists of scalars — the DP grid).
+    Returns (name, rows, cols) or None."""
+    from app.services.visual_v2.projectors.node_link import locals_of
+
+    best: Optional[tuple[str, int, int]] = None
+    names: set[str] = set()
+    for step in trace_steps:
+        for name, val in locals_of(step).items():
+            if isinstance(val, list) and val and all(isinstance(r, list) for r in val):
+                names.add(name)
+    for name in names:
+        last: Optional[list[Any]] = None
+        for step in trace_steps:
+            v = locals_of(step).get(name)
+            if isinstance(v, list) and v and all(isinstance(r, list) for r in v):
+                if last is None or len(v) * (len(v[0]) if v[0] else 0) >= len(last) * (len(last[0]) if last[0] else 0):
+                    last = v
+        if last is None:
+            continue
+        rows = len(last)
+        cols = len(last[0]) if isinstance(last[0], list) else 0
+        if rows < 1 or cols < 1 or not all(len(r) == cols for r in last):
+            continue
+        if not all(isinstance(x, (int, float, str)) and not isinstance(x, bool) for r in last for x in r):
+            continue
+        if best is None or rows * cols > best[1] * best[2]:
+            best = (name, rows, cols)
+    return best
+
+
+def build_grid_diagram_from_trace(
+    trace_steps: list[dict[str, Any]], *, model_id: str, max_frames: int = 24
+) -> Optional[dict[str, Any]]:
+    """Grid (DP table) diagram: walk the trace and emit a fill step each time a cell
+    takes its value. The first full table snapshot is the baseline (the 0-init), so we
+    animate the recurrence filling, not the initialization."""
+    try:
+        from app.services.visual_v2.compilers import grid_matrix as grid_compiler
+        from app.services.visual_v2.delta_fold import DeltaFoldEngine
+        from app.services.visual_v2.profiles import delta_vocabulary, profile_for_mode
+        from app.services.visual_v2.projectors.node_link import locals_of
+        from app.services.visual_v2.provenance import make_provenance, stamp
+
+        derived = derive_grid_from_trace(trace_steps)
+        if derived is None:
+            return None
+        name, rows, cols = derived
+
+        deltas: list[dict[str, Any]] = []
+        prev: Optional[dict[tuple[int, int], Any]] = None
+        emit = 0
+        for step in trace_steps:
+            table = locals_of(step).get(name)
+            if not isinstance(table, list):
+                continue
+            cur: dict[tuple[int, int], Any] = {}
+            for r, row in enumerate(table):
+                if isinstance(row, list):
+                    for c, val in enumerate(row):
+                        cur[(r, c)] = val
+            if prev is None:
+                prev = cur  # baseline (0-init); don't animate it
+                continue
+            for (r, c), val in cur.items():
+                if prev.get((r, c)) != val:
+                    deltas.append({
+                        "step_index": emit, "trace_step_id": f"s{emit}", "kind": "fill",
+                        "delta": {"set_active_cell": [r, c], "fill_cell": {"cell": [r, c], "value": val},
+                                  "complete_cell": [r, c]},
+                        "primary_change": "fill_cell",
+                        "event_id": f"cell:{r}-{c}:{emit:02d}",
+                        "learner_should_notice": f"Cell ({r}, {c}) = {val}.",
+                    })
+                    emit += 1
+            prev = cur
+
+        if len(deltas) < 2:
+            return None
+        if len(deltas) > max_frames:
+            mid = deltas[1:-1]
+            keep = max_frames - 2
+            step_n = len(mid) / keep
+            deltas = [deltas[0]] + [mid[min(int(i * step_n), len(mid) - 1)] for i in range(keep)] + [deltas[-1]]
+            for i, d in enumerate(deltas):
+                d["step_index"] = i
+
+        frames = DeltaFoldEngine().fold({}, deltas, set(), delta_vocabulary("dp_table"))
+        model, _render = grid_compiler.compile_from_trace(
+            trace={"steps": deltas}, frames=frames, rows=rows, cols=cols,
+            profile=profile_for_mode("dp_table"), mode="dp_table", model_id=model_id,
+        )
+        stamp(model, make_provenance(
+            "inferred_projection", projection_source="inferred",
+            validation_summary={"source": "code_trace_grid", "frames": len(frames)},
+        ))
+        return {"model": model, "event_ids": [d["event_id"] for d in deltas], "frame_count": len(frames)}
+    except Exception as exc:  # noqa: BLE001 — additive; degrade
+        _log.warning("code_diagram: grid build failed (%s); code-only", exc)
+        return None
+
+
+def build_diagram_from_trace(
+    trace_steps: list[dict[str, Any]], *, model_id: str, code: Optional[str] = None
+) -> Optional[dict[str, Any]]:
+    """The shape dispatcher: node_link (graph) → single array → grid (DP table) →
+    multi-array (composite). Returns the first that validates, else None (code-only).
+    `code` (optional) sharpens multi-array pointer→sub-array alignment."""
     return (
         build_node_link_diagram_from_trace(trace_steps, model_id=model_id)
         or build_sequence_diagram_from_trace(trace_steps, model_id=model_id)
-        or build_multi_sequence_diagram_from_trace(trace_steps, model_id=model_id)
+        or build_grid_diagram_from_trace(trace_steps, model_id=model_id)
+        or build_multi_sequence_diagram_from_trace(trace_steps, model_id=model_id, code=code)
     )
 
 

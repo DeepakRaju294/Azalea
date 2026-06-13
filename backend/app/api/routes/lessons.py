@@ -242,6 +242,14 @@ def enrich_legacy_lesson_with_v2_visuals(
         from app.services.legacy_v2_visual_bridge import gate_legacy_visuals
 
         gate_legacy_visuals(lesson_json)
+
+        # Worked-example completion audit (prose-path INV-COMPLETE): a worked example
+        # that doesn't reach the final answer is flagged + (when a regenerator is wired)
+        # regenerated up to a hard cap; if still incomplete it's logged, never silently
+        # shipped. `regenerate=None` for now → audits + logs.
+        from app.services.examples.worked_example_audit import audit_worked_examples
+
+        audit_worked_examples(lesson_json, _v2_topic, regenerate=None, max_regenerations=2)
     except Exception:  # noqa: BLE001 — V2 is additive; never let it break legacy
         import logging
 
@@ -251,15 +259,11 @@ def enrich_legacy_lesson_with_v2_visuals(
 
 
 def lesson_json_needs_hybrid_visual_refresh(lesson_json: Any) -> bool:
-    if not isinstance(lesson_json, dict):
-        return False
-    if not isinstance(lesson_json.get("lesson_cards"), list):
-        return False
-    metadata = lesson_json.get("metadata") or {}
-    if not isinstance(metadata, dict):
-        return True
-    bridge_metadata = metadata.get("visual_v2_bridge")
-    return not isinstance(bridge_metadata, dict)
+    # Delegates to the bridge's pure version check (re-enrich cached lessons stamped by
+    # an older bridge version, so they pick up the latest fixes).
+    from app.services.legacy_v2_visual_bridge import needs_visual_refresh
+
+    return needs_visual_refresh(lesson_json)
 
 
 def lesson_json_needs_example_ontology_refresh(lesson_json: Any, topic: Topic) -> bool:
