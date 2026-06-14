@@ -213,7 +213,6 @@ def enrich_legacy_lesson_with_v2_visuals(
     # lesson (the legacy path above already produced a complete lesson).
     try:
         from app.services.examples.handoff import (
-            apply_fixture_to_lesson,
             ensure_worked_example_setup,
             validate_and_order_cards,
         )
@@ -224,13 +223,18 @@ def enrich_legacy_lesson_with_v2_visuals(
             "title": topic.title or "",
             "topic_type": str(getattr(topic, "course_type", None) or getattr(topic, "topic_type", "") or ""),
         }
-        # Example-ontology path first (EXAMPLE_SYSTEM_SPEC §4.5) — the unified,
-        # fixture-driven adapter. The binary-search and graph ad-hoc adapters are
-        # RETIRED (spec §7): the fixture path fully covers their topics with richer
-        # output. The code adapter remains as the fallback for coding topics whose
-        # title has no fixture yet (it traces the lesson's own code).
-        if not apply_fixture_to_lesson(lesson_json, _v2_topic):
-            apply_code_execution_to_lesson(lesson_json, _v2_topic)
+        # Worked-example authoring. Two paths only (the example-type/fixture/ontology
+        # apparatus is bypassed — apply_fixture_to_lesson is left intact but no longer
+        # routed):
+        #   - coding topic        -> machine-authoritative execution trace of the lesson's
+        #                            OWN code (apply_code_execution_to_lesson),
+        #   - everything else (or a coding topic that couldn't trace) -> a single focused
+        #     LLM solve of one concrete problem, rendered as a full start-to-finish text
+        #     breakdown (apply_llm_solved_worked_example).
+        from app.services.examples.solver import apply_llm_solved_worked_example
+
+        if not apply_code_execution_to_lesson(lesson_json, _v2_topic):
+            apply_llm_solved_worked_example(lesson_json, _v2_topic)
 
         # Deterministic guarantees, ANY path: a concept worked example always opens
         # with a setup card stating the problem, and the final card set matches the

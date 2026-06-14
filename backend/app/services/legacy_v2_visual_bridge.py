@@ -26,7 +26,10 @@ from typing import Any
 # v5 = combine ALL code_snippets so a helper in a separate card (merge sort's `merge`) is
 # traceable, + use the real return value for "Final result" (was reading a hardcoded-name
 # accumulator that missed `sorted_array`, shipping "Final result: []").
-VISUAL_BRIDGE_VERSION = 5
+# v6 = worked examples are authored by the problem-first LLM solver (non-code) / code trace
+# (code); the example-type/fixture/ontology routing is dropped. Re-enrich so cached
+# non-code lessons pick up the solved start-to-finish text breakdown.
+VISUAL_BRIDGE_VERSION = 6
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan
