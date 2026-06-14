@@ -42,20 +42,33 @@ def solver_enabled() -> bool:
 # DEPTH + bullet-shape rules in LEAN_SYSTEM_PROMPT), so a solved example formats and reads
 # exactly like the rest of the platform's cards.
 _WORKED_EXAMPLE_RULES = """\
-CARD STRUCTURE
+CHOOSE THE EXAMPLE FIRST
+- Pick ONE concrete, COMPREHENSIVE, high-level instance of the topic — the canonical kind of
+  problem a learner must master, NOT a trivial warm-up. It must be rich enough to require
+  several genuine decisions and to reach a non-trivial final answer.
+- Choose the instance so the walkthrough naturally EXERCISES the concept's key cases and
+  decision branches — including the tricky / boundary / edge ones — instead of a path that
+  avoids them. Where a decision can go either way, the example should actually take each way
+  at some point.
+- The solution must run MORE THAN 5 steps. If your instance resolves in fewer, pick a richer
+  instance. (Only a pure boundary topic — "empty input", "single element" — may be shorter,
+  because the boundary itself is the lesson.)
+
+CARD STRUCTURE (follow exactly)
 - The example OPENS with the problem (provided separately in `problem`), then proceeds with
   ONE step per card, in order, until the final answer. The LAST card states the final result.
 - One step per card: a new state, action, calculation, decision, or result is a NEW card.
   Never split one step across cards; never merge two unrelated steps onto one card.
-- Solve the example COMPLETELY, from start to finish, until it reaches the final answer /
-  terminal state. A multi-step skill (algorithm, derivation, proof, calculation) needs AT
-  LEAST 5 steps — do not stop early or skip work. (A pure boundary/edge topic may use fewer.)
+- Solve COMPLETELY to the TERMINAL STATE (final output / returned value / solved expression /
+  completed proof / classified answer). Never stop early and never skip work.
 
 CARD CONTENT
 - For a state-transition step, put the prior state, the action taken, and the resulting state
   on the SAME card — e.g. a "Currently:" frame, an "Action:" frame, then a "Now:" frame.
 - Each card HANDS OFF from the previous one: it picks up the state the last card ended on.
   Do not repeat bullets already shown on an earlier card.
+- Show EVERY meaningful decision, including a check that turns out false or a case that is
+  ruled out — the learner must see WHY, not only the path taken.
 - Every number and manipulation must be CORRECT, and the final answer must follow directly
   from the steps shown.
 
@@ -72,8 +85,10 @@ BULLET FORMATTING (the `points` array)
 
 _SYSTEM = (
     "You are a precise, rigorous tutor authoring ONE worked example for a learning platform. "
-    "Pose ONE concrete, fully-specified problem for the given topic, then SOLVE IT COMPLETELY "
-    "from start to finish. Follow these rules EXACTLY:\n\n"
+    "Pose ONE concrete, comprehensive, fully-specified problem for the given topic, then "
+    "SOLVE IT COMPLETELY from start to finish. The text breakdown must be perfect — complete, "
+    "coherent, and correct — because it is the foundation of the lesson. Follow these rules "
+    "EXACTLY:\n\n"
     f"{_WORKED_EXAMPLE_RULES}\n\n"
     "Return ONLY a JSON object of exactly this shape:\n"
     '{"problem": "<the concrete problem statement, shown as the opening card>", '

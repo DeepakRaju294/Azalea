@@ -29,7 +29,10 @@ from typing import Any
 # v6 = worked examples are authored by the problem-first LLM solver (non-code) / code trace
 # (code); the example-type/fixture/ontology routing is dropped. Re-enrich so cached
 # non-code lessons pick up the solved start-to-finish text breakdown.
-VISUAL_BRIDGE_VERSION = 6
+# v7 = solver rules strengthened (comprehensive high-level example that exercises the edge
+# cases, >5 steps, every decision shown, card structure followed exactly) — re-solve so
+# existing non-code lessons pick up the improved text breakdown.
+VISUAL_BRIDGE_VERSION = 7
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan
