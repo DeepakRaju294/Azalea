@@ -25,11 +25,15 @@ def _stub(payload):
     # A complete, concrete solution in the `cards` contract — what a focused solve returns.
     return {
         "problem": "Solve 2x^2 - 4x - 6 = 0 for x.",
+        "problem_visual": "The equation 2x^2 - 4x - 6 = 0 centered, with a, b, c labeled below.",
         "cards": [
-            {"title": "Identify coefficients", "points": ["Read off a, b, c:", "  - a = 2, b = -4, c = -6."]},
+            {"title": "Identify coefficients", "points": ["Read off a, b, c:", "  - a = 2, b = -4, c = -6."],
+             "visual": "The three coefficients a=2, b=-4, c=-6 boxed under the equation."},
             {"title": "Compute the discriminant",
-             "points": ["Discriminant:", "  - b^2 - 4ac = 16 + 48 = 64.", "  - sqrt(64) = 8."]},
-            {"title": "Apply the formula", "points": ["Two roots:", "  - x = (4 ± 8) / 4."]},
+             "points": ["Discriminant:", "  - b^2 - 4ac = 16 + 48 = 64.", "  - sqrt(64) = 8."],
+             "visual": "b^2 - 4ac written out as 16 + 48 = 64, with sqrt(64)=8 highlighted."},
+            {"title": "Apply the formula", "points": ["Two roots:", "  - x = (4 ± 8) / 4."],
+             "visual": "x = (4 ± 8)/4 splitting into two branches for + and -."},
         ],
         "final_answer": "x = 3 or x = -1",
     }
@@ -82,6 +86,9 @@ class TestSolve(unittest.TestCase):
         self.assertIn("2x^2 - 4x - 6", cards[0]["points"][0])
         # subpoint formatting preserved
         self.assertTrue(any(p.startswith("  - ") for c in cards for p in c["points"]))
+        # rich per-card visual description carried (Phase-2 foundation)
+        self.assertIn("a, b, c", cards[0]["visual_description"])      # setup uses problem_visual
+        self.assertTrue(all(c.get("visual_description") for c in cards))
         last = cards[-1]
         self.assertTrue(last["metadata"].get("reaches_final_answer"))
         self.assertTrue(any("Final answer: x = 3 or x = -1" in p for p in last["points"]))

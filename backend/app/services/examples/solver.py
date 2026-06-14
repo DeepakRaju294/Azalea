@@ -81,7 +81,24 @@ BULLET FORMATTING (the `points` array)
   actual calculation, value, reason, or state change in subpoints, not the main bullet.
 - At most 3 main bullets and 6 total lines per card; keep fewer when the card is dense.
 - Plain language and math notation only — NO programming code (this path is for non-code
-  topics)."""
+  topics).
+
+VISUAL DESCRIPTION (the `visual` field on every card, and `problem_visual` for the setup)
+- This is NOT a one-line summary. Write a RICH, EXPLICIT instruction of exactly what the
+  picture for this step should contain — enough that an illustrator could draw the precise
+  image from your words alone, with nothing left to guess.
+- Describe, concretely:
+  - STRUCTURE & LAYOUT: what kind of figure it is and how it is arranged — e.g. "a horizontal
+    row of 7 boxes", "a binary tree with root 8 and these children …", "a 2-D table with rows
+    R0-R2 and columns C0-C3", "the equation centered with terms aligned".
+  - CONTENTS: the CONCRETE values / labels in every element (the actual numbers, names,
+    symbols), not placeholders.
+  - CURRENT STATE: what is active / highlighted / selected this step — which box, node, cell,
+    pointer, range, or term, and the color or emphasis it carries.
+  - WHAT CHANGED vs. the previous step: which element moved, was added, recomputed, crossed
+    out, or re-colored — so the picture reads as a transition, not a static snapshot.
+- `problem_visual` describes the INITIAL figure for the setup card (the starting structure and
+  values, nothing highlighted yet)."""
 
 _SYSTEM = (
     "You are a precise, rigorous tutor authoring ONE worked example for a learning platform. "
@@ -92,10 +109,12 @@ _SYSTEM = (
     f"{_WORKED_EXAMPLE_RULES}\n\n"
     "Return ONLY a JSON object of exactly this shape:\n"
     '{"problem": "<the concrete problem statement, shown as the opening card>", '
-    '"cards": [{"title": "<short step name>", "points": ["<main bullet>", "  - <subpoint>", ...]}, ...], '
+    '"problem_visual": "<rich description of the INITIAL figure for the setup>", '
+    '"cards": [{"title": "<short step name>", "points": ["<main bullet>", "  - <subpoint>", ...], '
+    '"visual": "<rich description of what THIS step\'s figure shows>"}, ...], '
     '"final_answer": "<the final result>"}\n'
     "`cards` are the solving STEPS in order (the problem is shown first automatically); the "
-    "last card reaches the final answer."
+    "last card reaches the final answer. Every card MUST include its `visual` description."
 )
 
 
@@ -169,6 +188,7 @@ def solve_worked_example(
         return None
     return {
         "problem": str(raw.get("problem") or "").strip(),
+        "problem_visual": str(raw.get("problem_visual") or "").strip(),
         "cards": cards,
         "final_answer": str(raw.get("final_answer") or "").strip(),
     }
@@ -191,7 +211,11 @@ def _normalize_solution_cards(raw: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         points = _coerce_points(card.get("points"))
         if points:
-            out.append({"title": str(card.get("title") or "").strip(), "points": points})
+            out.append({
+                "title": str(card.get("title") or "").strip(),
+                "points": points,
+                "visual": str(card.get("visual") or "").strip(),
+            })
     if out:
         return out
     for step in raw.get("steps") if isinstance(raw.get("steps"), list) else []:
@@ -199,7 +223,11 @@ def _normalize_solution_cards(raw: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         points = _coerce_points(step.get("detail") if step.get("detail") is not None else step.get("points"))
         if points:
-            out.append({"title": str(step.get("title") or "").strip(), "points": points})
+            out.append({
+                "title": str(step.get("title") or "").strip(),
+                "points": points,
+                "visual": str(step.get("visual") or "").strip(),
+            })
     return out
 
 
@@ -212,12 +240,15 @@ def _build_solution_cards(sol: dict[str, Any], topic: dict[str, Any]) -> list[di
     problem = sol.get("problem") or "Worked example."
 
     # Always open with an explicit setup card stating the problem; `cards` are the steps.
+    # `visual_description` carries the RICH spec of what each step's figure should show — the
+    # foundation for Phase-2 visuals (and what the debug view renders in the visual space).
     cards: list[dict[str, Any]] = [{
         "id": f"we-solve-{tid}-setup",
         "blueprint_key": "worked_example",
         "card_type": "worked_example",
         "title": "Worked Example",
         "points": [problem],
+        "visual_description": str(sol.get("problem_visual") or ""),
         "continuation_group_id": gid,
         "metadata": {"worked_example_setup": True, "worked_example_solver": True},
     }]
@@ -228,6 +259,7 @@ def _build_solution_cards(sol: dict[str, Any], topic: dict[str, Any]) -> list[di
             "card_type": "worked_example",
             "title": card.get("title") or f"Step {n + 1}",
             "points": card["points"],
+            "visual_description": str(card.get("visual") or ""),
             "continuation_group_id": gid,
             "metadata": {"worked_example_solver": True},
         })

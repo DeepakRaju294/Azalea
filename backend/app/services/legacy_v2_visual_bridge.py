@@ -32,7 +32,9 @@ from typing import Any
 # v7 = solver rules strengthened (comprehensive high-level example that exercises the edge
 # cases, >5 steps, every decision shown, card structure followed exactly) — re-solve so
 # existing non-code lessons pick up the improved text breakdown.
-VISUAL_BRIDGE_VERSION = 7
+# v8 = solver now authors a RICH per-card visual_description (explicit spec of what each
+# step's figure should show) — the Phase-2 visual foundation. Re-solve to populate it.
+VISUAL_BRIDGE_VERSION = 8
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan
