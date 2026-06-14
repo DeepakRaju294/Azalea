@@ -81,6 +81,7 @@ import TopicCalibrationCard from "@/components/TopicCalibrationCard";
 import DiagnosticMiniFlow from "@/components/DiagnosticMiniFlow";
 import AdaptationExplanationBanner from "@/components/AdaptationExplanationBanner";
 import { VisualRenderer as V2VisualRenderer } from "@/components/visuals_v2/VisualRenderer";
+import { SHOW_VISUAL_DATA_INSTEAD_OF_RENDER, VisualDataPanel } from "@/lib/visualDebug";
 import type {
   LessonV2,
   SelectableElement,
@@ -9015,6 +9016,25 @@ function VisualRenderer({
   index: number;
   focusState?: VisualFocusState | null;
 }) {
+  // Visual DEBUG mode: show the data that WOULD generate this visual, not the drawing.
+  if (SHOW_VISUAL_DATA_INSTEAD_OF_RENDER) {
+    const v = visual as unknown as Record<string, unknown>;
+    const sections: { label: string; value: unknown }[] = [
+      { label: "Type", value: String(v.type ?? "—") },
+    ];
+    if (v.title) sections.push({ label: "Title", value: String(v.title) });
+    if (v.visual_description) sections.push({ label: "Visual description", value: String(v.visual_description) });
+    if (v.description) sections.push({ label: "Description", value: String(v.description) });
+    if (focusState) sections.push({ label: "Focus state", value: focusState });
+    sections.push({ label: "Full visual", value: visual });
+    return (
+      <VisualDataPanel
+        title={String(v.type ?? "visual") + (v.title ? ` · ${String(v.title)}` : "")}
+        sections={sections}
+      />
+    );
+  }
+
   const type = normalizeVisualType(visual.type);
 
   if (isCompositeVisualType(type) && visual.children?.length) {

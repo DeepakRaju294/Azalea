@@ -30,6 +30,11 @@ import { PracticeFeedbackSupport } from "@/components/visuals_v2/support/Practic
 import { PathProgressSupport } from "@/components/visuals_v2/support/PathProgressSupport";
 import { TopicSnapshotSupport } from "@/components/visuals_v2/support/TopicSnapshotSupport";
 import { SourceAnnotationSupport } from "@/components/visuals_v2/support/SourceAnnotationSupport";
+import {
+  SHOW_VISUAL_DATA_INSTEAD_OF_RENDER,
+  VisualDataPanel,
+  modelDebugSections,
+} from "@/lib/visualDebug";
 
 type Props = {
   model?: VisualModel | null;
@@ -61,6 +66,31 @@ export function VisualRenderer({
   onElementClick,
   selectedElementId,
 }: Props) {
+  // Visual DEBUG mode: show the data that WOULD generate this visual, not the drawing. The
+  // caller's conditions for whether a visual renders are unchanged — only the output swaps.
+  if (SHOW_VISUAL_DATA_INSTEAD_OF_RENDER) {
+    if (supportVisual) {
+      return (
+        <VisualDataPanel
+          title={`support · ${supportVisual.support_type}`}
+          sections={[
+            { label: "Support type", value: supportVisual.support_type },
+            { label: "Full payload", value: supportVisual },
+          ]}
+        />
+      );
+    }
+    if (!model) {
+      return null;
+    }
+    return (
+      <VisualDataPanel
+        title={`${model.base_type} · ${model.mode}`}
+        sections={modelDebugSections(model, frameIndex)}
+      />
+    );
+  }
+
   // Support visual path (bypasses compilation)
   if (supportVisual) {
     const SupportRenderer = SUPPORT_VISUAL_RENDERERS[supportVisual.support_type];
