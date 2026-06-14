@@ -23,7 +23,10 @@ from typing import Any
 # v4 = re-stamp so lessons stamped at v3 BEFORE the broadened extraction landed (intermediate
 # dev-session state) re-run the trace path — the merge-sort worked example was stuck at v3
 # with the LLM's divide-only cards because the version wasn't bumped alongside the extraction fix.
-VISUAL_BRIDGE_VERSION = 4
+# v5 = combine ALL code_snippets so a helper in a separate card (merge sort's `merge`) is
+# traceable, + use the real return value for "Final result" (was reading a hardcoded-name
+# accumulator that missed `sorted_array`, shipping "Final result: []").
+VISUAL_BRIDGE_VERSION = 5
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan

@@ -12,6 +12,7 @@ recording/serialization logic is identical either way.
 """
 from __future__ import annotations
 
+import ast
 import sys
 from collections import deque
 from typing import Any
@@ -97,7 +98,30 @@ def _build_args(input_spec: dict[str, Any]) -> list[Any]:
     return args
 
 
-def _accumulator(local_vars: dict[str, Any]) -> Any:
+def _returned_vars(code: str) -> dict[str, str]:
+    """Map each function to the variable it RETURNS — its own 'result' — so the
+    accumulator is derived from the code, not matched against a hardcoded name list (the
+    LLM may call it `sorted_array`, `merged`, anything). `return f(x)` (a call, e.g.
+    merge_sort's `return merge(...)`) has no single variable and is skipped; the last
+    `return <name>` wins when a function has several."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return {}
+    out: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Return) and isinstance(sub.value, ast.Name):
+                    out[node.name] = sub.value.id
+    return out
+
+
+def _accumulator(local_vars: dict[str, Any], preferred: str | None = None) -> Any:
+    # The function's OWN returned variable first (derived from the code), then the
+    # conventional names as a fallback for functions that return an expression.
+    if preferred and isinstance(local_vars.get(preferred), list):
+        return serialize_value(local_vars[preferred])
     for name in _ACCUMULATOR_NAMES:
         if name in local_vars and isinstance(local_vars[name], list):
             return serialize_value(local_vars[name])
@@ -122,6 +146,7 @@ def trace_execution(
     if entry_function not in namespace:
         raise ValueError(f"entry function {entry_function!r} not defined")
     args = _build_args(input_spec)
+    returned = _returned_vars(code)  # function -> its returned variable (its result)
 
     steps: list[dict[str, Any]] = []
 
@@ -145,7 +170,7 @@ def trace_execution(
                     "line": frame.f_lineno,
                     "vars": local_vars,
                     "call_stack": _call_stack(frame),
-                    "output": _accumulator(frame.f_locals),
+                    "output": _accumulator(frame.f_locals, returned.get(frame.f_code.co_name)),
                 }
             )
         return tracer
@@ -200,7 +225,7 @@ def simulate_code_execution(
             )
         )
 
-    return Trace(
+    trace = Trace(
         trace_id=f"{example.get('example_id', 'ex')}:code_execution",
         example_id=str(example.get("example_id", "")),
         trace_source="deterministic_simulator",
@@ -210,6 +235,11 @@ def simulate_code_execution(
         delta_schema_version=DELTA_SCHEMA_VERSION,
         simulator_version=SIMULATOR_VERSION,
     )
+    # The algorithm's ACTUAL return value — the ground truth for "Final result" on the
+    # terminal card. Reading a per-step accumulator misses it for code that returns an
+    # expression or a non-conventionally-named variable (e.g. `sorted_array`).
+    trace["return_value"] = _result
+    return trace
 
 
 def run_harness() -> None:

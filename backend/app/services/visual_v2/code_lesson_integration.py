@@ -306,36 +306,76 @@ def _loop_line_numbers(code: str) -> frozenset[int]:
 
 
 def _extract_code_and_entry(lesson_json: dict[str, Any]) -> Optional[tuple[str, str]]:
-    """The longest PARSEABLE code_snippet in the lesson + its entry function. Prefers
-    valid code so a mis-indented walkthrough card can't block the tracer."""
-    candidates: list[str] = []
+    """COMBINE every parseable code_snippet in the lesson into one module, then pick the
+    entry as the root of the call graph.
+
+    The longest *single* snippet isn't enough: an algorithm like merge sort defines the
+    `merge_sort` recursion in one card and its `merge` helper in another, so tracing the
+    entry alone fails (`merge` undefined) and the example silently drops to the LLM's
+    cut-short cards. Combining all definitions (deduped by name, keeping the longest body)
+    makes helpers available; the entry is the function no OTHER function calls (self-
+    recursion ignored), so we trace `merge_sort`, not the `merge` helper."""
+    snippets: list[str] = []
     for card in lesson_json.get("lesson_cards") or []:
         if str(card.get("blueprint_key") or card.get("card_type") or "").lower() in ("worked_example", "code_walkthrough"):
             snippet = str(card.get("code_snippet") or "").strip()
             if snippet:
-                candidates.append(snippet)
-    parseable: list[str] = []
-    for snippet in candidates:
+                snippets.append(snippet)
+    if not snippets:
+        return None
+
+    # Dedup function definitions by name across snippets (keep the longest body), so the
+    # combined module defines each function exactly once, in first-seen order.
+    defs: dict[str, tuple[int, str]] = {}  # name -> (size, source)
+    order: list[str] = []
+    for snippet in snippets:
         try:
-            ast.parse(snippet)
-            parseable.append(snippet)
+            tree = ast.parse(snippet)
         except SyntaxError:
             continue
-    pool = parseable or candidates
-    if not pool:
+        for node in tree.body:
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            src = ast.get_source_segment(snippet, node)
+            if not src:
+                continue
+            if node.name not in defs:
+                order.append(node.name)
+            if node.name not in defs or len(src) > defs[node.name][0]:
+                defs[node.name] = (len(src), src)
+    if not defs:
         return None
-    best = max(pool, key=len)
+
+    combined = "\n\n\n".join(defs[name][1] for name in order)
     try:
-        tree = ast.parse(best)
+        tree = ast.parse(combined)
     except SyntaxError:
-        return None
-    funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef)]
+        # A combined module that won't parse — fall back to the single longest snippet.
+        best = max(snippets, key=len)
+        try:
+            single = ast.parse(best)
+        except SyntaxError:
+            return None
+        funcs = [n for n in single.body if isinstance(n, ast.FunctionDef)]
+        if not funcs:
+            return None
+        return best, min(funcs, key=lambda f: len(f.args.args)).name
+
+    funcs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
     if not funcs:
         return None
-    # The entry takes the fewest args (the main takes `root`; the helper takes
-    # `node, result`) — robust to function order.
-    entry = min(funcs, key=lambda f: len(f.args.args))
-    return best, entry.name
+    # Entry = a function NOT called by any OTHER defined function (self-recursion ignored).
+    called_by_others: set[str] = set()
+    for name, fn in funcs.items():
+        for sub in ast.walk(fn):
+            if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name):
+                callee = sub.func.id
+                if callee in funcs and callee != name:
+                    called_by_others.add(callee)
+    roots = [name for name in order if name in funcs and name not in called_by_others]
+    pool = roots or list(funcs)
+    entry = min(pool, key=lambda nm: len(funcs[nm].args.args))
+    return combined, entry
 
 
 def _hl(frame: dict[str, Any]) -> Optional[int]:
@@ -526,7 +566,11 @@ def apply_code_execution_to_lesson(lesson_json: dict[str, Any], topic: dict[str,
     if not step_cards:
         return False
     last = step_cards[-1]
-    final_output = (frames[-1].get("state_after") or {}).get("output")
+    # The algorithm's actual return value is ground truth; fall back to the terminal
+    # frame's accumulator only if the function returns nothing.
+    final_output = trace.get("return_value")
+    if final_output is None:
+        final_output = (frames[-1].get("state_after") or {}).get("output")
     last.setdefault("metadata", {})["reaches_final_answer"] = True
     if final_output is not None:
         last["points"] = list(last.get("points") or []) + [f"Final result: {_fmt_output(final_output)}."]

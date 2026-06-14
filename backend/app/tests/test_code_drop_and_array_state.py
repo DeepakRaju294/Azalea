@@ -86,6 +86,11 @@ class TestArrayStateSuppression(unittest.TestCase):
 
 
 class TestDropMetric(unittest.TestCase):
+    def setUp(self):
+        # Pin the flag: another suite's tearDown can pop it, making apply_code_execution
+        # return at the is_v2_enabled guard BEFORE it records a drop reason.
+        os.environ["AZALEA_VISUAL_V2_MODES"] = "all"
+
     def test_no_input_records_drop_reason(self):
         from app.services.visual_v2.code_lesson_integration import apply_code_execution_to_lesson
 
