@@ -38,17 +38,49 @@ def solver_enabled() -> bool:
     return os.getenv("AZALEA_WORKED_EXAMPLE_SOLVER", "1").strip().lower() not in {"0", "false", "off", "no"}
 
 
+# The platform's worked-example card rules (a faithful distillation of the worked-example
+# DEPTH + bullet-shape rules in LEAN_SYSTEM_PROMPT), so a solved example formats and reads
+# exactly like the rest of the platform's cards.
+_WORKED_EXAMPLE_RULES = """\
+CARD STRUCTURE
+- The example OPENS with the problem (provided separately in `problem`), then proceeds with
+  ONE step per card, in order, until the final answer. The LAST card states the final result.
+- One step per card: a new state, action, calculation, decision, or result is a NEW card.
+  Never split one step across cards; never merge two unrelated steps onto one card.
+- Solve the example COMPLETELY, from start to finish, until it reaches the final answer /
+  terminal state. A multi-step skill (algorithm, derivation, proof, calculation) needs AT
+  LEAST 5 steps — do not stop early or skip work. (A pure boundary/edge topic may use fewer.)
+
+CARD CONTENT
+- For a state-transition step, put the prior state, the action taken, and the resulting state
+  on the SAME card — e.g. a "Currently:" frame, an "Action:" frame, then a "Now:" frame.
+- Each card HANDS OFF from the previous one: it picks up the state the last card ended on.
+  Do not repeat bullets already shown on an earlier card.
+- Every number and manipulation must be CORRECT, and the final answer must follow directly
+  from the steps shown.
+
+BULLET FORMATTING (the `points` array)
+- Each point is a MAIN bullet or a SUBPOINT. A subpoint is the same string prefixed with
+  EXACTLY two spaces and "- " (e.g. "  - ...").
+- A main bullet is a SHORT frame: 4-10 words (rarely >14). If it introduces subpoints it
+  ends with a colon (e.g. "Currently:", "Action:", "Now:", "Why:", "Result:").
+- A subpoint carries the detail/answer: ONE cognitive unit, 7-18 words (rarely >24). Put the
+  actual calculation, value, reason, or state change in subpoints, not the main bullet.
+- At most 3 main bullets and 6 total lines per card; keep fewer when the card is dense.
+- Plain language and math notation only — NO programming code (this path is for non-code
+  topics)."""
+
 _SYSTEM = (
-    "You are a precise, rigorous tutor authoring a WORKED EXAMPLE. "
+    "You are a precise, rigorous tutor authoring ONE worked example for a learning platform. "
     "Pose ONE concrete, fully-specified problem for the given topic, then SOLVE IT COMPLETELY "
-    "from start to finish, showing every step of the work. Never skip steps and never stop "
-    "before the final answer. Each step is ONE clear reasoning move with the concrete "
-    "calculation or manipulation shown explicitly. Every number you write must be correct, "
-    "and the final answer must follow directly from the steps.\n"
+    "from start to finish. Follow these rules EXACTLY:\n\n"
+    f"{_WORKED_EXAMPLE_RULES}\n\n"
     "Return ONLY a JSON object of exactly this shape:\n"
-    '{"problem": "<the concrete problem statement>", '
-    '"steps": [{"title": "<short step name>", "detail": ["<one reasoning move / line of work>", ...]}, ...], '
-    '"final_answer": "<the final result>"}'
+    '{"problem": "<the concrete problem statement, shown as the opening card>", '
+    '"cards": [{"title": "<short step name>", "points": ["<main bullet>", "  - <subpoint>", ...]}, ...], '
+    '"final_answer": "<the final result>"}\n'
+    "`cards` are the solving STEPS in order (the problem is shown first automatically); the "
+    "last card reaches the final answer."
 )
 
 
@@ -117,25 +149,43 @@ def solve_worked_example(
         return None
     if not isinstance(raw, dict):
         return None
-    steps = raw.get("steps")
-    if not isinstance(steps, list) or not steps:
+    cards = _normalize_solution_cards(raw)
+    if not cards:
         return None
     return {
         "problem": str(raw.get("problem") or "").strip(),
-        "steps": steps,
+        "cards": cards,
         "final_answer": str(raw.get("final_answer") or "").strip(),
     }
 
 
-def _step_points(step: Any) -> list[str]:
-    if not isinstance(step, dict):
+def _coerce_points(value: Any) -> list[str]:
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
         return []
-    detail = step.get("detail")
-    if isinstance(detail, str):
-        detail = [detail]
-    elif not isinstance(detail, list):
-        detail = []
-    return [str(d).strip() for d in detail if str(d).strip()]
+    return [str(p).rstrip() for p in value if str(p).strip()]
+
+
+def _normalize_solution_cards(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """Accept the `cards` contract ({title, points}); fall back to a `steps`/`detail`
+    shape if the model used it. Returns [{title, points}]."""
+    out: list[dict[str, Any]] = []
+    for card in raw.get("cards") if isinstance(raw.get("cards"), list) else []:
+        if not isinstance(card, dict):
+            continue
+        points = _coerce_points(card.get("points"))
+        if points:
+            out.append({"title": str(card.get("title") or "").strip(), "points": points})
+    if out:
+        return out
+    for step in raw.get("steps") if isinstance(raw.get("steps"), list) else []:
+        if not isinstance(step, dict):
+            continue
+        points = _coerce_points(step.get("detail") if step.get("detail") is not None else step.get("points"))
+        if points:
+            out.append({"title": str(step.get("title") or "").strip(), "points": points})
+    return out
 
 
 def _build_solution_cards(sol: dict[str, Any], topic: dict[str, Any]) -> list[dict[str, Any]]:
@@ -143,7 +193,10 @@ def _build_solution_cards(sol: dict[str, Any], topic: dict[str, Any]) -> list[di
     card per step (the text breakdown), the last stamped reaches_final_answer."""
     tid = str(topic.get("id") or "topic")
     gid = f"we-solver-{tid}"
-    problem = sol.get("problem") or _existing_problem_text([]) or "Worked example."
+    norm = sol.get("cards") or []
+    problem = sol.get("problem") or "Worked example."
+
+    # Always open with an explicit setup card stating the problem; `cards` are the steps.
     cards: list[dict[str, Any]] = [{
         "id": f"we-solve-{tid}-setup",
         "blueprint_key": "worked_example",
@@ -153,16 +206,13 @@ def _build_solution_cards(sol: dict[str, Any], topic: dict[str, Any]) -> list[di
         "continuation_group_id": gid,
         "metadata": {"worked_example_setup": True, "worked_example_solver": True},
     }]
-    for n, step in enumerate(sol.get("steps") or []):
-        points = _step_points(step)
-        if not points:
-            continue
+    for n, card in enumerate(norm):
         cards.append({
             "id": f"we-solve-{tid}-{n}",
             "blueprint_key": "worked_example",
             "card_type": "worked_example",
-            "title": str((step or {}).get("title") or f"Step {n + 1}").strip() or f"Step {n + 1}",
-            "points": points,
+            "title": card.get("title") or f"Step {n + 1}",
+            "points": card["points"],
             "continuation_group_id": gid,
             "metadata": {"worked_example_solver": True},
         })
@@ -171,7 +221,7 @@ def _build_solution_cards(sol: dict[str, Any], topic: dict[str, Any]) -> list[di
     last = cards[-1]
     last.setdefault("metadata", {})["reaches_final_answer"] = True
     final = sol.get("final_answer")
-    if final:
+    if final and not any("final answer" in p.lower() for p in last.get("points") or []):
         last["points"] = list(last.get("points") or []) + [f"Final answer: {final}"]
     return cards
 

@@ -22,20 +22,31 @@ from app.services.examples.worked_example_audit import audit_worked_examples
 
 
 def _stub(payload):
-    # A complete, concrete solution — what a focused solve returns.
+    # A complete, concrete solution in the `cards` contract — what a focused solve returns.
     return {
         "problem": "Solve 2x^2 - 4x - 6 = 0 for x.",
-        "steps": [
-            {"title": "Identify coefficients", "detail": ["a = 2, b = -4, c = -6."]},
-            {"title": "Compute the discriminant", "detail": ["b^2 - 4ac = 16 + 48 = 64.", "sqrt(64) = 8."]},
-            {"title": "Apply the quadratic formula", "detail": ["x = (4 ± 8) / 4."]},
+        "cards": [
+            {"title": "Identify coefficients", "points": ["Read off a, b, c:", "  - a = 2, b = -4, c = -6."]},
+            {"title": "Compute the discriminant",
+             "points": ["Discriminant:", "  - b^2 - 4ac = 16 + 48 = 64.", "  - sqrt(64) = 8."]},
+            {"title": "Apply the formula", "points": ["Two roots:", "  - x = (4 ± 8) / 4."]},
         ],
         "final_answer": "x = 3 or x = -1",
     }
 
 
+def _steps_stub(payload):
+    # Robustness: the model used the legacy steps/detail shape instead of cards.
+    return {
+        "problem": "Compute the mean of 2, 4, 9.",
+        "steps": [{"title": "Sum", "detail": ["2 + 4 + 9 = 15."]},
+                  {"title": "Divide", "detail": ["15 / 3 = 5."]}],
+        "final_answer": "5",
+    }
+
+
 def _bad_stub(payload):
-    return {"problem": "x", "steps": [], "final_answer": ""}  # nothing to render
+    return {"problem": "x", "cards": [], "final_answer": ""}  # nothing to render
 
 
 def _lesson():
@@ -53,7 +64,12 @@ class TestSolve(unittest.TestCase):
     def test_solve_normalizes_shape(self):
         sol = solve_worked_example({"title": "Quadratics"}, solver=_stub)
         self.assertEqual(sol["final_answer"], "x = 3 or x = -1")
-        self.assertEqual(len(sol["steps"]), 3)
+        self.assertEqual(len(sol["cards"]), 3)
+
+    def test_steps_fallback_shape(self):
+        sol = solve_worked_example({"title": "Mean"}, solver=_steps_stub)
+        self.assertEqual(len(sol["cards"]), 2)
+        self.assertEqual(sol["cards"][0]["points"], ["2 + 4 + 9 = 15."])
 
     def test_empty_solution_is_none(self):
         self.assertIsNone(solve_worked_example({"title": "X"}, solver=_bad_stub))
@@ -64,6 +80,8 @@ class TestSolve(unittest.TestCase):
         self.assertGreaterEqual(len(cards), 4)                 # setup + 3 steps
         self.assertTrue(cards[0]["metadata"].get("worked_example_setup"))
         self.assertIn("2x^2 - 4x - 6", cards[0]["points"][0])
+        # subpoint formatting preserved
+        self.assertTrue(any(p.startswith("  - ") for c in cards for p in c["points"]))
         last = cards[-1]
         self.assertTrue(last["metadata"].get("reaches_final_answer"))
         self.assertTrue(any("Final answer: x = 3 or x = -1" in p for p in last["points"]))
