@@ -20,7 +20,10 @@ from typing import Any
 # Bump when the bridge/gate/diagram logic improves, so cached lessons re-enrich on read
 # (lessons.py `lesson_json_needs_hybrid_visual_refresh`). v3 = broadened input extraction
 # + drop-reason telemetry + suppress the misleading legacy array_state worked-example guess.
-VISUAL_BRIDGE_VERSION = 3
+# v4 = re-stamp so lessons stamped at v3 BEFORE the broadened extraction landed (intermediate
+# dev-session state) re-run the trace path — the merge-sort worked example was stuck at v3
+# with the LLM's divide-only cards because the version wasn't bumped alongside the extraction fix.
+VISUAL_BRIDGE_VERSION = 4
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan

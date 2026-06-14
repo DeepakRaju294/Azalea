@@ -5069,6 +5069,26 @@ export default function StudyPathLearnPage() {
                     </div>
                   ) : currentFocusVisual ? (
                     <VisualRenderer visual={currentFocusVisual} index={0} focusState={currentVisualFocus} />
+                  ) : currentStep.type === "flow_card" &&
+                    currentStep.card?.blueprint_key === "worked_example" &&
+                    ((currentStep.card?.points as string[] | undefined)?.length ||
+                      currentStep.bullets?.length) ? (
+                    // No visual for this worked example — render the LLM's steps as text
+                    // so the card is still complete (we just omit the visual).
+                    <div className="w-full rounded-2xl border border-[#E5DFF0] bg-white p-6 shadow-sm shadow-purple-100/40">
+                      <ol className="space-y-3">
+                        {(((currentStep.card?.points as string[] | undefined) ?? currentStep.bullets ?? []) as string[]).map(
+                          (point, i) => (
+                            <li key={i} className="flex gap-3 text-[15px] leading-relaxed text-foreground">
+                              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-black text-primary">
+                                {i + 1}
+                              </span>
+                              <span>{String(point)}</span>
+                            </li>
+                          ),
+                        )}
+                      </ol>
+                    </div>
                   ) : null}
                 </div>
                 </div>
