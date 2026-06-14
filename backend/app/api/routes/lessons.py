@@ -271,37 +271,14 @@ def lesson_json_needs_hybrid_visual_refresh(lesson_json: Any) -> bool:
 
 
 def lesson_json_needs_example_ontology_refresh(lesson_json: Any, topic: Topic) -> bool:
-    """A cached lesson should be upgraded on read when the example-ontology path
-    (EXAMPLE_SYSTEM_SPEC §4.5) applies to this topic but hasn't been applied yet —
-    so existing lessons pick up new fixtures without a manual regeneration."""
-    if not isinstance(lesson_json, dict) or not isinstance(lesson_json.get("lesson_cards"), list):
-        return False
-    metadata = lesson_json.get("metadata") or {}
-    try:
-        from app.services.examples.declaration import declare_example, pick_fixture
-        from app.services.examples.handoff import APPLY_VERSION, pipeline_mode, resolve_visual
-        from app.services.visual_v2.flags import is_v2_enabled
+    """RETIRED. Worked examples are no longer authored by the example-ontology/fixture path
+    (that apparatus is dormant — see enrich_legacy_lesson_with_v2_visuals); cache upgrades
+    are driven solely by the bridge VERSION via lesson_json_needs_hybrid_visual_refresh.
 
-        applied = metadata.get("visual_v2_example_ontology") if isinstance(metadata, dict) else None
-
-        declared = declare_example({
-            "id": str(topic.id),
-            "title": topic.title or "",
-            "topic_type": str(getattr(topic, "course_type", None) or getattr(topic, "topic_type", "") or ""),
-        })
-        if declared is None:
-            # Stale apply (e.g. an intro that got an example before the blueprint
-            # gate existed) → re-enrich so the cleanup pass removes it.
-            return isinstance(applied, dict)
-        if isinstance(applied, dict) and int(applied.get("version") or 1) >= APPLY_VERSION:
-            return False  # already applied at the current quality level
-        fixture = pick_fixture(declared)
-        if fixture is None:
-            return False
-        _base, mode = resolve_visual(fixture)
-        return is_v2_enabled(pipeline_mode(mode), declared.application)
-    except Exception:  # noqa: BLE001 — never block a lesson read
-        return False
+    Kept (returns False) so the two read-path call sites stay valid without churn. It must
+    NOT use declare_example/pick_fixture: those would report "needs ontology apply" forever
+    now that apply_fixture_to_lesson never runs, re-enriching (and re-solving) on every read."""
+    return False
 
 
 @router.post("/topics/{topic_id}/lesson", response_model=LessonRead)
