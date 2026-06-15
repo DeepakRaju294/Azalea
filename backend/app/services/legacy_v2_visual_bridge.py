@@ -63,7 +63,9 @@ from typing import Any
 # v19 = code_repair COMBINES snippets (merge_sort + merge split across cards now validate
 # together -> complete code, not a partial valid `merge`); code_walkthrough groups by logical
 # block (not <=3 lines) and shows the complete code; per-bullet code highlighting restored.
-VISUAL_BRIDGE_VERSION = 19
+# v20 = the solver now CREATES a worked example when the topic's blueprint requires one but the
+# generation produced none (coding topics frequently shipped with no example at all).
+VISUAL_BRIDGE_VERSION = 20
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan

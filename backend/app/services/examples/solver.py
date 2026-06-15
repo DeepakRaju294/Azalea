@@ -442,6 +442,19 @@ def _extract_lesson_code(cards: list[Any]) -> str:
     return best
 
 
+def _blueprint_wants_worked_example(topic: dict[str, Any]) -> bool:
+    """True if this topic type's card blueprint includes a worked_example slot — so we author
+    one even when the lesson generation produced none (common on coding topics)."""
+    try:
+        from app.core.course_blueprints import get_topic_blueprint
+
+        bp = get_topic_blueprint(topic.get("topic_type"))
+        seq = list(bp.get("default_card_sequence") or []) + list(bp.get("continuation_card_sequence") or [])
+        return "worked_example" in seq
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def apply_llm_solved_worked_example(
     lesson_json: dict[str, Any],
     topic: dict[str, Any],
@@ -457,11 +470,15 @@ def apply_llm_solved_worked_example(
         cards = lesson_json.get("lesson_cards")
         if not isinstance(cards, list) or not cards:
             return False
-        if not any(
+        has_we = any(
             str(c.get("blueprint_key") or c.get("card_type") or "").lower() == "worked_example"
             for c in cards if isinstance(c, dict)
-        ):
-            return False  # this topic has no worked-example slot — nothing to solve
+        )
+        if not has_we and not _blueprint_wants_worked_example(topic):
+            return False  # this topic type has no worked-example slot — nothing to solve
+        # If the topic SHOULD have a worked example but the generation produced none, we still
+        # solve and INSERT one (the LLM frequently drops it on coding topics). The replace step
+        # below splices the solved cards in when there's nothing to replace.
 
         is_coding = str(topic.get("topic_type") or "").lower() == "coding_implementation"
         code = _extract_lesson_code(cards) if is_coding else ""

@@ -201,9 +201,26 @@ class TestApply(unittest.TestCase):
         self.assertFalse(applied)
         self.assertEqual(lesson["lesson_cards"], before)
 
-    def test_topic_without_worked_example_is_skipped(self):
+    def test_creates_worked_example_when_blueprint_wants_one(self):
+        # Coding topic whose generation produced NO worked example — the solver must create one
+        # (the blueprint requires it) from the lesson's code, not silently leave none.
+        lesson = {"lesson_cards": [
+            {"blueprint_key": "components_terms", "title": "Key terms"},
+            {"blueprint_key": "code_walkthrough", "title": "Code",
+             "code_snippet": "def merge_sort(arr):\n    return sorted(arr)"},
+        ], "metadata": {}}
+        applied = apply_llm_solved_worked_example(
+            lesson, {"id": "c1", "title": "Merge Sort", "topic_type": "coding_implementation"}, solver=_stub,
+        )
+        self.assertTrue(applied)
+        we = [c for c in lesson["lesson_cards"] if c.get("blueprint_key") == "worked_example"]
+        self.assertGreaterEqual(len(we), 1)  # created from scratch
+
+    def test_topic_without_worked_example_slot_is_skipped(self):
+        # study_path_introduction's blueprint has no worked_example slot -> nothing to author.
         lesson = {"lesson_cards": [{"blueprint_key": "background"}], "metadata": {}}
-        self.assertFalse(apply_llm_solved_worked_example(lesson, {"id": "t1"}, solver=_stub))
+        self.assertFalse(apply_llm_solved_worked_example(
+            lesson, {"id": "t1", "topic_type": "study_path_introduction"}, solver=_stub))
 
 
 if __name__ == "__main__":
