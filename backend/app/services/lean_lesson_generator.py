@@ -249,10 +249,28 @@ def _expand_clause_point(point: str) -> list[str] | None:
     return None
 
 
+def _has_bracketed_commas(text: str) -> bool:
+    """True if any comma sits INSIDE [], {}, or () — i.e. it's part of a collection
+    (an array/set/dict/tuple), not a separator between list items. Splitting on those
+    commas shreds `[38, 27, 43]` into `[38` / `27` / `43]`."""
+    depth = 0
+    for ch in text:
+        if ch in "[{(":
+            depth += 1
+        elif ch in "]})":
+            depth = max(0, depth - 1)
+        elif ch == "," and depth > 0:
+            return True
+    return False
+
+
 def _split_detail_units(detail: str) -> list[str]:
     text = detail.strip().rstrip(".")
     if not text:
         return []
+    # Never break apart a collection literal — its internal commas are not item separators.
+    if _has_bracketed_commas(text):
+        return [text]
 
     ordered_parts = re.split(
         r",\s*(?=(?:first|second|third|next|then|finally),\s+)",

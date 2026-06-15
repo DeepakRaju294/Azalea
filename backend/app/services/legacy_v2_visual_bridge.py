@@ -39,7 +39,9 @@ from typing import Any
 # shown in an IDE panel. Re-solve so coding lessons drop the old "line N executes" trace cards.
 # v10 = setup card states the actual problem (Problem: <concrete input/values>) instead of
 # generic filler; generated code is the clean algorithm with no main/driver. Re-solve.
-VISUAL_BRIDGE_VERSION = 10
+# v11 = collection literals (e.g. [38, 27, 43]) are never split across sub-bullets. Re-solve
+# so cached worked examples drop the shredded-array bullets.
+VISUAL_BRIDGE_VERSION = 11
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan
