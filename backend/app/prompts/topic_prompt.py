@@ -58,6 +58,22 @@ Example:
 If the current topic is "Inorder Traversal", teach traversal order, state, examples, sorted-output behavior, and practice.
 Do not teach full BST search, insertion, deletion, balancing, AVL trees, or red-black trees.
 
+AUXILIARY CONCEPTS DO NOT BECOME TOPICS.
+When the learner's goal is a specific skill or algorithm (e.g. "merge sort"), do NOT create a
+separate topic for a paradigm, strategy, category, or enabling concept that the goal merely
+BELONGS TO — e.g. "divide and conquer", "the greedy approach", "recursion as a concept",
+"dynamic programming in general". A concrete topic in the path already teaches that paradigm
+BY EXAMPLE, so a standalone paradigm topic just re-explains the same example and feels like a
+redundant repeat of the algorithm walkthrough. Instead:
+- fold a ONE-SENTENCE framing into the subject's introduction or concept topic (e.g. "Merge
+  sort is a divide-and-conquer algorithm: it splits the array, sorts each half, and merges"), and
+- list the paradigm in assumed_prerequisites so it can later surface as a brief just-in-time
+  aside, never as its own topic.
+Litmus test: if the candidate topic would mostly re-explain a concrete topic already in the
+path, or has nothing concrete of its OWN to stand on, it is NOT a topic. ONLY create a topic
+for the paradigm itself when the paradigm IS the learner's goal (e.g. the goal is "learn
+divide and conquer as a general problem-solving strategy" taught across several algorithms).
+
 ---
 
 TOPIC BOUNDARY RULES
