@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from app.prompts.topic_prompt import SYSTEM_PROMPT, build_topic_prompt
@@ -8,6 +9,80 @@ from app.services.llm_client import generate_structured_topics
 
 if TYPE_CHECKING:
     from app.models.content_chunk import ContentChunk
+
+_log = logging.getLogger(__name__)
+
+# Paradigms/methodologies that a concrete algorithm already teaches BY EXAMPLE. A standalone
+# "Understanding the X Strategy" / "What is X" topic for one of these — when the path's goal is
+# a specific algorithm, not the paradigm itself — is redundant with the algorithm walkthrough
+# and gets dropped (see _drop_paradigm_only_topics). Prompt rule alone wasn't enough.
+import re as _re
+
+# Canonical form (hyphens / & / underscores → spaces) so "divide-and-conquer" matches
+# "divide and conquer".
+_PARADIGM_TERMS: tuple[str, ...] = (
+    "divide and conquer", "greedy", "dynamic programming", "backtracking",
+    "brute force", "two pointer", "sliding window", "memoization",
+    "branch and bound", "recursion", "iterative approach",
+)
+
+
+def _canon(text: str) -> str:
+    return _re.sub(r"\s+", " ", _re.sub(r"[-&_]", " ", str(text or "").lower())).strip()
+_CONCEPT_FRAMING: tuple[str, ...] = (
+    "understanding", "what is", "introduction to", "intro to", "overview of",
+    "the concept of", "approach", "strategy", "paradigm", "technique", "methodology",
+)
+_CONCRETE_TYPES: frozenset[str] = frozenset({
+    "algorithm_walkthrough", "data_structure_operation", "coding_implementation",
+    "math_formula_method", "process_walkthrough",
+})
+
+
+def _is_paradigm_only_topic(topic: dict[str, Any], goal_lower: str) -> bool:
+    """A concept topic that merely names a paradigm the path's concrete topics already
+    exemplify — not the path's actual subject."""
+    title = _canon(topic.get("title"))
+    matched = next((term for term in _PARADIGM_TERMS if term in title), None)
+    if matched is None:
+        return False
+    if matched in _canon(goal_lower):
+        return False  # the paradigm IS the learner's goal — a real subject, keep it
+    if not any(frame in title for frame in _CONCEPT_FRAMING):
+        return False  # not framed as an abstract concept (e.g. "Merge Sort", which is concrete)
+    ttype = str(topic.get("course_type") or topic.get("topic_type") or "").strip().lower()
+    return ttype in ("concept_intuition", "terminology_components", "")
+
+
+def _drop_paradigm_only_topics(topics: list[dict[str, Any]], goal: str | None) -> list[dict[str, Any]]:
+    """Remove auxiliary paradigm/methodology topics, capturing the paradigm in a concrete
+    topic's assumed_prerequisites (future just-in-time popup). Never empties the path."""
+    goal_lower = str(goal or "").lower()
+    concrete = [t for t in topics if str(t.get("course_type") or "").strip().lower() in _CONCRETE_TYPES]
+    if not concrete:
+        return topics  # nothing concrete teaches the paradigm by example — keep it
+
+    kept: list[dict[str, Any]] = []
+    for topic in topics:
+        if _is_paradigm_only_topic(topic, goal_lower):
+            _log.info("topic_generator: dropping auxiliary paradigm topic %r", topic.get("title"))
+            term = next((t for t in _PARADIGM_TERMS if t in _canon(topic.get("title"))), "")
+            prereqs = concrete[0].setdefault("assumed_prerequisites", [])
+            if isinstance(prereqs, list) and term and not any(term in str(p).lower() for p in prereqs):
+                prereqs.append(term)
+            continue
+        kept.append(topic)
+    if not kept:
+        return topics  # guard: never drop everything
+    dropped_titles = {str(t.get("title") or "").lower() for t in topics} - {str(t.get("title") or "").lower() for t in kept}
+    for index, topic in enumerate(kept, start=1):
+        topic["order_index"] = index
+        # Strip dangling prerequisite references to dropped topics.
+        prereq = topic.get("prerequisite_topics")
+        if isinstance(prereq, str) and prereq:
+            parts = [p.strip() for p in prereq.split(",") if p.strip() and p.strip().lower() not in dropped_titles]
+            topic["prerequisite_topics"] = ", ".join(parts)
+    return kept
 
 
 def clean_text_field(value: Any, fallback: str = "") -> str:
@@ -294,6 +369,10 @@ Chunk index: {chunk.chunk_index}
         cleaned_topics.append(cleaned_topic)
 
         earlier_titles_by_normalized_title[normalized_title] = title
+
+    # Drop auxiliary paradigm/methodology topics (e.g. "Understanding Divide and Conquer" on a
+    # merge-sort path) that the concrete algorithm topics already teach by example.
+    cleaned_topics = _drop_paradigm_only_topics(cleaned_topics, goal)
 
     if not cleaned_topics:
         cleaned_topics.append(
