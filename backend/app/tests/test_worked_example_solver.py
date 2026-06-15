@@ -21,9 +21,12 @@ from app.services.examples.solver import (
 from app.services.examples.worked_example_audit import audit_worked_examples
 
 
-def _step(title, prior, decision, action, resulting, visual):
-    return {"title": title, "prior_state": prior, "decision": decision,
+def _step(title, prior, decision, action, resulting, visual, cases=None):
+    card = {"title": title, "prior_state": prior, "decision": decision,
             "action": action, "resulting_state": resulting, "visual": visual}
+    if cases:
+        card["cases_covered"] = cases
+    return card
 
 
 def _stub(payload):
@@ -38,9 +41,11 @@ def _stub(payload):
             _step("Identify coefficients", "2x^2 - 4x - 6 = 0", "read the standard form",
                   "name a, b, c", "a = 2, b = -4, c = -6", "coefficients boxed under the equation"),
             _step("Compute the discriminant", "a = 2, b = -4, c = -6", "the formula needs b^2-4ac",
-                  "compute b^2 - 4ac", "discriminant = 64 (sqrt = 8)", "16 + 48 = 64, sqrt(64)=8 highlighted"),
+                  "compute b^2 - 4ac", "discriminant = 64 (sqrt = 8)", "16 + 48 = 64, sqrt(64)=8 highlighted",
+                  cases=["positive discriminant"]),
             _step("Apply the formula", "discriminant = 64", "plug into (-b ± sqrt)/2a",
-                  "evaluate (4 ± 8) / 4", "x = 3 or x = -1", "two branches for + and -"),
+                  "evaluate (4 ± 8) / 4", "x = 3 or x = -1", "two branches for + and -",
+                  cases=["two real roots"]),
         ],
         "final_answer": "x = 3 or x = -1",
     }
@@ -99,10 +104,14 @@ class TestSolve(unittest.TestCase):
         # setup carries the hidden expected answer (not shown in the problem text)
         self.assertEqual(cards[0]["metadata"]["expected_final_answer"], "x = 3 or x = -1")
         self.assertNotIn("x = 3 or x = -1", cards[0]["points"][1])  # answer not spoiled in setup
-        # each step carries a transition record
+        # each step carries a transition record (incl. decision) + cases_covered
         self.assertEqual(cards[1]["metadata"]["transition"]["resulting_state"], "a = 2, b = -4, c = -6")
+        self.assertTrue(cards[1]["metadata"]["transition"]["decision"])
+        self.assertEqual(cards[2]["metadata"]["cases_covered"], ["positive discriminant"])
         last = cards[-1]
-        self.assertTrue(last["metadata"].get("reaches_final_answer"))
+        # the last step's conclusion is stored for the blueprint to verify (reaches_final_answer
+        # is stamped by the blueprint, not here)
+        self.assertEqual(last["metadata"]["final_answer"], "x = 3 or x = -1")
         self.assertTrue(any("x = 3 or x = -1" in p for p in last["points"]))  # resulting state = answer
 
 

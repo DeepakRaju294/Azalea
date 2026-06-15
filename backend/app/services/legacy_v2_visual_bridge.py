@@ -56,7 +56,11 @@ from typing import Any
 # v17 = blueprint v2: solver emits a transition per step (prior/decision/action/resulting) +
 # expected_final_answer (hidden) + required_cases + expected_steps; validation checks transition
 # structure (missing/no-op) and topic-aware step count, not just a global minimum.
-VISUAL_BRIDGE_VERSION = 17
+# v18 = blueprint v3: decision required in every transition; COVERAGE validation (each step tags
+# cases_covered; required_cases must all be exercised); structured final-answer match (the
+# blueprint verifies + stamps reaches_final_answer); enforce_transition_contract; visual_delta in
+# the contract; full setup metadata; nested example_status.
+VISUAL_BRIDGE_VERSION = 18
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan

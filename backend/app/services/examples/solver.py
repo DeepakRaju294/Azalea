@@ -121,16 +121,18 @@ _SYSTEM = (
     "expected answer FORMAT. Do NOT reveal the final answer here>\", "
     '"expected_final_answer": "<the actual final answer (kept in metadata, never shown in the problem)>", '
     '"required_cases": ["<a key decision/case the walkthrough MUST exercise>", ...], '
-    '"expected_steps": <your integer estimate of how many steps a COMPLETE walkthrough needs>, '
+    '"expected_steps": <your integer estimate of the MINIMUM steps a COMPLETE walkthrough needs>, '
     '"problem_visual": "<rich description of the INITIAL figure for the setup>", '
     '"cards": [{"title": "<short step name>", '
     '"prior_state": "<the state BEFORE this step>", '
     '"decision": "<WHY this action is the next move / what rule applies>", '
     '"action": "<the ONE operation or change this step performs>", '
     '"resulting_state": "<the state AFTER this step>", '
+    '"cases_covered": ["<which required_cases labels THIS step exercises>", ...], '
     '"visual": "<rich description of what THIS step\'s figure shows>"}, ...]}\n'
-    "Each card is exactly ONE state transition. The LAST card's resulting_state MUST reach the "
-    "expected_final_answer. Every card MUST include prior_state, action, resulting_state, and visual."
+    "Each card is exactly ONE state transition and MUST include prior_state, decision, action, "
+    "resulting_state, and visual. By the last card, every required_case must have been covered, "
+    "and the last card's resulting_state MUST reach the expected_final_answer."
 )
 
 
@@ -173,16 +175,18 @@ _CODING_SYSTEM = (
     '{"problem": "<the concrete input the code runs on — the ACTUAL values; do NOT reveal the result>", '
     '"expected_final_answer": "<the value the code returns (kept in metadata)>", '
     '"required_cases": ["<a branch/case the trace MUST exercise, e.g. \'left smaller\', \'leftover tail\'>", ...], '
-    '"expected_steps": <integer estimate of how many steps a COMPLETE trace needs>, '
+    '"expected_steps": <integer estimate of the MINIMUM steps a COMPLETE trace needs>, '
     '"problem_visual": "<rich description of the initial data state>", '
     '"cards": [{"title": "<short step name>", '
     '"prior_state": "<the data state BEFORE this step>", '
     '"decision": "<which code construct runs next and WHY (the condition checked / branch taken)>", '
     '"action": "<what that construct does to the data>", '
     '"resulting_state": "<the data state AFTER>", '
+    '"cases_covered": ["<which required_cases labels THIS step exercises>", ...], '
     '"visual": "<what the data looks like now>"}, ...]}\n'
-    "Each card is ONE step of execution. The LAST card's resulting_state MUST be the returned "
-    "result. Explain HOW THE CODE does each step; never cite line numbers; the code is shown separately."
+    "Each card is ONE step of execution and MUST include prior_state, decision, action, and "
+    "resulting_state. By the last card every required_case must be covered and resulting_state "
+    "MUST be the returned result. Explain HOW THE CODE does each step; never cite line numbers."
 )
 
 
@@ -308,10 +312,14 @@ def _normalize_solution_cards(raw: dict[str, Any]) -> list[dict[str, Any]]:
         action = str(card.get("action") or "").strip()
         resulting = str(card.get("resulting_state") or "").strip()
         if action and resulting:
+            cases = [str(c).strip() for c in (card.get("cases_covered") or []) if str(c).strip()]
             out.append({
                 "title": title, "visual": visual,
                 "points": _transition_points(prior, decision, action, resulting),
-                "transition": {"prior_state": prior, "action": action, "resulting_state": resulting},
+                "transition": {"prior_state": prior, "decision": decision, "action": action,
+                               "resulting_state": resulting},
+                "cases_covered": cases,
+                "visual_delta": card.get("visual_delta") if isinstance(card.get("visual_delta"), dict) else None,
             })
         else:
             points = _coerce_points(card.get("points"))
@@ -371,6 +379,10 @@ def _build_solution_cards(
         meta: dict[str, Any] = {"worked_example_solver": True}
         if card.get("transition"):
             meta["transition"] = card["transition"]
+        if card.get("cases_covered"):
+            meta["cases_covered"] = card["cases_covered"]
+        if card.get("visual_delta"):
+            meta["visual_delta"] = card["visual_delta"]
         cards.append({
             "id": f"we-solve-{tid}-{n}",
             "blueprint_key": "worked_example",
@@ -385,12 +397,16 @@ def _build_solution_cards(
     if len(cards) < 2:
         return []  # need the setup + at least one real step
     last = cards[-1]
-    last.setdefault("metadata", {})["reaches_final_answer"] = True
-    # If the last step used the older free-form shape (no transition), surface the answer.
+    last_meta = last.setdefault("metadata", {})
+    # The last step's conclusion = its resulting_state; the blueprint verifies it against the
+    # hidden expected_final_answer and stamps reaches_final_answer only when it actually matches.
+    last_meta["final_answer"] = str((last_meta.get("transition") or {}).get("resulting_state") or "")
+    # Older free-form last step (no transition): surface the answer so it's not missing.
     final = sol.get("expected_final_answer") or sol.get("final_answer")
-    if final and not last.get("metadata", {}).get("transition") \
-            and not any("final answer" in p.lower() for p in last.get("points") or []):
-        last["points"] = list(last.get("points") or []) + [f"Final answer: {final}"]
+    if final and not last_meta.get("transition"):
+        last_meta["final_answer"] = final
+        if not any("final answer" in p.lower() for p in last.get("points") or []):
+            last["points"] = list(last.get("points") or []) + [f"Final answer: {final}"]
     return cards
 
 
@@ -483,8 +499,9 @@ def apply_llm_solved_worked_example(
         status = stamp_example_metadata(
             lesson_json.get("lesson_cards") or [],
             expected_final_answer=str(sol.get("expected_final_answer") or ""),
-            expected_steps=sol.get("expected_steps"),
+            expected_min_steps=sol.get("expected_steps"),
             required_cases=tuple(sol.get("required_cases") or []),
+            enforce_transition_contract=True,
         )
         lesson_json.setdefault("metadata", {})["worked_example_solver"] = {
             "version": SOLVER_VERSION, "steps": len(step_cards), "coding": bool(code),
