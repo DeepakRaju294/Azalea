@@ -69,6 +69,11 @@ CARD CONTENT
   Do not repeat bullets already shown on an earlier card.
 - Show EVERY meaningful decision, including a check that turns out false or a case that is
   ruled out — the learner must see WHY, not only the path taken.
+- NEVER gloss over or hand-wave a step. Do NOT state a sub-result and move on (e.g. NEVER
+  write "recursively sort the left half to get [27, 38, 43]" as one step). If a step relies on
+  a sub-process such as a recursive call, WALK THROUGH that sub-process step by step — show how
+  it actually happens (split the subarray, sort each part, merge them), not just its result.
+  The learner must see the FULL mechanism, with nothing assumed or skipped.
 - Every number and manipulation must be CORRECT, and the final answer must follow directly
   from the steps shown.
 
@@ -108,9 +113,10 @@ _SYSTEM = (
     "EXACTLY:\n\n"
     f"{_WORKED_EXAMPLE_RULES}\n\n"
     "Return ONLY a JSON object of exactly this shape:\n"
-    '{"problem": "<the concrete, fully-specified problem the learner will solve — state the '
-    "ACTUAL values/input and what to find, in 1-2 sentences, so a learner understands exactly "
-    'what the example is BEFORE any steps>", '
+    '{"problem": "<the COMPLETE problem stated like a TEST QUESTION — give the exact input '
+    "values (e.g. the actual array [38, 27, 43, 3, 9, 82, 10], not the word \\\"array\\\"), the "
+    "task, and the expected answer form, so the learner could solve it from the statement "
+    'alone BEFORE any steps. Never use a placeholder or a generic word in place of real values>", '
     '"problem_visual": "<rich description of the INITIAL figure for the setup>", '
     '"cards": [{"title": "<short step name>", "points": ["<main bullet>", "  - <subpoint>", ...], '
     '"visual": "<rich description of what THIS step\'s figure shows>"}, ...], '

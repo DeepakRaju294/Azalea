@@ -43,7 +43,9 @@ from typing import Any
 # so cached worked examples drop the shredded-array bullets.
 # v12 = coding-implementation code is validated; broken code (undefined vars from the
 # incremental walkthrough transforms) is replaced by one clean, validated LLM regeneration.
-VISUAL_BRIDGE_VERSION = 12
+# v13 = solver states the COMPLETE problem (actual values, like a test question) and explains
+# EVERY step explicitly — no glossing over recursion/sub-processes. Re-solve to pick it up.
+VISUAL_BRIDGE_VERSION = 13
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan
