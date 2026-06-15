@@ -2445,6 +2445,10 @@ def _synthesize_node_link_fallback(
     trigger the frontend's graph-layout heuristic on BST data.
     traversal_path is non-empty only for BST traversal variants.
     """
+    # RETIRED (accuracy: never invent a structure). Returning empty makes every caller drop
+    # to "no visual" instead of fabricating a graph/tree from keywords. The body below is kept
+    # for reference but is unreachable.
+    return [], [], [], "none"
     hint = (topic_hint or "").lower()
     graph_kw = any(
         kw in hint
@@ -6429,6 +6433,9 @@ def _synthesize_node_link_plan_from_lean_cards(
     Returns None when there's no background node_link visual or no
     worked_example cards.
     """
+    # RETIRED (accuracy: don't reconstruct/guess a graph plan). Returning None makes the caller
+    # skip plan synthesis; the worked example is authored by the solver instead. Body kept below.
+    return None
     base_nodes: list[dict[str, Any]] = []
     base_edges: list[dict[str, Any]] = []
     for card in lean_cards:
