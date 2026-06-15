@@ -44,21 +44,19 @@ def solver_enabled() -> bool:
 
 # The platform's worked-example card rules (a faithful distillation of the worked-example
 # DEPTH + bullet-shape rules in LEAN_SYSTEM_PROMPT), so a solved example formats and reads
-# exactly like the rest of the platform's cards.
-_WORKED_EXAMPLE_RULES = """\
-CHOOSE THE EXAMPLE FIRST
-- Pick ONE concrete, COMPREHENSIVE, high-level instance of the topic — the canonical kind of
-  problem a learner must master, NOT a trivial warm-up. It must be rich enough to require
-  several genuine decisions and to reach a non-trivial final answer.
-- Choose the instance so the walkthrough naturally EXERCISES the concept's key cases and
-  decision branches — including the tricky / boundary / edge ones — instead of a path that
-  avoids them. Where a decision can go either way, the example should actually take each way
-  at some point.
+# exactly like the rest of the platform's cards. The example PROBLEM rules are the shared
+# EXAMPLE_PROBLEM_RULES (one rule system for how problems are made).
+from app.services.examples.example_blueprint import EXAMPLE_PROBLEM_RULES
+
+_WORKED_EXAMPLE_RULES = (
+    EXAMPLE_PROBLEM_RULES
+    + """
 - The solution must run MORE THAN 5 steps. If your instance resolves in fewer, pick a richer
   instance. (Only a pure boundary topic — "empty input", "single element" — may be shorter,
   because the boundary itself is the lesson.)
 
-CARD STRUCTURE (follow exactly)
+CARD STRUCTURE (follow exactly)"""
+    + """
 - The example OPENS with the problem (provided separately in `problem`), then proceeds with
   ONE step per card, in order, until the final answer. The LAST card states the final result.
 - One step per card: a new state, action, calculation, decision, or result is a NEW card.
@@ -108,6 +106,7 @@ VISUAL DESCRIPTION (the `visual` field on every card, and `problem_visual` for t
     out, or re-colored — so the picture reads as a transition, not a static snapshot.
 - `problem_visual` describes the INITIAL figure for the setup card (the starting structure and
   values, nothing highlighted yet)."""
+)
 
 _SYSTEM = (
     "You are a precise, rigorous tutor authoring ONE worked example for a learning platform. "
@@ -425,8 +424,16 @@ def apply_llm_solved_worked_example(
         if not step_cards:
             return False
         _replace_worked_example_cards(lesson_json, step_cards)
+        # Stamp the example-blueprint metadata: per-card role + step index/total, and an
+        # example_status that flags skipped steps / an unfinished example in the data.
+        from app.services.examples.example_blueprint import stamp_example_metadata
+
+        status = stamp_example_metadata(
+            lesson_json.get("lesson_cards") or [], final_answer=str(sol.get("final_answer") or ""),
+        )
         lesson_json.setdefault("metadata", {})["worked_example_solver"] = {
             "version": SOLVER_VERSION, "steps": len(step_cards), "coding": bool(code),
+            "complete": status.get("complete"), "reason": status.get("reason"),
         }
         return True
     except Exception as exc:  # noqa: BLE001 — the solver must never break a lesson

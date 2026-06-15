@@ -347,7 +347,7 @@ def get_topic_lesson(
             # Never let a migration failure block lesson read.
             pass
 
-    if lesson_json_needs_hybrid_visual_refresh(lesson.lesson_json) or lesson_json_needs_example_ontology_refresh(lesson.lesson_json, topic):
+    if lesson_json_needs_hybrid_visual_refresh(lesson.lesson_json):
         try:
             from sqlalchemy.orm.attributes import flag_modified
             enrich_legacy_lesson_with_v2_visuals(topic=topic, lesson_json=lesson.lesson_json)
@@ -507,9 +507,10 @@ def stream_topic_lesson(
         try:
             cached = sdb.query(Lesson).filter(Lesson.topic_id == topic_pk).first()
             if cached and cached.generation_status == "ready" and cached.lesson_json:
-                # Upgrade a cached lesson on read when the example-ontology path now
-                # applies but wasn't recorded at generation time (flag-gated, safe).
-                if lesson_json_needs_example_ontology_refresh(cached.lesson_json, topic):
+                # Upgrade a cached lesson on read when the bridge VERSION advanced (so it
+                # picks up the latest solver/code/visual fixes). The example-typing/ontology
+                # refresh is retired — version is the only upgrade trigger now.
+                if lesson_json_needs_hybrid_visual_refresh(cached.lesson_json):
                     try:
                         from sqlalchemy.orm.attributes import flag_modified
                         enrich_legacy_lesson_with_v2_visuals(topic=topic, lesson_json=cached.lesson_json)

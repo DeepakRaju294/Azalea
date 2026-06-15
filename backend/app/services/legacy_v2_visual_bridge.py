@@ -50,7 +50,10 @@ from typing import Any
 # HOW THE CODE implements each step (loop conditions, branches, appends), not a vague label.
 # v15 = solver completeness retry: a too-short worked example (skipped the work, e.g. split ->
 # answer) is re-solved once with explicit feedback to walk EVERY step start-to-finish.
-VISUAL_BRIDGE_VERSION = 15
+# v16 = example blueprint: per-card role + step index/total metadata, and an example_status
+# flagging skipped/unfinished examples. Also re-enrichment on the STREAMING read path now keys
+# on bridge version (was gated on the retired ontology refresh -> cached lessons never updated).
+VISUAL_BRIDGE_VERSION = 16
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan
