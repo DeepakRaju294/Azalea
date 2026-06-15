@@ -470,6 +470,16 @@ def apply_llm_solved_worked_example(
         existing = _existing_problem_text(cards)
         sol = solve_worked_example(topic, existing_problem=existing, code=code, solver=solver)
         if sol is None:
+            # Visible diagnostic: the solver path was taken but produced nothing — almost always
+            # a missing/dummy OPENAI_API_KEY (the lesson then keeps the weaker lean worked example).
+            has_key = bool((os.getenv("OPENAI_API_KEY") or "").strip()) and \
+                os.getenv("OPENAI_API_KEY", "").strip().lower() != "dummy"
+            lesson_json.setdefault("metadata", {})["worked_example_solver"] = {
+                "applied": False, "version": SOLVER_VERSION,
+                "reason": "solver_returned_none" + ("" if has_key else "_no_api_key"),
+            }
+            _log.warning("worked-example solver: produced nothing for %s (api_key=%s) — lean fallback shown",
+                         topic.get("id"), has_key)
             return False
         # Completeness guard: a solution shorter than the solver's OWN expected_steps estimate
         # (or the default floor) skipped the work. Re-solve ONCE with feedback; keep the longer.

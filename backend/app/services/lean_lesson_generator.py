@@ -6983,44 +6983,28 @@ def _convert_lean_to_legacy(
 
 
 def _ensure_generic_worked_example_setup_cards(cards: list[dict[str, Any]]) -> None:
-    """Add a problem/setup card before worked-example runs when no richer
-    visual-specific setup will be inserted by the v2 visual bridge.
+    """Add EXACTLY ONE problem/setup card, immediately before the FIRST worked-example card —
+    never between steps, never for a later run. A worked-example setup states the problem and
+    belongs only at the very start of the example.
     """
-    index = 0
-    while index < len(cards):
-        card = cards[index]
-        if not isinstance(card, dict):
-            index += 1
-            continue
-        if str(card.get("blueprint_key") or "").strip().lower() != "worked_example":
-            index += 1
-            continue
-        if _is_generic_worked_example_setup_card(card):
-            index += 1
-            continue
-
-        previous = cards[index - 1] if index > 0 else None
-        # One setup per worked-example RUN: skip if the previous card is already part
-        # of the worked example (a prior step OR its setup). This prevents splicing a
-        # setup card between consecutive worked-example step cards.
-        if isinstance(previous, dict) and (
-            str(previous.get("blueprint_key") or "").strip().lower() == "worked_example"
-            or _is_generic_worked_example_setup_card(previous)
-        ):
-            index += 1
-            continue
-
-        # Node-link/tree traces get a structured visual setup in
-        # legacy_v2_visual_bridge after the canonical scenario is known.
-        visual_plan = card.get("visual_plan") if isinstance(card.get("visual_plan"), dict) else {}
-        visual_type = _normalize_visual_type(card.get("visual_type"))
-        if visual_type == "node_link_diagram" or visual_plan.get("nodes"):
-            index += 1
-            continue
-
-        setup_card = _generic_worked_example_setup_card(card, index)
-        cards.insert(index, setup_card)
-        index += 2
+    first = next(
+        (i for i, c in enumerate(cards)
+         if isinstance(c, dict) and str(c.get("blueprint_key") or "").strip().lower() == "worked_example"),
+        None,
+    )
+    if first is None:
+        return
+    first_card = cards[first]
+    # Already a setup, or the card immediately before it is one -> nothing to add.
+    if _is_generic_worked_example_setup_card(first_card):
+        return
+    if first > 0 and isinstance(cards[first - 1], dict) and _is_generic_worked_example_setup_card(cards[first - 1]):
+        return
+    # Node-link/tree traces get a structured visual setup from the bridge instead.
+    visual_plan = first_card.get("visual_plan") if isinstance(first_card.get("visual_plan"), dict) else {}
+    if _normalize_visual_type(first_card.get("visual_type")) == "node_link_diagram" or visual_plan.get("nodes"):
+        return
+    cards.insert(first, _generic_worked_example_setup_card(first_card, first))
 
 
 def _is_generic_worked_example_setup_card(card: dict[str, Any]) -> bool:
