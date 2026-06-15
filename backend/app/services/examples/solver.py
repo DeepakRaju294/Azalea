@@ -108,7 +108,9 @@ _SYSTEM = (
     "EXACTLY:\n\n"
     f"{_WORKED_EXAMPLE_RULES}\n\n"
     "Return ONLY a JSON object of exactly this shape:\n"
-    '{"problem": "<the concrete problem statement, shown as the opening card>", '
+    '{"problem": "<the concrete, fully-specified problem the learner will solve — state the '
+    "ACTUAL values/input and what to find, in 1-2 sentences, so a learner understands exactly "
+    'what the example is BEFORE any steps>", '
     '"problem_visual": "<rich description of the INITIAL figure for the setup>", '
     '"cards": [{"title": "<short step name>", "points": ["<main bullet>", "  - <subpoint>", ...], '
     '"visual": "<rich description of what THIS step\'s figure shows>"}, ...], '
@@ -149,7 +151,8 @@ _CODING_SYSTEM = (
     "Follow these rules EXACTLY:\n\n"
     f"{_WORKED_EXAMPLE_RULES}\n\n"
     "Return ONLY a JSON object of exactly this shape:\n"
-    '{"problem": "<the concrete input the code will run on>", '
+    '{"problem": "<the concrete input the code will run on — state the ACTUAL values explicitly, '
+    'so the learner knows exactly what we are tracing before any steps>", '
     '"problem_visual": "<rich description of the initial data state>", '
     '"cards": [{"title": "<short step name>", "points": ["<main bullet>", "  - <subpoint>", ...], '
     '"visual": "<what the data looks like at this step>"}, ...], '
@@ -292,7 +295,7 @@ def _build_solution_cards(
         "blueprint_key": "worked_example",
         "card_type": "worked_example",
         "title": "Worked Example",
-        "points": [problem],
+        "points": ["Problem:", f"  - {problem}"],
         "visual_description": str(sol.get("problem_visual") or ""),
         "continuation_group_id": gid,
         "metadata": {"worked_example_setup": True, "worked_example_solver": True},

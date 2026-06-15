@@ -83,7 +83,7 @@ class TestSolve(unittest.TestCase):
         cards = _build_solution_cards(sol, {"id": "t1"})
         self.assertGreaterEqual(len(cards), 4)                 # setup + 3 steps
         self.assertTrue(cards[0]["metadata"].get("worked_example_setup"))
-        self.assertIn("2x^2 - 4x - 6", cards[0]["points"][0])
+        self.assertIn("2x^2 - 4x - 6", " ".join(cards[0]["points"]))   # setup states the problem
         # subpoint formatting preserved
         self.assertTrue(any(p.startswith("  - ") for c in cards for p in c["points"]))
         # rich per-card visual description carried (Phase-2 foundation)

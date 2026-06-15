@@ -495,6 +495,10 @@ def _lean_card_to_legacy(
         if _dedented != code_snippet:
             code_snippet = _dedented
             highlight_lines_per_step = []
+        _stripped = _strip_driver_code(code_snippet)
+        if _stripped != code_snippet:
+            code_snippet = _stripped
+            highlight_lines_per_step = []
         _synth = _synthesize_main_for_helper(code_snippet)
         if _synth != code_snippet:
             code_snippet = _synth
@@ -1574,6 +1578,33 @@ def _strip_module_level_strays(code: str) -> str:
     kept = [n for n in tree.body if isinstance(n, keep_types)]
     if len(kept) == len(tree.body) or not kept:
         return code
+    new_tree = ast.Module(body=kept, type_ignores=[])
+    ast.fix_missing_locations(new_tree)
+    try:
+        return ast.unparse(new_tree)
+    except Exception:  # noqa: BLE001
+        return code
+
+
+def _strip_driver_code(code: str) -> str:
+    """Drop driver/example scaffolding the model sometimes appends so the snippet is ONLY
+    the algorithm's functions: an `if __name__ == "__main__"` guard and bare module-level
+    expression statements (example calls / `print(...)`). A clean merge-sort answer is just
+    `merge_sort` + `merge`, not a runnable script."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return code
+    kept: list[ast.stmt] = []
+    for node in tree.body:
+        if isinstance(node, ast.If) and isinstance(node.test, ast.Compare) \
+                and isinstance(node.test.left, ast.Name) and node.test.left.id == "__name__":
+            continue  # `if __name__ == "__main__":` driver
+        if isinstance(node, ast.Expr):
+            continue  # bare example/usage/print call at module level (or a stray docstring)
+        kept.append(node)
+    if len(kept) == len(tree.body) or not kept:
+        return code  # nothing to strip — preserve original formatting
     new_tree = ast.Module(body=kept, type_ignores=[])
     ast.fix_missing_locations(new_tree)
     try:
@@ -5591,6 +5622,7 @@ def _expand_coding_code_walkthroughs_to_one_line_cards(
         # module-level lines, synthesize a missing main, split broken recursion.
         full_code = _fix_dedented_body_lines(full_code)
         full_code = _strip_module_level_strays(full_code)
+        full_code = _strip_driver_code(full_code)
         full_code = _synthesize_main_for_helper(full_code)
         full_code = _split_accumulator_recursion(full_code)
         # Iterate one real (non-blank) line per card; blank separators are restored
@@ -7042,10 +7074,6 @@ def _generic_worked_example_setup_card(first_card: dict[str, Any], index: int) -
         "points": [
             "Problem:",
             f"  - {setup_summary}",
-            "Initial state:",
-            "  - Start before the first operation or calculation.",
-            "Goal:",
-            "  - Work through each step until the example is complete.",
         ],
         "body": [setup_summary] if setup_summary else [],
         "bullets": [],

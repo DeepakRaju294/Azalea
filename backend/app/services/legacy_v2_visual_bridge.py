@@ -37,7 +37,9 @@ from typing import Any
 # v9 = ALL worked examples go through the LLM solver (the line-by-line code-execution trace
 # is retired). Coding examples explain execution conceptually (no line numbers) with the code
 # shown in an IDE panel. Re-solve so coding lessons drop the old "line N executes" trace cards.
-VISUAL_BRIDGE_VERSION = 9
+# v10 = setup card states the actual problem (Problem: <concrete input/values>) instead of
+# generic filler; generated code is the clean algorithm with no main/driver. Re-solve.
+VISUAL_BRIDGE_VERSION = 10
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan
