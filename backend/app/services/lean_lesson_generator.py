@@ -6911,6 +6911,7 @@ def _convert_lean_to_legacy(
     _split_coarse_code_walkthrough_bullets(legacy_cards)
     _strip_code_only_bullets_from_code_walkthrough(legacy_cards)
     _accumulate_code_walkthrough_visuals(legacy_cards)
+    topic_type_key = topic_type_for_routing  # used by the guards below
     # The coding-specific rebuilders are RETIRED: the per-line walkthrough rebuilder corrupted
     # valid code (merge sort's left/right), worked examples are now authored by the solver, and
     # the graph-visual synthesis was retired. We keep the LLM's own code_walkthrough cards and
