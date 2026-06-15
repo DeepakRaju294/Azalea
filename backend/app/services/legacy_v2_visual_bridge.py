@@ -53,7 +53,10 @@ from typing import Any
 # v16 = example blueprint: per-card role + step index/total metadata, and an example_status
 # flagging skipped/unfinished examples. Also re-enrichment on the STREAMING read path now keys
 # on bridge version (was gated on the retired ontology refresh -> cached lessons never updated).
-VISUAL_BRIDGE_VERSION = 16
+# v17 = blueprint v2: solver emits a transition per step (prior/decision/action/resulting) +
+# expected_final_answer (hidden) + required_cases + expected_steps; validation checks transition
+# structure (missing/no-op) and topic-aware step count, not just a global minimum.
+VISUAL_BRIDGE_VERSION = 17
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan

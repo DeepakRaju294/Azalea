@@ -21,19 +21,26 @@ from app.services.examples.solver import (
 from app.services.examples.worked_example_audit import audit_worked_examples
 
 
+def _step(title, prior, decision, action, resulting, visual):
+    return {"title": title, "prior_state": prior, "decision": decision,
+            "action": action, "resulting_state": resulting, "visual": visual}
+
+
 def _stub(payload):
-    # A complete, concrete solution in the `cards` contract — what a focused solve returns.
+    # A complete, concrete solution in the transition contract — what a focused solve returns.
     return {
         "problem": "Solve 2x^2 - 4x - 6 = 0 for x.",
+        "expected_final_answer": "x = 3 or x = -1",
+        "required_cases": ["positive discriminant", "two real roots"],
+        "expected_steps": 3,
         "problem_visual": "The equation 2x^2 - 4x - 6 = 0 centered, with a, b, c labeled below.",
         "cards": [
-            {"title": "Identify coefficients", "points": ["Read off a, b, c:", "  - a = 2, b = -4, c = -6."],
-             "visual": "The three coefficients a=2, b=-4, c=-6 boxed under the equation."},
-            {"title": "Compute the discriminant",
-             "points": ["Discriminant:", "  - b^2 - 4ac = 16 + 48 = 64.", "  - sqrt(64) = 8."],
-             "visual": "b^2 - 4ac written out as 16 + 48 = 64, with sqrt(64)=8 highlighted."},
-            {"title": "Apply the formula", "points": ["Two roots:", "  - x = (4 ± 8) / 4."],
-             "visual": "x = (4 ± 8)/4 splitting into two branches for + and -."},
+            _step("Identify coefficients", "2x^2 - 4x - 6 = 0", "read the standard form",
+                  "name a, b, c", "a = 2, b = -4, c = -6", "coefficients boxed under the equation"),
+            _step("Compute the discriminant", "a = 2, b = -4, c = -6", "the formula needs b^2-4ac",
+                  "compute b^2 - 4ac", "discriminant = 64 (sqrt = 8)", "16 + 48 = 64, sqrt(64)=8 highlighted"),
+            _step("Apply the formula", "discriminant = 64", "plug into (-b ± sqrt)/2a",
+                  "evaluate (4 ± 8) / 4", "x = 3 or x = -1", "two branches for + and -"),
         ],
         "final_answer": "x = 3 or x = -1",
     }
@@ -89,9 +96,14 @@ class TestSolve(unittest.TestCase):
         # rich per-card visual description carried (Phase-2 foundation)
         self.assertIn("a, b, c", cards[0]["visual_description"])      # setup uses problem_visual
         self.assertTrue(all(c.get("visual_description") for c in cards))
+        # setup carries the hidden expected answer (not shown in the problem text)
+        self.assertEqual(cards[0]["metadata"]["expected_final_answer"], "x = 3 or x = -1")
+        self.assertNotIn("x = 3 or x = -1", cards[0]["points"][1])  # answer not spoiled in setup
+        # each step carries a transition record
+        self.assertEqual(cards[1]["metadata"]["transition"]["resulting_state"], "a = 2, b = -4, c = -6")
         last = cards[-1]
         self.assertTrue(last["metadata"].get("reaches_final_answer"))
-        self.assertTrue(any("Final answer: x = 3 or x = -1" in p for p in last["points"]))
+        self.assertTrue(any("x = 3 or x = -1" in p for p in last["points"]))  # resulting state = answer
 
 
 class TestCoding(unittest.TestCase):

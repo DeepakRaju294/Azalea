@@ -1,53 +1,57 @@
-"""Example blueprint — the EXPLICIT structure of a worked example + completeness metadata.
+"""Example blueprint — the GENERATION contract and the VALIDATION contract for worked examples.
 
-This is the deterministic contract every worked example follows, independent of the retired
-example-typing/fixture/ontology system. It pins down (1) exactly what each example card
-contains, (2) the rules for how the example PROBLEM is posed, and (3) per-card metadata that
-makes a SKIPPED step or an UNFINISHED example visible in the data rather than silent.
+Kept deliberately separate (generation is strict, validation is diagnostic), and independent of
+the retired example-typing/fixture/ontology system.
 
-  EXAMPLE STRUCTURE
-    - SETUP card  : states the COMPLETE problem (exact input values + task + expected answer).
-    - STEP cards  : each is ONE state transition (prior state -> action -> resulting state),
-                    carrying its position via metadata.example = {role:"step", index, total}.
-    - FINAL step  : reaches the final answer (metadata.reaches_final_answer = True).
+GENERATION CONTRACT (what the solver emits)
+  - SETUP card: the COMPLETE concrete problem — exact inputs + task + answer FORMAT (NOT the
+    answer value). Hidden metadata carries the real expected_final_answer, required_cases, and
+    expected_steps so we can validate against them without spoiling the answer.
+  - STEP card: ONE state transition — prior_state -> decision (why this action) -> action ->
+    resulting_state.
+  - FINAL step: its resulting_state reaches the expected_final_answer.
 
-  COMPLETENESS METADATA (stamped on the setup card's metadata.example_status)
-    - skipped  : True when the example has too few steps (the work was skipped over).
-    - finished : True when the last step reaches the stated final answer.
-    - complete : setup present AND finished AND not skipped.
-    - reason   : "" | "missing_setup" | "steps_skipped" | "did_not_finish".
+VALIDATION CONTRACT (what audit_example checks — flags, never raises)
+  - structure : setup present; each step carries a transition (prior/action/resulting), and no
+    step is a no-op (prior == resulting).
+  - completeness : step count within the expected range; the last step reaches the expected
+    final answer.
+  - The result is stamped on the setup card as `example_status` so failures are inspectable
+    (skipped / did_not_finish / missing_transition / no_op_step / missing_setup).
 """
 from __future__ import annotations
 
 import logging
-from typing import Any
+import re
+from typing import Any, Optional
 
 _log = logging.getLogger(__name__)
 
-# A multi-step example with fewer than this many STEP cards skipped the work.
-MIN_STEPS = 5
+# Fallback minimum when the solver did not estimate an expected step count.
+DEFAULT_MIN_STEPS = 5
 
-# The blueprint, as reference data (what each card role contains).
+# Reference data: exactly what each card role contains (the generation contract).
 EXAMPLE_CARD_BLUEPRINT: dict[str, dict[str, str]] = {
     "setup": {
         "role": "setup",
-        "contains": "the COMPLETE problem stated like a test question — exact input values, "
-                    "the task, and the expected answer form, solvable from the statement alone",
-        "points": "['Problem:', '  - <the full concrete problem>']",
+        "contains": "the COMPLETE problem like a test question — exact input values, the task, "
+                    "and the expected answer FORMAT (not the answer value, which is hidden in "
+                    "metadata.expected_final_answer)",
+        "metadata": "example={role:setup}; expected_final_answer; required_cases; expected_steps",
     },
     "step": {
         "role": "step",
-        "contains": "ONE state transition — prior state, the action taken, the resulting state",
-        "points": "['Currently:', '  - <state>', 'Action:', '  - <what happens>', 'Now:', '  - <new state>']",
-        "metadata": "example = {role:'step', index, total}; visual_description set",
+        "contains": "ONE state transition — prior_state, decision (why this action), action, resulting_state",
+        "metadata": "example={role:step, index, total}; transition={prior_state, action, resulting_state}",
     },
     "final": {
         "role": "the LAST step",
-        "contains": "the final answer; metadata.reaches_final_answer = True",
+        "contains": "a step whose resulting_state reaches the expected final answer",
+        "metadata": "reaches_final_answer=True",
     },
 }
 
-# The rule system for HOW the example problem is made (shared by the solver prompt).
+# The one rule system for HOW the example problem is posed (shared by the solver prompt).
 EXAMPLE_PROBLEM_RULES = """\
 HOW TO MAKE THE EXAMPLE PROBLEM:
 - Pick ONE concrete, COMPREHENSIVE, canonical instance of the topic — the kind of problem a
@@ -55,9 +59,10 @@ HOW TO MAKE THE EXAMPLE PROBLEM:
   decisions and to reach a non-trivial answer.
 - State the COMPLETE problem like a TEST QUESTION: the exact input VALUES (e.g. the actual array
   [38, 27, 43, 3, 9, 82, 10], never the word "array" or a placeholder), the task, and the
-  expected answer form — so the learner could solve it from the statement alone.
-- Choose the instance so the walkthrough EXERCISES the concept's key cases and decision branches,
-  including the tricky / boundary / edge ones — not a path that avoids them."""
+  expected answer FORMAT — so the learner could solve it from the statement alone. Do NOT reveal
+  the final answer in the problem text; that goes in `expected_final_answer`.
+- Choose the instance so the walkthrough EXERCISES the concept's key cases/decisions (list them
+  in `required_cases`), including the tricky / boundary / edge ones — not a path that avoids them."""
 
 
 def _is_worked_example(card: Any) -> bool:
@@ -71,11 +76,25 @@ def _is_setup(card: dict[str, Any]) -> bool:
     return bool((card.get("metadata") or {}).get("worked_example_setup"))
 
 
+def _norm(text: Any) -> str:
+    """Normalize a state string for comparison (lowercase, collapse non-alphanumerics)."""
+    return re.sub(r"[^a-z0-9]+", " ", str(text or "").lower()).strip()
+
+
+def _transition(card: dict[str, Any]) -> dict[str, str]:
+    return (card.get("metadata") or {}).get("transition") or {}
+
+
 def stamp_example_metadata(
-    cards: list[Any], *, final_answer: str = "", boundary: bool = False,
+    cards: list[Any],
+    *,
+    expected_final_answer: str = "",
+    expected_steps: Optional[int] = None,
+    required_cases: tuple[str, ...] = (),
+    allow_short_example: bool = False,
 ) -> dict[str, Any]:
-    """Stamp role + step index/total on every worked-example card and an example_status that
-    flags SKIPPED steps / an UNFINISHED example. Returns the status. Failure-safe."""
+    """Stamp blueprint metadata on every worked-example card and validate the example, returning
+    (and stamping on the setup card) an example_status that flags incompleteness. Failure-safe."""
     try:
         we = [c for c in cards if _is_worked_example(c)]
         if not we:
@@ -90,27 +109,53 @@ def stamp_example_metadata(
             if _is_setup(card):
                 meta["example"] = {"role": "setup"}
         for index, card in enumerate(steps, start=1):
-            card.setdefault("metadata", {})["example"] = {
-                "role": "step", "index": index, "total": total,
-            }
+            card.setdefault("metadata", {})["example"] = {"role": "step", "index": index, "total": total}
 
+        # --- structure: each step is a real transition (prior/action/resulting), no no-ops ---
+        # Only enforced when the example uses the transition contract (older free-form cards skip it).
+        transition_issues: list[dict[str, Any]] = []
+        if any(_transition(c) for c in steps):
+            for index, card in enumerate(steps, start=1):
+                tr = _transition(card)
+                prior, action, resulting = tr.get("prior_state"), tr.get("action"), tr.get("resulting_state")
+                if not (str(action or "").strip() and str(resulting or "").strip()):
+                    transition_issues.append({"step": index, "issue": "missing_transition"})
+                elif prior and _norm(prior) == _norm(resulting):
+                    transition_issues.append({"step": index, "issue": "no_op_step"})  # state didn't change
+
+        # --- completeness ---
         last = steps[-1] if steps else None
         finished = bool(last and (last.get("metadata") or {}).get("reaches_final_answer"))
-        if last and final_answer and not finished:
-            text = " ".join(str(p) for p in (last.get("points") or [])).lower()
-            finished = final_answer.strip().lower() in text
-        skipped = (not boundary) and total < MIN_STEPS
-        complete = has_setup and finished and not skipped
+        if last and expected_final_answer and not finished:
+            blob = _norm(_transition(last).get("resulting_state")) + " " + _norm(
+                " ".join(str(p) for p in (last.get("points") or []))
+            )
+            finished = _norm(expected_final_answer) in blob
+
+        min_steps = max(1, expected_steps or DEFAULT_MIN_STEPS) if expected_steps else DEFAULT_MIN_STEPS
+        skipped = (not allow_short_example) and total < min_steps
+
+        complete = has_setup and finished and not skipped and not transition_issues
         reason = ""
         if not complete:
-            reason = "missing_setup" if not has_setup else "steps_skipped" if skipped else "did_not_finish"
+            if not has_setup:
+                reason = "missing_setup"
+            elif transition_issues:
+                reason = transition_issues[0]["issue"]
+            elif skipped:
+                reason = "steps_skipped"
+            elif not finished:
+                reason = "did_not_finish"
 
         status = {
-            "present": True, "complete": complete, "steps": total,
-            "has_setup": has_setup, "finished": finished, "skipped": skipped, "reason": reason,
+            "present": True, "complete": complete, "steps": total, "expected_steps": expected_steps,
+            "has_setup": has_setup, "finished": finished, "skipped": skipped,
+            "transition_issues": transition_issues, "required_cases": list(required_cases), "reason": reason,
         }
         anchor = next((c for c in we if _is_setup(c)), we[0])
         anchor.setdefault("metadata", {})["example_status"] = status
+        if expected_final_answer:
+            anchor["metadata"]["expected_final_answer"] = expected_final_answer
 
         if not complete:
             _log.warning("example_blueprint: incomplete worked example (%s, steps=%d)", reason, total)

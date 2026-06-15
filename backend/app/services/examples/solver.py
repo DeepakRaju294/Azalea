@@ -116,16 +116,21 @@ _SYSTEM = (
     "EXACTLY:\n\n"
     f"{_WORKED_EXAMPLE_RULES}\n\n"
     "Return ONLY a JSON object of exactly this shape:\n"
-    '{"problem": "<the COMPLETE problem stated like a TEST QUESTION — give the exact input '
-    "values (e.g. the actual array [38, 27, 43, 3, 9, 82, 10], not the word \\\"array\\\"), the "
-    "task, and the expected answer form, so the learner could solve it from the statement "
-    'alone BEFORE any steps. Never use a placeholder or a generic word in place of real values>", '
+    '{"problem": "<the COMPLETE problem like a TEST QUESTION — exact input values (e.g. the '
+    "actual array [38, 27, 43, 3, 9, 82, 10], not the word \\\"array\\\"), the task, and the "
+    "expected answer FORMAT. Do NOT reveal the final answer here>\", "
+    '"expected_final_answer": "<the actual final answer (kept in metadata, never shown in the problem)>", '
+    '"required_cases": ["<a key decision/case the walkthrough MUST exercise>", ...], '
+    '"expected_steps": <your integer estimate of how many steps a COMPLETE walkthrough needs>, '
     '"problem_visual": "<rich description of the INITIAL figure for the setup>", '
-    '"cards": [{"title": "<short step name>", "points": ["<main bullet>", "  - <subpoint>", ...], '
-    '"visual": "<rich description of what THIS step\'s figure shows>"}, ...], '
-    '"final_answer": "<the final result>"}\n'
-    "`cards` are the solving STEPS in order (the problem is shown first automatically); the "
-    "last card reaches the final answer. Every card MUST include its `visual` description."
+    '"cards": [{"title": "<short step name>", '
+    '"prior_state": "<the state BEFORE this step>", '
+    '"decision": "<WHY this action is the next move / what rule applies>", '
+    '"action": "<the ONE operation or change this step performs>", '
+    '"resulting_state": "<the state AFTER this step>", '
+    '"visual": "<rich description of what THIS step\'s figure shows>"}, ...]}\n'
+    "Each card is exactly ONE state transition. The LAST card's resulting_state MUST reach the "
+    "expected_final_answer. Every card MUST include prior_state, action, resulting_state, and visual."
 )
 
 
@@ -165,13 +170,19 @@ _CODING_SYSTEM = (
     "Follow these rules EXACTLY:\n\n"
     f"{_WORKED_EXAMPLE_RULES}\n\n"
     "Return ONLY a JSON object of exactly this shape:\n"
-    '{"problem": "<the concrete input the code will run on — state the ACTUAL values explicitly, '
-    'so the learner knows exactly what we are tracing before any steps>", '
+    '{"problem": "<the concrete input the code runs on — the ACTUAL values; do NOT reveal the result>", '
+    '"expected_final_answer": "<the value the code returns (kept in metadata)>", '
+    '"required_cases": ["<a branch/case the trace MUST exercise, e.g. \'left smaller\', \'leftover tail\'>", ...], '
+    '"expected_steps": <integer estimate of how many steps a COMPLETE trace needs>, '
     '"problem_visual": "<rich description of the initial data state>", '
-    '"cards": [{"title": "<short step name>", "points": ["<main bullet>", "  - <subpoint>", ...], '
-    '"visual": "<what the data looks like at this step>"}, ...], '
-    '"final_answer": "<the final result the code returns>"}\n'
-    "Explain the EXECUTION conceptually; never cite line numbers; the code itself is shown separately."
+    '"cards": [{"title": "<short step name>", '
+    '"prior_state": "<the data state BEFORE this step>", '
+    '"decision": "<which code construct runs next and WHY (the condition checked / branch taken)>", '
+    '"action": "<what that construct does to the data>", '
+    '"resulting_state": "<the data state AFTER>", '
+    '"visual": "<what the data looks like now>"}, ...]}\n'
+    "Each card is ONE step of execution. The LAST card's resulting_state MUST be the returned "
+    "result. Explain HOW THE CODE does each step; never cite line numbers; the code is shown separately."
 )
 
 
@@ -247,11 +258,16 @@ def solve_worked_example(
     cards = _normalize_solution_cards(raw)
     if not cards:
         return None
+    final = str(raw.get("expected_final_answer") or raw.get("final_answer") or "").strip()
+    steps_est = raw.get("expected_steps")
     return {
         "problem": str(raw.get("problem") or "").strip(),
         "problem_visual": str(raw.get("problem_visual") or "").strip(),
+        "expected_final_answer": final,
+        "required_cases": [str(c).strip() for c in (raw.get("required_cases") or []) if str(c).strip()],
+        "expected_steps": int(steps_est) if isinstance(steps_est, (int, float)) else None,
         "cards": cards,
-        "final_answer": str(raw.get("final_answer") or "").strip(),
+        "final_answer": final,  # backward-compat alias
     }
 
 
@@ -263,20 +279,44 @@ def _coerce_points(value: Any) -> list[str]:
     return [str(p).rstrip() for p in value if str(p).strip()]
 
 
+def _transition_points(prior: str, decision: str, action: str, resulting: str) -> list[str]:
+    """Render a transition into the Currently / Decision / Action / Now bullet frames."""
+    pts: list[str] = []
+    if prior:
+        pts += ["Currently:", f"  - {prior}"]
+    if decision:
+        pts += ["Decision:", f"  - {decision}"]
+    if action:
+        pts += ["Action:", f"  - {action}"]
+    if resulting:
+        pts += ["Now:", f"  - {resulting}"]
+    return pts
+
+
 def _normalize_solution_cards(raw: dict[str, Any]) -> list[dict[str, Any]]:
-    """Accept the `cards` contract ({title, points}); fall back to a `steps`/`detail`
-    shape if the model used it. Returns [{title, points}]."""
+    """Normalize each step to {title, points, visual, transition}. The current contract gives
+    prior_state/decision/action/resulting_state (-> Currently/Decision/Action/Now + a transition
+    record); older free-form `points` (or `steps`/`detail`) are accepted with an empty transition."""
     out: list[dict[str, Any]] = []
     for card in raw.get("cards") if isinstance(raw.get("cards"), list) else []:
         if not isinstance(card, dict):
             continue
-        points = _coerce_points(card.get("points"))
-        if points:
+        title = str(card.get("title") or "").strip()
+        visual = str(card.get("visual") or "").strip()
+        prior = str(card.get("prior_state") or "").strip()
+        decision = str(card.get("decision") or "").strip()
+        action = str(card.get("action") or "").strip()
+        resulting = str(card.get("resulting_state") or "").strip()
+        if action and resulting:
             out.append({
-                "title": str(card.get("title") or "").strip(),
-                "points": points,
-                "visual": str(card.get("visual") or "").strip(),
+                "title": title, "visual": visual,
+                "points": _transition_points(prior, decision, action, resulting),
+                "transition": {"prior_state": prior, "action": action, "resulting_state": resulting},
             })
+        else:
+            points = _coerce_points(card.get("points"))
+            if points:
+                out.append({"title": title, "visual": visual, "points": points, "transition": {}})
     if out:
         return out
     for step in raw.get("steps") if isinstance(raw.get("steps"), list) else []:
@@ -286,8 +326,8 @@ def _normalize_solution_cards(raw: dict[str, Any]) -> list[dict[str, Any]]:
         if points:
             out.append({
                 "title": str(step.get("title") or "").strip(),
-                "points": points,
                 "visual": str(step.get("visual") or "").strip(),
+                "points": points, "transition": {},
             })
     return out
 
@@ -318,10 +358,19 @@ def _build_solution_cards(
         "points": ["Problem:", f"  - {problem}"],
         "visual_description": str(sol.get("problem_visual") or ""),
         "continuation_group_id": gid,
-        "metadata": {"worked_example_setup": True, "worked_example_solver": True},
+        "metadata": {
+            "worked_example_setup": True, "worked_example_solver": True,
+            # Hidden generation contract (validation + future use; not shown in the problem text).
+            "expected_final_answer": str(sol.get("expected_final_answer") or ""),
+            "required_cases": list(sol.get("required_cases") or []),
+            "expected_steps": sol.get("expected_steps"),
+        },
         **_code_fields(),
     }]
     for n, card in enumerate(norm):
+        meta: dict[str, Any] = {"worked_example_solver": True}
+        if card.get("transition"):
+            meta["transition"] = card["transition"]
         cards.append({
             "id": f"we-solve-{tid}-{n}",
             "blueprint_key": "worked_example",
@@ -330,15 +379,17 @@ def _build_solution_cards(
             "points": card["points"],
             "visual_description": str(card.get("visual") or ""),
             "continuation_group_id": gid,
-            "metadata": {"worked_example_solver": True},
+            "metadata": meta,
             **_code_fields(),
         })
     if len(cards) < 2:
         return []  # need the setup + at least one real step
     last = cards[-1]
     last.setdefault("metadata", {})["reaches_final_answer"] = True
-    final = sol.get("final_answer")
-    if final and not any("final answer" in p.lower() for p in last.get("points") or []):
+    # If the last step used the older free-form shape (no transition), surface the answer.
+    final = sol.get("expected_final_answer") or sol.get("final_answer")
+    if final and not last.get("metadata", {}).get("transition") \
+            and not any("final answer" in p.lower() for p in last.get("points") or []):
         last["points"] = list(last.get("points") or []) + [f"Final answer: {final}"]
     return cards
 
@@ -404,9 +455,10 @@ def apply_llm_solved_worked_example(
         sol = solve_worked_example(topic, existing_problem=existing, code=code, solver=solver)
         if sol is None:
             return False
-        # Completeness guard: a too-short solution skipped the work (e.g. jumped from the split
-        # straight to the answer). Re-solve ONCE with explicit feedback; keep whichever is longer.
-        if len(sol.get("cards") or []) < _MIN_STEP_CARDS:
+        # Completeness guard: a solution shorter than the solver's OWN expected_steps estimate
+        # (or the default floor) skipped the work. Re-solve ONCE with feedback; keep the longer.
+        threshold = sol.get("expected_steps") or _MIN_STEP_CARDS
+        if len(sol.get("cards") or []) < threshold:
             feedback = (
                 f"Your previous attempt had only {len(sol.get('cards') or [])} step(s) and SKIPPED "
                 "the work (e.g. jumping from the split straight to the final answer). Produce the "
@@ -429,7 +481,10 @@ def apply_llm_solved_worked_example(
         from app.services.examples.example_blueprint import stamp_example_metadata
 
         status = stamp_example_metadata(
-            lesson_json.get("lesson_cards") or [], final_answer=str(sol.get("final_answer") or ""),
+            lesson_json.get("lesson_cards") or [],
+            expected_final_answer=str(sol.get("expected_final_answer") or ""),
+            expected_steps=sol.get("expected_steps"),
+            required_cases=tuple(sol.get("required_cases") or []),
         )
         lesson_json.setdefault("metadata", {})["worked_example_solver"] = {
             "version": SOLVER_VERSION, "steps": len(step_cards), "coding": bool(code),
