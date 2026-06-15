@@ -517,14 +517,11 @@ def _lean_card_to_legacy(
         if _stripped != code_snippet:
             code_snippet = _stripped
             highlight_lines_per_step = []
-        _synth = _synthesize_main_for_helper(code_snippet)
-        if _synth != code_snippet:
-            code_snippet = _synth
-            highlight_lines_per_step = []
-        _split = _split_accumulator_recursion(code_snippet)
-        if _split != code_snippet:
-            code_snippet = _split
-            highlight_lines_per_step = []
+        # NOTE: the _synthesize_main_for_helper / _split_accumulator_recursion transforms are
+        # RETIRED — they mutated the AST to "fix" code and instead corrupted valid algorithms
+        # (e.g. merge sort shipped using left/right that were never assigned). Correctness is
+        # now enforced by code_repair (validate parse + undefined names -> clean regeneration),
+        # so we keep the LLM's own code and only do benign layout cleanup here.
         code_snippet, _layout_line_map = _fix_code_layout(code_snippet)
         highlight_lines_per_step = _remap_line_ranges(highlight_lines_per_step, _layout_line_map)
     if code_snippet:
@@ -5641,8 +5638,8 @@ def _expand_coding_code_walkthroughs_to_one_line_cards(
         full_code = _fix_dedented_body_lines(full_code)
         full_code = _strip_module_level_strays(full_code)
         full_code = _strip_driver_code(full_code)
-        full_code = _synthesize_main_for_helper(full_code)
-        full_code = _split_accumulator_recursion(full_code)
+        # _synthesize_main_for_helper / _split_accumulator_recursion RETIRED — they corrupted
+        # valid code. code_repair validates + cleanly regenerates broken code at enrichment.
         # Iterate one real (non-blank) line per card; blank separators are restored
         # in the displayed cumulative code via _fix_code_layout below.
         full_lines = [line for line in full_code.splitlines() if line.strip()]
