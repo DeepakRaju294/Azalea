@@ -133,14 +133,44 @@ def _existing_problem_text(cards: list[Any]) -> str:
     return ""
 
 
-def _build_user_prompt(topic: dict[str, Any], existing_problem: str) -> str:
+# Coding worked examples: the LLM does NOT trace by line. The code is shown to the learner in
+# a separate IDE panel; here we explain how it EXECUTES on a concrete input — conceptually,
+# never by line number — so the learner understands what each operation does to the data.
+_CODING_SYSTEM = (
+    "You are authoring a worked example that walks through how a given piece of CODE executes on "
+    "a concrete input. The code is shown to the learner in a SEPARATE IDE panel, so:\n"
+    "- Do NOT restate the code, and do NOT put raw code in the bullets.\n"
+    "- NEVER reference line numbers or say things like 'line 8 executes' or 'line N runs'.\n"
+    "Instead, EXPLAIN the execution in plain conceptual language: what each operation DOES to the "
+    "data and WHY it happens — e.g. 'we split the array into two halves', 'we compare the first "
+    "elements of the two halves and take the smaller one', 'the smaller value is appended to the "
+    "result'. Track the running state in plain terms (what the data holds now). Pose ONE concrete, "
+    "representative input and walk the execution all the way to the final returned result.\n\n"
+    "Follow these rules EXACTLY:\n\n"
+    f"{_WORKED_EXAMPLE_RULES}\n\n"
+    "Return ONLY a JSON object of exactly this shape:\n"
+    '{"problem": "<the concrete input the code will run on>", '
+    '"problem_visual": "<rich description of the initial data state>", '
+    '"cards": [{"title": "<short step name>", "points": ["<main bullet>", "  - <subpoint>", ...], '
+    '"visual": "<what the data looks like at this step>"}, ...], '
+    '"final_answer": "<the final result the code returns>"}\n'
+    "Explain the EXECUTION conceptually; never cite line numbers; the code itself is shown separately."
+)
+
+
+def _build_user_prompt(topic: dict[str, Any], existing_problem: str, code: Optional[str] = None) -> str:
     parts = [f"Topic: {topic.get('title') or ''}"]
     concept = topic.get("concept") or topic.get("learning_goal") or topic.get("main_concept")
     if concept:
         parts.append(f"Concept: {concept}")
     if existing_problem:
         parts.append(f"The lesson frames the example as: {existing_problem}")
-    parts.append("Pose a concrete instance of this and solve it fully, step by step.")
+    if code:
+        parts.append("Here is the code (shown to the learner in an IDE panel). Explain how it "
+                     "executes on a concrete input — conceptually, never by line number:\n\n" + code)
+        parts.append("Walk its execution fully, step by step, to the returned result.")
+    else:
+        parts.append("Pose a concrete instance of this and solve it fully, step by step.")
     return "\n".join(parts)
 
 
@@ -156,7 +186,7 @@ def _default_solver(payload: dict[str, Any]) -> Optional[dict[str, Any]]:
         response = client.responses.create(
             model=OPENAI_MODEL,
             input=[
-                {"role": "system", "content": _SYSTEM},
+                {"role": "system", "content": str(payload.get("system") or _SYSTEM)},
                 {"role": "user", "content": str(payload.get("user") or "")},
             ],
             text={"format": {"type": "json_object"}},
@@ -171,11 +201,19 @@ def solve_worked_example(
     topic: dict[str, Any],
     *,
     existing_problem: str = "",
+    code: Optional[str] = None,
     solver: Optional[SolveFn] = None,
 ) -> Optional[dict[str, Any]]:
-    """Run the focused solve. Returns a normalized {problem, steps, final_answer} or None."""
+    """Run the focused solve. Returns a normalized {problem, cards, final_answer} or None.
+    When `code` is given (a coding worked example), the solve explains the code's EXECUTION
+    conceptually — never by line number — and the code is shown separately in an IDE panel."""
     fn = solver or _default_solver
-    payload = {"user": _build_user_prompt(topic, existing_problem), "topic": topic}
+    payload = {
+        "user": _build_user_prompt(topic, existing_problem, code),
+        "system": _CODING_SYSTEM if code else _SYSTEM,
+        "topic": topic,
+        "code": code,
+    }
     try:
         raw = fn(payload)
     except Exception as exc:  # noqa: BLE001
@@ -231,13 +269,20 @@ def _normalize_solution_cards(raw: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def _build_solution_cards(sol: dict[str, Any], topic: dict[str, Any]) -> list[dict[str, Any]]:
+def _build_solution_cards(
+    sol: dict[str, Any], topic: dict[str, Any], *, code: Optional[str] = None,
+) -> list[dict[str, Any]]:
     """Structured solution -> worked-example cards: a setup card stating the problem, one
-    card per step (the text breakdown), the last stamped reaches_final_answer."""
+    card per step (the text breakdown), the last stamped reaches_final_answer. When `code`
+    is given, every card carries it as `code_snippet` so the frontend shows it in an IDE
+    panel (the ONLY real-rendered visual) alongside the conceptual explanation."""
     tid = str(topic.get("id") or "topic")
     gid = f"we-solver-{tid}"
     norm = sol.get("cards") or []
     problem = sol.get("problem") or "Worked example."
+
+    def _code_fields() -> dict[str, Any]:
+        return {"code_snippet": code, "code_language": "python"} if code else {}
 
     # Always open with an explicit setup card stating the problem; `cards` are the steps.
     # `visual_description` carries the RICH spec of what each step's figure should show — the
@@ -251,6 +296,7 @@ def _build_solution_cards(sol: dict[str, Any], topic: dict[str, Any]) -> list[di
         "visual_description": str(sol.get("problem_visual") or ""),
         "continuation_group_id": gid,
         "metadata": {"worked_example_setup": True, "worked_example_solver": True},
+        **_code_fields(),
     }]
     for n, card in enumerate(norm):
         cards.append({
@@ -262,6 +308,7 @@ def _build_solution_cards(sol: dict[str, Any], topic: dict[str, Any]) -> list[di
             "visual_description": str(card.get("visual") or ""),
             "continuation_group_id": gid,
             "metadata": {"worked_example_solver": True},
+            **_code_fields(),
         })
     if len(cards) < 2:
         return []  # need the setup + at least one real step
@@ -292,14 +339,28 @@ def _replace_worked_example_cards(lesson_json: dict[str, Any], step_cards: list[
     lesson_json["lesson_cards"] = rebuilt
 
 
+def _extract_lesson_code(cards: list[Any]) -> str:
+    """The longest code_snippet the lesson already carries (the LLM's own implementation),
+    shown verbatim in the IDE panel — we don't re-generate or trace it."""
+    best = ""
+    for card in cards or []:
+        if not isinstance(card, dict):
+            continue
+        snippet = str(card.get("code_snippet") or "").strip()
+        if len(snippet) > len(best):
+            best = snippet
+    return best
+
+
 def apply_llm_solved_worked_example(
     lesson_json: dict[str, Any],
     topic: dict[str, Any],
     *,
     solver: Optional[SolveFn] = None,
 ) -> bool:
-    """Replace a non-code topic's worked example with an LLM-solved, start-to-finish text
-    breakdown. Returns True iff the lesson was mutated. Failure-safe throughout."""
+    """Replace a topic's worked example with an LLM-solved, start-to-finish text breakdown.
+    For a coding topic the solve EXPLAINS the code's execution conceptually (never by line
+    number) and each card carries the code for the IDE panel. Failure-safe throughout."""
     try:
         if not solver_enabled() or not isinstance(lesson_json, dict):
             return False
@@ -312,15 +373,21 @@ def apply_llm_solved_worked_example(
         ):
             return False  # this topic has no worked-example slot — nothing to solve
 
-        sol = solve_worked_example(topic, existing_problem=_existing_problem_text(cards), solver=solver)
+        is_coding = str(topic.get("topic_type") or "").lower() == "coding_implementation"
+        code = _extract_lesson_code(cards) if is_coding else ""
+        code = code or None
+
+        sol = solve_worked_example(
+            topic, existing_problem=_existing_problem_text(cards), code=code, solver=solver,
+        )
         if sol is None:
             return False
-        step_cards = _build_solution_cards(sol, topic)
+        step_cards = _build_solution_cards(sol, topic, code=code)
         if not step_cards:
             return False
         _replace_worked_example_cards(lesson_json, step_cards)
         lesson_json.setdefault("metadata", {})["worked_example_solver"] = {
-            "version": SOLVER_VERSION, "steps": len(step_cards),
+            "version": SOLVER_VERSION, "steps": len(step_cards), "coding": bool(code),
         }
         return True
     except Exception as exc:  # noqa: BLE001 — the solver must never break a lesson

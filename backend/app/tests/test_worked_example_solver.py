@@ -94,6 +94,43 @@ class TestSolve(unittest.TestCase):
         self.assertTrue(any("Final answer: x = 3 or x = -1" in p for p in last["points"]))
 
 
+class TestCoding(unittest.TestCase):
+    def test_coding_uses_code_system_and_attaches_ide_code(self):
+        seen = {}
+
+        def capture(payload):
+            seen["system"] = payload.get("system")
+            seen["user"] = payload.get("user")
+            return {
+                "problem": "Sort [5, 2, 8].",
+                "cards": [
+                    {"title": "Split", "points": ["We split the array into halves."], "visual": "two halves"},
+                    {"title": "Merge", "points": ["We merge them in order."], "visual": "merged"},
+                ],
+                "final_answer": "[2, 5, 8]",
+            }
+
+        code = "def merge_sort(arr):\n    return sorted(arr)"
+        lesson = {
+            "lesson_cards": [
+                {"blueprint_key": "worked_example", "code_snippet": code, "points": ["old"]},
+                {"blueprint_key": "practice"},
+            ],
+            "metadata": {},
+        }
+        applied = apply_llm_solved_worked_example(
+            lesson, {"id": "c1", "title": "Merge Sort", "topic_type": "coding_implementation"}, solver=capture,
+        )
+        self.assertTrue(applied)
+        self.assertIn("never", seen["system"].lower())        # coding system prompt used
+        self.assertIn("line number", seen["system"].lower())  # forbids line numbers
+        self.assertIn(code, seen["user"])                     # the code was handed to the solve
+        we = [c for c in lesson["lesson_cards"] if c.get("blueprint_key") == "worked_example"]
+        self.assertTrue(all(c.get("code_snippet") == code for c in we))  # IDE code on every card
+        joined = " ".join(p for c in we for p in c.get("points", [])).lower()
+        self.assertNotIn("line ", joined)                     # no "line N executes" in the text
+
+
 class TestApply(unittest.TestCase):
     def test_replaces_worked_example_and_completes(self):
         lesson = _lesson()

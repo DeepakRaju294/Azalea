@@ -216,25 +216,21 @@ def enrich_legacy_lesson_with_v2_visuals(
             ensure_worked_example_setup,
             validate_and_order_cards,
         )
-        from app.services.visual_v2.code_lesson_integration import apply_code_execution_to_lesson
 
         _v2_topic = {
             "id": str(topic.id),
             "title": topic.title or "",
             "topic_type": str(getattr(topic, "course_type", None) or getattr(topic, "topic_type", "") or ""),
         }
-        # Worked-example authoring. Two paths only (the example-type/fixture/ontology
-        # apparatus is bypassed — apply_fixture_to_lesson is left intact but no longer
-        # routed):
-        #   - coding topic        -> machine-authoritative execution trace of the lesson's
-        #                            OWN code (apply_code_execution_to_lesson),
-        #   - everything else (or a coding topic that couldn't trace) -> a single focused
-        #     LLM solve of one concrete problem, rendered as a full start-to-finish text
-        #     breakdown (apply_llm_solved_worked_example).
+        # Worked-example authoring: a single focused LLM solve for EVERY topic. For a coding
+        # topic the solve explains how the code EXECUTES on a concrete input — conceptually,
+        # never by line number — and the code is shown in an IDE panel (not a frame-by-frame
+        # trace visual). The line-by-line execution-trace path is retired (it gated example
+        # completeness on a successful trace and produced "line N executes" cards); the
+        # example-type/fixture/ontology apparatus stays bypassed. Both remain in the tree.
         from app.services.examples.solver import apply_llm_solved_worked_example
 
-        if not apply_code_execution_to_lesson(lesson_json, _v2_topic):
-            apply_llm_solved_worked_example(lesson_json, _v2_topic)
+        apply_llm_solved_worked_example(lesson_json, _v2_topic)
 
         # Deterministic guarantees, ANY path: a concept worked example always opens
         # with a setup card stating the problem, and the final card set matches the

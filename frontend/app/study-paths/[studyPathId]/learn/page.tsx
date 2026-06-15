@@ -4963,7 +4963,36 @@ export default function StudyPathLearnPage() {
                   }
                   className="w-full"
                 >
-                  {currentV2FocusVisual ? (
+                  {currentStep.type === "flow_card" &&
+                  (currentStep.card as { code_snippet?: string } | undefined)?.code_snippet ? (
+                    (() => {
+                      // CODE is the only thing that renders as a real visual (everything else
+                      // is debug metadata): the LLM's own code, shown in an IDE-styled panel.
+                      const card = currentStep.card as {
+                        code_snippet?: string;
+                        code_language?: string;
+                      };
+                      const lang = String(card.code_language || "python");
+                      return (
+                        <div className="w-full overflow-hidden rounded-2xl border border-[#E2DDEC] bg-white shadow-sm shadow-purple-100/40">
+                          <div className="flex items-center gap-2 border-b border-[#E8E3EF] bg-[#F6F2FF] px-4 py-2.5">
+                            <span className="flex gap-1.5">
+                              <span className="h-3 w-3 rounded-full bg-[#FF5F57]" />
+                              <span className="h-3 w-3 rounded-full bg-[#FEBC2E]" />
+                              <span className="h-3 w-3 rounded-full bg-[#28C840]" />
+                            </span>
+                            <span className="ml-1 text-sm font-black text-foreground">{lang}</span>
+                          </div>
+                          <CodeWithHighlight
+                            code={String(card.code_snippet)}
+                            language={lang}
+                            variant="light"
+                            showHeader={false}
+                          />
+                        </div>
+                      );
+                    })()
+                  ) : currentV2FocusVisual ? (
                     <div className="w-full rounded-2xl border border-[#E5DFF0] bg-white p-3 shadow-sm shadow-purple-100/40">
                       {/* A single border around the whole visual; no inner
                           scroller, so the visual fills the workspace width and
