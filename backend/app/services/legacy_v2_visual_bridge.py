@@ -45,7 +45,10 @@ from typing import Any
 # incremental walkthrough transforms) is replaced by one clean, validated LLM regeneration.
 # v13 = solver states the COMPLETE problem (actual values, like a test question) and explains
 # EVERY step explicitly — no glossing over recursion/sub-processes. Re-solve to pick it up.
-VISUAL_BRIDGE_VERSION = 13
+# v14 = code_repair UNIFIES every code card to the longest VALID snippet (fixes a broken
+# code_walkthrough when the worked example's code is correct); coding worked example explains
+# HOW THE CODE implements each step (loop conditions, branches, appends), not a vague label.
+VISUAL_BRIDGE_VERSION = 14
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan

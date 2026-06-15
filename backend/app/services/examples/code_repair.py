@@ -140,8 +140,13 @@ def _coding_code_cards(cards: list[Any]) -> list[dict[str, Any]]:
 def apply_clean_code_to_lesson(
     lesson_json: dict[str, Any], topic: dict[str, Any], *, generator: Optional[GenFn] = None,
 ) -> bool:
-    """For a coding topic whose code is BROKEN, replace every code card's snippet with one
-    clean, validated regeneration. Valid code is left as the LLM wrote it. Failure-safe."""
+    """Make EVERY code card in a coding topic show the SAME complete, valid implementation.
+
+    Different code cards can carry different snippets — the worked example often has the
+    correct full code while a code_walkthrough card carries a broken/partial cumulative one
+    (lines at column 0, left_half/right_half never assigned). So we pick the AUTHORITATIVE
+    code = the longest snippet that actually validates (parses + no undefined names); if none
+    validates, regenerate one cleanly. Then put it on every code card. Failure-safe."""
     try:
         if str(topic.get("topic_type") or "").lower() != "coding_implementation":
             return False
@@ -151,21 +156,28 @@ def apply_clean_code_to_lesson(
         code_cards = _coding_code_cards(cards)
         if not code_cards:
             return False
-        # Longest snippet is the most complete candidate; validate that.
-        current = max((str(c.get("code_snippet")) for c in code_cards), key=len)
-        if not code_has_undefined_names(current):
-            return False  # the LLM's own code is already valid — keep it
 
-        clean = generate_clean_code(topic, broken_code=current, generator=generator)
-        if not clean:
-            _log.warning("code_repair: %s has broken code but regeneration failed", topic.get("id"))
+        snippets = [str(c.get("code_snippet")) for c in code_cards]
+        valid = [s for s in snippets if not code_has_undefined_names(s)]
+        authoritative = max(valid, key=len) if valid else None
+        if authoritative is None:
+            authoritative = generate_clean_code(
+                topic, broken_code=max(snippets, key=len), generator=generator,
+            )
+        if not authoritative:
+            _log.warning("code_repair: %s has no valid code and regeneration failed", topic.get("id"))
             return False
+
+        changed = False
         for card in code_cards:
-            card["code_snippet"] = clean
-            card["highlight_lines_per_step"] = []  # code changed — old highlights are stale
-            card.setdefault("metadata", {})["clean_code_repair"] = True
-        lesson_json.setdefault("metadata", {})["clean_code_repair"] = True
-        return True
+            if str(card.get("code_snippet")) != authoritative:
+                card["code_snippet"] = authoritative
+                card["highlight_lines_per_step"] = []  # code changed — old highlights are stale
+                card.setdefault("metadata", {})["clean_code_repair"] = True
+                changed = True
+        if changed:
+            lesson_json.setdefault("metadata", {})["clean_code_repair"] = True
+        return changed
     except Exception as exc:  # noqa: BLE001 — never break a lesson
         _log.warning("code_repair: apply failed for %s: %s", topic.get("id"), exc)
         return False

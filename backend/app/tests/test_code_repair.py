@@ -97,6 +97,26 @@ class TestApply(unittest.TestCase):
         )
         self.assertFalse(applied)
 
+    def test_walkthrough_broken_worked_example_good_unifies_to_good(self):
+        # The real bug: walkthrough has broken code, worked example has the correct full code.
+        # No regeneration needed — the broken card must adopt the valid longest snippet.
+        lesson = {
+            "lesson_cards": [
+                {"blueprint_key": "code_walkthrough", "code_snippet": BROKEN},
+                {"blueprint_key": "worked_example", "code_snippet": GOOD},
+            ],
+            "metadata": {},
+        }
+
+        def _no_gen(payload):
+            raise AssertionError("should not regenerate when a valid snippet exists")
+
+        applied = apply_clean_code_to_lesson(
+            lesson, {"id": "c1", "title": "Merge Sort", "topic_type": "coding_implementation"}, generator=_no_gen,
+        )
+        self.assertTrue(applied)
+        self.assertTrue(all(c.get("code_snippet") == GOOD for c in lesson["lesson_cards"] if c.get("code_snippet")))
+
     def test_non_coding_topic_skipped(self):
         lesson = self._lesson(BROKEN)
         self.assertFalse(apply_clean_code_to_lesson(
