@@ -228,8 +228,13 @@ def enrich_legacy_lesson_with_v2_visuals(
         # trace visual). The line-by-line execution-trace path is retired (it gated example
         # completeness on a successful trace and produced "line N executes" cards); the
         # example-type/fixture/ontology apparatus stays bypassed. Both remain in the tree.
+        from app.services.examples.code_repair import apply_clean_code_to_lesson
         from app.services.examples.solver import apply_llm_solved_worked_example
 
+        # If a coding topic's code is broken (the incremental walkthrough transforms can ship
+        # code with undefined variables), replace it with one clean, validated LLM regeneration
+        # BEFORE the solver runs, so the worked-example IDE panel shows correct code.
+        apply_clean_code_to_lesson(lesson_json, _v2_topic)
         apply_llm_solved_worked_example(lesson_json, _v2_topic)
 
         # Deterministic guarantees, ANY path: a concept worked example always opens

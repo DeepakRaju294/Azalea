@@ -41,7 +41,9 @@ from typing import Any
 # generic filler; generated code is the clean algorithm with no main/driver. Re-solve.
 # v11 = collection literals (e.g. [38, 27, 43]) are never split across sub-bullets. Re-solve
 # so cached worked examples drop the shredded-array bullets.
-VISUAL_BRIDGE_VERSION = 11
+# v12 = coding-implementation code is validated; broken code (undefined vars from the
+# incremental walkthrough transforms) is replaced by one clean, validated LLM regeneration.
+VISUAL_BRIDGE_VERSION = 12
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan
