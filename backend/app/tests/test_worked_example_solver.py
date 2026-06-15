@@ -131,6 +131,33 @@ class TestCoding(unittest.TestCase):
         self.assertNotIn("line ", joined)                     # no "line N executes" in the text
 
 
+class TestCompletenessRetry(unittest.TestCase):
+    def test_too_short_solution_triggers_retry_and_uses_longer(self):
+        calls = {"n": 0}
+
+        def flaky(payload):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                # First attempt: skips the work (2 cards).
+                return {"problem": "Sort [5, 2, 8].",
+                        "cards": [{"title": "Split", "points": ["Split it."]},
+                                  {"title": "Done", "points": ["Sorted."]}],
+                        "final_answer": "[2, 5, 8]"}
+            # Retry (with feedback): the complete walkthrough (6 cards).
+            self.assertIn("SKIPPED", str(payload.get("user")))
+            return {"problem": "Sort [5, 2, 8].",
+                    "cards": [{"title": f"Step {i}", "points": [f"do {i}"]} for i in range(6)],
+                    "final_answer": "[2, 5, 8]"}
+
+        lesson = {"lesson_cards": [{"blueprint_key": "worked_example", "points": ["x"]},
+                                   {"blueprint_key": "practice"}], "metadata": {}}
+        applied = apply_llm_solved_worked_example(lesson, {"id": "t1", "title": "Merge Sort"}, solver=flaky)
+        self.assertTrue(applied)
+        self.assertEqual(calls["n"], 2)  # retried once
+        we = [c for c in lesson["lesson_cards"] if c.get("blueprint_key") == "worked_example"]
+        self.assertGreaterEqual(len(we), 7)  # setup + 6 steps from the retry
+
+
 class TestApply(unittest.TestCase):
     def test_replaces_worked_example_and_completes(self):
         lesson = _lesson()

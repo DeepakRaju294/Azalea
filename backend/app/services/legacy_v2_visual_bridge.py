@@ -48,7 +48,9 @@ from typing import Any
 # v14 = code_repair UNIFIES every code card to the longest VALID snippet (fixes a broken
 # code_walkthrough when the worked example's code is correct); coding worked example explains
 # HOW THE CODE implements each step (loop conditions, branches, appends), not a vague label.
-VISUAL_BRIDGE_VERSION = 14
+# v15 = solver completeness retry: a too-short worked example (skipped the work, e.g. split ->
+# answer) is re-solved once with explicit feedback to walk EVERY step start-to-finish.
+VISUAL_BRIDGE_VERSION = 15
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan

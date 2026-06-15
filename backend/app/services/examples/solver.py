@@ -29,6 +29,10 @@ _log = logging.getLogger(__name__)
 # Bump when the solve contract / card shape changes, so cached lessons re-solve on read.
 SOLVER_VERSION = 1
 
+# A multi-step worked example with fewer than this many step cards skipped the work — re-solve
+# once with feedback. (Genuine boundary cases that come back short on the retry are shipped.)
+_MIN_STEP_CARDS = 5
+
 # solver(payload) -> structured solution dict | None. payload carries the built prompt.
 SolveFn = Callable[[dict[str, Any]], Optional[dict[str, Any]]]
 
@@ -172,7 +176,9 @@ _CODING_SYSTEM = (
 )
 
 
-def _build_user_prompt(topic: dict[str, Any], existing_problem: str, code: Optional[str] = None) -> str:
+def _build_user_prompt(
+    topic: dict[str, Any], existing_problem: str, code: Optional[str] = None, feedback: str = "",
+) -> str:
     parts = [f"Topic: {topic.get('title') or ''}"]
     concept = topic.get("concept") or topic.get("learning_goal") or topic.get("main_concept")
     if concept:
@@ -185,6 +191,8 @@ def _build_user_prompt(topic: dict[str, Any], existing_problem: str, code: Optio
         parts.append("Walk its execution fully, step by step, to the returned result.")
     else:
         parts.append("Pose a concrete instance of this and solve it fully, step by step.")
+    if feedback:
+        parts.append(feedback)
     return "\n".join(parts)
 
 
@@ -216,14 +224,16 @@ def solve_worked_example(
     *,
     existing_problem: str = "",
     code: Optional[str] = None,
+    feedback: str = "",
     solver: Optional[SolveFn] = None,
 ) -> Optional[dict[str, Any]]:
     """Run the focused solve. Returns a normalized {problem, cards, final_answer} or None.
-    When `code` is given (a coding worked example), the solve explains the code's EXECUTION
-    conceptually — never by line number — and the code is shown separately in an IDE panel."""
+    `feedback` is appended on a retry (e.g. "you skipped steps"). When `code` is given (a coding
+    worked example), the solve explains the code's EXECUTION conceptually — never by line
+    number — and the code is shown separately in an IDE panel."""
     fn = solver or _default_solver
     payload = {
-        "user": _build_user_prompt(topic, existing_problem, code),
+        "user": _build_user_prompt(topic, existing_problem, code, feedback),
         "system": _CODING_SYSTEM if code else _SYSTEM,
         "topic": topic,
         "code": code,
@@ -391,11 +401,26 @@ def apply_llm_solved_worked_example(
         code = _extract_lesson_code(cards) if is_coding else ""
         code = code or None
 
-        sol = solve_worked_example(
-            topic, existing_problem=_existing_problem_text(cards), code=code, solver=solver,
-        )
+        existing = _existing_problem_text(cards)
+        sol = solve_worked_example(topic, existing_problem=existing, code=code, solver=solver)
         if sol is None:
             return False
+        # Completeness guard: a too-short solution skipped the work (e.g. jumped from the split
+        # straight to the answer). Re-solve ONCE with explicit feedback; keep whichever is longer.
+        if len(sol.get("cards") or []) < _MIN_STEP_CARDS:
+            feedback = (
+                f"Your previous attempt had only {len(sol.get('cards') or [])} step(s) and SKIPPED "
+                "the work (e.g. jumping from the split straight to the final answer). Produce the "
+                "COMPLETE worked example now: walk through EVERY step from start to the final "
+                "answer — well over 5 steps — with nothing skipped, summarized, or assumed. Expand "
+                "every recursive call / sub-process into its own steps. (Only a genuine boundary "
+                "case such as an empty or single-element input may legitimately be shorter.)"
+            )
+            retry = solve_worked_example(
+                topic, existing_problem=existing, code=code, feedback=feedback, solver=solver,
+            )
+            if retry and len(retry.get("cards") or []) > len(sol.get("cards") or []):
+                sol = retry
         step_cards = _build_solution_cards(sol, topic, code=code)
         if not step_cards:
             return False
