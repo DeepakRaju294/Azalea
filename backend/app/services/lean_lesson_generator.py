@@ -6911,14 +6911,10 @@ def _convert_lean_to_legacy(
     _split_coarse_code_walkthrough_bullets(legacy_cards)
     _strip_code_only_bullets_from_code_walkthrough(legacy_cards)
     _accumulate_code_walkthrough_visuals(legacy_cards)
-    topic_type_key = topic_type_for_routing  # already computed at top of function
-    if topic_type_key == "coding_implementation":
-        _expand_coding_code_walkthroughs_to_one_line_cards(legacy_cards)
-        _sync_coding_worked_examples_to_final_code(legacy_cards)
-        _ensure_coding_graph_worked_example_visuals(
-            legacy_cards,
-            topic_hint=topic_hint,
-        )
+    # The coding-specific rebuilders are RETIRED: the per-line walkthrough rebuilder corrupted
+    # valid code (merge sort's left/right), worked examples are now authored by the solver, and
+    # the graph-visual synthesis was retired. We keep the LLM's own code_walkthrough cards and
+    # render the code in an IDE panel — trust the model, don't re-derive.
 
     # When the node_link_worked_example plan path produced cards, those
     # cards already carry per-step visual state (active nodes, completed
