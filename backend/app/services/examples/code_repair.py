@@ -128,6 +128,54 @@ def generate_clean_code(
     return code
 
 
+def _combine_snippets(snippets: list[str]) -> str:
+    """Merge all snippets into one module — every function defined across them, deduped by name
+    (longest/most-complete body wins), in first-seen order. This lets merge_sort + merge that
+    were split across separate cards validate TOGETHER, instead of a partial-but-valid `merge`
+    beating the full implementation."""
+    defs: dict[str, tuple[int, str]] = {}
+    order: list[str] = []
+    for snippet in snippets:
+        try:
+            tree = ast.parse(snippet)
+        except SyntaxError:
+            continue
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                src = ast.get_source_segment(snippet, node)
+                if not src:
+                    continue
+                if node.name not in defs:
+                    order.append(node.name)
+                if node.name not in defs or len(src) > defs[node.name][0]:
+                    defs[node.name] = (len(src), src)
+    return "\n\n\n".join(defs[name][1] for name in order)
+
+
+def _block_highlights(walkthrough_snippets: list[str], complete_code: str) -> list[list[list[int]]]:
+    """For each code_walkthrough card (cumulative incremental code, in order), the highlight is
+    the line range in the COMPLETE code that this card NEWLY introduces — its logical block — so
+    the panel can highlight the part being explained."""
+    full = complete_code.splitlines()
+    content_to_lines: dict[str, list[int]] = {}
+    for i, line in enumerate(full, start=1):
+        s = line.strip()
+        if s:
+            content_to_lines.setdefault(s, []).append(i)
+
+    out: list[list[list[int]]] = []
+    prev: set[str] = set()
+    used: set[int] = set()
+    for snippet in walkthrough_snippets:
+        cur = {ln.strip() for ln in snippet.splitlines() if ln.strip()}
+        new = cur - prev
+        prev = cur
+        nums = sorted({n for s in new for n in content_to_lines.get(s, []) if n not in used})
+        used.update(nums)
+        out.append([[nums[0], nums[-1]]] if nums else [])
+    return out
+
+
 def _coding_code_cards(cards: list[Any]) -> list[dict[str, Any]]:
     return [
         c for c in cards
@@ -140,13 +188,13 @@ def _coding_code_cards(cards: list[Any]) -> list[dict[str, Any]]:
 def apply_clean_code_to_lesson(
     lesson_json: dict[str, Any], topic: dict[str, Any], *, generator: Optional[GenFn] = None,
 ) -> bool:
-    """Make EVERY code card in a coding topic show the SAME complete, valid implementation.
+    """Make EVERY code card in a coding topic show the SAME complete, valid implementation, and
+    give each code_walkthrough card a highlight range for the block it explains.
 
-    Different code cards can carry different snippets — the worked example often has the
-    correct full code while a code_walkthrough card carries a broken/partial cumulative one
-    (lines at column 0, left_half/right_half never assigned). So we pick the AUTHORITATIVE
-    code = the longest snippet that actually validates (parses + no undefined names); if none
-    validates, regenerate one cleanly. Then put it on every code card. Failure-safe."""
+    The AUTHORITATIVE code is the COMBINED module (all functions across the cards, deduped,
+    longest body each) when that validates — so merge_sort + merge split across cards become the
+    full implementation, not a partial-but-valid `merge`. Otherwise the longest valid single
+    snippet; otherwise a clean regeneration. Failure-safe."""
     try:
         if str(topic.get("topic_type") or "").lower() != "coding_implementation":
             return False
@@ -158,23 +206,36 @@ def apply_clean_code_to_lesson(
             return False
 
         snippets = [str(c.get("code_snippet")) for c in code_cards]
-        valid = [s for s in snippets if not code_has_undefined_names(s)]
-        authoritative = max(valid, key=len) if valid else None
-        if authoritative is None:
-            authoritative = generate_clean_code(
+        combined = _combine_snippets(snippets)
+        if combined and not code_has_undefined_names(combined):
+            authoritative = combined
+        else:
+            valid = [s for s in snippets if not code_has_undefined_names(s)]
+            authoritative = max(valid, key=len) if valid else generate_clean_code(
                 topic, broken_code=max(snippets, key=len), generator=generator,
             )
         if not authoritative:
             _log.warning("code_repair: %s has no valid code and regeneration failed", topic.get("id"))
             return False
 
+        # Per-card block highlights for the walkthrough, derived from the ORIGINAL snippets mapped
+        # onto the authoritative code — used only when a card's code actually changes (its own
+        # per-bullet highlights then go stale). When the card already carried the complete code,
+        # its LLM-authored per-bullet highlight_lines_per_step are kept as-is.
+        walkthrough = [c for c in code_cards
+                       if str(c.get("blueprint_key") or "").lower() == "code_walkthrough"]
+        wt_originals = [str(c.get("code_snippet")) for c in walkthrough]
+        wt_block_highlights = _block_highlights(wt_originals, authoritative)
+
         changed = False
         for card in code_cards:
             if str(card.get("code_snippet")) != authoritative:
                 card["code_snippet"] = authoritative
-                card["highlight_lines_per_step"] = []  # code changed — old highlights are stale
                 card.setdefault("metadata", {})["clean_code_repair"] = True
                 changed = True
+        for card, hl, orig in zip(walkthrough, wt_block_highlights, wt_originals):
+            if orig != authoritative:  # this card's code changed -> its highlights were stale
+                card["highlight_lines_per_step"] = hl
         if changed:
             lesson_json.setdefault("metadata", {})["clean_code_repair"] = True
         return changed

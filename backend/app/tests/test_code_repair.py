@@ -88,7 +88,10 @@ class TestApply(unittest.TestCase):
         self.assertTrue(applied)
         code_cards = [c for c in lesson["lesson_cards"] if c.get("code_snippet")]
         self.assertTrue(all(c["code_snippet"] == GOOD for c in code_cards))
-        self.assertEqual(code_cards[0]["highlight_lines_per_step"], [])  # stale highlights cleared
+        # the code_walkthrough card gets a block highlight on the full code (not stale/empty)
+        wt = next(c for c in lesson["lesson_cards"] if c.get("blueprint_key") == "code_walkthrough")
+        self.assertTrue(wt["highlight_lines_per_step"])
+        self.assertEqual(len(wt["highlight_lines_per_step"][0]), 2)  # a [start, end] range
 
     def test_valid_code_left_alone(self):
         lesson = self._lesson(GOOD)
@@ -96,6 +99,28 @@ class TestApply(unittest.TestCase):
             lesson, {"id": "c1", "title": "Merge Sort", "topic_type": "coding_implementation"}, generator=_good_gen,
         )
         self.assertFalse(applied)
+
+    def test_combines_merge_sort_and_merge_split_across_cards(self):
+        # merge_sort (invalid alone — `merge` undefined) + merge (valid alone). The fix must
+        # COMBINE them rather than pick the partial-but-valid `merge`.
+        ms = ("def merge_sort(arr):\n    if len(arr) <= 1:\n        return arr\n"
+              "    mid = len(arr) // 2\n    return merge(merge_sort(arr[:mid]), merge_sort(arr[mid:]))")
+        mg = "def merge(left, right):\n    return sorted(left + right)"
+        lesson = {"lesson_cards": [
+            {"blueprint_key": "code_walkthrough", "code_snippet": ms},
+            {"blueprint_key": "worked_example", "code_snippet": mg},
+        ], "metadata": {}}
+
+        def _no_gen(payload):
+            raise AssertionError("should combine, not regenerate")
+
+        applied = apply_clean_code_to_lesson(
+            lesson, {"id": "c1", "title": "Merge Sort", "topic_type": "coding_implementation"}, generator=_no_gen,
+        )
+        self.assertTrue(applied)
+        code = lesson["lesson_cards"][0]["code_snippet"]
+        self.assertIn("def merge_sort", code)
+        self.assertIn("def merge(", code)  # both functions present after combining
 
     def test_walkthrough_broken_worked_example_good_unifies_to_good(self):
         # The real bug: walkthrough has broken code, worked example has the correct full code.

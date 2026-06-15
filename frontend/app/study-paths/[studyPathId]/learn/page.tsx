@@ -4967,12 +4967,23 @@ export default function StudyPathLearnPage() {
                   (currentStep.card as { code_snippet?: string } | undefined)?.code_snippet ? (
                     (() => {
                       // CODE is the only thing that renders as a real visual (everything else
-                      // is debug metadata): the LLM's own code, shown in an IDE-styled panel.
+                      // is debug metadata): the LLM's own code, shown in an IDE-styled panel,
+                      // with the line(s) the CURRENT bullet explains highlighted.
                       const card = currentStep.card as {
                         code_snippet?: string;
                         code_language?: string;
+                        highlight_lines_per_step?: [number, number][];
                       };
                       const lang = String(card.code_language || "python");
+                      // Per-bullet highlight: the reveal step carries this bullet's range; else
+                      // a single per-card block range from the card.
+                      let highlight: [number, number] | undefined = currentStep.highlightLines;
+                      if (!highlight) {
+                        const perStep = card.highlight_lines_per_step;
+                        if (Array.isArray(perStep) && perStep.length === 1 && Array.isArray(perStep[0])) {
+                          highlight = perStep[0] as [number, number];
+                        }
+                      }
                       return (
                         <div className="w-full overflow-hidden rounded-2xl border border-[#E2DDEC] bg-white shadow-sm shadow-purple-100/40">
                           <div className="flex items-center gap-2 border-b border-[#E8E3EF] bg-[#F6F2FF] px-4 py-2.5">
@@ -4986,6 +4997,7 @@ export default function StudyPathLearnPage() {
                           <CodeWithHighlight
                             code={String(card.code_snippet)}
                             language={lang}
+                            highlightLines={highlight}
                             variant="light"
                             showHeader={false}
                           />

@@ -60,7 +60,10 @@ from typing import Any
 # cases_covered; required_cases must all be exercised); structured final-answer match (the
 # blueprint verifies + stamps reaches_final_answer); enforce_transition_contract; visual_delta in
 # the contract; full setup metadata; nested example_status.
-VISUAL_BRIDGE_VERSION = 18
+# v19 = code_repair COMBINES snippets (merge_sort + merge split across cards now validate
+# together -> complete code, not a partial valid `merge`); code_walkthrough groups by logical
+# block (not <=3 lines) and shows the complete code; per-bullet code highlighting restored.
+VISUAL_BRIDGE_VERSION = 19
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan
