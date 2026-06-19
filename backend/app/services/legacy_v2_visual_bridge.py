@@ -65,7 +65,15 @@ from typing import Any
 # block (not <=3 lines) and shows the complete code; per-bullet code highlighting restored.
 # v20 = the solver now CREATES a worked example when the topic's blueprint requires one but the
 # generation produced none (coding topics frequently shipped with no example at all).
-VISUAL_BRIDGE_VERSION = 20
+# v21 = code_walkthrough now highlights ONE line at a time with a per-line explanation (the only
+# grouping is which lines share a card); code_repair regenerates the complete implementation when
+# the assembled code is valid-but-incomplete (missing the algorithm's own entry function); the
+# worked-example problem no longer seeds a fixed array, so inputs vary per lesson.
+# v22 = a focused line-explainer pass REBUILDS coding code_walkthrough cards off the authoritative
+# code: one card per logical block, one main bullet + one single-line highlight per line (the model
+# only supplies per-line wording), replacing the summarized/merged cards the general prompt
+# produced. Also removed the last seeded merge-sort array (example_blueprint.py).
+VISUAL_BRIDGE_VERSION = 22
 
 from app.core.course_blueprints import get_topic_blueprint
 from app.schemas.visual_v2 import CompileContext, VisualIntent, VisualModel, WorkedExamplePlan

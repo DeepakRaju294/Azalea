@@ -3058,11 +3058,14 @@ def _normalize_lean_card_order(
     normalized = _normalize_lean_card_classification(normalized)
     topic_type = _topic_type_key(topic)
 
-    # Coding implementation topics that immediately follow their algorithm walkthrough
-    # must never show a background card — the learner just finished that walkthrough.
-    # Strip before any reordering so a model-hallucinated background card is never surfaced.
+    # Coding implementation topics that immediately follow their algorithm walkthrough /
+    # data-structure-operation must never show a background card (the learner just finished
+    # that walkthrough) NOR an edge_case card — the implementation continuation's edge cases
+    # are identical to the ones the preceding topic already covered, so repeating them is pure
+    # duplication. Strip both before any reordering so a model-hallucinated card is never surfaced.
     if _is_coding_continuation(topic):
-        normalized = [c for c in normalized if _lean_card_key(c) != "background"]
+        normalized = [c for c in normalized
+                      if _lean_card_key(c) not in ("background", "edge_case")]
 
     # Background is the learner's first anchor. If the model emits it late, move
     # only the first background card to the front and leave continuations stable.
@@ -7336,6 +7339,13 @@ def pregenerate_all_study_path_topics(current_topic_id: str) -> None:
     With the lean generator (~10-15s per topic) and parallel execution,
     a 10-topic study path completes in ~15s instead of 10+ minutes.
     """
+    from app.services.lesson_cache import fresh_on_open
+
+    # fresh-on-open: each topic is regenerated when opened, so warming the cache ahead of time is
+    # wasted LLM work — skip pre-generation in that mode.
+    if fresh_on_open():
+        return
+
     from datetime import datetime, timedelta
 
     from app.db.database import SessionLocal

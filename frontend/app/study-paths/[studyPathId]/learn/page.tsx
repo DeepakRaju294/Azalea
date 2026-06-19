@@ -347,6 +347,13 @@ type LessonFlowCard = {
   code_snippet?: string;
   code_language?: string;
   highlight_lines_per_step?: [number, number][];
+  // Worked-example step (Goal/Reasoning/Work/Result contract). When present, the worked-example
+  // step renders these structured sections instead of generic bullets.
+  goal?: string;
+  reasoning?: string;
+  work?: string[];
+  result?: string;
+  teaching_note?: { type?: string; content?: string };
   practice_question?: string;
   practice_answer?: string;
   practice_choices?: string[];
@@ -536,8 +543,20 @@ export default function StudyPathLearnPage() {
   const [memorySummary, setMemorySummary] =
     useState<StudyPathMemorySummary | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
+  // Latest topics readable inside effects WITHOUT making `topics` a dependency. The lesson-fetch
+  // effect must NOT restart every time the topics array reference changes (status polling /
+  // background updates) — with caching off that restarted (and re-ran) a 60-90s regeneration and
+  // discarded the in-flight result, so the lesson never rendered.
+  const topicsRef = useRef<Topic[]>([]);
+  useEffect(() => {
+    topicsRef.current = topics;
+  }, [topics]);
   const [selectedTopicId, setSelectedTopicId] = useState("");
   const [lesson, setLesson] = useState<Lesson | null>(null);
+  // True while the selected topic's lesson is being fetched/regenerated, so the UI shows a
+  // loading state instead of the "Generate Lesson" CTA (which previously flashed for the whole
+  // 60-90s regeneration window once server caching was turned off).
+  const [isLessonLoading, setIsLessonLoading] = useState(false);
   const [topicLessonStatuses, setTopicLessonStatuses] = useState<
     Record<string, string>
   >({});
@@ -1352,9 +1371,15 @@ export default function StudyPathLearnPage() {
   }, [studyPathId, isCheckingAuth]);
 
   useEffect(() => {
+    // Guard against an out-of-order race: when the selected topic changes while a
+    // (now slow, cache-off) lesson fetch/generation is still in flight, the stale
+    // response must NOT call setLesson — otherwise the previous topic's lesson renders
+    // under the newly selected topic until its own fetch resolves. Cleanup flips this.
+    let cancelled = false;
     async function fetchLesson() {
       if (!selectedTopicId) {
         setLesson(null);
+        setIsLessonLoading(false);
         return;
       }
 
@@ -1406,19 +1431,89 @@ export default function StudyPathLearnPage() {
         strongStreakRef.current = 0;
         confusionSignalCountRef.current = 0;
 
-        const cachedLesson = lessonCacheRef.current[selectedTopicId];
-
-        if (cachedLesson) {
-          setLesson(cachedLesson);
-          setTopicLessonStatuses((prev) => ({
-            ...prev,
-            [selectedTopicId]: "ready",
-          }));
-          setStatus("");
-        }
+        // Client-side lesson cache disabled for fresh testing: do NOT instantly show a
+        // previously-fetched (now-stale) copy. Always show a loading state and render only the
+        // freshly generated lesson once it resolves below.
+        setLesson(null);
+        setIsLessonLoading(true);
 
         const topicId = selectedTopicId;
-        const lessonData = await getTopicLesson(topicId);
+
+        // Stream the (cache-off, minutes-long) regeneration so cards preview progressively
+        // instead of a blank wait. Use the stream's own "complete" lesson directly — re-fetching
+        // via getTopicLesson would trigger a SECOND full regeneration with caching off.
+        setStreamingPreviewCards([]);
+        let streamedLessonJson: unknown = null;
+        let streamUnavailable = false;
+        // Render the streamed lesson the moment `complete` arrives, then patch it again when the
+        // deferred `worked_example` event lands — so the lesson shows immediately and the worked
+        // example pops in afterward instead of blocking the first render. (The post-stream code
+        // below re-renders the final json idempotently and handles resume/status.)
+        const renderStreamedLesson = (json: unknown) => {
+          if (cancelled || !json) return;
+          const streamedLesson: Lesson = {
+            id: "",
+            topic_id: topicId,
+            title: topicsRef.current.find((tp) => tp.id === topicId)?.title ?? "",
+            lesson_json: json as Record<string, unknown>,
+            source_chunk_ids: null,
+            source_summary: null,
+            generation_status: "ready",
+            created_at: new Date().toISOString(),
+          };
+          lessonCacheRef.current[topicId] = streamedLesson;
+          setTopicLessonStatuses((prev) => ({ ...prev, [topicId]: "ready" }));
+          setIsLessonLoading(false);
+          setStreamingPreviewCards([]);
+          setLesson(streamedLesson);
+        };
+        try {
+          await streamTopicLesson(topicId, (event) => {
+            if (cancelled) return;
+            if (event.type === "card") {
+              const card = event.card as { title?: unknown; points?: unknown };
+              setStreamingPreviewCards((prev) => [
+                ...prev,
+                {
+                  title: String(card.title ?? ""),
+                  points: Array.isArray(card.points)
+                    ? (card.points as unknown[]).map((p) => String(p)).filter(Boolean)
+                    : [],
+                },
+              ]);
+            } else if (event.type === "complete") {
+              streamedLessonJson = event.lesson ?? null;
+              renderStreamedLesson(streamedLessonJson);
+            } else if (event.type === "worked_example") {
+              streamedLessonJson = event.lesson ?? streamedLessonJson;
+              renderStreamedLesson(streamedLessonJson);
+            } else if (event.type === "busy" || event.type === "error") {
+              streamUnavailable = true;
+            }
+          });
+        } catch (streamErr) {
+          console.error("lesson stream failed; falling back to blocking fetch", streamErr);
+          streamUnavailable = true;
+        }
+        if (cancelled) return;
+        setStreamingPreviewCards([]);
+
+        let lessonData: Lesson;
+        if (streamedLessonJson && !streamUnavailable) {
+          lessonData = {
+            id: "",
+            topic_id: topicId,
+            title: topicsRef.current.find((tp) => tp.id === topicId)?.title ?? "",
+            lesson_json: streamedLessonJson as Record<string, unknown>,
+            source_chunk_ids: null,
+            source_summary: null,
+            generation_status: "ready",
+            created_at: new Date().toISOString(),
+          };
+        } else {
+          lessonData = await getTopicLesson(topicId);
+          if (cancelled) return;
+        }
 
         if (lessonData.generation_status !== "ready") {
           const pendingStatus = lessonData.generation_status || "generating";
@@ -1456,6 +1551,7 @@ export default function StudyPathLearnPage() {
 
         try {
           const statusResult = await getTopicLessonStatus(topicId);
+          if (cancelled) return;
           setTopicLessonStatuses((prev) => ({
             ...prev,
             [topicId]: statusResult.generation_status,
@@ -1475,7 +1571,7 @@ export default function StudyPathLearnPage() {
             setStatus("This topic failed to generate. Use Regenerate Topic to try again.");
             return;
           }
-          const firstTopicId = topics[0]?.id;
+          const firstTopicId = topicsRef.current[0]?.id;
           if (
             statusResult.generation_status === "not_started" &&
             firstTopicId &&
@@ -1499,6 +1595,7 @@ export default function StudyPathLearnPage() {
             let streamCompleted = false;
             let streamUnavailable = false;
             await streamTopicLesson(topicId, (event) => {
+              if (cancelled) return;
               if (event.type === "card") {
                 const card = event.card as { title?: unknown; points?: unknown };
                 setStreamingPreviewCards((prev) => [
@@ -1516,8 +1613,10 @@ export default function StudyPathLearnPage() {
                 streamUnavailable = true;
               }
             });
+            if (cancelled) return;
             if (streamCompleted && !streamUnavailable) {
               generatedLesson = await getTopicLesson(topicId);
+              if (cancelled) return;
             }
           } catch (streamErr) {
             console.error("lesson stream failed; falling back to blocking generate", streamErr);
@@ -1526,6 +1625,7 @@ export default function StudyPathLearnPage() {
           }
           if (!generatedLesson) {
             generatedLesson = await generateTopicLesson(topicId);
+            if (cancelled) return;
           }
           if (generatedLesson.generation_status === "ready") {
             lessonCacheRef.current[topicId] = generatedLesson;
@@ -1557,13 +1657,23 @@ export default function StudyPathLearnPage() {
         } finally {
           setIsGeneratingLesson(false);
         }
+      } finally {
+        // Only the run that's still current clears the loading flag — a stale run that was
+        // cancelled by a topic switch must not turn off the new run's loading state.
+        if (!cancelled) setIsLessonLoading(false);
       }
     }
 
     if (!isCheckingAuth) {
       fetchLesson();
     }
-  }, [cardIndexFromUrl, isCheckingAuth, resumeFromUrl, selectedTopicId, topics]);
+    return () => {
+      cancelled = true;
+    };
+    // `topics` intentionally omitted — read via topicsRef so the array-reference churn from
+    // status polling / background updates does not cancel-and-restart an in-flight generation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardIndexFromUrl, isCheckingAuth, resumeFromUrl, selectedTopicId]);
 
   // Poll lesson-generation status for any topic still in flight, so the index
   // reflects background completions WITHOUT a page refresh. Keeps re-checking
@@ -5449,7 +5559,18 @@ export default function StudyPathLearnPage() {
               />
             )}
 
-            {selectedTopic && !lesson && (
+            {selectedTopic && !lesson && (isLessonLoading || isGeneratingLesson) && (
+              <div className="py-12 text-center">
+                <p className="text-lg font-semibold text-foreground">
+                  Preparing this lesson…
+                </p>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                  Generating a fresh lesson for this topic. This can take a moment.
+                </p>
+              </div>
+            )}
+
+            {selectedTopic && !lesson && !isLessonLoading && !isGeneratingLesson && (
               <div className="py-12 text-center">
                 <p className="text-lg font-semibold text-foreground">
                   No lesson generated yet
@@ -7800,6 +7921,8 @@ function computeCodeWalkthroughReveal(
 ): Array<{ maxLine: number; highlight: [number, number]; perGroupRanges: Array<[number, number]> }> {
   if (!Array.isArray(cards) || !fullCode || totalLines <= 0) return [];
 
+  const codeLines = fullCode.split("\n");
+
   const walkthroughIndices = cards
     .map((c, i) =>
       String(c.blueprint_key || c.card_type || "").trim().toLowerCase() ===
@@ -7877,10 +8000,8 @@ function computeCodeWalkthroughReveal(
     const card = cards[cardIdx];
     const maxLine = perCardMaxLine[i];
     const start = maxLine > prevMax ? prevMax + 1 : Math.max(1, maxLine);
-    const cardSpan = Math.max(1, maxLine - start + 1);
 
-    // Count main bullets on this card to know how many groups to subdivide
-    // the per-card span across. A "main bullet" is a top-level line that
+    // Count main bullets on this card. A "main bullet" is a top-level line that
     // doesn't start with whitespace+dash (the indented sub-bullet shape).
     const points = (card.points || card.bullets || []).map((p) => String(p));
     const mainBulletCount = Math.max(
@@ -7888,23 +8009,20 @@ function computeCodeWalkthroughReveal(
       points.filter((p) => p.trim().length > 0 && !/^\s+-\s+/.test(p)).length,
     );
 
-    // Distribute the [start, maxLine] window across the main bullets so each
-    // bullet group reveals a roughly equal portion of new code. Ceiling math
-    // ensures the last group always reaches `maxLine`.
+    // ONE LINE PER MAIN BULLET: map the g-th main bullet to the g-th non-blank
+    // code line in this card's [start, maxLine] block, so the learner steps
+    // through the block one highlighted line at a time. Counts should match
+    // (the prompt mandates one main bullet per new line); if they don't, we
+    // clamp by index so every step still highlights exactly one real line.
+    const blockLineNumbers: number[] = [];
+    for (let ln = start; ln <= maxLine; ln++) {
+      if ((codeLines[ln - 1] ?? "").trim().length > 0) blockLineNumbers.push(ln);
+    }
+    if (blockLineNumbers.length === 0) blockLineNumbers.push(Math.max(1, start));
     const perGroupRanges: Array<[number, number]> = [];
-    let prevEnd = start - 1;
     for (let g = 0; g < mainBulletCount; g++) {
-      const target =
-        g === mainBulletCount - 1
-          ? maxLine
-          : Math.min(
-              maxLine,
-              start + Math.ceil(((g + 1) * cardSpan) / mainBulletCount) - 1,
-            );
-      const groupStart = prevEnd + 1;
-      const groupEnd = Math.max(target, groupStart);
-      perGroupRanges.push([groupStart, groupEnd]);
-      prevEnd = groupEnd;
+      const lineNo = blockLineNumbers[Math.min(g, blockLineNumbers.length - 1)];
+      perGroupRanges.push([lineNo, lineNo]);
     }
 
     result.push({ maxLine, highlight: [start, maxLine], perGroupRanges });
@@ -8152,25 +8270,18 @@ function buildLearningStepsFromCards({
           prevLength = cumulativeBullets.length;
         }
       } else if (bpKey === "worked_example") {
-        // Worked examples reveal cumulatively like other build cards: first bullet
-        // appears normally, then each later point enters as a new idea.
-        const flatBullets = groups.flat();
-        const revealUnits = buildRevealUnits(flatBullets);
-        let prevLength = 0;
-        for (let i = 0; i < revealUnits.length; i++) {
-          const cumulativeBullets = revealUnits.slice(0, i + 1).flat();
-          steps.push({
-            ...base,
-            type: "flow_card" as const,
-            title,
-            body: [],
-            bullets: cumulativeBullets,
-            card,
-            visual: i === revealUnits.length - 1 ? visual : undefined,
-            revealFromIndex: prevLength,
-          });
-          prevLength = cumulativeBullets.length;
-        }
+        // One nav step per worked-example card. Its Goal/Reasoning/Work/Result content lives in the
+        // card's `points` (labeled) and renders through the proven bullet-tree renderer.
+        steps.push({
+          ...base,
+          type: "flow_card" as const,
+          title,
+          body: [],
+          bullets: groups.flat(),
+          card,
+          visual,
+          revealFromIndex: 0,
+        });
       } else {
         for (let i = 0; i < groups.length; i++) {
           steps.push({

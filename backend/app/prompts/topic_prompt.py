@@ -96,6 +96,14 @@ Out-of-scope items are related parent or sibling ideas the lesson must not teach
 5. Keep the path short and purposeful.
 Study paths usually contain 3-10 topics unless the source material clearly requires fewer or more.
 Do not add "Overview", "Introduction", or "Review" filler topics.
+NEVER create two topics of the SAME topic_type for the same algorithm / operation / subject. One
+algorithm = exactly ONE algorithm_walkthrough topic (plus its single coding_implementation follow-up);
+one operation = exactly ONE data_structure_operation topic. Do NOT split an algorithm into an
+"Understanding X / Process Overview" walkthrough PLUS a "Tracing X / Step by Step" walkthrough — those
+produce two near-identical lessons. The SINGLE walkthrough already carries the conceptual framing (its
+background card) and the trace (its process + worked_example cards). If a lighter conceptual lead-in is
+genuinely warranted, it is at most ONE concept_intuition topic (what/why, no trace), never a second
+walkthrough.
 
 6. Group units by learning role.
 Good unit titles: Concept Foundation, Algorithm Walkthroughs, Implementation, Compare and Apply.

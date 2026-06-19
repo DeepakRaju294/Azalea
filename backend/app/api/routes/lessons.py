@@ -1,4 +1,6 @@
+import concurrent.futures
 import json as _json
+import os
 from typing import Any
 
 from pydantic import BaseModel
@@ -24,6 +26,7 @@ from app.services.knowledge_level_service import (
     knowledge_level_to_generation_guidance,
 )
 from app.services.course_type_classifier import classify_topic_course_type
+from app.services.lesson_cache import fresh_on_open
 from app.schemas.lesson import (
     LessonCreate,
     LessonRead,
@@ -193,9 +196,106 @@ def build_legacy_lesson_with_v2_visuals(
     return lesson_json
 
 
+def _build_study_path_topic_lesson(topic_id: str) -> tuple[str, dict | None, str | None]:
+    """Worker for PARALLEL study-path generation. Each topic's build is LLM-bound (mostly network
+    I/O, GIL released), so the topics run concurrently in a thread pool. SQLAlchemy sessions are NOT
+    thread-safe, so each worker opens its OWN session and loads its own topic + chunks; the request
+    thread writes the results sequentially. Returns (topic_id, lesson_json, error)."""
+    wdb = SessionLocal()
+    try:
+        topic = wdb.query(Topic).filter(Topic.id == topic_id).first()
+        if topic is None:
+            return topic_id, None, "topic not found"
+        chunks = get_source_chunks_for_study_path(
+            study_path=topic.study_path, db=wdb, limit=8, allow_empty=True,
+        )
+        lesson_json = build_legacy_lesson_with_v2_visuals(topic, chunks)
+        return topic_id, lesson_json, None
+    except Exception as exc:  # noqa: BLE001 — surfaced to the request thread, which decides
+        return topic_id, None, str(exc)
+    finally:
+        wdb.close()
+
+
+def _defer_worked_example() -> bool:
+    """Defer the worked-example solve on the single-topic STREAM path (default OFF). When ON, the
+    stream completes the lesson WITHOUT the worked example (so it renders fast), then generates and
+    patches it in via a follow-up `worked_example` event. Bulk generation always solves inline."""
+    return os.getenv("AZALEA_DEFER_WORKED_EXAMPLE", "0") == "1"
+
+
+def _finalize_lesson_cards(lesson_json: dict, v2_topic: dict) -> None:
+    """Deterministic post-solve guarantees: the worked-example setup card, blueprint card order,
+    visual gating, and the completeness audit. Safe to run more than once — used by both the inline
+    enrich path and the deferred worked-example path."""
+    from app.services.examples.handoff import ensure_worked_example_setup, validate_and_order_cards
+    from app.services.examples.worked_example_audit import audit_worked_examples
+    from app.services.legacy_v2_visual_bridge import gate_legacy_visuals
+
+    ensure_worked_example_setup(lesson_json, v2_topic)
+    validate_and_order_cards(lesson_json, v2_topic)
+    gate_legacy_visuals(lesson_json)
+    audit_worked_examples(lesson_json, v2_topic, regenerate=None, max_regenerations=2)
+    _audit_required_cards(lesson_json, v2_topic)
+
+
+def _audit_required_cards(lesson_json: dict, v2_topic: dict) -> None:
+    """Re-stamp `metadata.quality.missing_required_cards` on the FINAL lesson (after the solver), so
+    the signal is accurate rather than the misleading lean-time value (which always flags
+    worked_example because lean omits it). A genuinely-missing required card — e.g. the solver failed
+    to produce a worked_example — is then visible and logged loudly instead of silently shipped."""
+    try:
+        from app.core.course_blueprints import get_topic_blueprint
+
+        blueprint = get_topic_blueprint(v2_topic.get("topic_type"))
+        optional = set(blueprint.get("optional_cards") or [])
+        required = [k for k in (blueprint.get("default_card_sequence") or []) if k not in optional]
+        present = {
+            str(c.get("blueprint_key") or "").strip().lower()
+            for c in (lesson_json.get("lesson_cards") or []) if isinstance(c, dict)
+        }
+        missing = [k for k in required if k not in present]
+        meta = lesson_json.setdefault("metadata", {})
+        if isinstance(meta, dict):
+            quality = meta.setdefault("quality", {})
+            if isinstance(quality, dict):
+                quality["missing_required_cards"] = missing
+        if missing:
+            import logging
+            logging.getLogger(__name__).warning(
+                "lesson for topic %s STILL missing required cards after enrich: %s",
+                v2_topic.get("id"), missing,
+            )
+    except Exception:  # noqa: BLE001 — auditing must never break a lesson
+        pass
+
+
+def apply_deferred_worked_example(topic: Topic, lesson_json: dict) -> bool:
+    """Generate the worked example the stream deferred, patch it into an already-completed lesson,
+    and re-run the deterministic finalize. Failure-safe; returns whether the solver applied."""
+    if not isinstance(lesson_json, dict):
+        return False
+    try:
+        from app.services.examples.solver import apply_llm_solved_worked_example
+
+        v2_topic = {
+            "id": str(topic.id),
+            "title": topic.title or "",
+            "topic_type": str(getattr(topic, "course_type", None) or getattr(topic, "topic_type", "") or ""),
+        }
+        applied = apply_llm_solved_worked_example(lesson_json, v2_topic)
+        _finalize_lesson_cards(lesson_json, v2_topic)
+        return bool(applied)
+    except Exception:  # noqa: BLE001 — never break a delivered lesson
+        import logging
+        logging.getLogger(__name__).exception("deferred worked-example apply failed for topic %s", topic.id)
+        return False
+
+
 def enrich_legacy_lesson_with_v2_visuals(
     topic: Topic,
     lesson_json: dict,
+    defer_worked_example: bool = False,
 ) -> dict:
     if not isinstance(lesson_json, dict):
         return lesson_json
@@ -212,11 +312,6 @@ def enrich_legacy_lesson_with_v2_visuals(
     # trace. Inert unless AZALEA_VISUAL_V2_MODES is set; failures never break the
     # lesson (the legacy path above already produced a complete lesson).
     try:
-        from app.services.examples.handoff import (
-            ensure_worked_example_setup,
-            validate_and_order_cards,
-        )
-
         _v2_topic = {
             "id": str(topic.id),
             "title": topic.title or "",
@@ -229,32 +324,28 @@ def enrich_legacy_lesson_with_v2_visuals(
         # completeness on a successful trace and produced "line N executes" cards); the
         # example-type/fixture/ontology apparatus stays bypassed. Both remain in the tree.
         from app.services.examples.code_repair import apply_clean_code_to_lesson
+        from app.services.examples.code_walkthrough import apply_line_explained_walkthrough
         from app.services.examples.solver import apply_llm_solved_worked_example
 
         # If a coding topic's code is broken (the incremental walkthrough transforms can ship
         # code with undefined variables), replace it with one clean, validated LLM regeneration
         # BEFORE the solver runs, so the worked-example IDE panel shows correct code.
         apply_clean_code_to_lesson(lesson_json, _v2_topic)
-        apply_llm_solved_worked_example(lesson_json, _v2_topic)
+        # Rebuild the code_walkthrough as a per-LINE, one-step-at-a-time walkthrough off the now-
+        # authoritative code (the general prompt summarizes code and the merge pass collapses it,
+        # so the learner never gets a line-by-line walk). Structure is deterministic; the model
+        # only supplies one explanation per line.
+        apply_line_explained_walkthrough(lesson_json, _v2_topic)
+        # The worked-example solve is the heaviest enrich step (2-3 LLM calls). On the single-topic
+        # STREAM path it can be DEFERRED: the lesson completes/renders without it, then it is solved
+        # and patched in afterward (apply_deferred_worked_example). Bulk generation solves inline.
+        if not defer_worked_example:
+            apply_llm_solved_worked_example(lesson_json, _v2_topic)
 
-        # Deterministic guarantees, ANY path: a concept worked example always opens
-        # with a setup card stating the problem, and the final card set matches the
-        # topic type's blueprint keys + order (CardValidator, spec §5.3 #5).
-        ensure_worked_example_setup(lesson_json, _v2_topic)
-        validate_and_order_cards(lesson_json, _v2_topic)
-        # Final shape-agnostic guardrail over EVERY visual (legacy + computed): drop
-        # malformed/degenerate diagrams and any diagram slot that points at code.
-        from app.services.legacy_v2_visual_bridge import gate_legacy_visuals
-
-        gate_legacy_visuals(lesson_json)
-
-        # Worked-example completion audit (prose-path INV-COMPLETE): a worked example
-        # that doesn't reach the final answer is flagged + (when a regenerator is wired)
-        # regenerated up to a hard cap; if still incomplete it's logged, never silently
-        # shipped. `regenerate=None` for now → audits + logs.
-        from app.services.examples.worked_example_audit import audit_worked_examples
-
-        audit_worked_examples(lesson_json, _v2_topic, regenerate=None, max_regenerations=2)
+        # Deterministic guarantees, ANY path: a concept worked example always opens with a setup
+        # card, the card set matches the topic type's blueprint order, visuals are gated, and the
+        # completeness audit runs. (When deferred, this runs again after the worked example lands.)
+        _finalize_lesson_cards(lesson_json, _v2_topic)
     except Exception:  # noqa: BLE001 — V2 is additive; never let it break legacy
         import logging
 
@@ -327,6 +418,9 @@ def get_topic_lesson(
 ):
     topic = get_owned_topic(topic_id=topic_id, db=db, current_user=current_user)
 
+    # Caching is ON: serve the saved lesson. This is the reliable fallback when a long streaming
+    # generation drops before `complete` — it returns the lesson the stream just saved (fresh, in
+    # fresh-on-open mode) instead of regenerating it again.
     lesson = db.query(Lesson).filter(Lesson.topic_id == topic_id).first()
 
     if not lesson:
@@ -506,27 +600,31 @@ def stream_topic_lesson(
         sdb = SessionLocal()
         try:
             cached = sdb.query(Lesson).filter(Lesson.topic_id == topic_pk).first()
-            if cached and cached.generation_status == "ready" and cached.lesson_json:
-                # Upgrade a cached lesson on read when the bridge VERSION advanced (so it
-                # picks up the latest solver/code/visual fixes). The example-typing/ontology
-                # refresh is retired — version is the only upgrade trigger now.
-                if lesson_json_needs_hybrid_visual_refresh(cached.lesson_json):
-                    try:
-                        from sqlalchemy.orm.attributes import flag_modified
-                        enrich_legacy_lesson_with_v2_visuals(topic=topic, lesson_json=cached.lesson_json)
-                        flag_modified(cached, "lesson_json")
-                        sdb.commit()
-                        sdb.refresh(cached)
-                    except Exception:  # noqa: BLE001 — never block the cached read
-                        pass
-                yield _event({"type": "complete", "lesson": cached.lesson_json})
-                return
-            if cached and cached.generation_status in {"generating", "pending"}:
-                yield _event({"type": "busy"})
-                return
-            if cached and cached.generation_status == "failed":
-                yield _event({"type": "error", "message": "previous generation failed"})
-                return
+            # fresh-on-open: the streaming open regenerates from scratch so each open shows fresh
+            # content; other reads (the fallback) still serve the saved copy. When fresh-on-open is
+            # off, serve the cached lesson here too.
+            if not fresh_on_open():
+                if cached and cached.generation_status == "ready" and cached.lesson_json:
+                    # Upgrade a cached lesson on read when the bridge VERSION advanced (so it
+                    # picks up the latest solver/code/visual fixes). The example-typing/ontology
+                    # refresh is retired — version is the only upgrade trigger now.
+                    if lesson_json_needs_hybrid_visual_refresh(cached.lesson_json):
+                        try:
+                            from sqlalchemy.orm.attributes import flag_modified
+                            enrich_legacy_lesson_with_v2_visuals(topic=topic, lesson_json=cached.lesson_json)
+                            flag_modified(cached, "lesson_json")
+                            sdb.commit()
+                            sdb.refresh(cached)
+                        except Exception:  # noqa: BLE001 — never block the cached read
+                            pass
+                    yield _event({"type": "complete", "lesson": cached.lesson_json})
+                    return
+                if cached and cached.generation_status in {"generating", "pending"}:
+                    yield _event({"type": "busy"})
+                    return
+                if cached and cached.generation_status == "failed":
+                    yield _event({"type": "error", "message": "previous generation failed"})
+                    return
 
             t = sdb.query(Topic).filter(Topic.id == topic_pk).first()
             if t is None:
@@ -568,12 +666,24 @@ def stream_topic_lesson(
                 yield _event({"type": "error", "message": "generation failed"})
                 return
 
+            defer_we = _defer_worked_example() and needs_enrich
             if needs_enrich:
-                enrich_legacy_lesson_with_v2_visuals(topic=t, lesson_json=final)
+                enrich_legacy_lesson_with_v2_visuals(topic=t, lesson_json=final, defer_worked_example=defer_we)
             create_or_update_lesson_record(
                 topic=t, lesson_json=final, db=sdb, chunks=chunks, generation_status="ready",
             )
+            # Complete WITHOUT the worked example (renders immediately) when deferring; otherwise the
+            # full lesson is already assembled.
             yield _event({"type": "complete", "lesson": final})
+
+            if defer_we:
+                # Solve the deferred worked example, patch it into the (already-delivered) lesson,
+                # persist it so it's never lost, then emit it so the client can patch it in live.
+                if apply_deferred_worked_example(t, final):
+                    create_or_update_lesson_record(
+                        topic=t, lesson_json=final, db=sdb, chunks=chunks, generation_status="ready",
+                    )
+                yield _event({"type": "worked_example", "lesson": final})
         finally:
             sdb.close()
 
@@ -602,32 +712,19 @@ def generate_lesson_for_topic(
     # every navigation. Use POST /regenerate-lesson when a fresh generation
     # is explicitly wanted.
     cached = db.query(Lesson).filter(Lesson.topic_id == topic.id).first()
+    # Caching is ON: serve the saved lesson rather than re-running the LLM on every open (the
+    # streaming open is what regenerates fresh in fresh-on-open mode; this is the cheap fallback).
     if cached and cached.generation_status == "ready" and cached.lesson_json:
-        # Reads are PURE: opening a lesson never rewrites the stored copy.
-        # Lessons are generated with v2 visuals already attached, so there is
-        # nothing to "refresh" on open. The old on-open re-enrich mutated
-        # pre-existing lessons under the learner, which surfaced as "content
-        # changed when I refreshed". Regenerate explicitly via /regenerate-lesson
-        # if a stored lesson needs updating.
-        #
-        # First-time landing on a ready lesson still kicks off background
-        # pre-gen for the rest of the path — pregen short-circuits topics
-        # already in "ready" or "failed" status, so repeat opens do no extra
-        # LLM work.
         background_tasks.add_task(pregenerate_all_study_path_topics, str(topic.id))
         return cached
 
-    # If a background worker already owns this topic, do not start a second
-    # generation from the foreground route. Returning the pending row lets the
-    # frontend poll/wait instead of creating a last-writer-wins race where the
-    # topic changes after the learner revisits it.
+    # If a background worker already owns this topic, do not start a second generation from the
+    # foreground route — let the frontend poll/wait instead of a last-writer-wins race.
     if cached and cached.generation_status in {"generating", "pending"}:
         return cached
 
-    # ONE-SHOT RULE: if a previous attempt already failed, do NOT auto-retry
-    # on this open. Return the failed record so the frontend can show its
-    # error/regenerate UI. The user must explicitly hit the regenerate button
-    # (which is the /regenerate-lesson endpoint) to try again.
+    # ONE-SHOT RULE: a previous failed attempt is returned as-is so the frontend can show its
+    # error/regenerate UI; the user must explicitly regenerate to retry.
     if cached and cached.generation_status == "failed":
         return cached
 
@@ -789,15 +886,31 @@ def generate_lessons_for_study_path(
     source_chunk_ids, source_summary = build_lesson_source_metadata(chunks)
     generated_lessons: list[Lesson] = []
 
-    for topic in topics:
-        try:
-            lesson_json = build_legacy_lesson_with_v2_visuals(topic, chunks)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to generate lesson for '{topic.title}': {str(exc)}",
-            ) from exc
+    # Build every topic's lesson CONCURRENTLY — each build is LLM-bound (network I/O), so a thread
+    # pool turns an N-topic serial wait into ~N/workers. Each worker uses its own DB session; this
+    # request thread writes the results sequentially afterward (one session, no cross-thread sharing).
+    topic_order = [str(t.id) for t in topics]
+    max_workers = max(1, min(len(topic_order), int(os.getenv("AZALEA_LESSON_PARALLELISM", "4"))))
+    built: dict[str, dict] = {}
+    errors: dict[str, str] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for tid, lesson_json, err in executor.map(_build_study_path_topic_lesson, topic_order):
+            if err is not None:
+                errors[tid] = err
+            elif lesson_json is not None:
+                built[tid] = lesson_json
+    if errors:
+        first_tid, first_err = next(iter(errors.items()))
+        title = next((t.title for t in topics if str(t.id) == first_tid), first_tid)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate lesson for '{title}': {first_err}",
+        )
 
+    for topic in topics:
+        lesson_json = built.get(str(topic.id))
+        if lesson_json is None:
+            continue
         existing_lesson = db.query(Lesson).filter(Lesson.topic_id == topic.id).first()
 
         if existing_lesson:

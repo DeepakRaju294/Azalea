@@ -12,7 +12,25 @@ course_blueprints.py and course_stage_rules.py.
 """
 from __future__ import annotations
 
+import os
 import re
+
+# Speed: the worked-example trace is re-authored from scratch by the solver in enrichment, so
+# having the lean pass ALSO generate it doubles the work (and the lean output is discarded). When
+# this is on, the lean card plan omits worked_example cards; the solver creates the full example.
+# Set AZALEA_LEAN_OMIT_WORKED_EXAMPLE=0 to have the lean pass author it again.
+def _lean_omit_worked_example() -> bool:
+    return os.getenv("AZALEA_LEAN_OMIT_WORKED_EXAMPLE", "1") != "0"
+
+
+def _without_worked_example(blueprint: dict) -> dict:
+    bp = dict(blueprint)
+    for key in ("default_card_sequence", "continuation_card_sequence",
+                "optional_cards", "continuation_optional_cards"):
+        seq = bp.get(key)
+        if isinstance(seq, (list, tuple)):
+            bp[key] = [c for c in seq if c != "worked_example"]
+    return bp
 from typing import TYPE_CHECKING
 
 from app.core.course_blueprints import get_topic_blueprint, get_topic_blueprints
@@ -69,6 +87,7 @@ Teach by revealing one cognitive unit at a time.
 - A main point should be short — a phrase, question, or incomplete clause that the subpoints answer.
 - Recommended length: main bullets should usually be 4-10 words and rarely exceed 14 words. Subpoints should usually be 7-18 words and rarely exceed 24 words.
 - Ignore the length range only for exact formulas, exact code/state values, precise technical names, or unavoidable quoted/source wording.
+- CONCISE STYLE (every bullet, every card type): write the MINIMUM sufficient wording — never full textbook prose. Cut lead-ins and filler: "X is an algorithm that...", "It utilizes...", "This is a method that...", "In order to...", "We can see that...". State ONE fact directly. Prefer fragments and notation over complete sentences. Examples — REWRITE "Merge sort is an algorithm that sorts an array by dividing the array into smaller subarrays and then merging those subarrays back together in a sorted manner." as "Sorts by recursively splitting the array, then merging the sorted halves." REWRITE "It utilizes the divide-and-conquer approach to efficiently sort large datasets rather than using simple comparison methods like bubble sort." as "Divide-and-conquer: O(n log n), unlike O(n²) bubble/insertion sort." Conciseness must remove redundancy, never necessary meaning.
 - One-word or tiny fragment bullets are allowed only when they are parent bullets that branch into deeper subbullets, such as a main bullet or a subbullet introducing level-3 subbullets. Terminal subbullets should normally express one complete action, reason, condition, or result.
 - Do not create long main bullets. If a main bullet contains a full explanation, reason, example, consequence, or second sentence, keep only the frame as the main bullet and move the explanation into subpoints.
 - If a point contains prose plus an equation, keep all prose in the main bullet and move the complete equation into one subpoint. Example: "To find the probability of X between a and b, compute:" then "  - \\(\\int_a^b f(x)\\,dx\\)".
@@ -129,8 +148,8 @@ Use visible bullet-line count to decide when to continue onto another card.
 - No bullet should wrap beyond 2 lines when avoidable.
 - For algorithm trace worked_example (Currently/action/Now format): each card is one complete step; keep to at most 4 visible bullet lines per card.
 - For coding_implementation worked_example (code block format): each bullet group (main bullet + its sub-bullets) is one execution step. The frontend reveals groups one at a time within a single card. Apply the 4-line budget per group, not per card — a single card may hold many groups. Never split a group across cards: the main bullet and all its sub-bullets belong on the same card.
-- For code walkthrough, math/proof step, and any other state-transition card: keep each card to at most 4 visible bullet lines, even without a visual.
-- For code_walkthrough only, a card may hold up to 6 visible bullet lines when the main bullet trees all explain the same newly added functional block.
+- For math/proof step and any other state-transition card: keep each card to at most 4 visible bullet lines, even without a visual.
+- code_walkthrough is the EXCEPTION to the line budget: a card has one main bullet per newly-introduced code line, so a card covering a 4-line block has 4 main bullets (plus any optional sub-bullets). Keep blocks small (about 2-5 lines) so cards stay readable; the budget is the size of the logical block, not a fixed bullet count.
 - Never split a main bullet away from its subbullet tree under any circumstances. A main bullet and all its subbullets are one atomic idea. If a main bullet plus its subbullets would exceed the budget, keep that whole tree together as the only tree on the card — do not move subbullets to the next card.
 - If adding the next main bullet tree would exceed the budget, continue on the immediately next card with the same blueprint_key and title.
 - Continuation cards must pick up with the next main bullet tree and must not repeat the previous tree.
@@ -156,59 +175,22 @@ For any topic where understanding depends on something changing over time, use v
 - Practice cards use practice_feedback as a placeholder; adaptive feedback replaces it after the learner answers.
 - For any card with a non-none allowed_visual_type, generate the full structured visual data for THAT type (the type-specific rules below say which fields to fill). Backend outputs renderable JSON; the frontend owns visual beauty.
 - For coding_implementation code_walkthrough cards: visual_type MUST be "code_trace". The left-side focus area is the code block itself, not a table, step flow, comparison, or prose card.
-- For coding_implementation code_walkthrough cards: include code_snippet as the full implementation-so-far source for that card's step, and include highlight_lines_per_step with one [start_line, end_line] pair per top-level bullet group. The first code_walkthrough should show the setup/skeleton, such as function signature, function body, starter variables, or base-case shell. Each later code_walkthrough must include all previous code plus exactly the next line or functional block being introduced. Never make code_snippet only the new block by itself. The frontend shows only code through the current functional block, so do not make a separate visual for future code.
+- For coding_implementation code_walkthrough cards: include code_snippet as the full implementation-so-far source for that card's step, and include highlight_lines_per_step with one SINGLE-line [N, N] pair per main bullet (one per newly-introduced code line, in order). The first code_walkthrough should show the setup/skeleton, such as function signature, function body, starter variables, or base-case shell. Each later code_walkthrough must include all previous code plus exactly the next line or functional block being introduced. Never make code_snippet only the new block by itself. The frontend shows only code through the current functional block, so do not make a separate visual for future code.
 - For coding_implementation code_walkthrough cards: the card text explains only the newly added code block, including what the code does and how it does it. Do not put raw code lines in the bullet text; raw code belongs in code_snippet only.
-- CRITICAL — code_walkthrough EVERY-LINE EXPLANATION MANDATE: EVERY single newly-introduced code line on the card MUST be addressed by exactly one bullet — either its own main bullet OR a sub-bullet under a grouping main bullet. There is no such thing as "self-explanatory" code on a code_walkthrough card. If the card introduces 4 new lines of code, the card MUST contain 4 explanations across its main bullets and sub-bullets combined. Bullets that exist but address zero code lines (pure meta commentary) do not count toward the coverage requirement.
-- CRITICAL — code_walkthrough bullet structure rules: choose the main/sub structure based on the SHAPE of the code being introduced. Three patterns are allowed:
-  PATTERN A — STANDALONE LINE (one main bullet per line). Use for unrelated single lines: function signature, return statement, single mutation, base case guard. Each main bullet covers exactly ONE line, with 2-4 sub-bullets going deeper on THAT line. highlight_lines_per_step entry: [N, N].
+- CRITICAL — code_walkthrough EVERY-LINE EXPLANATION MANDATE: EVERY single newly-introduced non-blank code line on the card MUST be explained by its OWN main bullet. There is no such thing as "self-explanatory" code on a code_walkthrough card. If the card introduces 4 new lines of code, the card MUST have exactly 4 main bullets, one per line, in code order.
+- CRITICAL — code_walkthrough ONE LINE PER STEP. Within a card the learner steps through the lines ONE AT A TIME: each newly-introduced NON-BLANK code line is highlighted ALONE and gets its OWN main bullet. Emit EXACTLY ONE main bullet per new non-blank code line on the card, in the SAME ORDER as the lines. Each main bullet explains THAT ONE line in plain English — what it does and how it does it, and when useful why that exact construct is used and what state it changes. Do NOT group two code lines under one bullet, and do NOT leave any line without a bullet. The only grouping you control is which CONSECUTIVE lines sit together on the same card.
+      Example — a card introducing these 3 lines (function signature + two inits):
+          1:  def merge(left, right):
+          2:      result = []
+          3:      i = 0
       points = [
-        "Define the recursion function:",
-        "  - Takes the current node and the result list — passing the accumulator avoids returning and merging lists at each call.",
-        "  - Will be called with the root as the entry point so the very first call sees the whole tree.",
-        "  - Without an explicit accumulator parameter, accidentally re-binding it inside the function would lose every value collected so far.",
+        "Define the merge helper that takes the two already-sorted halves so they can be combined into one ordered list.",
+        "Start an empty list that will collect the merged values in sorted order as the comparisons proceed.",
+        "Set a pointer at the front of the left half; it advances each time a left value is taken.",
       ]
-      highlight_lines_per_step = [[1, 1]]
-  PATTERN B — CONTROL-FLOW BLOCK (one main bullet for the header, one sub-bullet per DIRECT body line, IN THE SAME ORDER AS THE CODE LINES). Use whenever an `if`, `elif`, `else`, `for`, `while`, `try`, `with`, or block introduces body lines together. The HEADER is the main bullet (plain-English action, NOT the syntax); EACH DIRECT BODY LINE gets its OWN sub-bullet that DESCRIBES what that line does, why it's there, and how it changes state — with NO raw code text. highlight_lines_per_step entry: [HEADER_LINE, LAST_DIRECT_BODY_LINE].
-      points = [
-        "Loop while the stack still has nodes to explore:",
-        "  - Take the most recently pushed node off the top — this O(1) removal is what makes the traversal depth-first instead of level-by-level.",
-        "  - Mark it as discovered so the cycle check below stays accurate as the loop progresses.",
-        "  - Iterate the current node's neighbors in the order the graph stores them, which fixes the traversal order shown in the trace.",
-        "  - For each unvisited neighbor, push it AND mark it discovered together — marking on push prevents duplicate work later.",
-      ]
-      highlight_lines_per_step = [[4, 8]]
-  NESTED CONTROL FLOW — every nested loop or conditional STARTS A NEW MAIN BULLET. A nested block does NOT live as a sub-bullet under its enclosing block; it gets its own main bullet whose header line is the nested header and whose sub-bullets are THAT nested block's direct body lines. The enclosing block's main bullet covers ONLY the lines that belong to it directly (its own header + body lines that appear before the nested block opens). Nesting depth does NOT matter — every block header at every depth gets its own main bullet. highlight_lines_per_step ranges MUST partition the lines: no line appears in two different main bullets' ranges, and no line is left uncovered.
-      Example DFS body (lines 4-9 of the snippet):
-          4:  while stack:
-          5:      current = stack.pop()
-          6:      for neighbor in graph[current]:
-          7:          if neighbor not in visited:
-          8:              visited.add(neighbor)
-          9:              stack.append(neighbor)
-      Correct bullet structure (3 main bullets — one per block header at every depth):
-      points = [
-        "Loop while the stack still has nodes:",
-        "  - Pop the most recently pushed node off the top so the next iteration processes it — this O(1) removal is what makes the traversal depth-first.",
-        "For each neighbor of the current node:",
-        "  - The iteration variable is each adjacent vertex; iteration order is fixed by how the graph stores its neighbor list.",
-        "  - The loop only inspects — it does not yet decide whether to push; the nested check below filters out already-discovered nodes.",
-        "  - Without this loop, the algorithm would only ever visit the start node and never reach any of its neighbors.",
-        "Skip neighbors that are already discovered; otherwise mark and push:",
-        "  - Record the neighbor as discovered the moment it is added to the stack so it cannot be pushed twice by a different path.",
-        "  - Add the neighbor to the top of the stack so the next iteration pops it and dives deeper into that subtree.",
-      ]
-      highlight_lines_per_step = [[4, 5], [6, 6], [7, 9]]   ← ranges partition lines 4-9 exactly, no overlap, no gap
-      WRONG: a single "while loop" main bullet covering [4, 9] with all six body lines as flat sub-bullets — that flattens the nesting and hides which lines belong to which block.
-      WRONG: nesting body lines as deeper-indented sub-bullets (e.g. `    - visited.add(neighbor)`) under the for-loop's main bullet — the bullet tree is rendered as two levels only; deeper indents will collapse and the substep reveal will be broken.
-  PATTERN C — INITIALIZATION CLUSTER (one main bullet for the cluster intent, one sub-bullet per init line, IN THE SAME ORDER AS THE CODE LINES). Use when 2-3 consecutive lines set up algorithm state (visited set + queue + result list; low + high pointers; dp table + base value). The CLUSTER INTENT is the main bullet; EACH `var = ...` line gets its OWN sub-bullet that DESCRIBES — in plain English, with NO raw code text — the data type chosen, the initial value, and what it tracks. The reader matches sub-bullets to code lines by ORDER, NOT by quoting the code. highlight_lines_per_step entry: [FIRST_INIT_LINE, LAST_INIT_LINE].
-      points = [
-        "Initialize the traversal state — every container the loop will read or mutate:",
-        "  - Empty set chosen for O(1) membership lookups; tracks which nodes have already been discovered so cycles cannot revisit them.",
-        "  - List used as a LIFO holding nodes waiting to be explored; seeded with the start node so the loop has work to do on its first iteration.",
-        "  - Records the start node as discovered before the loop runs so it cannot be re-added by one of its own neighbors.",
-      ]
-      highlight_lines_per_step = [[2, 4]]
-- COVERAGE CHECK before emitting: count the newly-introduced code lines on this card. Count the explanations (each main bullet that names a line + each sub-bullet under a Pattern-B/C main bullet that names a line). The two counts MUST be equal. If a line has no explanation, ADD one as a sub-bullet under the right main bullet — do not move the line off the card just because it's "obvious".
+      highlight_lines_per_step = [[1, 1], [2, 2], [3, 3]]
+- You MAY add 1-2 short sub-bullets ("  - ...") under a line's main bullet for extra depth (a why, a before/after state, a common mistake), but the highlight still advances one line at a time and every line keeps its own single-line main bullet.
+- COVERAGE CHECK before emitting: the number of main bullets MUST equal the number of newly-introduced non-blank code lines on this card. If a line has no main bullet, ADD one. If two lines share a bullet, SPLIT them. Do not move a line off the card just because it's "obvious".
 - CRITICAL — NO RAW CODE IN BULLETS, EVER. The code panel on the left already shows the source. Every main bullet and every sub-bullet on a code_walkthrough card MUST be plain-English prose that DESCRIBES what a line does, why it matters, and how it changes state. Bullets MUST NOT contain raw code tokens of any kind, including:
     - Assignment statements: `visited = set()`, `queue = [start]`, `low = 0`, `result += val`
     - Function/method signatures: `def bfs(graph, start):`, `class Node:`
@@ -219,7 +201,7 @@ For any topic where understanding depends on something changing over time, use v
     - Operator tokens used as code: `==`, `!=`, `<=`, `>=`, `+=`, `-=`, `*=`, `/=`
   This rule applies whether the code is wrapped in backticks, fenced, indented, or naked. A bullet like `` `def bfs(graph, start):` `` is FORBIDDEN. A bullet like `"def bfs(graph, start) — defines the entry point"` is FORBIDDEN. The plain-English rewrite is: "Defines a reusable function that begins traversal from any starting node in any graph."
 - ALLOWED references inside bullets: single short identifiers used as plain nouns (e.g. "visited", "queue", "current", "neighbor", "result") may appear in backticks OR as plain words when naming a concept the learner already understands from the code. What is forbidden is a CODE STATEMENT, EXPRESSION, or SYNTAX FRAGMENT — anything that reproduces a piece of the source.
-- The reader matches each bullet to its code line BY POSITION in the bullet list, NOT by quoting the code. For Pattern B and Pattern C grouped main bullets, the Nth sub-bullet describes the Nth body/init line within that group, in order.
+- The reader matches each main bullet to its code line BY POSITION in the bullet list — the Nth main bullet explains the Nth newly-introduced line — NOT by quoting the code.
 - Sub-bullet rewrite examples (FORBIDDEN → REQUIRED):
     "  - `visited = {start}`"
         → "  - Records the start node as already discovered so the loop cannot add it back later through a back-edge."
@@ -233,17 +215,11 @@ For any topic where understanding depends on something changing over time, use v
         → "  - Removes the oldest waiting node from the front of the queue so the algorithm processes nodes in discovery order."
     "  - `visited.add(neighbor)`"
         → "  - Records the neighbor as discovered the moment it enters the queue so it cannot be enqueued a second time."
-- highlight_lines_per_step contract: ONE entry per main bullet, in order. Each entry's range covers exactly the line(s) the main bullet and its sub-bullets describe (one line for Pattern A; the header through the last body line for Pattern B; the first init through the last init for Pattern C). Number of entries MUST equal the number of main bullets on the card.
-- CRITICAL — code_walkthrough sub-bullet depth: Pattern-A main bullets must have 3-4 sub-bullets going DEEPER on that one line. For Pattern-B (control-flow block) and Pattern-C (init cluster), the per-line sub-bullets ARE the depth — but each per-line sub-bullet MUST itself be a meaningful 8-25 word explanation, not a one-word label. Across all sub-bullets in a main bullet group, you MUST collectively answer the FIVE questions for the code lines that group covers (skipping a question is allowed only if it is not applicable to that line):
-    1. WHAT this line does in plain English (not a restatement of the code).
-    2. WHY this exact construct is used (e.g. why a set vs. a list; why pop() vs. pop(0); why a `while` vs. a `for`; why this base case).
-    3. WHAT STATE CHANGES after this line runs — name the variable(s) and show the before/after value when concrete (e.g. "Before: stack = [A]; After: current=A, stack = []").
-    4. HOW it connects to the algorithm's behavior (which step of the abstract algorithm this line implements; what the loop/recursion is doing at this point).
-    5. WHAT MISTAKE a beginner would make here (off-by-one, wrong data structure, mixing conventions, missing edge case).
-  Surface-level sub-bullets like "tracks visited nodes" are NOT enough — that only answers WHAT and misses WHY/STATE/MISTAKE.
-- CRITICAL — code_walkthrough grouping by LOGICAL BLOCK (not a fixed line count): each card covers ONE coherent block of the implementation — the parts that go together — and EVERY card's code_snippet shows the COMPLETE implementation (identical across all the topic's code_walkthrough cards). Group, for example: the function signature + all initializations together (e.g. `result = []`, then `i = 0`, then `j = 0` on ONE card); the base case together; one loop (its header through its body) together; the recursive split together; the final return/combine together. Do NOT put one line per card, and do NOT split a coherent block (an init cluster, or a single loop) across cards. Explain the lines of that card's block; the panel highlights them via highlight_lines_per_step (see the highlight contract above — one range per main bullet, marking the line(s) that bullet explains, relative to the complete code).
+- highlight_lines_per_step contract: ONE entry per main bullet, in order, each a SINGLE line (start == end) marking exactly the one line that bullet explains, relative to the COMPLETE code. The number of entries MUST equal the number of main bullets MUST equal the number of newly-introduced non-blank code lines on the card.
+- Each main bullet (with its optional 1-2 sub-bullets) should answer, for its ONE line: WHAT it does in plain English (not a restatement of the code); WHY this exact construct is used (e.g. why a set vs. a list; why a `while` vs. a `for`; why this base case); and WHAT STATE CHANGES after it runs (name the variable, show the before/after value when concrete). Skip a question only when it does not apply to that line. A surface-level label like "tracks visited nodes" is NOT enough on its own.
+- CRITICAL — code_walkthrough grouping by LOGICAL BLOCK: each card covers ONE coherent block of the implementation — the consecutive lines that go together (the function signature + its initializations; one loop header + its body; the base case; the recursive split; the final return/combine) — and EVERY card's code_snippet shows the COMPLETE implementation (identical across all the topic's code_walkthrough cards). Group consecutive related lines onto one card; the learner then steps through those lines ONE AT A TIME, each highlighted alone with its own main bullet. Do NOT split a coherent block across cards.
 - For code_trace and coding_implementation cards: fill code_snippet/code_language with the code; the code is shown in an IDE panel. Do not duplicate code in visual_description.
-- STRUCTURED visual fields (visual_steps, visual_columns/rows, visual_nodes/edges, visual_array_*, visual_formula, etc.) are OPTIONAL and secondary: fill a visual type's fields only when you have concrete, accurate data for that card, and return null for every field that does not apply. NEVER fabricate structure to fill them. The PRIMARY visual spec is `visual_description` (below). For node_link/array/grid data, when you do fill it, use real data values (short integers/letters), not structural words like "Root"/"Node"/"Left Child".
+- STRUCTURED visual fields (visual_steps, visual_columns/rows, visual_nodes/edges, visual_array_*, visual_formula, etc.): when this card's allowed_visual_type is a STRUCTURAL diagram (array_state_diagram, node_link_diagram, grid_matrix_diagram, table_diagram, coordinate_graph, formula_*), you MUST fill that type's data fields with a CONCRETE illustrative example using REAL values — e.g. a sample array like [5, 2, 8, 1, 9] with the pivot index marked, or a small tree with integer node labels. An empty structural diagram renders as NOTHING, so when a card uses such a visual_type, also populate its data fields (still keep the card itself — never drop a card just because a visual is hard). Inventing a small concrete example for the card is REQUIRED here and is NOT "fabrication". For fields that do not match this card's visual_type, return null. "NEVER fabricate" means: never fill with fake placeholder WORDS ("Root"/"Node"/"Left Child") or structure that misrepresents the concept — always use real data values (short integers/letters). `visual_description` is the plain-English storyboard that ACCOMPANIES the structured data, not a replacement for it.
 - visual_description is the primary, plain-English scene/state storyboard for the card: name the structure, its concrete values, the action/change, and the resulting state — rich enough to draw the figure from words alone. If a card is a progressive reveal, describe only the new change.
 - Leave visual_description empty only when the card is purely verbal and a state/structure visual would not reduce cognitive load.
 - Set visual_focus for every card to drive the persistent visual highlight in the workspace:
@@ -260,6 +236,7 @@ CHOOSING THE IMPLEMENTATION METHOD:
 - Pick the implementation a textbook or lecturer would teach FIRST for this concept — the clearest, most natural, most idiomatic version: the one that minimizes new ideas needed to understand the code and mirrors the algorithm's conceptual definition most directly. Optimization tricks, generic frameworks, or alternative idioms are out of scope unless the topic itself is about that trick. Do not deviate from that natural choice in either direction — neither toward a cleverer/more-optimized version nor toward a longer/lower-level one.
 - LENGTH MUST NOT INFLUENCE THE CHOICE. Never pick a longer or more explicit implementation because it yields more cards or more state to trace, and never avoid the natural implementation because it is short. The card count and the worked-example trace follow whatever implementation is clearest — pick the implementation first, on clarity alone, and let the structure follow.
 - The implementation must be consistent with how the algorithm was presented in the path (e.g. if the walkthrough traced the recursive structure, the code reflects that). You may name a well-known alternative in ONE sentence (in a comparison/edge_case card) with the trade-off, but do not teach it as a second walkthrough.
+- PREFER VISIBLE DATA FLOW. When an algorithm has both a return-based form (a function that RETURNS its result, which the caller reassigns) and an in-place form (mutating a passed-in argument and returning None), choose the RETURN-BASED form. The recursion/combination must be visible at the call site — e.g. merge sort as `left = merge_sort(arr[:mid])` ... `right = merge_sort(arr[mid:])` ... `return merge(left, right)`, NOT `merge_sort(left_half)` that silently mutates the slice and returns None. A function that sorts in place and returns None reads as if the result is discarded and hides where the work happens — avoid it for teaching. EXCEPTION: algorithms that are inherently in-place stay in-place (in-place array reversal, partition/swap-based sorts like quicksort/heapsort, pointer surgery on a linked list); only avoid the in-place form when an equally idiomatic return-based form exists.
 
 ONE TOPIC = ONE IMPLEMENTATION METHOD:
 - Each coding_implementation topic teaches exactly ONE implementation approach. Do not present two ways side-by-side, do not toggle between methods inside a single topic, and do not show "alternative" implementations in the same code_walkthrough sequence.
@@ -429,13 +406,14 @@ Worked example rules:
   - Binary search: "Find target <T> in the sorted array <ARRAY> using binary search; expected result: index of target or -1." (e.g. choose any sorted array of 7-10 distinct integers; pick a target that is present so the trace ends in success)
   - BST inorder/preorder/postorder/level-order: "Compute the <traversal> of a BST with root <R>, left subtree headed by <L> containing <LEFT_CHILDREN>, right subtree headed by <R2> containing <RIGHT_CHILDREN>; expected output: nodes in <visit-order> order." Use the values you chose for the visual.
   - BFS: "Run BFS on a graph from start node <X>; expected output: visit order level-by-level."
-  - Merge sort: "Sort the array [38, 27, 43, 3, 9, 82, 10] into ascending order using merge sort." — write the ACTUAL list of numbers you chose, NEVER the literal word "array" or a bracketed placeholder.
+  - Merge sort: "Sort the array <your chosen list whose natural merge-sort solution runs at least 4 full merge steps> into ascending order using merge sort." — INVENT your own list of numbers for THIS lesson; write the ACTUAL values, NEVER the literal word "array", a bracketed placeholder, or any list shown in these instructions. Size it so the natural solution needs ≥4 full steps — difficulty from the method, not raw input size.
+  - VARY THE INPUT: the concrete numbers/letters above are illustrations of FORMAT only. Choose fresh, randomized values for every lesson; never reuse a list, target, or tree that appears in these instructions, and do not reuse values across lessons.
   - CRITICAL: substitute EVERY <PLACEHOLDER> with the concrete values you chose. State the COMPLETE problem the way a TEST QUESTION would — the exact input, the task, and the expected answer form — so the learner could solve it from the statement alone. Never leave "<ARRAY>", "<T>", a bracketed placeholder, or a generic word like "the array" in the final text.
   - DO NOT use the visual_description on the first card for low-value text like "Currently, points to middle index 3" — that belongs in the points array. The first card's description is the scenario header the learner sees above the example.
 - EXPLAIN EVERY STEP EXPLICITLY — never gloss over or hand-wave a step. Do NOT state a sub-result and move on (e.g. NEVER write "recursively sort the left half to get [27, 38, 43]" as a single step). If a step relies on a sub-process such as a recursive call, WALK THROUGH that sub-process step by step — show how it actually happens (split the subarray, sort each part, merge them back), not just its result. The learner must see the FULL mechanism, with no step assumed or skipped.
 - Each worked_example step is its own SEPARATE card. One card = one state transition. Never put multiple steps on one card.
 - Every worked example must contain at least 5 meaningful state/action steps across its worked_example cards, unless the topic is explicitly a tiny boundary case such as empty input or single-node input.
-- If the main example would naturally have fewer than 5 steps, choose a richer example. Do not use a 3-node tree, 3-item array, or one-iteration trace as the main worked example.
+- If the main example would naturally run fewer than 4 full steps (complete iterations/cycles), choose a richer instance. Do not use a 3-node tree or a one-iteration trace. Size the input from the step count (≥4 full steps), not from raw size — difficulty comes from applying the method, not large inputs.
 - If a worked example has 5 meaningful steps, generate 5 separate worked_example cards.
 - CRITICAL: The worked_example card sequence must run to full completion. Trace all the way until the algorithm terminates — the queue/stack is empty, the recursion unwinds completely, the array is fully sorted, the search succeeds or fails, or the final result is confirmed. Do NOT stop midway through a trace because the 5-card minimum has been met. Every node must be visited, every comparison resolved, every merge step completed.
 - HARD MINIMUM card counts for traversal/algorithm examples. For an example with N nodes/elements, generate at least the following number of worked_example cards (one card per state transition). Failing to meet this count is a HARD FAILURE: regenerate with more cards.
@@ -693,10 +671,29 @@ def build_lean_user_prompt(
                 blueprints = [modified]
                 primary_blueprint = modified
 
+    omit_worked_example = _lean_omit_worked_example()
+    if omit_worked_example:
+        blueprints = [_without_worked_example(bp) for bp in blueprints]
+        primary_blueprint = blueprints[0]
+
     topic_hint = topic.title + " " + (getattr(topic, "description", None) or "")
     card_plan = _format_combined_card_plan(blueprints=blueprints, topic_hint=topic_hint)
     assumption_ledger = build_assumption_ledger(topic=topic, study_path=study_path)
     assumption_ledger_text = format_assumption_ledger_for_prompt(assumption_ledger)
+    # Sibling-topic scope boundaries (BIDIRECTIONAL distinctness): what the OTHER topics in this
+    # study path cover, so this topic teaches only its own angle and never duplicates/previews a
+    # sibling. The lean path previously had only the BACKWARD-looking assumption ledger (later topics
+    # avoid earlier ones), which let an EARLIER topic (e.g. a concept overview) duplicate a LATER
+    # walkthrough. This is the sibling out-of-scope the legacy generator applied via the scope contract.
+    sibling_out_of_scope: list[str] = []
+    try:
+        from app.services.topic_scope_service import build_scope_boundaries_from_siblings
+
+        _, _, sibling_out_of_scope, _ = build_scope_boundaries_from_siblings(
+            topic=topic, study_path=study_path, prior_concept_states=None,
+        )
+    except Exception:  # noqa: BLE001 — scope boundaries are additive; never block generation
+        sibling_out_of_scope = []
 
     parts: list[str] = [
         f"Topic: {topic.title}",
@@ -709,8 +706,18 @@ def build_lean_user_prompt(
             + "; ".join(blueprint["topic_type"] for blueprint in blueprints[1:])
         )
     if is_coding_continuation:
+        we_clause = (
+            "" if omit_worked_example
+            else " then a program execution worked_example using the completed code."
+        )
         parts.append(
-            "Coding continuation constraint: the preceding algorithm/data-structure walkthrough already taught the behavior. Do not reteach the algorithm. Start with code_walkthrough cards that build the implementation incrementally, then a program execution worked_example using the completed code."
+            "Coding continuation constraint: the preceding algorithm/data-structure walkthrough already taught the behavior. Do not reteach the algorithm. Start with code_walkthrough cards that build the implementation incrementally."
+            + we_clause
+        )
+    if omit_worked_example:
+        parts.append(
+            "WORKED EXAMPLE: do NOT generate any worked_example cards — the full worked example is "
+            "authored in a separate pass. Generate every OTHER card in the plan as normal."
         )
 
     if getattr(topic, "learner_outcome", None):
@@ -724,6 +731,15 @@ def build_lean_user_prompt(
 
     if getattr(topic, "out_of_scope", None):
         parts.append(f"Out of scope: {'; '.join(str(x) for x in topic.out_of_scope)}")
+
+    if sibling_out_of_scope:
+        parts.append(
+            "Sibling topics covered SEPARATELY in this study path (do NOT re-teach or preview their "
+            "content — keep each card focused on THIS topic's own angle): "
+            + "; ".join(sibling_out_of_scope[:6])
+            + ". This is a CONTENT-focus rule only: you MUST still generate EVERY card in the card "
+            "plan above — never drop or shorten the lesson because siblings exist."
+        )
 
     if getattr(topic, "assumed_prerequisites", None):
         parts.append(

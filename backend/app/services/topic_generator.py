@@ -85,6 +85,54 @@ def _drop_paradigm_only_topics(topics: list[dict[str, Any]], goal: str | None) -
     return kept
 
 
+# Topic types where one subject (algorithm / operation) should map to exactly ONE topic.
+_ONE_PER_SUBJECT_TYPES: frozenset[str] = frozenset({
+    "algorithm_walkthrough", "data_structure_operation", "coding_implementation",
+})
+# Framing words stripped from a title to find its core SUBJECT, so two differently-worded titles for
+# the same subject ("Understanding Quick Sort: Process Overview" vs "Tracing Quick Sort Step by Step")
+# reduce to the same key. Approach words (iterative/recursive) are NOT stripped, so genuinely distinct
+# implementations stay distinct.
+_SUBJECT_FRAMING_WORDS: frozenset[str] = frozenset({
+    "understanding", "understand", "tracing", "trace", "exploring", "explore", "introduction",
+    "intro", "overview", "review", "process", "step", "steps", "by", "how", "works", "working",
+    "basics", "basic", "fundamentals", "fundamental", "deep", "dive", "walkthrough", "guide",
+    "lesson", "part", "implementing", "implement", "code", "coding", "the", "a", "an", "to", "of",
+    "in", "on", "with", "and", "for", "into",
+})
+
+
+def _subject_tokens(title: str) -> tuple[frozenset[str], str]:
+    tokens = [t for t in _re.findall(r"[a-z0-9]+", str(title or "").lower())
+              if t not in _SUBJECT_FRAMING_WORDS]
+    return frozenset(tokens), "".join(tokens)
+
+
+def _drop_same_type_subject_duplicates(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Backstop for the topic-prompt rule: never keep two topics of the same one-per-subject type
+    (algorithm_walkthrough / data_structure_operation / coding_implementation) that cover the SAME
+    subject. Keeps the first occurrence, drops later duplicates — e.g. a '...Process Overview'
+    walkthrough alongside a '...Step by Step' walkthrough for the same algorithm. Equality-based so
+    distinct subjects (binary search vs binary search tree) and distinct approaches (iterative vs
+    recursive) are preserved. Never empties the path."""
+    seen: list[tuple[str, frozenset[str], str]] = []  # (topic_type, token_set, despaced)
+    kept: list[dict[str, Any]] = []
+    for topic in topics:
+        ttype = str(topic.get("course_type") or topic.get("topic_type") or "").strip().lower()
+        if ttype in _ONE_PER_SUBJECT_TYPES:
+            tset, despaced = _subject_tokens(topic.get("title"))
+            if despaced and any(
+                st == ttype and (ts == tset or ds == despaced) for (st, ts, ds) in seen
+            ):
+                _log.info("topic_generator: dropping same-subject duplicate %r (%s)",
+                          topic.get("title"), ttype)
+                continue
+            if despaced:
+                seen.append((ttype, tset, despaced))
+        kept.append(topic)
+    return kept or topics  # never drop everything
+
+
 def clean_text_field(value: Any, fallback: str = "") -> str:
     if value is None:
         return fallback
@@ -373,6 +421,10 @@ Chunk index: {chunk.chunk_index}
     # Drop auxiliary paradigm/methodology topics (e.g. "Understanding Divide and Conquer" on a
     # merge-sort path) that the concrete algorithm topics already teach by example.
     cleaned_topics = _drop_paradigm_only_topics(cleaned_topics, goal)
+    # Backstop the "one walkthrough per algorithm" prompt rule deterministically: drop a second
+    # same-type topic for the same subject (e.g. a "Process Overview" walkthrough next to a
+    # "Step by Step" walkthrough for quick sort) before it becomes a duplicate lesson.
+    cleaned_topics = _drop_same_type_subject_duplicates(cleaned_topics)
 
     if not cleaned_topics:
         cleaned_topics.append(

@@ -7,7 +7,6 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   BookOpen,
-  Clock3,
   Dumbbell,
   GraduationCap,
   LogOut,
@@ -26,20 +25,17 @@ import {
   generateInitialStudyPath,
   generateQuickPracticeQuestionSet,
   getClasses,
-  getHomeRecommendations,
   getQuickPracticeSessions,
   getStudyPaths,
   uploadPdfMaterial,
   uploadPdfMaterialToStudyPath,
   uploadQuickPracticePdf,
   type AzaleaClass,
-  type HomeRecommendation,
   type QuickPracticeSession,
   type StudyPath,
 } from "@/lib/api";
 import { useRequireAuth } from "@/lib/auth";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -54,7 +50,6 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import BrandLockup from "@/components/BrandLockup";
-import RecommendedNextCard from "@/components/home/RecommendedNextCard";
 
 const headlineFont = Fraunces({
   subsets: ["latin"],
@@ -96,25 +91,6 @@ const promptStarters: {
     description: "Open the pasted problem in the matching math or coding workspace.",
   },
 ];
-
-function getRecommendationBadge(type: string) {
-  if (type === "review_due") return "Review due";
-  if (type === "weak_area") return "Weak area";
-  if (type === "in_progress") return "Continue";
-  if (type === "not_started") return "Start next";
-  return "Recommended";
-}
-
-function getRecommendationHref(item: HomeRecommendation) {
-  if (item.study_path_id) return `/study-paths/${item.study_path_id}`;
-  if (item.class_id) return `/classes/${item.class_id}`;
-  return "/";
-}
-
-function formatMinutes(minutes?: number | null) {
-  if (!minutes) return null;
-  return `${minutes} min`;
-}
 
 function isQuickPracticePrompt(prompt: string) {
   const normalizedPrompt = prompt.toLowerCase();
@@ -204,9 +180,6 @@ export default function HomePage() {
   const [practiceSessions, setPracticeSessions] = useState<
     QuickPracticeSession[]
   >([]);
-  const [recommendations, setRecommendations] = useState<HomeRecommendation[]>(
-    []
-  );
 
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>("study_paths");
 
@@ -231,13 +204,6 @@ export default function HomePage() {
   const [isAttachPathOpen, setIsAttachPathOpen] = useState(false);
   const [isPromptIntentDialogOpen, setIsPromptIntentDialogOpen] =
     useState(false);
-
-  const todayFocus = recommendations[0] ?? null;
-  const queuedRecommendations = recommendations.slice(1, 4);
-
-  const shouldShowRecommendationStrip =
-    recommendations.length > 0 &&
-    (classes.length > 0 || studyPaths.length > 0 || practiceSessions.length > 0);
 
   const recentLearningItems = useMemo(() => {
     return [
@@ -268,22 +234,15 @@ export default function HomePage() {
   const recentClasses = useMemo(() => classes, [classes]);
 
   async function refreshData() {
-    const [
-      classData,
-      studyPathData,
-      practiceSessionData,
-      recommendationData,
-    ] = await Promise.all([
+    const [classData, studyPathData, practiceSessionData] = await Promise.all([
       getClasses(),
       getStudyPaths(),
       getQuickPracticeSessions(),
-      getHomeRecommendations(),
     ]);
 
     setClasses(classData);
     setStudyPaths(studyPathData);
     setPracticeSessions(practiceSessionData);
-    setRecommendations(recommendationData);
   }
 
   useEffect(() => {
@@ -949,55 +908,7 @@ export default function HomePage() {
               </DialogContent>
             </Dialog>
 
-            {shouldShowRecommendationStrip && (
-              <section className="mt-7 grid items-stretch gap-3 md:grid-cols-2">
-                {todayFocus && (
-                  <Link
-                    href={getRecommendationHref(todayFocus)}
-                    className="group flex h-50 flex-col justify-between rounded-3xl border border-[#E7E1EF] bg-white/82 p-5 shadow-sm shadow-purple-200/20 transition hover:border-[#D7C3FF] hover:bg-white"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <Badge className="rounded-full bg-[#EEE5FF] text-[11px] font-semibold text-[#6F46D9] hover:bg-[#EEE5FF]">
-                        Today&apos;s focus
-                      </Badge>
-
-                      {formatMinutes(todayFocus.minutes_estimate) && (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-[#817A92]">
-                          <Clock3 className="h-3 w-3" />
-                          {formatMinutes(todayFocus.minutes_estimate)}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex flex-1 items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="line-clamp-1 text-base font-bold tracking-[-0.01em] text-[#21172F]">
-                          {todayFocus.title}
-                        </p>
-                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#817A92]">
-                          {todayFocus.reason}
-                        </p>
-                      </div>
-
-                      <ArrowRight className="h-4 w-4 shrink-0 text-[#817A92] transition group-hover:translate-x-0.5 group-hover:text-[#6F46D9]" />
-                    </div>
-                  </Link>
-                )}
-
-                {queuedRecommendations.length > 0 && (
-                  <RecommendedNextCard
-                    items={queuedRecommendations.slice(0, 2).map((item) => ({
-                      key: `${item.type}-${item.topic_id ?? item.study_path_id ?? item.title}`,
-                      title: item.title,
-                      href: getRecommendationHref(item),
-                      badge: getRecommendationBadge(item.type),
-                      minutes: formatMinutes(item.minutes_estimate),
-                    }))}
-                  />
-                )}
-              </section>
-            )}
-                      </div>
+          </div>
         </section>
       </div>
     </main>

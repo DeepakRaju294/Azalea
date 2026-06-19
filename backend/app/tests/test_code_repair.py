@@ -149,5 +149,38 @@ class TestApply(unittest.TestCase):
         ))
 
 
+class TestMissingEntrypoint(unittest.TestCase):
+    def test_helper_only_code_regenerates_complete_impl(self):
+        # The walkthrough built only `merge` (valid alone) and never `merge_sort`. The code is
+        # valid but INCOMPLETE — the entry point is missing — so it must regenerate the full impl.
+        merge_only = "def merge(left, right):\n    return sorted(left + right)"
+        lesson = {"lesson_cards": [
+            {"blueprint_key": "code_walkthrough", "code_snippet": merge_only},
+            {"blueprint_key": "worked_example", "code_snippet": merge_only},
+        ], "metadata": {}}
+        applied = apply_clean_code_to_lesson(
+            lesson, {"id": "c1", "title": "Merge Sort", "topic_type": "coding_implementation"}, generator=_good_gen,
+        )
+        self.assertTrue(applied)
+        code = lesson["lesson_cards"][0]["code_snippet"]
+        self.assertIn("def merge_sort", code)  # entry point now present
+        self.assertIn("def merge(", code)
+
+    def test_complete_code_not_regenerated(self):
+        # GOOD already defines merge_sort -> no entry-point regen; valid code is left alone.
+        lesson = {"lesson_cards": [
+            {"blueprint_key": "code_walkthrough", "code_snippet": GOOD},
+            {"blueprint_key": "worked_example", "code_snippet": GOOD},
+        ], "metadata": {}}
+
+        def _no_gen(payload):
+            raise AssertionError("complete code must not be regenerated")
+
+        applied = apply_clean_code_to_lesson(
+            lesson, {"id": "c1", "title": "Merge Sort", "topic_type": "coding_implementation"}, generator=_no_gen,
+        )
+        self.assertFalse(applied)
+
+
 if __name__ == "__main__":
     unittest.main()

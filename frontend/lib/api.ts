@@ -1765,6 +1765,9 @@ export function getTopicLesson(topicId: string) {
 export type LessonStreamEvent =
   | { type: "card"; card: Record<string, unknown> }
   | { type: "complete"; lesson?: unknown }
+  // Emitted after `complete` when the backend defers the worked example: the lesson has already
+  // rendered; this carries the same lesson with the worked example patched in.
+  | { type: "worked_example"; lesson?: unknown }
   | { type: "busy" }
   | { type: "error"; message?: string };
 

@@ -25,7 +25,11 @@ for _name in ("dotenv", "openai"):
                 setattr(_m, _e, type(_e, (Exception,), {}))
         sys.modules[_name] = _m
 
-from app.services.topic_generator import _drop_paradigm_only_topics, _is_paradigm_only_topic
+from app.services.topic_generator import (
+    _drop_paradigm_only_topics,
+    _drop_same_type_subject_duplicates,
+    _is_paradigm_only_topic,
+)
 
 
 def _path():
@@ -65,6 +69,35 @@ class TestParadigmFilter(unittest.TestCase):
             {"title": "Algorithm Walkthrough of Merge Sort", "course_type": "algorithm_walkthrough"},
             "learn merge sort",
         ))
+
+
+class TestSameSubjectDuplicateFilter(unittest.TestCase):
+    def _t(self, title, ctype):
+        return {"title": title, "course_type": ctype}
+
+    def test_drops_second_walkthrough_for_same_algorithm(self):
+        topics = [
+            self._t("Understanding Quick Sort: Process Overview", "algorithm_walkthrough"),
+            self._t("Tracing Quick Sort Step by Step", "algorithm_walkthrough"),
+            self._t("Implementing Quick Sort", "coding_implementation"),
+        ]
+        kept = [t["title"] for t in _drop_same_type_subject_duplicates(topics)]
+        self.assertEqual(kept, ["Understanding Quick Sort: Process Overview", "Implementing Quick Sort"])
+
+    def test_keeps_distinct_subjects_approaches_and_concept_topic(self):
+        topics = [
+            self._t("Binary Search", "algorithm_walkthrough"),
+            self._t("Binary Search Tree Insertion", "data_structure_operation"),
+            self._t("Iterative Quick Sort", "coding_implementation"),
+            self._t("Recursive Quick Sort", "coding_implementation"),
+            self._t("Understanding Quick Sort", "concept_intuition"),  # different type — never deduped
+        ]
+        kept = _drop_same_type_subject_duplicates(topics)
+        self.assertEqual(len(kept), 5)
+
+    def test_never_empties_path(self):
+        topics = [self._t("Quick Sort", "algorithm_walkthrough")]
+        self.assertEqual(len(_drop_same_type_subject_duplicates(topics)), 1)
 
 
 if __name__ == "__main__":

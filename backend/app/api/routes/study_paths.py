@@ -229,6 +229,13 @@ def _claim_remaining_topic_ids(study_path_id: str, use_v2: bool) -> list[str]:
     the same topic (which previously doubled spend and latency). The conditional
     UPDATE + unique(topic_id) constraint make the claim race-safe.
     """
+    from app.services.lesson_cache import fresh_on_open
+
+    # fresh-on-open: each topic is regenerated when opened, so pre-warming the rest of the path is
+    # wasted LLM work — claim nothing.
+    if fresh_on_open():
+        return []
+
     claimed: list[str] = []
     db = SessionLocal()
     try:
