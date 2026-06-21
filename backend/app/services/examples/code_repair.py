@@ -93,20 +93,21 @@ def _default_generator(payload: dict[str, Any]) -> Optional[dict[str, Any]]:
     if not key or key.strip().lower() == "dummy":
         return None
     try:
-        from app.services.llm_client import OPENAI_MODEL, client
+        from app.services.llm_client import OPENAI_MODEL, client, llm_call
 
         # Per-call timeout caps a hung call; KEEP retries so a transient rate-limit/5xx recovers
         # rather than silently dropping the regenerated code.
         timeout = float(os.getenv("AZALEA_ENRICH_TIMEOUT_SECONDS", "60"))
         retries = max(0, int(os.getenv("AZALEA_ENRICH_MAX_RETRIES", "2")))
-        response = client.with_options(timeout=timeout, max_retries=retries).responses.create(
-            model=OPENAI_MODEL,
-            input=[
-                {"role": "system", "content": _CODE_GEN_SYSTEM},
-                {"role": "user", "content": str(payload.get("user") or "")},
-            ],
-            text={"format": {"type": "json_object"}},
-        )
+        with llm_call("clean_code"):
+            response = client.with_options(timeout=timeout, max_retries=retries).responses.create(
+                model=OPENAI_MODEL,
+                input=[
+                    {"role": "system", "content": _CODE_GEN_SYSTEM},
+                    {"role": "user", "content": str(payload.get("user") or "")},
+                ],
+                text={"format": {"type": "json_object"}},
+            )
         return json.loads(response.output_text)
     except Exception as exc:  # noqa: BLE001
         _log.warning("code_repair: LLM call failed: %s", exc)

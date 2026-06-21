@@ -731,21 +731,22 @@ def _default_solver(payload: dict[str, Any]) -> Optional[dict[str, Any]]:
     if not key or key.strip().lower() == "dummy":
         return None
     try:
-        from app.services.llm_client import OPENAI_MODEL, client
+        from app.services.llm_client import OPENAI_MODEL, client, llm_call
 
         # Per-call timeout caps a hung call (so a slow connection can't stall the serial study-path
         # build), but KEEP retries so a transient rate-limit / 5xx recovers instead of silently
         # dropping the worked example. Bounded: <= 3 attempts x timeout. Tune via the env vars.
-        response = client.with_options(
-            timeout=_ENRICH_TIMEOUT, max_retries=_ENRICH_MAX_RETRIES,
-        ).responses.create(
-            model=OPENAI_MODEL,
-            input=[
-                {"role": "system", "content": str(payload.get("system") or _SYSTEM)},
-                {"role": "user", "content": str(payload.get("user") or "")},
-            ],
-            text={"format": {"type": "json_object"}},
-        )
+        with llm_call("worked_example_legacy"):  # label this call in the usage CSV
+            response = client.with_options(
+                timeout=_ENRICH_TIMEOUT, max_retries=_ENRICH_MAX_RETRIES,
+            ).responses.create(
+                model=OPENAI_MODEL,
+                input=[
+                    {"role": "system", "content": str(payload.get("system") or _SYSTEM)},
+                    {"role": "user", "content": str(payload.get("user") or "")},
+                ],
+                text={"format": {"type": "json_object"}},
+            )
         return json.loads(response.output_text)
     except Exception as exc:  # noqa: BLE001 — a failed solve is non-fatal; lesson is unchanged
         _log.warning("worked-example solver: LLM call failed: %s", exc)
@@ -768,6 +769,22 @@ def solve_worked_example(
 
     Coding-implementation topics take the STRUCTURAL path (CODING_WORKED_EXAMPLE_SPEC): structural-step
     outline + hard gate + code-anchored cards — NOT the runtime line-execution trace."""
+    # GENERATION_AND_VISUAL_FOUNDATION_SPEC §12 step 6 cutover — OFF by default. Only when
+    # AZALEA_GEN_FOUNDATION_SHADOW is set does the new single-pass path run; it returns None
+    # (and we fall back to the legacy path below) when offline / on any failure, so flipping the
+    # flag without an API key is a safe no-op. Never raises into the legacy flow.
+    try:
+        from app.services.gen_foundation import flags as _gf_flags
+
+        if _gf_flags.is_shadow_enabled():
+            from app.services.gen_foundation.integration import solve_via_pipeline
+
+            shadow = solve_via_pipeline(topic, code=code, solver=solver)  # type: ignore[arg-type]
+            if shadow:
+                return shadow
+    except Exception:  # noqa: BLE001 — the shadow path must never break legacy generation
+        pass
+
     fn = solver or _default_solver
 
     if code:
@@ -1134,6 +1151,64 @@ def _feedback_from_status(status: dict[str, Any], sol: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def _enforce_worked_example_schema_cap(
+    sol: dict[str, Any], topic: dict[str, Any], code: Optional[str]
+) -> tuple[dict[str, Any], bool]:
+    """Deterministic projection-cap enforcement (GENERATION_AND_VISUAL_FOUNDATION_SPEC §5.2).
+
+    A worked example must not exceed the bounded card cap for its topic category. An over-cap
+    example — a legacy line-by-line trace, e.g. 25 'Compare arr[i] with pivot' steps on a concept
+    topic — is re-solved through the gen_foundation pipeline, which projects it down to a bounded,
+    grouped set that still reaches the final answer. Returns (sol, bounded_by_gen_foundation).
+    Failure-safe: any error keeps the original `sol`.
+    """
+    try:
+        cards = sol.get("cards") if isinstance(sol, dict) else None
+        if not isinstance(cards, list) or not cards:
+            return sol, False
+        from app.services.gen_foundation.prepass import build_prepass_config
+
+        tdict = {
+            "topic_type": topic.get("topic_type"),
+            "coding_implementation": bool(code),
+            "topic_family": topic.get("topic_family") or "",
+        }
+        cap = build_prepass_config(tdict).maximum_example_cards
+        if len(cards) <= cap:
+            return sol, False
+
+        _log.warning(
+            "worked-example: %d step cards exceed projection cap %d for topic %s (%s) — re-solving "
+            "bounded via gen_foundation (§5.2)",
+            len(cards), cap, topic.get("id"), topic.get("topic_type"),
+        )
+        from app.services.gen_foundation.integration import artifact_to_legacy
+        from app.services.gen_foundation.pipeline import run_first_pass
+
+        trun = dict(tdict)
+        trun["id"] = topic.get("id")
+        trun["title"] = topic.get("title")
+        if code:
+            trun["code"] = code
+        res = run_first_pass(trun)  # forces the bounded pipeline regardless of the flag
+        if res.ok and not res.degraded and res.artifact:
+            bounded = artifact_to_legacy(res.artifact)
+            bcards = bounded.get("cards") or []
+            if bcards and len(bcards) <= cap:
+                _log.info("worked-example: re-solved %s to %d bounded cards", topic.get("id"), len(bcards))
+                # carry over the legacy contract fields the downstream loop reads
+                bounded.setdefault("expected_final_answer", sol.get("expected_final_answer") or sol.get("final_answer"))
+                bounded.setdefault("required_cases", sol.get("required_cases") or [])
+                return bounded, True
+        # Couldn't produce a bounded version — keep the original but flag it loudly so it's visible.
+        _log.warning("worked-example: bounded re-solve unavailable for %s; over-cap example flagged", topic.get("id"))
+        sol.setdefault("_schema", {})["projection_cap_exceeded"] = {"cards": len(cards), "cap": cap}
+        return sol, False
+    except Exception as exc:  # noqa: BLE001 — enforcement must never break the lesson
+        _log.warning("worked-example cap enforcement failed for %s: %s", topic.get("id"), exc)
+        return sol, False
+
+
 def apply_llm_solved_worked_example(
     lesson_json: dict[str, Any],
     topic: dict[str, Any],
@@ -1193,6 +1268,11 @@ def apply_llm_solved_worked_example(
         # we never loop or burn unbounded cost; the last (best) attempt is kept.
         from app.services.examples.example_blueprint import stamp_example_metadata
 
+        # SCHEMA CAP ENFORCEMENT (§5.2): never ship a worked example that blows past the bounded
+        # projection cap (the legacy line-by-line trace). Over-cap -> re-solved bounded via
+        # gen_foundation; when that succeeds we skip the re-solve loop so it can't be un-bounded.
+        sol, _gf_bounded = _enforce_worked_example_schema_cap(sol, topic, code)
+
         step_cards: list[dict[str, Any]] = []
         status: dict[str, Any] = {}
         attempts = 0
@@ -1209,7 +1289,7 @@ def apply_llm_solved_worked_example(
                 enforce_field_contract=True,
                 coding=bool(code),
             )
-            if status.get("complete") or attempt == _MAX_RESOLVE_ATTEMPTS:
+            if status.get("complete") or attempt == _MAX_RESOLVE_ATTEMPTS or _gf_bounded:
                 break
             _log.info("worked-example solver: re-solving %s (reason=%s, attempt=%d)",
                       topic.get("id"), status.get("reason"), attempts)

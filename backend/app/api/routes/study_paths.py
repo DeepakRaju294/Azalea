@@ -328,34 +328,47 @@ def _generate_remaining_lessons_sequentially(
             chunks = get_chunks_for_study_path(
                 study_path=study_path, db=tdb, limit=6, allow_empty=True
             )
+            source_chunk_ids, source_summary = build_lesson_source_metadata(chunks)
+
+            def _persist(lj: dict, *, allow_overwrite: bool) -> None:
+                """Upsert the lesson as ready. ``allow_overwrite=False`` is the base/lean commit (skips
+                if another job already produced a ready lesson); ``True`` is our own enriched upgrade."""
+                lesson = tdb.query(Lesson).filter(Lesson.topic_id == topic_id).first()
+                if lesson:
+                    if not allow_overwrite and lesson.generation_status == "ready" and lesson.lesson_json:
+                        return
+                    lesson.lesson_json = lj
+                    lesson.source_chunk_ids = source_chunk_ids
+                    lesson.source_summary = source_summary
+                    lesson.generation_status = "ready"
+                else:
+                    tdb.add(Lesson(
+                        topic_id=topic_id, title=topic.title, lesson_json=lj,
+                        source_chunk_ids=source_chunk_ids, source_summary=source_summary,
+                        generation_status="ready",
+                    ))
+                tdb.commit()
+
             if use_v2:
                 lesson_json = _build_v2_lesson_for_topic(topic=topic, chunks=chunks)
+                _persist(lesson_json, allow_overwrite=True)
             else:
-                lesson_json = _build_legacy_lesson_with_v2_visuals(topic=topic, chunks=chunks)
-            source_chunk_ids, source_summary = build_lesson_source_metadata(chunks)
-            lesson = tdb.query(Lesson).filter(Lesson.topic_id == topic_id).first()
-            if lesson:
-                if lesson.generation_status == "ready" and lesson.lesson_json:
-                    return
-                lesson.lesson_json = lesson_json
-                lesson.source_chunk_ids = source_chunk_ids
-                lesson.source_summary = source_summary
-                lesson.generation_status = "ready"
-            else:
-                tdb.add(Lesson(
-                    topic_id=topic_id,
-                    title=topic.title,
-                    lesson_json=lesson_json,
-                    source_chunk_ids=source_chunk_ids,
-                    source_summary=source_summary,
-                    generation_status="ready",
-                ))
-            tdb.commit()
+                # Two-phase: commit the LEAN lesson 'ready' BEFORE the slow enrich (so a coding topic's
+                # heavy clean-code + walkthrough + worked-example solve can't leave it unrendered/'failed'
+                # on timeout), then upgrade the SAME lesson with the enriched version.
+                lesson_json = _build_legacy_lesson_with_v2_visuals(
+                    topic=topic, chunks=chunks,
+                    on_base_ready=lambda lean: _persist(lean, allow_overwrite=False),
+                )
+                _persist(lesson_json, allow_overwrite=True)
         except Exception:
             logger.exception("Background lesson generation failed for topic %s", topic_id)
             try:
+                tdb.rollback()
                 lesson = tdb.query(Lesson).filter(Lesson.topic_id == topic_id).first()
-                if lesson:
+                # Do NOT downgrade a lesson that already committed 'ready' in phase 1 — a failure in
+                # the (additive) enrich upgrade must not blank a topic that already renders.
+                if lesson and lesson.generation_status != "ready":
                     lesson.generation_status = "failed"
                     tdb.commit()
             except Exception:
@@ -818,12 +831,18 @@ def _build_v2_lesson_for_topic(
 def _build_legacy_lesson_with_v2_visuals(
     topic: Topic,
     chunks: list[ContentChunk],
+    on_base_ready=None,
 ) -> dict[str, Any]:
     """Build the legacy lesson_cards contract and enrich supported cards
     with v2 VisualModels.
 
     This is the normal production flow during the visual-system cutover:
     legacy controls instructional structure; v2 controls richer visuals.
+
+    ``on_base_ready(lesson_json)`` (optional) is called with the renderable LEAN lesson BEFORE the
+    slow enrich runs — callers use it to mark the topic ``ready`` immediately so a heavy/slow enrich
+    (clean code + per-line walkthrough + worked example, on coding topics) can never leave the topic
+    unrendered or ``failed`` on timeout. Enrich then upgrades the lesson in place.
     """
     lesson_json = build_lean_lesson_from_topic_and_chunks(
         topic=topic,
@@ -832,13 +851,30 @@ def _build_legacy_lesson_with_v2_visuals(
     if not isinstance(lesson_json, dict):
         return lesson_json
 
-    attach_v2_visuals_to_legacy_lesson(
-        lesson_json,
-        topic_id=str(topic.id),
-        topic_title=topic.title or "",
-        topic_type=str(getattr(topic, "course_type", None) or "concept_intuition"),
-        visual_domain=None,
-    )
+    if on_base_ready is not None:
+        try:
+            on_base_ready(lesson_json)  # render the lean lesson NOW; enrich upgrades it below
+        except Exception:  # noqa: BLE001 — an early-commit hiccup must not stop enrich
+            import logging
+            logging.getLogger(__name__).exception("study-path base-ready callback failed for %s", topic.id)
+
+    # Run the FULL enrich (v2 visuals + clean code + per-line walkthrough + WORKED-EXAMPLE solve +
+    # finalize) — the SAME path the single-topic/regen flow runs. Previously this bulk builder only
+    # attached visuals, so the worked example was NEVER authored during study-path generation.
+    # RESILIENCE: the enrich is the heaviest, slowest, most failure-prone step (especially on coding
+    # topics: clean_code + per-line walkthrough + WE solve). If it fails/raises for ANY reason, we keep
+    # the already-built LEAN lesson so the topic STILL RENDERS — a coding topic must never come back
+    # blank. Lazy import avoids a routes-module import cycle.
+    try:
+        from app.api.routes.lessons import enrich_legacy_lesson_with_v2_visuals
+
+        enrich_legacy_lesson_with_v2_visuals(topic=topic, lesson_json=lesson_json)
+    except Exception:  # noqa: BLE001 — enrich is additive; a failure must not blank the lesson
+        import logging
+        logging.getLogger(__name__).exception(
+            "study-path enrich failed for topic %s (%s) — rendering lean lesson",
+            topic.id, getattr(topic, "course_type", None) or getattr(topic, "topic_type", None),
+        )
     return lesson_json
 
 
@@ -1079,8 +1115,24 @@ def regenerate_study_path(
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(_generate, topic): topic for topic in created_topics}
             for future in as_completed(futures):
-                topic, lesson_json = future.result()
-                topic_lessons[topic.id] = lesson_json
+                topic = futures[future]
+                try:
+                    _topic, lesson_json = future.result()
+                    topic_lessons[topic.id] = lesson_json
+                except Exception:  # noqa: BLE001 — isolate per topic: one failure must not blank others
+                    import logging
+                    logging.getLogger(__name__).exception(
+                        "study-path: lesson build failed for topic %s — lean fallback", topic.id
+                    )
+                    try:
+                        topic_lessons[topic.id] = build_lean_lesson_from_topic_and_chunks(
+                            topic=topic, chunks=chunks
+                        )
+                    except Exception:  # noqa: BLE001 — last resort: a flagged empty lesson, never a KeyError
+                        topic_lessons[topic.id] = {
+                            "lesson_cards": [],
+                            "metadata": {"quality": {"generation_failed": True}},
+                        }
 
     for topic in created_topics:
         lesson_json = topic_lessons[topic.id]

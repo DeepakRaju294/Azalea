@@ -15,6 +15,7 @@ os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.examples.solver import (
     _build_solution_cards,
+    _enforce_worked_example_schema_cap,
     _expand_coarse_actions,
     _gate_outline,
     _is_coarse_action,
@@ -323,6 +324,32 @@ class TestApply(unittest.TestCase):
         lesson = {"lesson_cards": [{"blueprint_key": "background"}], "metadata": {}}
         self.assertFalse(apply_llm_solved_worked_example(
             lesson, {"id": "t1", "topic_type": "study_path_introduction"}, solver=_stub))
+
+
+class TestSchemaCapEnforcement(unittest.TestCase):
+    """§5.2 projection-cap enforcement: an over-cap worked example (the legacy line trace) is caught;
+    within-cap examples pass through untouched. Offline (no key) the bounded re-solve is unavailable,
+    so an over-cap example is FLAGGED rather than silently shipped."""
+
+    def test_within_cap_unchanged(self):
+        sol = {"cards": [{"title": f"s{i}"} for i in range(5)], "final_answer": "x"}
+        topic = {"id": "qs", "title": "Intro to Quick Sort", "topic_type": "concept"}
+        out, bounded = _enforce_worked_example_schema_cap(sol, topic, None)
+        self.assertFalse(bounded)
+        self.assertIs(out, sol)
+        self.assertNotIn("_schema", out)
+
+    def test_over_cap_flagged_offline(self):
+        sol = {"cards": [{"title": f"s{i}"} for i in range(25)], "final_answer": "x"}
+        topic = {"id": "qs", "title": "Intro to Quick Sort", "topic_type": "concept"}
+        out, bounded = _enforce_worked_example_schema_cap(sol, topic, None)
+        self.assertFalse(bounded)  # no key -> can't re-solve, but the violation is recorded
+        self.assertEqual(out["_schema"]["projection_cap_exceeded"], {"cards": 25, "cap": 7})
+
+    def test_failure_safe_on_bad_sol(self):
+        topic = {"id": "x", "topic_type": "concept"}
+        out, bounded = _enforce_worked_example_schema_cap({"cards": None}, topic, None)
+        self.assertFalse(bounded)
 
 
 class TestCodingStructural(unittest.TestCase):

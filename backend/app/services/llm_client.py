@@ -1,3 +1,5 @@
+import contextlib
+import contextvars
 import csv
 import json
 import logging
@@ -29,6 +31,26 @@ if not OPENAI_API_KEY:
 client = OpenAI(api_key=OPENAI_API_KEY, max_retries=2)
 
 _usage_logger = logging.getLogger("azalea.llm_usage")
+
+# The logical name of the in-flight LLM call, so EVERY `responses.create` (including ones on
+# `client.with_options(...)` copies and callers that bypass `_create_with_usage`) is logged with a
+# meaningful label. Thread-/async-safe (each worker thread has its own context).
+_current_call: contextvars.ContextVar[str] = contextvars.ContextVar("llm_call_name", default="uncategorized")
+
+
+@contextlib.contextmanager
+def llm_call(name: str):
+    """Label every `responses.create` made inside this block (for the usage CSV).
+
+    Use around direct `client.responses.create(...)` calls that don't go through
+    `_create_with_usage`, so they show up named instead of 'uncategorized'.
+    """
+    token = _current_call.set(name)
+    try:
+        yield
+    finally:
+        _current_call.reset(token)
+
 
 # CSV usage log so we can compute spend / cache hit-rate / latency offline.
 # Set AZALEA_LLM_USAGE_LOG=0 in .env to disable. Default: backend/logs/llm_usage.csv.
@@ -154,25 +176,65 @@ def _log_usage(call_name: str, response: Any, wall_ms: int) -> None:
         pass
 
 
-def _create_with_usage(call_name: str, **kwargs: Any) -> Any:
-    """Wrap `client.responses.create` with timing + usage logging.
+# Patch `Responses.create` ONCE so EVERY call — including ones on `client.with_options(...)` copies
+# and direct callers that never touch `_create_with_usage` (the worked-example solver, gen_foundation,
+# code repair/walkthrough, review/repair/transfer generators) — is logged to the usage CSV exactly
+# once, labelled by the `_current_call` context var. This is what makes "track ALL text content"
+# true regardless of the call site. Guarded: if the SDK shape ever changes, we fall back to per-call
+# logging in `_create_with_usage` and nothing breaks.
+_PATCH_APPLIED = False
+try:
+    from openai.resources.responses import Responses as _Responses  # type: ignore
 
-    Every site that previously called `client.responses.create(...)` should
-    call `_create_with_usage("descriptive_name", ...)` instead so we get a
-    single source of truth for spend, latency, and cache-hit measurement.
+    _orig_responses_create = _Responses.create
 
-    Logging is wrapped in a broad try/except so a bug in the logger can
-    NEVER kill an otherwise-successful LLM response. The response is the
-    expensive thing; the log entry is disposable.
+    def _logged_responses_create(self, *args: Any, **kwargs: Any) -> Any:
+        started = time.perf_counter()
+        response = _orig_responses_create(self, *args, **kwargs)
+        wall_ms = int((time.perf_counter() - started) * 1000)
+        try:
+            _log_usage(_current_call.get(), response, wall_ms)
+        except Exception:  # noqa: BLE001 — the response is the expensive thing; the log is disposable
+            _usage_logger.exception("llm_call usage-log failed (patched)")
+        return response
+
+    _Responses.create = _logged_responses_create  # type: ignore[assignment]
+    _PATCH_APPLIED = True
+except Exception:  # noqa: BLE001
+    _usage_logger.exception("could not patch Responses.create; per-call logging only")
+
+
+def _create_with_usage(
+    call_name: str, *, timeout: Any = None, max_retries: Any = None, **kwargs: Any
+) -> Any:
+    """Make an LLM call labelled `call_name` for the usage CSV.
+
+    With the class patch active, logging happens there (via `_current_call`); this just sets the
+    label and applies optional per-call timeout/max_retries. If the patch isn't active, it logs
+    here as a fallback. Logging never breaks the response.
     """
-    started = time.perf_counter()
-    response = client.responses.create(**kwargs)
-    wall_ms = int((time.perf_counter() - started) * 1000)
+    token = _current_call.set(call_name)
     try:
-        _log_usage(call_name, response, wall_ms)
-    except Exception:  # noqa: BLE001
-        _usage_logger.exception("llm_call usage-log failed call=%s", call_name)
-    return response
+        target = client
+        if timeout is not None or max_retries is not None:
+            opts: dict[str, Any] = {}
+            if timeout is not None:
+                opts["timeout"] = timeout
+            if max_retries is not None:
+                opts["max_retries"] = max_retries
+            target = client.with_options(**opts)
+        if _PATCH_APPLIED:
+            return target.responses.create(**kwargs)  # logged by the patch
+        started = time.perf_counter()
+        response = target.responses.create(**kwargs)
+        wall_ms = int((time.perf_counter() - started) * 1000)
+        try:
+            _log_usage(call_name, response, wall_ms)
+        except Exception:  # noqa: BLE001
+            _usage_logger.exception("llm_call usage-log failed call=%s", call_name)
+        return response
+    finally:
+        _current_call.reset(token)
 
 VISUAL_STEP_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -2029,8 +2091,16 @@ def generate_lean_structured_lesson(
     system_prompt: str,
     user_prompt: str,
 ) -> dict[str, Any]:
+    # The lean lesson is the slowest call (huge strict schema). Bound it so a truly HUNG call fails in
+    # minutes instead of blocking a worker for hours (observed anomalies: 977s-8790s). BUT the default
+    # must clear LEGITIMATE slow coding leans (measured up to ~352s) or they fail to generate — so the
+    # timeout is 600s (well above real leans, well below the hang cluster). One retry absorbs a
+    # transient blip; with the two-phase background commit, a later topic's lean failure never blanks
+    # earlier topics. Tune via env.
     response = _create_with_usage(
         "lean_lesson",
+        timeout=float(os.getenv("AZALEA_LEAN_TIMEOUT_SECONDS", "600")),
+        max_retries=max(0, int(os.getenv("AZALEA_LEAN_MAX_RETRIES", "1"))),
         model=OPENAI_MODEL,
         input=[
             {"role": "system", "content": system_prompt},

@@ -48,6 +48,17 @@ def _short_explainer(payload):
     return {"explanations": [{"line": 1, "text": "only the first line"}]}  # incomplete coverage
 
 
+def _skip_one_explainer(payload):
+    # Covers every non-blank line EXCEPT line 6 (the near-identical-line case the model fumbles).
+    numbered = str(payload.get("code")).split("\n")
+    items = [
+        {"line": i, "text": f"Plain-English explanation of line {i}."}
+        for i, ln in enumerate(numbered, start=1)
+        if ln.strip() and i != 6
+    ]
+    return {"explanations": items}
+
+
 class TestBlocks(unittest.TestCase):
     def test_blocks_break_on_blank_and_new_def(self):
         blocks = _walkthrough_blocks(CODE)
@@ -74,6 +85,15 @@ class TestExplainLines(unittest.TestCase):
 
     def test_incomplete_coverage_is_none(self):
         self.assertIsNone(explain_lines(CODE, explainer=_short_explainer))
+
+    def test_single_gap_is_filled_not_discarded(self):
+        # One missing line must NOT discard every good explanation (that bail left the broken
+        # lean single-card walkthrough behind). The gap is filled deterministically instead.
+        out = explain_lines(CODE, explainer=_skip_one_explainer)
+        self.assertIsNotNone(out)
+        self.assertEqual(set(out), {1, 2, 3, 4, 5, 6, 7, 9, 10, 11})  # full per-line coverage
+        self.assertTrue(out[6])                                       # line 6 filled, not empty
+        self.assertEqual(out[1], "Plain-English explanation of line 1.")  # model wording kept
 
 
 class TestApply(unittest.TestCase):

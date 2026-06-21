@@ -44,20 +44,21 @@ def _default_explainer(payload: dict[str, Any]) -> Optional[dict[str, Any]]:
     if not key or key.strip().lower() == "dummy":
         return None
     try:
-        from app.services.llm_client import OPENAI_MODEL, client
+        from app.services.llm_client import OPENAI_MODEL, client, llm_call
 
         # Per-call timeout caps a hung call; KEEP retries so a transient rate-limit/5xx recovers
         # rather than silently dropping the walkthrough.
         timeout = float(os.getenv("AZALEA_ENRICH_TIMEOUT_SECONDS", "60"))
         retries = max(0, int(os.getenv("AZALEA_ENRICH_MAX_RETRIES", "2")))
-        response = client.with_options(timeout=timeout, max_retries=retries).responses.create(
-            model=OPENAI_MODEL,
-            input=[
-                {"role": "system", "content": _EXPLAIN_SYSTEM},
-                {"role": "user", "content": str(payload.get("user") or "")},
-            ],
-            text={"format": {"type": "json_object"}},
-        )
+        with llm_call("code_walkthrough"):
+            response = client.with_options(timeout=timeout, max_retries=retries).responses.create(
+                model=OPENAI_MODEL,
+                input=[
+                    {"role": "system", "content": _EXPLAIN_SYSTEM},
+                    {"role": "user", "content": str(payload.get("user") or "")},
+                ],
+                text={"format": {"type": "json_object"}},
+            )
         return json.loads(response.output_text)
     except Exception as exc:  # noqa: BLE001
         _log.warning("code_walkthrough: LLM call failed: %s", exc)
@@ -149,13 +150,27 @@ def explain_lines(code: str, *, explainer: Optional[ExplainFn] = None) -> Option
                 except (TypeError, ValueError):
                     continue
 
+    # Near-identical lines (e.g. `x < pivot` / `x == pivot` / `x > pivot`) are exactly where the
+    # model mislabels or skips one. Discarding EVERY good explanation over one gap is what caused
+    # the rebuild to bail and leave the lean single-card walkthrough (full code, one stray
+    # highlight). Instead: keep the model's wording, and fill the few missing lines deterministically
+    # so the per-line walkthrough always renders. Only bail if the model gave essentially nothing.
+    code_lines = code.split("\n")
+    covered = sum(1 for ln in nonblank if mapping.get(ln))
+    if covered < max(1, (len(nonblank) + 1) // 2):
+        return None  # too little real coverage -> don't fabricate a whole walkthrough
     out: dict[int, str] = {}
     for ln in nonblank:
         text = mapping.get(ln)
-        if not text:
-            return None  # incomplete coverage -> bail, don't fabricate
-        out[ln] = text
+        out[ln] = text or _fallback_line_explanation(code_lines[ln - 1])
     return out
+
+
+def _fallback_line_explanation(line: str) -> str:
+    """A deterministic, always-correct stand-in for a line the model failed to explain — it simply
+    restates the line's code so the highlight stays aligned (better than dropping the walkthrough)."""
+    stripped = line.strip()
+    return f"This line runs `{stripped}`." if stripped else "This line continues the implementation."
 
 
 def _replace_walkthrough_cards(cards: list[Any], new_cards: list[dict[str, Any]]) -> None:

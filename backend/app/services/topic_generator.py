@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 
 from app.prompts.topic_prompt import SYSTEM_PROMPT, build_topic_prompt
@@ -88,6 +89,10 @@ def _drop_paradigm_only_topics(topics: list[dict[str, Any]], goal: str | None) -
 # Topic types where one subject (algorithm / operation) should map to exactly ONE topic.
 _ONE_PER_SUBJECT_TYPES: frozenset[str] = frozenset({
     "algorithm_walkthrough", "data_structure_operation", "coding_implementation",
+    # A subject gets ONE conceptual-foundation topic too — the generator otherwise emits near-duplicate
+    # intros ("Introduction to Quick Sort" + "Understanding Quick Sort Mechanism"). Subject-token
+    # equality keeps genuinely distinct concept facets (e.g. "Quick Sort Time Complexity") separate.
+    "concept_intuition",
 })
 # Framing words stripped from a title to find its core SUBJECT, so two differently-worded titles for
 # the same subject ("Understanding Quick Sort: Process Overview" vs "Tracing Quick Sort Step by Step")
@@ -99,6 +104,10 @@ _SUBJECT_FRAMING_WORDS: frozenset[str] = frozenset({
     "basics", "basic", "fundamentals", "fundamental", "deep", "dive", "walkthrough", "guide",
     "lesson", "part", "implementing", "implement", "code", "coding", "the", "a", "an", "to", "of",
     "in", "on", "with", "and", "for", "into",
+    # generic "explain how it works" framing (so "...Mechanism" / "...Algorithm Explained" reduce to
+    # the bare subject and collapse with a plain intro of the same subject)
+    "mechanism", "mechanics", "algorithm", "algorithms", "explained", "explain", "concept", "concepts",
+    "what", "is", "are", "key", "terms", "essentials", "primer",
 })
 
 
@@ -131,6 +140,66 @@ def _drop_same_type_subject_duplicates(topics: list[dict[str, Any]]) -> list[dic
                 seen.append((ttype, tset, despaced))
         kept.append(topic)
     return kept or topics  # never drop everything
+
+
+_CODE_ABLE_TYPES = frozenset({"algorithm_walkthrough", "data_structure_operation"})
+_NO_CODE_GOAL_MARKERS = ("no code", "without code", "no coding", "conceptual only", "concept only",
+                         "theory only", "no programming")
+
+
+def _subject_phrase(title: str) -> str:
+    """A readable subject from a title (framing words removed) — e.g. 'Trace Quick Sort Algorithm
+    Step by Step' -> 'Quick Sort'. Used to title the synthesized coding topic."""
+    words = [w for w in _re.findall(r"[A-Za-z0-9']+", str(title or ""))
+             if w.lower() not in _SUBJECT_FRAMING_WORDS]
+    return " ".join(words).strip() or str(title or "").strip()
+
+
+def _append_missing_coding_topics(topics: list[dict[str, Any]], goal: str) -> list[dict[str, Any]]:
+    """Deterministically guarantee the blueprint's 'append a coding_implementation after the
+    walkthrough' rule (course_blueprints §combination_rules) — the rule was prompt-only, so the model
+    frequently DROPPED it and the coding topic never existed. For every algorithm_walkthrough /
+    data_structure_operation whose subject has no coding_implementation, synthesize one and insert it
+    right after. Skipped when the goal explicitly asks for no code. Off via AZALEA_AUTO_CODING_FOLLOWUP=0.
+    """
+    if os.getenv("AZALEA_AUTO_CODING_FOLLOWUP", "1") == "0":
+        return topics
+    if any(m in (goal or "").lower() for m in _NO_CODE_GOAL_MARKERS):
+        return topics
+
+    def _ttype(t: dict[str, Any]) -> str:
+        return str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
+
+    have_coding = {
+        _subject_tokens(t.get("title"))[1]
+        for t in topics if _ttype(t) == "coding_implementation"
+    }
+    result: list[dict[str, Any]] = []
+    for t in topics:
+        result.append(t)
+        if _ttype(t) in _CODE_ABLE_TYPES:
+            _, subject = _subject_tokens(t.get("title"))
+            if subject and subject not in have_coding:
+                have_coding.add(subject)
+                phrase = _subject_phrase(t.get("title"))
+                coding = dict(t)  # inherit every field/key the downstream expects
+                coding.update({
+                    "title": f"Implementing {phrase}",
+                    "course_type": "coding_implementation",
+                    "topic_type": "coding_implementation",
+                    "secondary_course_types": [],
+                    "purpose": f"Translate the {phrase} algorithm into working, runnable code.",
+                    "in_scope": [f"Writing the {phrase} implementation in code",
+                                 "Reading the code and tracing it on a concrete input"],
+                    "prerequisite_topics": list(t.get("prerequisite_topics") or []) + [t.get("title")],
+                    "practice_format": "coding",
+                })
+                result.append(coding)
+                _log.info("topic_generator: appended coding_implementation %r after %r",
+                          coding["title"], t.get("title"))
+    for i, t in enumerate(result, 1):
+        t["order_index"] = i
+    return result
 
 
 def clean_text_field(value: Any, fallback: str = "") -> str:
@@ -425,6 +494,9 @@ Chunk index: {chunk.chunk_index}
     # same-type topic for the same subject (e.g. a "Process Overview" walkthrough next to a
     # "Step by Step" walkthrough for quick sort) before it becomes a duplicate lesson.
     cleaned_topics = _drop_same_type_subject_duplicates(cleaned_topics)
+    # Guarantee a coding_implementation follow-up exists for each algorithm/data-structure subject
+    # (the blueprint rule was prompt-only, so the model often dropped it -> "coding never generated").
+    cleaned_topics = _append_missing_coding_topics(cleaned_topics, goal)
 
     if not cleaned_topics:
         cleaned_topics.append(
