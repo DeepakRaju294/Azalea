@@ -4,9 +4,14 @@ from copy import deepcopy
 from typing import Any
 
 from app.core.course_types import TopicType
-
+from app.core.topic_decomposition import is_coding_type
 
 Blueprint = dict[str, Any]
+
+# A coding topic that follows a walkthrough/operation (TOPIC_DECOMPOSITION_SPEC.md Part C) is a
+# DERIVED variant of coding_implementation: identical blueprint, with the `background` card removed
+# from the resolved sequences (the parent already supplied the conceptual framing). Not a new type.
+IMPLEMENTATION_FOLLOW_UP = "implementation_follow_up"
 
 
 COMMON_RULES = {
@@ -1287,11 +1292,29 @@ def normalize_topic_type_key(topic_type: str | TopicType | None) -> str:
     return key
 
 
-def get_topic_blueprint(topic_type: str | TopicType | None) -> Blueprint:
+def _strip_background(blueprint: Blueprint) -> None:
+    """Remove the `background` card from every resolved sequence (Part C continuation variant)."""
+    for seq_key in ("default_card_sequence", "continuation_card_sequence",
+                    "optional_cards", "continuation_optional_cards"):
+        seq = blueprint.get(seq_key)
+        if isinstance(seq, list):
+            blueprint[seq_key] = [c for c in seq if c != "background"]
+
+
+def get_topic_blueprint(
+    topic_type: str | TopicType | None,
+    *,
+    relationship_to_parent: str | None = None,
+) -> Blueprint:
     key = normalize_topic_type_key(topic_type)
     blueprint = deepcopy(TOPIC_BLUEPRINTS[key])
     blueprint["topic_type"] = key
     blueprint["course_type"] = key
+    # Derived coding continuation variant: a coding_implementation following a walkthrough/operation
+    # omits `background` so it cannot re-teach the algorithm the parent already framed.
+    if is_coding_type(key) and relationship_to_parent == IMPLEMENTATION_FOLLOW_UP:
+        _strip_background(blueprint)
+        blueprint["lesson_variant"] = "implementation_follow_up"
     blueprint["common_rules"] = COMMON_RULES
     blueprint["optional_card_rules"] = deepcopy(OPTIONAL_CARD_USAGE.get(key, {}))
     blueprint["example_type_definitions"] = deepcopy(EXAMPLE_TYPE_DEFINITIONS)
