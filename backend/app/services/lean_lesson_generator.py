@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING, Any
 
 from app.core.topic_assumptions import normalize_assumption_phrase
-from app.prompts.lean_lesson_prompt import LEAN_SYSTEM_PROMPT, build_lean_user_prompt
+from app.prompts.lean_lesson_prompt import build_lean_system_prompt, build_lean_user_prompt
 from app.services.assumption_ledger_service import build_assumption_ledger
 from app.services.llm_client import generate_lean_structured_lesson
 from app.services.lesson_generator import (
@@ -7235,7 +7235,7 @@ def build_lean_lesson_from_topic_and_chunks(
     """
     user_prompt = build_lean_user_prompt(topic=topic, chunks=chunks, feedback=feedback)
     lean_json = generate_lean_structured_lesson(
-        system_prompt=LEAN_SYSTEM_PROMPT,
+        system_prompt=build_lean_system_prompt(),
         user_prompt=user_prompt,
     )
     legacy = _convert_lean_to_legacy(lean_json=lean_json, topic=topic, chunks=chunks)
@@ -7262,7 +7262,7 @@ def build_lean_lesson_streaming(
     user_prompt = build_lean_user_prompt(topic=topic, chunks=chunks, feedback=feedback)
     lean_json: dict[str, Any] | None = None
     for kind, payload in generate_lean_structured_lesson_streaming(
-        system_prompt=LEAN_SYSTEM_PROMPT,
+        system_prompt=build_lean_system_prompt(),
         user_prompt=user_prompt,
     ):
         if kind == "card" and isinstance(payload, dict):

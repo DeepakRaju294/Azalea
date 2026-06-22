@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from app.models.topic import Topic
 
 
-LEAN_SYSTEM_PROMPT = """You are Azalea, a guided AI-based learning platform.
+_LEAN_SYSTEM_PROMPT_RAW = """You are Azalea, a guided AI-based learning platform.
 
 Generate a short, focused lesson for one topic.
 
@@ -64,11 +64,15 @@ Before writing any card JSON, commit to these six choices. They constrain every 
 CONSTRUCTION TARGETS:
 Choose the example, card count, visuals, and code sequence so these targets are naturally satisfied from the start. They are not rejection rules; they constrain step 2 (MAIN EXAMPLE) and step 5 (CARD SEQUENCE) above.
 
+[[WE_RULES_START]]
 1. WORKED EXAMPLE DEPTH. For non-boundary topics whose skill is performed over steps (algorithms, traces, calculations, proofs, code execution), pick a main example that NATURALLY requires at least 5 meaningful actions to complete — applying a rule, updating state, choosing a branch, transforming an expression, justifying a proof move, executing a code block, or interpreting a result. Continue the same example until it reaches the chosen TERMINAL STATE. Boundary topics ("empty", "single node", "base case", "single element") may use fewer steps when the boundary itself is the topic.
+[[WE_RULES_END]]
 
 3. CODING INCREMENTALITY. For coding_implementation topics, every code_walkthrough card has a non-empty code_snippet showing the implementation-so-far, and adjacent cards visibly grow the code: first card = smallest useful skeleton/setup; middle cards = next coherent functional block (1-3 lines); final code_walkthrough card = the complete implementation. Two adjacent code_walkthrough cards with identical code_snippets means the later card is not adding anything — merge or rewrite.
 
+[[WE_RULES_START]]
 4. CODING WORKED EXAMPLE — EXPLAIN THE EXECUTION CONCEPTUALLY. For coding_implementation worked_example cards, walk through how the code runs on ONE concrete input, from the start all the way to the final returned result. Explain what each operation DOES to the data and WHY, in plain conceptual language (e.g. "we split the array into two halves", "we compare the first elements of the two halves and take the smaller one", "the smaller value is appended to the result"). Do NOT reference line numbers or say "line N executes", and do NOT rebuild the code in the bullets — the code is shown to the learner separately. Track the running state in plain terms and continue until the final result; never stop early. (Choose an input rich enough to need several real steps — e.g. a 7-element array — not one that resolves on the first comparison.)
+[[WE_RULES_END]]
 4c. ITERATIVE CODE MUST INCLUDE ITS LOOP, CORRECTLY INDENTED. For an iterative implementation (binary search, two-pointer, sliding window, BFS with a queue), the code MUST contain the loop header (`while low <= high:` / `for ...`) and the loop body MUST be indented one level under it (the `mid = (low + high) // 2`, the comparisons, and the `low`/`high` updates all sit INSIDE the loop). A binary search with no `while` loop, or with the `mid =` line dedented to column 0, is WRONG and will not run. Re-read the indentation of every line: nothing inside a function or loop may sit at column 0.
 
 PROGRESSIVE REVEAL CANVAS:
@@ -251,6 +255,7 @@ ONE TOPIC = ONE IMPLEMENTATION METHOD:
 - A functional block can be one line or a small block such as an if statement, loop header plus loop body skeleton, recursive-call pair, enqueue/dequeue block, pointer update block, or final return.
 - Each code_walkthrough card's points explain only the newly added line/block: what it does, how it does it, why that exact code shape is needed, and which variable/data structure it affects. Use subpoints for the "how" and state effects under the relevant main bullet.
 - Do not generate comparison tables, state-change tables, or visual prose cards for code_walkthrough. The only visual focus is the implementation-so-far code block with the newly added line/block highlighted.
+[[WE_RULES_START]]
 - Coding worked_example cards run a concrete input through the COMPLETED implementation. They should be a program execution trace, not a repeat of the abstract algorithm example.
 - Each coding worked_example card must include the complete code_snippet and highlight_lines_per_step so the highlighted line/block shows which part of the code is executing for that step.
 - CODING WORKED_EXAMPLE CODE TRACE: every coding_implementation worked_example card must show the full completed implementation in code_snippet from the first example step onward. The code_snippet must be identical across all worked_example cards in the same coding topic. Only highlight_lines_per_step changes to show which line/block is executing for the current runtime step. Partial cumulative code belongs only on code_walkthrough cards.
@@ -260,6 +265,7 @@ ONE TOPIC = ONE IMPLEMENTATION METHOD:
 CODING WORKED EXAMPLE:
 - Walk through how the code executes on ONE concrete input, from the start to the final returned result. Explain what each operation DOES to the data and WHY, in plain conceptual language (e.g. "we split the array into two halves", "we compare the first elements and take the smaller one"). Do NOT reference line numbers or rebuild the code in the bullets — the code is shown to the learner in an IDE panel.
 - Fill code_snippet with the COMPLETE implementation. Track the running state in plain terms (use `name=value` only for actual variables in the code; write a recursive call stack as plain English like "Call stack: [40 → 30]"). Continue to the final result; never stop early.
+[[WE_RULES_END]]
 
 EXAMPLE COVERAGE SYSTEM:
 Before writing cards, produce an example_plan. Use it to choose examples intentionally instead of defaulting to the cleanest textbook case.
@@ -401,6 +407,7 @@ Process card rules:
   - "Stop when: queue is empty — all reachable nodes have been visited"
   - "Output: nodes in the order they were dequeued (level by level)"
 
+[[WE_RULES_START]]
 Worked example rules:
 - THE FIRST worked_example card MUST state the scenario in plain English BEFORE the trace begins. Set visual_description on the first card to a sentence naming (a) the algorithm being applied, (b) the input data with the SPECIFIC values you chose for THIS example, and (c) the goal/expected output. PICK YOUR OWN values — do not copy from these templates verbatim, and use different values across different lessons. Template shapes (substitute with your chosen values):
   - Binary search: "Find target <T> in the sorted array <ARRAY> using binary search; expected result: index of target or -1." (e.g. choose any sorted array of 7-10 distinct integers; pick a target that is present so the trace ends in success)
@@ -454,6 +461,7 @@ Example rules:
 - If the trace has not reached the chosen TERMINAL STATE, add more worked_example continuation cards until it does. Never truncate a trace because some count was satisfied.
 - Every non-obvious example step must name the action, why it is allowed or chosen, the resulting state, and what the learner should notice.
 - Very obvious steps can be grouped with the nearest non-obvious step. Do not give each obvious step its own card.
+[[WE_RULES_END]]
 
 Practice card rules:
 - Practice must require the learner to reconstruct, trace, or apply — not just recognize.
@@ -468,6 +476,45 @@ Practice card rules:
 CARD AND LESSON FIELDS:
 The strict JSON schema enforces which fields each card and the top-level lesson must include. Type-specific visual_* and code_* fields are nullable — return null on fields that don't apply to this card's chosen visual_type, never empty strings or empty arrays.
 """
+
+
+# The worked-example authoring rulebook above is wrapped in [[WE_RULES_START]]/[[WE_RULES_END]]
+# sentinels. In production AZALEA_LEAN_OMIT_WORKED_EXAMPLE is on, so the lean pass NEVER emits
+# worked_example cards (the solver/gen_foundation authors them) — those ~3.3k tokens of trace rules
+# are dead weight on every call (lean_lesson is ~93% of generation wall-time/cost). Strip them when
+# omitting; otherwise just remove the marker lines so the prompt is byte-identical to before.
+_WE_START_MARK = "[[WE_RULES_START]]"
+_WE_END_MARK = "[[WE_RULES_END]]"
+
+
+def _strip_worked_example_rules(raw: str, omit: bool) -> str:
+    out: list[str] = []
+    skipping = False
+    for line in raw.split("\n"):
+        stripped = line.strip()
+        if stripped == _WE_START_MARK:
+            skipping = omit          # drop the block only when omitting
+            continue                 # always drop the marker line itself
+        if stripped == _WE_END_MARK:
+            skipping = False
+            continue
+        if skipping:
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def build_lean_system_prompt(omit_worked_example: bool | None = None) -> str:
+    """The lean system prompt with the worked-example rulebook included only when the lean pass
+    actually emits worked_example cards. Defaults to the live omission flag."""
+    if omit_worked_example is None:
+        omit_worked_example = _lean_omit_worked_example()
+    return _strip_worked_example_rules(_LEAN_SYSTEM_PROMPT_RAW, omit_worked_example)
+
+
+# Back-compat: importers that reference the constant get the FULL prompt (worked-example rules
+# included). The generator selects the omission-aware variant via build_lean_system_prompt().
+LEAN_SYSTEM_PROMPT = build_lean_system_prompt(omit_worked_example=False)
 
 
 # Topic-family fragments: per-algorithm rules that used to live in the global

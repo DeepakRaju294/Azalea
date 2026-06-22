@@ -2087,6 +2087,14 @@ def generate_visual_patches(card_summaries: list[dict[str, Any]]) -> list[dict[s
         raise RuntimeError("OpenAI returned invalid visual patches JSON") from exc
 
 
+# The lean system prompt is ~18k IDENTICAL tokens (~60% of every call's input). OpenAI auto-caches
+# such a prefix at half price + faster TTFT, but under parallel bulk generation identical-prefix
+# requests scatter across cache shards and miss (observed ~12% hit). A stable prompt_cache_key pins
+# them to one shard so the prefix is actually reused. Both lean entry points share the same prefix,
+# so they MUST share the key. Bump the suffix whenever LEAN_SYSTEM_PROMPT changes materially.
+_LEAN_CACHE_KEY = "azalea_lean_lesson_v1"
+
+
 def generate_lean_structured_lesson(
     system_prompt: str,
     user_prompt: str,
@@ -2102,6 +2110,7 @@ def generate_lean_structured_lesson(
         timeout=float(os.getenv("AZALEA_LEAN_TIMEOUT_SECONDS", "600")),
         max_retries=max(0, int(os.getenv("AZALEA_LEAN_MAX_RETRIES", "1"))),
         model=OPENAI_MODEL,
+        prompt_cache_key=_LEAN_CACHE_KEY,
         input=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -2215,6 +2224,7 @@ def generate_lean_structured_lesson_streaming(
     parts: list[str] = []
     stream = client.responses.create(
         model=OPENAI_MODEL,
+        prompt_cache_key=_LEAN_CACHE_KEY,  # same 18k prefix as the blocking path — share the shard
         input=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},

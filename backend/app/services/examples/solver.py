@@ -19,6 +19,7 @@ Design rules:
 """
 from __future__ import annotations
 
+import ast
 import json
 import logging
 import os
@@ -279,8 +280,17 @@ _CODING_CARDS_SYSTEM = (
     "- goal: the structural step ('First pass: examine the middle', 'Merge the two sorted halves'); "
     "empty if the title already says it.\n"
     "- reasoning: WHICH code construct implements it and why (the condition / loop / slice / call / return).\n"
-    "- work: REQUIRED list — the code lines that run FOR THIS STEP with their evaluation and ACTUAL "
-    "values (code/trace, NOT prose). Several lines are fine; they belong to this ONE transition.\n"
+    "- work: REQUIRED list — each line BEGINS with the LITERAL code line from the shown code, quoted "
+    "VERBATIM with its VARIABLE NAMES (the exact token sequence, e.g. `result.append(node.val)` or "
+    "`mid = (low + high) // 2`), THEN — REQUIRED on EVERY line — ` // <plain-English description of what "
+    "this line DOES in the algorithm right now, naming the concrete value(s)>`. A work line with NO ` // ` "
+    "explanation is INVALID. Do NOT paraphrase the whole line as prose AND "
+    "do NOT substitute values into the code itself — put the value inside the explanation. Write "
+    "`result.append(node.val) // append the current node value 11 to result, now [.., 11]` (NEVER `Add "
+    "value 11 to result`, NEVER `result.append(11)`); write `queue.append(neighbor) // add neighbor C to "
+    "the back of the queue` (NEVER `queue.append('C')`). The verbatim code anchors the step to its source "
+    "line; the `//` part teaches what it accomplishes. Several lines are fine; they belong to this ONE "
+    "transition.\n"
     "- result: REQUIRED — the concrete RUNTIME state after this step (variables, pointers, call stack / "
     "current frame, branch taken, returned value, mutated structure). NOT a vague 'continue searching'.\n"
     "- code_lines: for EACH `work` action, the 1-based line number(s) in the shown code it maps to, as a "
@@ -981,6 +991,55 @@ def _step_points(
     return pts
 
 
+def _code_function_names(code: Optional[str]) -> list[str]:
+    """The function names defined in the shown code (entry + helpers), for casing normalization."""
+    if not code:
+        return []
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return []
+    return [n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+
+
+def _code_identifiers(code: Optional[str]) -> list[str]:
+    """Every identifier defined in the code — functions, classes, params, and assigned variables —
+    for fixing the casing of CODE in work lines (the model sentence-capitalizes a leading `mst` to
+    `Mst`). Skip names < 3 chars so single-letter loop vars / English words ('to', 'i') are left alone."""
+    if not code:
+        return []
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return []
+    names: set[str] = set()
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(n.name)
+        elif isinstance(n, ast.arg):
+            names.add(n.arg)
+        elif isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+            names.add(n.id)
+    return [x for x in names if len(x) >= 3]
+
+
+def _fix_identifier_casing(text: str, names: list[str]) -> str:
+    """Rewrite each identifier in the text to the EXACT casing used in the code, so it says `traverse`
+    (matching the def) rather than a sentence-capitalized `Traverse`. Whole-word only."""
+    for name in names:
+        text = re.sub(rf"\b{re.escape(name)}\b", name, text, flags=re.IGNORECASE)
+    return text
+
+
+def _fix_work_line_casing(line: str, identifiers: list[str]) -> str:
+    """Fix code casing on a work line's CODE part only (before any ` // ` explanation), so `Mst.append(...)`
+    becomes `mst.append(...)` while an acronym like 'MST' in the prose explanation is left untouched."""
+    idx = line.find(" // ")
+    if idx < 0:
+        return _fix_identifier_casing(line, identifiers)
+    return _fix_identifier_casing(line[:idx], identifiers) + line[idx:]
+
+
 def _build_solution_cards(
     sol: dict[str, Any], topic: dict[str, Any], *, code: Optional[str] = None,
 ) -> list[dict[str, Any]]:
@@ -1016,11 +1075,23 @@ def _build_solution_cards(
         },
         **_code_fields(),
     }]
+    fn_names = _code_function_names(code)
+    all_ids = _code_identifiers(code)
     for n, card in enumerate(norm):
         goal = str(card.get("goal") or "").strip()
         reasoning = str(card.get("reasoning") or "").strip()
         work = [str(w) for w in (card.get("work") or [])]
         result = str(card.get("result") or "").strip()
+        card_title = str(card.get("title") or f"Step {n + 1}")
+        # Prose (goal/reasoning/result/title): match FUNCTION names to code casing only — leave other
+        # words alone. Work lines are CODE: match every identifier so a leading `Mst` becomes `mst`.
+        if fn_names:
+            goal = _fix_identifier_casing(goal, fn_names)
+            reasoning = _fix_identifier_casing(reasoning, fn_names)
+            result = _fix_identifier_casing(result, fn_names)
+            card_title = _fix_identifier_casing(card_title, fn_names)
+        if all_ids:
+            work = [_fix_work_line_casing(w, all_ids) for w in work]
         note = card.get("teaching_note") if isinstance(card.get("teaching_note"), dict) else None
         meta: dict[str, Any] = {
             "worked_example_solver": True,
@@ -1035,11 +1106,21 @@ def _build_solution_cards(
         code_lines = card.get("code_lines")
         if isinstance(code_lines, list) and len(code_lines) == len(work):
             meta["code_lines"] = code_lines
+        # Card-level block fallback: the span of EVERY line this card references. When the per-action
+        # anchor above is unavailable (e.g. gen_foundation emits a flat per-card `code_refs` that the
+        # work-length guard rejects) and the work is prose with no literal code to string-match, the
+        # frontend highlights this block so the card still shows WHICH lines it is about.
+        if isinstance(code_lines, list):
+            flat = [n for rng in code_lines if isinstance(rng, (list, tuple))
+                    for n in rng if isinstance(n, int) and n > 0]
+            flat += [n for n in code_lines if isinstance(n, int) and n > 0]
+            if flat:
+                meta["code_block"] = [min(flat), max(flat)]
         cards.append({
             "id": f"we-solve-{tid}-{n}",
             "blueprint_key": "worked_example",
             "card_type": "worked_example",
-            "title": card.get("title") or f"Step {n + 1}",
+            "title": card_title,
             # Structured, authoritative learner-facing fields (the new renderer reads these).
             "goal": goal,
             "reasoning": reasoning,
@@ -1094,6 +1175,48 @@ def _extract_lesson_code(cards: list[Any]) -> str:
         if len(snippet) > len(best):
             best = snippet
     return best
+
+
+def _validated_lesson_code(cards: list[Any], topic: dict[str, Any]) -> Optional[str]:
+    """The implementation code for the worked-example IDE panel. Fast path: the LLM's own longest
+    snippet, shown verbatim. But the LLM sometimes emits BROKEN INDENTATION (lines dedented out of
+    their block, the blank line between functions lost) that renders as muddled, unparseable code.
+    Only in that case do we pay for a deterministic clean regeneration — so already-correct code
+    stays fast (no extra call) and broken code self-heals instead of shipping garbled."""
+    code = _extract_lesson_code(cards)
+    if not code:
+        return None
+    # Standardize: lift any closure-free nested helper to a top-level function (deterministic, no LLM).
+    try:
+        from app.services.examples.code_repair import lift_nested_helpers
+
+        code = lift_nested_helpers(code)
+    except Exception:  # noqa: BLE001 — never break the worked example over formatting
+        pass
+    # Show verbatim only when the code both PARSES and is a real implementation. Setup-only code
+    # (parses, but no loop/recursion/return — the algorithm body was dropped) makes the example
+    # reference lines the panel doesn't contain, so regenerate it like unparseable code.
+    parses, needs_regen = True, False
+    try:
+        ast.parse(code)
+        from app.services.examples.code_repair import has_imports, looks_like_setup_only
+
+        needs_regen = looks_like_setup_only(code) or has_imports(code)
+    except SyntaxError:
+        parses = False
+    if parses and not needs_regen:
+        return code  # complete, self-contained & valid — no LLM call
+    try:
+        from app.services.examples.code_repair import generate_clean_code
+
+        fixed = generate_clean_code(topic, broken_code=code)
+    except Exception as exc:  # noqa: BLE001 — never break the worked example over this
+        _log.warning("worked-example: clean-code regen raised for %s: %s", topic.get("id"), exc)
+        fixed = None
+    if fixed:
+        _log.info("worked-example: regenerated unparseable lesson code for %s", topic.get("id"))
+        return fixed
+    return code  # regen unavailable/failed — keep the original rather than dropping the panel
 
 
 def _blueprint_wants_worked_example(topic: dict[str, Any]) -> bool:
@@ -1235,8 +1358,7 @@ def apply_llm_solved_worked_example(
         # below splices the solved cards in when there's nothing to replace.
 
         is_coding = str(topic.get("topic_type") or "").lower() == "coding_implementation"
-        code = _extract_lesson_code(cards) if is_coding else ""
-        code = code or None
+        code = _validated_lesson_code(cards, topic) if is_coding else None
 
         existing = _existing_problem_text(cards)
         sol = solve_worked_example(topic, existing_problem=existing, code=code, solver=solver)

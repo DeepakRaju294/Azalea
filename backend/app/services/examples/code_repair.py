@@ -73,12 +73,111 @@ def code_has_undefined_names(code: str) -> bool:
     return False
 
 
+def looks_like_setup_only(code: str) -> bool:
+    """True when the code defines functions but DOES NOTHING with them — only assignments, with no
+    loop, no recursion, no comprehension, and no value-returning result. That signature (`def bfs:
+    visited = set(); queue = [start]` with no `while` loop) means the model emitted just the setup
+    and dropped the algorithm body, so the walkthrough/worked example reference lines the code never
+    contains. Such code should be regenerated into a complete implementation."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return False
+    funcs = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    if not funcs:
+        return False
+    has_iteration = any(
+        isinstance(n, (ast.For, ast.AsyncFor, ast.While, ast.ListComp, ast.SetComp,
+                       ast.DictComp, ast.GeneratorExp))
+        for n in ast.walk(tree)
+    )
+    fn_names = {f.name for f in funcs}
+    has_recursion = any(
+        isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in fn_names
+        for n in ast.walk(tree)
+    )
+    has_value_return = any(isinstance(n, ast.Return) and n.value is not None for n in ast.walk(tree))
+    return not (has_iteration or has_recursion or has_value_return)
+
+
+def has_imports(code: str) -> bool:
+    """True if the code contains any import statement. Lesson implementations must be self-contained
+    (no heapq/deque/etc.) — import-bearing code is regenerated into a built-ins-only version."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return False
+    return any(isinstance(n, (ast.Import, ast.ImportFrom)) for n in ast.walk(tree))
+
+
+def _is_closure_free(fn: ast.AST, module_names: set[str]) -> bool:
+    """A nested function can be lifted to top level only if it captures NOTHING from its enclosing
+    scope — every Name it loads is its own param/local, a module-level name, or a builtin."""
+    bound = {getattr(fn, "name", "")}
+    for node in ast.walk(fn):
+        if isinstance(node, ast.arg):
+            bound.add(node.arg)
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            bound.add(node.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node is not fn:
+            bound.add(node.name)
+    loaded = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+    return not (loaded - bound - module_names - _BUILTINS)
+
+
+def lift_nested_helpers(code: str) -> str:
+    """Standardize coding examples so helpers are SEPARATE top-level functions, not nested inside the
+    entry function (e.g. inorderTraversal + traverse as two defs). Only closure-free nested functions
+    are lifted; the entry function keeps its position and its helper follows it. Returns the code
+    UNCHANGED when nothing is safe to lift, so an already-flat implementation keeps its exact
+    formatting (we only reformat when we actually un-nest)."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return code
+    module_names = {n.name for n in tree.body
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+    lifted_by_parent: dict[int, list[ast.stmt]] = {}
+    lifted_ids: set[int] = set()
+    for parent in tree.body:
+        if not isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for child in parent.body:
+            if (isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and _is_closure_free(child, module_names)):
+                lifted_by_parent.setdefault(id(parent), []).append(child)
+                lifted_ids.add(id(child))
+    if not lifted_ids:
+        return code
+    new_body: list[ast.stmt] = []
+    for stmt in tree.body:
+        if id(stmt) in lifted_by_parent and isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            stmt.body = [c for c in stmt.body if id(c) not in lifted_ids]
+            new_body.append(stmt)                         # entry function stays first
+            new_body.extend(lifted_by_parent[id(stmt)])   # its helper(s) follow as top-level defs
+        else:
+            new_body.append(stmt)
+    tree.body = new_body
+    ast.fix_missing_locations(tree)
+    try:
+        out = ast.unparse(tree)
+    except Exception:  # noqa: BLE001 — fall back to the original on any unparse hiccup
+        return code
+    # ast.unparse drops blank lines between defs; restore 2 blank lines for readability.
+    return re.sub(r"\n+(def |async def |class )", r"\n\n\n\1", out)
+
+
 _CODE_GEN_SYSTEM = (
     "You implement algorithms in Python. Output ONLY the complete, correct, runnable "
     "implementation — the clearest version a textbook would teach FIRST. Rules: an entry-point "
     "function named for the ALGORITHM itself (never `main`); a separate helper ONLY if the algorithm "
-    "genuinely needs one (e.g. merge sort = `merge_sort` + `merge`); every variable defined before it "
+    "genuinely needs one (e.g. merge sort = `merge_sort` + `merge`) — define every helper as its OWN "
+    "TOP-LEVEL function, NEVER nested inside another function; every variable defined before it "
     "is used; no `if __name__` block, no driver, no example usage, no prints, no comments. "
+    "NO `import` statements and NO external libraries — use ONLY built-in types and functions: a plain "
+    "list with `min()` / `sorted()` instead of `heapq`, a list with `pop(0)` instead of "
+    "`collections.deque`, a dict/set literal instead of `defaultdict`. The implementation must be fully "
+    "self-contained. "
     "PREFER VISIBLE DATA FLOW: a function that RETURNS its result and a caller that reassigns it, over "
     "one that mutates a passed-in argument and returns None — for divide-and-conquer (e.g. merge sort) "
     "write `return merge(left, right)` with `left = merge_sort(arr[:mid])`, NOT an in-place "
@@ -269,6 +368,21 @@ def apply_clean_code_to_lesson(
             regenerated = generate_clean_code(topic, broken_code=authoritative, generator=generator)
             if regenerated and not _missing_entrypoint(regenerated, topic):
                 _log.info("code_repair: %s missing entry point — regenerated complete code", topic.get("id"))
+                authoritative = regenerated
+        # Setup-only: parses and has no undefined names, but has no loop/recursion/return — just
+        # initialization (the BFS `while` loop, the traversal recursion, etc. were dropped). The
+        # walkthrough/worked example then reference lines the code never contains. Regenerate.
+        if authoritative and looks_like_setup_only(authoritative):
+            regenerated = generate_clean_code(topic, broken_code=authoritative, generator=generator)
+            if regenerated and not looks_like_setup_only(regenerated):
+                _log.info("code_repair: %s code was setup-only — regenerated full implementation", topic.get("id"))
+                authoritative = regenerated
+        # Imports: lesson code must be self-contained (no heapq/deque). Regenerate into a built-ins-only
+        # version when the implementation pulls in a library.
+        if authoritative and has_imports(authoritative):
+            regenerated = generate_clean_code(topic, broken_code=authoritative, generator=generator)
+            if regenerated and not has_imports(regenerated):
+                _log.info("code_repair: %s used imports — regenerated self-contained version", topic.get("id"))
                 authoritative = regenerated
         if not authoritative:
             _log.warning("code_repair: %s has no valid code and regeneration failed", topic.get("id"))

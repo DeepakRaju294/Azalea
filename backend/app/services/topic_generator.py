@@ -111,10 +111,40 @@ _SUBJECT_FRAMING_WORDS: frozenset[str] = frozenset({
 })
 
 
-def _subject_tokens(title: str) -> tuple[frozenset[str], str]:
-    tokens = [t for t in _re.findall(r"[a-z0-9]+", str(title or "").lower())
-              if t not in _SUBJECT_FRAMING_WORDS]
+def _subject_tokens(title: str, extra_framing: frozenset[str] = frozenset()) -> tuple[frozenset[str], str]:
+    base = [t for t in _re.findall(r"[a-z0-9]+", str(title or "").lower())
+            if t not in _SUBJECT_FRAMING_WORDS]
+    stripped = [t for t in base if t not in extra_framing]
+    # Domain stripping must never EMPTY the subject — in a single-algorithm path the algorithm name
+    # itself is path-common (every Quick Sort title has 'quick'/'sort'); falling back to the un-stripped
+    # tokens keeps that subject so the same-subject dedup still works.
+    tokens = stripped if stripped else base
     return frozenset(tokens), "".join(tokens)
+
+
+def _path_domain_tokens(topics: list[dict[str, Any]]) -> frozenset[str]:
+    """The path's DOMAIN words — qualifiers that don't distinguish one algorithm from another, so the
+    SAME algorithm normalizes to ONE subject whether or not a given title includes the domain word
+    ('Implementing Prim's MST' and 'Implementing Prim's Algorithm in Code' both -> 'prim'). Two signals:
+    (1) an all-caps ACRONYM (MST/BST/DFS) — a domain abbreviation inconsistently sprinkled into titles;
+    (2) a token appearing in a MAJORITY of titles. `_subject_tokens` falls back to the un-stripped
+    tokens if stripping would EMPTY a subject, so a path whose only subject IS the acronym (DFS vs BFS)
+    or word (Quick Sort) is unharmed."""
+    n = len(topics)
+    acronyms: set[str] = set()
+    counts: dict[str, int] = {}
+    for t in topics:
+        title = str(t.get("title") or "")
+        for ac in _re.findall(r"\b[A-Z]{2,}\b", title):
+            acronyms.add(ac.lower())
+        for tok in {x for x in _re.findall(r"[a-z0-9]+", title.lower())
+                    if x not in _SUBJECT_FRAMING_WORDS}:
+            counts[tok] = counts.get(tok, 0) + 1
+    common: set[str] = set()
+    if n >= 3:
+        threshold = max(3, (n + 1) // 2)
+        common = {tok for tok, c in counts.items() if c >= threshold}
+    return frozenset(acronyms | common)
 
 
 def _drop_same_type_subject_duplicates(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -124,12 +154,13 @@ def _drop_same_type_subject_duplicates(topics: list[dict[str, Any]]) -> list[dic
     walkthrough alongside a '...Step by Step' walkthrough for the same algorithm. Equality-based so
     distinct subjects (binary search vs binary search tree) and distinct approaches (iterative vs
     recursive) are preserved. Never empties the path."""
+    domain = _path_domain_tokens(topics)
     seen: list[tuple[str, frozenset[str], str]] = []  # (topic_type, token_set, despaced)
     kept: list[dict[str, Any]] = []
     for topic in topics:
         ttype = str(topic.get("course_type") or topic.get("topic_type") or "").strip().lower()
         if ttype in _ONE_PER_SUBJECT_TYPES:
-            tset, despaced = _subject_tokens(topic.get("title"))
+            tset, despaced = _subject_tokens(topic.get("title"), domain)
             if despaced and any(
                 st == ttype and (ts == tset or ds == despaced) for (st, ts, ds) in seen
             ):
@@ -170,15 +201,25 @@ def _append_missing_coding_topics(topics: list[dict[str, Any]], goal: str) -> li
     def _ttype(t: dict[str, Any]) -> str:
         return str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
 
+    # Domain-normalized subjects so a coding topic is recognized as covering an algorithm even when the
+    # titles differ only by a domain qualifier ('Implementing Prim's MST' vs '...Prim's Algorithm in Code').
+    domain = _path_domain_tokens(topics)
     have_coding = {
-        _subject_tokens(t.get("title"))[1]
+        _subject_tokens(t.get("title"), domain)[1]
         for t in topics if _ttype(t) == "coding_implementation"
     }
+    # Put any synthesized coding topic in the coding section, not the walkthrough's unit it was derived
+    # from (dict(t) would otherwise inherit the walkthrough's unit_title and mis-file it).
+    coding_unit = next(
+        (str(t.get("unit_title")) for t in topics
+         if _ttype(t) == "coding_implementation" and str(t.get("unit_title") or "").strip()),
+        "Coding Implementation",
+    )
     result: list[dict[str, Any]] = []
     for t in topics:
         result.append(t)
         if _ttype(t) in _CODE_ABLE_TYPES:
-            _, subject = _subject_tokens(t.get("title"))
+            _, subject = _subject_tokens(t.get("title"), domain)
             if subject and subject not in have_coding:
                 have_coding.add(subject)
                 phrase = _subject_phrase(t.get("title"))
@@ -187,6 +228,7 @@ def _append_missing_coding_topics(topics: list[dict[str, Any]], goal: str) -> li
                     "title": f"Implementing {phrase}",
                     "course_type": "coding_implementation",
                     "topic_type": "coding_implementation",
+                    "unit_title": coding_unit,
                     "secondary_course_types": [],
                     "purpose": f"Translate the {phrase} algorithm into working, runnable code.",
                     "in_scope": [f"Writing the {phrase} implementation in code",

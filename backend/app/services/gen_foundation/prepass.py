@@ -22,6 +22,10 @@ _MIN_ARRAY_SIZE = max(1, int(os.getenv("AZALEA_MIN_EXAMPLE_ARRAY_SIZE", "6")))
 # size is guaranteed and the values vary per study path (addresses the "same numbers" repetition).
 _ARRAY_SORT_FAMILIES = {"array_sort", "recursive_divide_and_conquer", "sorting"}
 _BINARY_SEARCH_FAMILIES = {"binary_search"}
+# tree/graph families whose worked example operates on a node structure — we generate a >=min-node
+# input so traversals/searches show real structure (a 3-4 node tree hides the behaviour).
+_TREE_FAMILIES = {"tree_traversal", "binary_tree", "binary_search_tree", "bst", "tree"}
+_GRAPH_FAMILIES = {"graph_traversal", "graph"}
 
 # topic_type -> example category that drives the projection caps (§5.2).
 _CATEGORY_BY_TOPIC_TYPE: dict[str, str] = {
@@ -119,27 +123,122 @@ def _trace_mode_for(*, coding: bool, code_preexists: bool) -> TraceMode:
 _SORT_KEYWORDS = ("sort", "partition", "merge", "quick", "bubble", "insertion", "selection", "heap")
 _SEARCH_KEYWORDS = ("binary search", "binary_search")
 _ARRAY_KEYWORDS = ("array", "list", "subarray")
+# tree keywords are checked BEFORE search/array so "binary search TREE" isn't read as array search.
+_TREE_KEYWORDS = ("tree", "bst", "binary tree", "inorder", "preorder", "postorder", "subtree", "leaf")
+_GRAPH_KEYWORDS = ("graph", "bfs", "dfs", "breadth-first", "depth-first", "adjacency", "topological")
+# Weighted-graph algorithms operate on a WEIGHTED graph, NOT a binary tree — 'minimum spanning TREE'
+# must not be read as a tree. Checked BEFORE tree/graph so MST/shortest-path get a weighted graph.
+_WEIGHTED_GRAPH_KEYWORDS = ("mst", "spanning", "prim", "kruskal", "dijkstra", "bellman", "shortest",
+                            "weighted", "floyd", "minimum spanning")
+
+
+def _bst_level_order(values: list[int]) -> list[Optional[int]]:
+    """Insert distinct values into a BST and serialize it level-order (LeetCode style), None for a
+    missing child, trailing None trimmed — a tree with exactly len(values) nodes the model uses
+    verbatim, so traversal examples always have >=min_size nodes."""
+    root: Optional[dict[str, Any]] = None
+
+    def insert(node: Optional[dict[str, Any]], v: int) -> dict[str, Any]:
+        if node is None:
+            return {"v": v, "l": None, "r": None}
+        branch = "l" if v < node["v"] else "r"
+        node[branch] = insert(node[branch], v)
+        return node
+
+    for v in values:
+        root = insert(root, v)
+    out: list[Optional[int]] = []
+    queue: list[Optional[dict[str, Any]]] = [root]
+    while queue:
+        node = queue.pop(0)
+        if node is None:
+            out.append(None)
+            continue
+        out.append(node["v"])
+        queue.append(node["l"])
+        queue.append(node["r"])
+    while out and out[-1] is None:
+        out.pop()
+    return out
+
+
+def _random_graph(size: int) -> dict[str, list[str]]:
+    """A small connected undirected graph over `size` labelled nodes: a path backbone (guarantees
+    connectivity) plus a few cross edges, so traversals branch instead of running in a line."""
+    labels = [chr(ord("A") + i) for i in range(size)]
+    adj: dict[str, list[str]] = {n: [] for n in labels}
+
+    def link(a: str, b: str) -> None:
+        if a != b and b not in adj[a]:
+            adj[a].append(b)
+            adj[b].append(a)
+
+    for i in range(size - 1):
+        link(labels[i], labels[i + 1])
+    for _ in range(max(1, size // 3)):
+        a, b = random.sample(labels, 2)
+        link(a, b)
+    return adj
+
+
+def _random_weighted_graph(size: int) -> dict[str, Any]:
+    """A small connected undirected WEIGHTED graph (nodes + [u, v, weight] edges) for MST / shortest-
+    path algorithms — a spanning backbone (guarantees connectivity) plus a few extra weighted edges so
+    there are real choices to make. Distinct weights so the MST / shortest path is unambiguous."""
+    labels = [chr(ord("A") + i) for i in range(size)]
+    edges: list[list[Any]] = []
+    seen: set[tuple[str, str]] = set()
+    pool = random.sample(range(1, 40), min(39, size + max(1, size // 2)))  # distinct weights
+
+    def add(a: str, b: str) -> None:
+        key = tuple(sorted((a, b)))
+        if a != b and key not in seen and pool:
+            seen.add(key)
+            edges.append([a, b, pool.pop()])
+
+    for i in range(size - 1):
+        add(labels[i], labels[i + 1])
+    for _ in range(max(1, size // 2)):
+        a, b = random.sample(labels, 2)
+        add(a, b)
+    return {"nodes": labels, "edges": edges}
 
 
 def generate_example_input(
     topic_family: str, title: str = "", min_size: int = _MIN_ARRAY_SIZE
 ) -> Optional[dict[str, Any]]:
-    """Backend-chosen, varied input for array-based topics — guarantees size >= ``min_size`` and
-    differs per generation (so two study paths of the same concept don't reuse the same array).
+    """Backend-chosen, varied input for structured topics — guarantees size >= ``min_size`` and
+    differs per generation (so two study paths of the same concept don't reuse the same example).
     Detection is by family OR title keywords (the family string is unreliable). Returns ``None`` for
-    non-array topics (the model then chooses its own input)."""
+    topics with no structured input (the model then chooses its own)."""
     fam = (topic_family or "").lower()
     text = f"{fam} {(title or '').lower()}"
     size = random.randint(min_size, min_size + 2)
 
-    is_search = fam in _BINARY_SEARCH_FAMILIES or any(k in text for k in _SEARCH_KEYWORDS)
-    is_sort = (
+    # Precedence: weighted-graph (MST/shortest-path) -> graph -> tree -> search -> array. A "minimum
+    # spanning TREE" / "kruskal" topic is a WEIGHTED GRAPH problem, never a binary tree or array search.
+    is_wgraph = any(k in text for k in _WEIGHTED_GRAPH_KEYWORDS)
+    is_graph = not is_wgraph and (fam in _GRAPH_FAMILIES or any(k in text for k in _GRAPH_KEYWORDS))
+    is_tree = not is_wgraph and not is_graph and (
+        fam in _TREE_FAMILIES or any(k in text for k in _TREE_KEYWORDS)
+    )
+    _struct = is_wgraph or is_graph or is_tree
+    is_search = not _struct and (
+        fam in _BINARY_SEARCH_FAMILIES or any(k in text for k in _SEARCH_KEYWORDS)
+    )
+    is_sort = not _struct and (
         fam in _ARRAY_SORT_FAMILIES
         or "sort" in fam or "divide_and_conquer" in fam
         or any(k in text for k in _SORT_KEYWORDS)
     )
-    is_array = is_sort or any(k in text for k in _ARRAY_KEYWORDS)
+    is_array = is_sort or (not _struct and any(k in text for k in _ARRAY_KEYWORDS))
 
+    if is_wgraph:
+        return {"graph": _random_weighted_graph(size)}
+    if is_tree:
+        return {"tree": _bst_level_order(random.sample(range(1, 99), size))}
+    if is_graph:
+        return {"graph": _random_graph(size)}
     if is_search:
         nums = sorted(random.sample(range(1, 99), size))
         return {"nums": nums, "target": random.choice(nums)}  # target present -> a found case

@@ -17,7 +17,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -374,6 +376,10 @@ type LessonFlowCard = {
     frame_index?: number;
     source?: string;
   };
+  // Worked-example solver metadata. `code_lines[i]` = the 1-based source line(s) the i-th `work`
+  // action maps to (the model's own anchor). `code_block` = [start,end] span of every line the card
+  // references — a per-card fallback highlight when the work is prose with no per-action anchor.
+  metadata?: { code_lines?: number[][]; code_block?: number[]; [key: string]: unknown };
 };
 
 type ExampleProblem = {
@@ -5381,7 +5387,10 @@ export default function StudyPathLearnPage() {
                       const shouldAnimateReveal = revealFromIndex > 0 && pts.length > revealFromIndex;
                       if (!tree.length) return null;
                       const shouldNumberMainBullets = tree.length > 1;
+                      const allowCodeWork =
+                        currentStep.type === "flow_card" && Boolean(currentStep.card?.code_snippet);
                       return (
+                        <CodeWorkContext.Provider value={allowCodeWork}>
                         <div className="space-y-3">
                           {tree.map((node, i) => {
                             const isNew = shouldAnimateReveal && node.index >= revealFromIndex;
@@ -5425,6 +5434,7 @@ export default function StudyPathLearnPage() {
                             );
                           })}
                         </div>
+                        </CodeWorkContext.Provider>
                       );
                     })()}
 
@@ -6019,6 +6029,28 @@ function MathText({ text }: { text: string }) {
   return <>{renderMathText(text)}</>;
 }
 
+// A coding worked-example work line is "<verbatim code> // <plain-English explanation>". Split it so
+// the renderer can show the code as a monospace chip and the explanation as prose (no raw "//").
+// Splits on the LAST " // " (so integer division like "(low + high) // 2" stays in the code), and only
+// when the tail reads as prose and the head looks like code — so ordinary bullets are untouched.
+function splitCodeExplanation(text: string): { code: string; explanation: string } | null {
+  const idx = text.lastIndexOf(" // ");
+  if (idx < 0) return null;
+  const code = text.slice(0, idx).replace(/^\s*-\s*/, "").trim();
+  const explanation = text.slice(idx + 4).trim();
+  if (!/^[A-Za-z]/.test(explanation) || !/\s/.test(explanation)) return null; // tail must be prose
+  const looksLikeCode =
+    /[=(){}\[\]:]/.test(code) ||
+    /^(if|elif|else|for|while|return|def|with|try|except|break|continue|pass|raise|yield|import|from)\b/.test(code);
+  if (!code || code.length > 80 || !looksLikeCode) return null; // head must look like code
+  return { code, explanation };
+}
+
+// True only while rendering a card that has a code panel (a coding worked example / walkthrough). The
+// "<code> // <explanation>" work formatting is reserved for those — an algorithm-walkthrough example
+// must never render code chips in its work, even if a stray code line leaks into a bullet.
+const CodeWorkContext = createContext(false);
+
 function LinkedMathText({
   text,
   links,
@@ -6028,6 +6060,26 @@ function LinkedMathText({
   links: LessonInteractiveLink[];
   onAskAboutText: (text: string) => void;
 }) {
+  const codeWorkAllowed = useContext(CodeWorkContext);
+  const codeExpl = splitCodeExplanation(text);
+  if (codeExpl) {
+    // Coding worked example: render the code as a chip + its plain-English explanation.
+    if (codeWorkAllowed) {
+      return (
+        <>
+          <code className="rounded-md bg-muted/70 px-1.5 py-0.5 font-mono text-[0.88em] text-foreground">
+            {codeExpl.code}
+          </code>
+          <span className="mx-1.5 text-muted-foreground">—</span>
+          <LinkedMathText text={codeExpl.explanation} links={links} onAskAboutText={onAskAboutText} />
+        </>
+      );
+    }
+    // Any other example type (algorithm walkthrough, math, ...): a code line in the work is spurious —
+    // show only the plain-English part so non-coding examples never display source code.
+    return <LinkedMathText text={codeExpl.explanation} links={links} onAskAboutText={onAskAboutText} />;
+  }
+
   const parts = splitTextByInteractiveLinks(text, links);
 
   if (parts.length === 1 && parts[0].type === "text") {
@@ -6340,7 +6392,10 @@ function shouldAutoRenderAsMathStrict(text: string) {
     return false;
   }
 
-  return /^(?:mu|sigma|mean|standard_deviation|variance|[a-zA-Z]|\u03bc|\u03c3)\s*(?:=|\()\s*[-+]?\d+(?:\.\d+)?\)?$/i.test(cleaned);
+  // Only auto-promote known statistics formulas (mu=, sigma=, mean=, ...). A bare single-letter
+  // alternative ([a-zA-Z]) wrongly matched ordinary coding state lines like "i = -1" / "k = 0",
+  // rendering them as standalone equations \u2014 never treat those as math.
+  return /^(?:mu|sigma|mean|standard_deviation|variance)\s*(?:=|\()\s*[-+]?\d+(?:\.\d+)?\)?$/i.test(cleaned);
 }
 
 function normalizeMathExpressionStrict(text: string) {
@@ -6455,14 +6510,14 @@ function formatLatexForDisplayStrict(latex: string) {
 }
 
 function renderLatexExpression(latex: string, isDisplay: boolean, key: string) {
+  // Equation rendering is being redesigned. Until then, never use the large centered display block
+  // (it made short bullets look like standalone equations) — render ALL math inline regardless of
+  // the display flag. isDisplay is retained in the signature for the future aesthetic pass.
+  void isDisplay;
   return (
     <span
       key={key}
-      className={
-        isDisplay
-          ? "my-2 block max-w-full overflow-x-auto rounded-xl bg-muted/50 px-4 py-3 text-center font-serif text-lg text-foreground"
-          : "inline max-w-full overflow-x-auto rounded-md bg-muted/50 px-1.5 py-0.5 font-serif text-[0.95em] text-foreground"
-      }
+      className="inline max-w-full overflow-x-auto rounded-md bg-muted/50 px-1.5 py-0.5 font-serif text-[0.95em] text-foreground"
     >
       {renderLatexParts(normalizeMathExpressionStrict(latex), key)}
     </span>
@@ -6800,6 +6855,7 @@ function LearningCard({
   );
 
   return (
+    <CodeWorkContext.Provider value={Boolean(card?.code_snippet)}>
     <div className={effectiveCompact ? "w-full text-left" : "mx-auto w-full max-w-4xl text-left"}>
       <div className={effectiveCompact ? "" : "overflow-hidden rounded-3xl border border-[#E5DFEE] bg-white shadow-sm shadow-purple-100/40"}>
 
@@ -6998,6 +7054,7 @@ function LearningCard({
         </div>
       </div>
     </div>
+    </CodeWorkContext.Provider>
   );
 }
 
@@ -7726,6 +7783,152 @@ function isIndentedBullet(point: string) {
   return /^\s+-\s+/.test(point);
 }
 
+// --- Coding worked example: per-action code-line highlighting (Option A) --------
+// Match a Work bullet to the ONE code line it acts on, so the IDE panel highlights
+// that line as the learner steps through the example. Matching is deterministic
+// (the Work line mirrors the code line); a non-unique / no match yields no highlight
+// so we never light up the wrong line.
+function normalizeCodeForMatch(s: string): string {
+  return String(s).replace(/\s+/g, "").toLowerCase(); // case-insensitive
+}
+
+function normalizeBulletForMatch(bullet: string): string {
+  let b = String(bullet).replace(/^\s*-\s*/, ""); // strip sub-bullet dash
+  b = b.replace(/^(Goal|Reasoning|How|Work|Result|Currently|Now)\s*:\s*/i, ""); // strip field label
+  return normalizeCodeForMatch(b);
+}
+
+function matchBulletToCodeLine(bullet: string, codeNorm: string[]): number | null {
+  const b = normalizeBulletForMatch(bullet);
+  if (b.length < 4) return null;
+  // Score each code line by how much it shares with the bullet. A full-prefix relationship (the bullet
+  // IS the line, or the line is the bullet's head before a "// note") scores highest. Otherwise use the
+  // LONGEST COMMON PREFIX, which tolerates VALUE SUBSTITUTION: the work bullet plugs concrete values
+  // into the source line, so "queue = ['A']" still shares "queue = [" with "queue = [start]", and
+  // "visited.add('C')" shares "visited.add(" with "visited.add(neighbor)". Require a meaningful shared
+  // prefix and a UNIQUE winner so a wrong line never lights up.
+  let best = { line: 0, score: 0 };
+  let tie = false;
+  for (let i = 0; i < codeNorm.length; i++) {
+    const c = codeNorm[i];
+    if (!c || c.length < 4) continue;
+    let k = 0;
+    const max = Math.min(b.length, c.length);
+    while (k < max && b[k] === c[k]) k += 1;
+    const fullPrefix = b === c || b.startsWith(c) || c.startsWith(b);
+    const score = fullPrefix ? 1000 + Math.min(b.length, c.length) : k;
+    if (score > best.score) {
+      best = { line: i + 1, score };
+      tie = false;
+    } else if (score === best.score) {
+      tie = true;
+    }
+  }
+  const MIN_SHARED = 6; // a structural (value-substituted) match needs >= this many shared leading chars
+  return !tie && best.line > 0 && best.score >= MIN_SHARED ? best.line : null;
+}
+
+type WorkedExampleRevealUnit = { bullets: string[]; highlight?: [number, number] };
+
+// The acting line for a Work action. String match FIRST: when the bullet carries the literal code
+// line (the common, reliable case) this is exact. Only when that fails (e.g. a call written with
+// substituted args like "traverse(node=None, ...)" that no source line matches) do we fall back to
+// the model's own `code_lines` anchor — BOUNDED to the real code range so a hallucinated/out-of-range
+// line never produces an invisible highlight that hides the correct one.
+function actionHighlight(
+  action: string,
+  index: number,
+  codeLinesPerAction: number[][] | undefined,
+  aligned: boolean,
+  codeNorm: string[],
+  cardBlock: [number, number] | null,
+): [number, number] | null {
+  const line = matchBulletToCodeLine(action, codeNorm);
+  if (line) return [line, line];
+  if (aligned && codeLinesPerAction) {
+    const total = codeNorm.length;
+    const refs = (codeLinesPerAction[index] || []).filter(
+      (n) => typeof n === "number" && n >= 1 && n <= total,
+    );
+    if (refs.length > 0) return [Math.min(...refs), Math.max(...refs)];
+  }
+  // Last resort: the card-level block (same lines for every action) so prose work still highlights.
+  return cardBlock;
+}
+
+// The card's [start,end] block from metadata.code_block, validated against the real code range.
+function cardBlockOf(card: LessonFlowCard, total: number): [number, number] | null {
+  const b = card.metadata?.code_block;
+  if (Array.isArray(b) && b.length === 2) {
+    const lo = Number(b[0]);
+    const hi = Number(b[1]);
+    if (lo >= 1 && hi >= lo && hi <= total) return [lo, hi];
+  }
+  return null;
+}
+
+// Plan a coding worked-example card as per-action reveal units (Option A): an opening
+// unit (Goal/Reasoning + the "Work:" header), then ONE unit per Work action carrying its
+// matched code line, then any trailing groups (Result). Returns null when there is no code
+// or no action maps to a line — the caller then falls back to Option B.
+function planCodingWorkedExampleReveal(
+  groups: string[][],
+  codeLines: string[],
+  codeLinesPerAction: number[][] | undefined,
+  cardBlock: [number, number] | null,
+): WorkedExampleRevealUnit[] | null {
+  const codeNorm = codeLines.map(normalizeCodeForMatch);
+  if (!codeNorm.some((c) => c.length > 0)) return null;
+
+  const workIdx = groups.findIndex(
+    (g) => g.slice(1).some(isIndentedBullet) || /^\s*work\s*:?\s*$/i.test(g[0] ?? ""),
+  );
+  if (workIdx < 0) return null;
+
+  const workGroup = groups[workIdx];
+  const actions = workGroup.slice(1);
+  // The model's per-action anchor aligns 1:1 with the work array; only trust it when the counts match.
+  const aligned = Array.isArray(codeLinesPerAction) && codeLinesPerAction.length === actions.length;
+
+  // Resolve every action's highlight up front, so the opening step can PREVIEW the first acting line
+  // instead of showing a blank panel (the previous [0,0] opening looked like highlighting was broken).
+  const actionHls = actions.map((a, i) =>
+    actionHighlight(a, i, codeLinesPerAction, aligned, codeNorm, cardBlock),
+  );
+  const firstHl = actionHls.find((h) => h) ?? cardBlock;
+  const matchedAny = actionHls.some((h) => h) || cardBlock != null;
+  if (!matchedAny) return null; // nothing to highlight anywhere -> let the caller use Option B
+
+  const units: WorkedExampleRevealUnit[] = [];
+  // Opening step (Goal/Reasoning + "Work:" header) previews the first acting line so the panel is
+  // never blank; the highlight then advances per action and persists through the trailing groups.
+  let lastHighlight: [number, number] = firstHl ?? [0, 0];
+  units.push({ bullets: groups.slice(0, workIdx).flat().concat([workGroup[0] ?? "Work:"]), highlight: lastHighlight });
+  for (let i = 0; i < actions.length; i++) {
+    if (actionHls[i]) lastHighlight = actionHls[i] as [number, number];
+    // Show the FULL work bullet (the code line in context); the panel highlights the acting line.
+    units.push({ bullets: [actions[i]], highlight: lastHighlight });
+  }
+  for (const g of groups.slice(workIdx + 1)) {
+    units.push({ bullets: g, highlight: lastHighlight }); // trailing groups (Result) keep the LAST acted line
+  }
+  // Highlight resets on the next card (each card plans its own units from its own first action).
+  return units;
+}
+
+// Option B fallback: the single block spanning every line any bullet on the card maps to.
+function unionUsedCodeLines(groups: string[][], codeLines: string[]): [number, number] | undefined {
+  const codeNorm = codeLines.map(normalizeCodeForMatch);
+  const lines: number[] = [];
+  for (const group of groups) {
+    for (const b of group) {
+      const ln = matchBulletToCodeLine(b, codeNorm);
+      if (ln) lines.push(ln);
+    }
+  }
+  return lines.length > 0 ? [Math.min(...lines), Math.max(...lines)] : undefined;
+}
+
 function normalizeSplitMathBullets(points: string[]) {
   const normalized: string[] = [];
   for (let index = 0; index < points.length; index++) {
@@ -8270,18 +8473,43 @@ function buildLearningStepsFromCards({
           prevLength = cumulativeBullets.length;
         }
       } else if (bpKey === "worked_example") {
-        // One nav step per worked-example card. Its Goal/Reasoning/Work/Result content lives in the
-        // card's `points` (labeled) and renders through the proven bullet-tree renderer.
-        steps.push({
-          ...base,
-          type: "flow_card" as const,
-          title,
-          body: [],
-          bullets: groups.flat(),
-          card,
-          visual,
-          revealFromIndex: 0,
-        });
+        // Coding worked example: reveal one Work action at a time and highlight the code line it
+        // acts on (Option A). If no action maps to a line, fall back to a single step that
+        // highlights all the lines the card uses at once (Option B). Non-coding worked examples
+        // have no code_snippet, so the plan is null and we render the original single step.
+        const codeLines = String(card.code_snippet || "").split("\n");
+        const cardBlock = cardBlockOf(card, codeLines.length);
+        const plan = planCodingWorkedExampleReveal(groups, codeLines, card.metadata?.code_lines, cardBlock);
+        if (plan) {
+          let prevLength = 0;
+          for (let i = 0; i < plan.length; i++) {
+            const cumulativeBullets = plan.slice(0, i + 1).flatMap((u) => u.bullets);
+            steps.push({
+              ...base,
+              type: "flow_card" as const,
+              title,
+              body: [],
+              bullets: cumulativeBullets,
+              card,
+              visual, // code panel persists on every reveal step; only the highlight moves
+              revealFromIndex: prevLength,
+              highlightLines: plan[i].highlight,
+            });
+            prevLength = cumulativeBullets.length;
+          }
+        } else {
+          steps.push({
+            ...base,
+            type: "flow_card" as const,
+            title,
+            body: [],
+            bullets: groups.flat(),
+            card,
+            visual,
+            revealFromIndex: 0,
+            highlightLines: unionUsedCodeLines(groups, codeLines) ?? cardBlock ?? undefined,
+          });
+        }
       } else {
         for (let i = 0; i < groups.length; i++) {
           steps.push({
