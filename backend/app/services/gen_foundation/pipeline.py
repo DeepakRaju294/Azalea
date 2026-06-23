@@ -40,6 +40,54 @@ class RunResult:
     note: str = ""
 
 
+def _executor_final_answer(trace_events: Optional[list[dict[str, Any]]]) -> Any:
+    """The executed function's return value (the last trace event carries it), or None."""
+    if not trace_events:
+        return None
+    return trace_events[-1].get("return_value")
+
+
+def _answers_agree(model_answer: Any, executor_return: Any) -> Optional[bool]:
+    """Tolerant agreement between the model's free-text final answer and the executor's return value:
+    compare their canonical numeric signatures (the model says 'MST weight 57', the executor returns
+    (57, [...])). None when neither side has a checkable number — don't claim (dis)agreement we can't see."""
+    import re
+
+    from .completeness import _answer_signature
+
+    sig = _answer_signature(model_answer)
+    exec_numbers = re.findall(r"-?\d+(?:\.\d+)?", str(executor_return))
+    if not sig.get("checkable") or not exec_numbers:
+        return None
+    if sig["kind"] == "scalar":
+        return sig["result_value"] in exec_numbers
+    return all(tok in exec_numbers for tok in sig["sequence"])  # sequence elements all present
+
+
+def _execution_telemetry(
+    code: Any, lang: str, example_input: Any,
+    trace_events: Optional[list[dict[str, Any]]], model_answer: Any, executor_final: Any,
+    *, topic_family: str = "",
+) -> dict[str, Any]:
+    """Shadow execution telemetry (Layer 1 + 3): did we execute, why not, does the executed answer agree
+    with the model's claim, and does the executed answer satisfy this family's invariants (Layer 3
+    property checks). Measured, not gated — `post_generation_trace` is not trace_backed."""
+    from .executor import execution_skip_reason
+    from .property_checks import family_properties
+
+    executed = trace_events is not None
+    return {
+        "attempted": bool(code),
+        "executed": executed,
+        "skip_reason": None if executed else (execution_skip_reason(str(code or ""), lang, example_input)
+                                              if code else "no_code"),
+        "executor_final_answer": executor_final,
+        "final_answer_agreement": _answers_agree(model_answer, executor_final) if executed else None,
+        "property_violations": (family_properties(topic_family, example_input, executor_final)
+                                if executed else []),
+    }
+
+
 def _assign_ids(artifact: dict[str, Any]) -> None:
     cards = artifact.get("cards") or []
     ids: list[str] = []
@@ -60,9 +108,14 @@ def _ensure_coverage(artifact: dict[str, Any]) -> None:
     for sid, card in zip(ids, cards):
         for case in card.get("cases_covered") or []:
             required.setdefault(str(case), []).append(sid)
+    # Evidence-based: the step that actually represents the final answer (not just ids[-1]). Falls back
+    # to the last id only when the answer isn't deterministically checkable — the completeness gate in
+    # validate_artifact is what fails a truly unreached answer.
+    from .completeness import step_reaching_final
+    reaching = step_reaching_final(cards, ids, artifact.get("final_answer"))
     artifact["projection_coverage"] = {
         "required_cases": required,
-        "teaching_step_reaching_final": ids[-1] if ids else None,
+        "teaching_step_reaching_final": reaching or (ids[-1] if ids else None),
     }
 
 
@@ -118,20 +171,25 @@ def run_first_pass(
 
     # 3. Reconcile (post_generation_trace) — execute the generated code if enabled (§6/§6.1).
     #    The executor returns None when disabled/unsafe, so this stays model_only by default.
+    #    Layer 1: we ALSO record execution telemetry (skip reason + model-vs-executor answer agreement)
+    #    without gating — post_generation_trace is not `trace_backed`, so this is pure shadow measurement.
     recon_tele: dict[str, Any] = {}
     if config.trace_mode == "post_generation_trace":
         code = artifact.get("code") or topic.get("code")
-        trace_events = (
-            executor(code, topic.get("code_language") or "python",
-                     artifact.get("example_input") or artifact.get("problem"))
-            if code else None
-        )
+        lang = topic.get("code_language") or "python"
+        example_input = artifact.get("example_input") or artifact.get("problem")
+        trace_events = executor(code, lang, example_input) if code else None
+        executor_final = _executor_final_answer(trace_events)
         recon = reconcile(
             artifact.get("cards") or [], trace_events,
             model_final_answer=artifact.get("final_answer"),
+            executor_final_answer=executor_final,
             step_ids=artifact.get("step_ids"),
         )
         recon_tele = recon.telemetry()
+        recon_tele["execution"] = _execution_telemetry(
+            code, lang, example_input, trace_events, artifact.get("final_answer"), executor_final,
+            topic_family=config.topic_family)
         if trace_events is not None:
             artifact["reconciliation"] = recon_tele
             artifact["trace_ranges"] = recon.attached_ranges

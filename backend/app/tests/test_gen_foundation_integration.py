@@ -46,6 +46,7 @@ def simple_artifact_with_problem(n=5):
          "result": "res", "state_relevance": "none", "state_delta": None, "cases_covered": [f"c{i}"]}
         for i in range(n)
     ]
+    cards[-1]["result"] = "sorted = [1,2,3]"  # terminal step reaches the final answer (completeness gate)
     return {
         "problem": "sort [3,1,2]",
         "cards": cards,
@@ -122,16 +123,18 @@ class TestSolveViaPipeline(unittest.TestCase):
 
 class TestExecutedReconcile(unittest.TestCase):
     def _coding_artifact(self, n=7):
+        cards = [
+            {"title": f"S{i+1}", "goal": "g", "how": "appends", "work": ["x"], "result": "r",
+             "state_relevance": "stateful",
+             "state_delta": {"ops": [{"op": "push", "path": "merged", "value": i}]},
+             "primary_kind": "merge", "explanation_mode": "implementation_how",
+             "code_refs": [10 + i], "cases_covered": [f"c{i}"]}
+            for i in range(n)
+        ]
+        cards[-1]["result"] = "merged = [0,1,2,3,4,5,6]"  # terminal step reaches the final answer
         return {
             "code": "def merge():\n    return []\n",
-            "cards": [
-                {"title": f"S{i+1}", "goal": "g", "how": "appends", "work": ["x"], "result": "r",
-                 "state_relevance": "stateful",
-                 "state_delta": {"ops": [{"op": "push", "path": "merged", "value": i}]},
-                 "primary_kind": "merge", "explanation_mode": "implementation_how",
-                 "code_refs": [10 + i], "cases_covered": [f"c{i}"]}
-                for i in range(n)
-            ],
+            "cards": cards,
             "initial_resolved_state": {"merged": []},
             "projection_coverage": {
                 "required_cases": {f"c{i}": [f"step_{i+1}"] for i in range(n)},

@@ -267,6 +267,11 @@ def validate_artifact(artifact: dict[str, Any]) -> list[str]:
 
     if "final_answer" not in artifact or artifact.get("final_answer") in (None, ""):
         errors.append("artifact missing final_answer (§9)")
+    else:
+        # Layer 0 completeness gate: a checkable final answer must be REACHED by a rendered step,
+        # closing the teaching_step_reaching_final tautology (works even in model_only mode).
+        from .completeness import completeness_errors
+        errors.extend(completeness_errors(artifact))
     if artifact.get("initial_resolved_state") is None and schema_name:
         errors.append("stateful artifact missing initial_resolved_state setup (§7/§9)")
     return errors

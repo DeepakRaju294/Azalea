@@ -1199,9 +1199,9 @@ def _validated_lesson_code(cards: list[Any], topic: dict[str, Any]) -> Optional[
     parses, needs_regen = True, False
     try:
         ast.parse(code)
-        from app.services.examples.code_repair import has_imports, looks_like_setup_only
+        from app.services.examples.code_repair import has_disallowed_imports, looks_like_setup_only
 
-        needs_regen = looks_like_setup_only(code) or has_imports(code)
+        needs_regen = looks_like_setup_only(code) or has_disallowed_imports(code)
     except SyntaxError:
         parses = False
     if parses and not needs_regen:

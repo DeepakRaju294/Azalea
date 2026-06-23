@@ -23,11 +23,23 @@ import builtins as _builtins
 import os
 import sys
 import time
+from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 TraceEvent = dict[str, Any]
 TraceEvents = list[TraceEvent]
 ExecutorFn = Callable[[str, str, Any], Optional[TraceEvents]]
+
+
+@dataclass
+class ExecutionResult:
+    """Structured execution outcome (Layer 1)."""
+    status: str                       # executed | skipped | error | overflow
+    skip_reason: Optional[str]        # why skipped/errored, for shadow telemetry
+    trace_events: Optional["TraceEvents"]
+    return_value: Any                 # the entry function's return (the executed final answer)
+    exception: Optional[str]
+    elapsed_ms: float
 
 MAX_STEPS = 4000
 MAX_SECONDS = 1.0
@@ -50,6 +62,15 @@ _ALLOWED_NODES: frozenset[type] = frozenset({
     ast.USub, ast.UAdd, ast.Not, ast.Invert, ast.And, ast.Or,
     ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.Is, ast.IsNot, ast.In, ast.NotIn,
     ast.FormattedValue, ast.JoinedStr,
+    ast.Import, ast.ImportFrom, ast.alias,   # only for the curated allow-list below (Layer 1)
+})
+
+# Curated standard-library modules the canonical implementations actually use (mirrors
+# code_repair.ALLOWED_STDLIB_MODULES). These are the SAME modules generation is now allowed to emit, so
+# the executor can run exactly the algorithms it most needs to verify (heapq/deque/...). Imports outside
+# this set are rejected at the AST gate AND by the guarded __import__ below (defence in depth).
+_ALLOWED_IMPORT_MODULES = frozenset({
+    "heapq", "collections", "math", "itertools", "bisect", "functools",
 })
 
 _DANGEROUS_NAMES = frozenset({
@@ -67,6 +88,18 @@ _SAFE_BUILTINS: dict[str, Any] = {
     name: getattr(_builtins, name) for name in _SAFE_BUILTIN_NAMES if hasattr(_builtins, name)
 }
 
+_real_import = _builtins.__import__
+
+
+def _guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+    """A drop-in __import__ that only permits the curated allow-list (no relative imports)."""
+    if level != 0 or name.split(".")[0] not in _ALLOWED_IMPORT_MODULES:
+        raise ImportError(f"import of {name!r} is not permitted in the sandbox")
+    return _real_import(name, globals, locals, fromlist, level)
+
+
+_EXEC_BUILTINS: dict[str, Any] = {**_SAFE_BUILTINS, "__import__": _guarded_import}
+
 
 def _flag_execute() -> bool:
     return os.getenv("AZALEA_GEN_FOUNDATION_EXECUTE", "").strip().lower() in {"1", "true", "yes", "on"}
@@ -80,6 +113,12 @@ def _ast_safe(tree: ast.AST) -> bool:
             return False
         if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
             return False
+        if isinstance(node, ast.Import):
+            if any(alias.name.split(".")[0] not in _ALLOWED_IMPORT_MODULES for alias in node.names):
+                return False
+        if isinstance(node, ast.ImportFrom):
+            if node.level or (node.module or "").split(".")[0] not in _ALLOWED_IMPORT_MODULES:
+                return False
     return True
 
 
@@ -134,33 +173,45 @@ def _entry_and_args(tree: ast.AST, input_spec: Any) -> tuple[Optional[str], list
     return (funcs[-1] if funcs else None), ([input_spec] if input_spec is not None else []), {}
 
 
-def run_trace(code: str, language: str, input: Any) -> Optional[TraceEvents]:
-    """Execute the snippet under the gate + bounds and return ``trace_events`` (§6).
-
-    Returns ``None`` (stay model_only) when execution is disabled, the language/source
-    is unsupported/unsafe, no entry function is found, or a bound is exceeded.
-    """
+def execution_skip_reason(code: str, language: str, input: Any = None) -> Optional[str]:
+    """Why execution would be skipped (for shadow telemetry), or None if it would run. Cheap: it only
+    checks the flag + parses/gates the code, never executes."""
     if not _flag_execute():
-        return None
-    tree = parse_safe(code, language)
-    if tree is None:
-        return None
-    entry, args, kwargs = _entry_and_args(tree, input)
+        return "execution_disabled"
+    if (language or "").lower() not in ("python", "py"):
+        return "unsupported_language"
+    if parse_safe(code, language) is None:
+        return "unsafe_or_unparseable"
+    entry, _, _ = _entry_and_args(parse_safe(code, language), input)
     if not entry:
-        return None
+        return "no_entry_function"
+    return None
 
-    safe_globals: dict[str, Any] = {"__builtins__": _SAFE_BUILTINS}
+
+def execute(code: str, language: str, input: Any) -> ExecutionResult:
+    """Run the snippet under the gate + bounds and return a STRUCTURED result (Layer 1): trace events,
+    the function's return value, any exception, and a skip/error reason — so the pipeline can compare
+    the executed answer against the model's claim and measure why execution was (not) possible."""
+    started = time.time()
+    skip = execution_skip_reason(code, language, input)
+    if skip:
+        return ExecutionResult(status="skipped", skip_reason=skip, trace_events=None,
+                               return_value=None, exception=None, elapsed_ms=0.0)
+    tree = parse_safe(code, language)
+    entry, args, kwargs = _entry_and_args(tree, input)
+
+    safe_globals: dict[str, Any] = {"__builtins__": _EXEC_BUILTINS}
     try:
-        compiled = compile(code, _SENTINEL_FILE, "exec")
-        exec(compiled, safe_globals)  # defines the snippet's functions in a restricted namespace
-    except Exception:
-        return None
+        exec(compile(code, _SENTINEL_FILE, "exec"), safe_globals)  # restricted namespace + guarded import
+    except Exception as exc:  # noqa: BLE001
+        return ExecutionResult("error", "exec_failed", None, None, repr(exc),
+                               round((time.time() - started) * 1000, 2))
     fn = safe_globals.get(entry)
     if not callable(fn):
-        return None
+        return ExecutionResult("error", "entry_not_callable", None, None, None,
+                               round((time.time() - started) * 1000, 2))
 
     events: TraceEvents = []
-    started = time.time()
     state = {"overflow": False, "steps": 0}
 
     class _Stop(Exception):
@@ -187,14 +238,23 @@ def run_trace(code: str, language: str, input: Any) -> Optional[TraceEvents]:
     try:
         result = fn(*args, **kwargs)
     except _Stop:
-        return None
-    except Exception:
-        return None
+        return ExecutionResult("overflow", "step_or_time_budget_exceeded", None, None, None,
+                               round((time.time() - started) * 1000, 2))
+    except Exception as exc:  # noqa: BLE001
+        return ExecutionResult("error", "raised", None, None, repr(exc),
+                               round((time.time() - started) * 1000, 2))
     finally:
         sys.settrace(prev)
 
-    if state["overflow"] or not events:
-        return None
+    if not events:
+        return ExecutionResult("error", "no_events", None, _safe_value(result), None,
+                               round((time.time() - started) * 1000, 2))
     events.append({"step_index": len(events), "code_line_refs": [], "state": {},
                    "return_value": _safe_value(result)})
-    return events
+    return ExecutionResult("executed", None, events, _safe_value(result), None,
+                           round((time.time() - started) * 1000, 2))
+
+
+def run_trace(code: str, language: str, input: Any) -> Optional[TraceEvents]:
+    """Back-compat events-or-None wrapper over :func:`execute` (the injected ExecutorFn shape, §6)."""
+    return execute(code, language, input).trace_events

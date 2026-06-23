@@ -100,14 +100,38 @@ def looks_like_setup_only(code: str) -> bool:
     return not (has_iteration or has_recursion or has_value_return)
 
 
-def has_imports(code: str) -> bool:
-    """True if the code contains any import statement. Lesson implementations must be self-contained
-    (no heapq/deque/etc.) — import-bearing code is regenerated into a built-ins-only version."""
+# Standard-library modules whose data structures ARE the idiomatic/canonical form of common
+# algorithms (a `heapq` priority queue is Dijkstra/Prim/Huffman; a `deque` is BFS's queue). These are
+# zero-install and exactly what a learner gets when they look up the real implementation, so we KEEP
+# them rather than forcing an inefficient `sorted()`+`pop(0)` hand-roll. Anything outside this set — a
+# third-party package, or a stdlib module that hides system state / non-determinism — is regenerated
+# away, because a library that performs the algorithm defeats the lesson and the trace must stay
+# deterministic and self-contained.
+ALLOWED_STDLIB_MODULES = frozenset({
+    "heapq", "collections", "math", "itertools", "bisect", "functools",
+})
+
+
+def _imported_module_roots(code: str) -> set[str]:
+    """Root module names imported by the code (``from collections import deque`` -> ``collections``)."""
     try:
         tree = ast.parse(code)
     except SyntaxError:
-        return False
-    return any(isinstance(n, (ast.Import, ast.ImportFrom)) for n in ast.walk(tree))
+        return set()
+    roots: set[str] = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            roots.update(alias.name.split(".")[0] for alias in n.names)
+        elif isinstance(n, ast.ImportFrom):
+            roots.add(n.module.split(".")[0] if (n.module and not n.level) else ".")  # "." = relative
+    return roots
+
+
+def has_disallowed_imports(code: str) -> bool:
+    """True if the code imports anything OUTSIDE the curated stdlib allow-list. Allowed stdlib
+    (heapq/collections/math/itertools/bisect/functools) is the idiomatic form of canonical algorithms
+    and is kept; third-party packages and algorithm-doing libraries are regenerated away."""
+    return bool(_imported_module_roots(code) - ALLOWED_STDLIB_MODULES)
 
 
 def _is_closure_free(fn: ast.AST, module_names: set[str]) -> bool:
@@ -174,10 +198,16 @@ _CODE_GEN_SYSTEM = (
     "genuinely needs one (e.g. merge sort = `merge_sort` + `merge`) — define every helper as its OWN "
     "TOP-LEVEL function, NEVER nested inside another function; every variable defined before it "
     "is used; no `if __name__` block, no driver, no example usage, no prints, no comments. "
-    "NO `import` statements and NO external libraries — use ONLY built-in types and functions: a plain "
-    "list with `min()` / `sorted()` instead of `heapq`, a list with `pop(0)` instead of "
-    "`collections.deque`, a dict/set literal instead of `defaultdict`. The implementation must be fully "
-    "self-contained. "
+    "USE THE STANDARD LIBRARY THE REAL IMPLEMENTATION USES — `import heapq` for a priority queue "
+    "(Dijkstra / Prim / Huffman / top-k / k-way merge), `from collections import deque` for a FIFO "
+    "queue (BFS / sliding window), `defaultdict` / `Counter` for grouping and counting, and `math`, "
+    "`itertools`, `bisect`, `functools` where idiomatic. Do NOT hand-roll these with `sorted()` + "
+    "`pop(0)` or a list you re-`.sort()` every iteration — that is slower and is NOT how the algorithm "
+    "is actually written; a learner who looks this up should see the SAME code. HARD LIMITS: NEVER use "
+    "a third-party package (numpy, pandas, networkx, sortedcontainers, ...), NEVER call a library "
+    "function that performs the task itself (e.g. `networkx.minimum_spanning_tree`, or `heapq.nsmallest`/"
+    "`sorted()` used to REPLACE the algorithm's own loop) — the learner must SEE the algorithm run, not "
+    "delegate it — and no `random` / `os` / `sys` (keep it deterministic and self-contained). "
     "PREFER VISIBLE DATA FLOW: a function that RETURNS its result and a caller that reassigns it, over "
     "one that mutates a passed-in argument and returns None — for divide-and-conquer (e.g. merge sort) "
     "write `return merge(left, right)` with `left = merge_sort(arr[:mid])`, NOT an in-place "
@@ -377,12 +407,14 @@ def apply_clean_code_to_lesson(
             if regenerated and not looks_like_setup_only(regenerated):
                 _log.info("code_repair: %s code was setup-only — regenerated full implementation", topic.get("id"))
                 authoritative = regenerated
-        # Imports: lesson code must be self-contained (no heapq/deque). Regenerate into a built-ins-only
-        # version when the implementation pulls in a library.
-        if authoritative and has_imports(authoritative):
+        # Imports: KEEP the curated stdlib the canonical implementation uses (heapq / deque /
+        # defaultdict / ...); regenerate only when the code pulls in a third-party package or an
+        # algorithm-doing library, which would hide the algorithm from the learner.
+        if authoritative and has_disallowed_imports(authoritative):
             regenerated = generate_clean_code(topic, broken_code=authoritative, generator=generator)
-            if regenerated and not has_imports(regenerated):
-                _log.info("code_repair: %s used imports — regenerated self-contained version", topic.get("id"))
+            if regenerated and not has_disallowed_imports(regenerated):
+                _log.info("code_repair: %s used a disallowed import — regenerated within the stdlib allow-list",
+                          topic.get("id"))
                 authoritative = regenerated
         if not authoritative:
             _log.warning("code_repair: %s has no valid code and regeneration failed", topic.get("id"))

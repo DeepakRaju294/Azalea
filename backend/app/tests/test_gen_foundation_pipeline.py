@@ -34,7 +34,7 @@ def simple_artifact(n: int = 5) -> dict:
 
 
 def coding_cards(n: int = 7) -> list[dict]:
-    return [
+    cards = [
         {
             "title": f"Step {i+1}", "goal": "g", "how": "the loop appends the next value",
             "work": ["append"], "result": "merged grows", "state_relevance": "stateful",
@@ -44,6 +44,8 @@ def coding_cards(n: int = 7) -> list[dict]:
         }
         for i in range(n)
     ]
+    cards[-1]["result"] = "merged = [0,1,2,3,4,5,6]"  # terminal step reaches the final answer
+    return cards
 
 
 def coding_artifact(n: int = 7) -> dict:
