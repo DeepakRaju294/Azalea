@@ -186,6 +186,12 @@ def ensure_topic_course_type_schema() -> None:
                 "ADD COLUMN IF NOT EXISTS visual_description TEXT"
             )
         )
+        connection.execute(
+            text(
+                "ALTER TABLE topics "
+                "ADD COLUMN IF NOT EXISTS decomposition_metadata JSONB"
+            )
+        )
 
 
 ensure_learning_material_scope_columns()

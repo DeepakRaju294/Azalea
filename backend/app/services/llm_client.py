@@ -1123,6 +1123,61 @@ def generate_structured_topics(
         raise RuntimeError("OpenAI returned invalid topic JSON") from exc
 
 
+def generate_topic_decomposition(
+    system_prompt: str,
+    user_prompt: str,
+) -> dict[str, Any]:
+    """Single-call capability path-plan + topics (TOPIC_DECOMPOSITION_SPEC.md B.1). Returns the parsed
+    `{path_plan, topics}` object (json_object, not strict schema — the deterministic validator handles
+    robustness). The system prompt is a stable prefix, so it shares a cache key."""
+    response = _create_with_usage(
+        "topic_decomposition",
+        prompt_cache_key="azalea_topic_decomposition_v1",
+        model=OPENAI_MODEL,
+        input=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        text={"format": {"type": "json_object"}},
+    )
+    try:
+        return json.loads(response.output_text)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("OpenAI returned invalid topic-decomposition JSON") from exc
+
+
+def resolve_topic_overlap(
+    topic_a: dict[str, Any],
+    topic_b: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Bounded merge-or-justify call for a genuine AMBIGUOUS_OVERLAP pair (spec B.4 step 7). Returns the
+    validator's decision dict ({"decision": "drop_topic", "surviving_topic_id": ...}) or None to keep both.
+    Best-effort: any failure -> None (keep both), so it can never drop a topic by accident."""
+    from app.prompts.topic_decomposition_prompt import (
+        OVERLAP_SYSTEM_PROMPT, build_overlap_resolver_prompt,
+    )
+
+    try:
+        response = _create_with_usage(
+            "topic_overlap_resolver",
+            prompt_cache_key="azalea_topic_overlap_v1",
+            model=OPENAI_MODEL,
+            input=[
+                {"role": "system", "content": OVERLAP_SYSTEM_PROMPT},
+                {"role": "user", "content": build_overlap_resolver_prompt(topic_a, topic_b)},
+            ],
+            text={"format": {"type": "json_object"}},
+        )
+        decision = json.loads(response.output_text)
+    except (json.JSONDecodeError, RuntimeError, KeyError, TypeError):
+        return None
+    if not isinstance(decision, dict) or decision.get("decision") != "drop_topic":
+        return None
+    surviving = str(decision.get("surviving_topic_id") or "")
+    valid_ids = {str(topic_a.get("topic_id")), str(topic_b.get("topic_id"))}
+    return decision if surviving in valid_ids else None  # only honor a valid survivor
+
+
 def generate_class_qa_response(
     system_prompt: str,
     user_prompt: str,

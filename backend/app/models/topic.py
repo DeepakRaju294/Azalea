@@ -48,6 +48,11 @@ class Topic(Base):
     course_type_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     visual_description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Capability-graph decomposition audit blob (TOPIC_DECOMPOSITION_SPEC.md step 8): the planning
+    # fields behind this topic (subject_key, capability_id, primary_action, basis, relationship, ...).
+    # Null for legacy-generated topics.
+    decomposition_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     estimated_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

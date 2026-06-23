@@ -37,6 +37,7 @@ class TopicCreate(BaseModel):
     course_type: TopicType | None = None
     secondary_course_types: list[TopicType] = Field(default_factory=list)
     knowledge_level: KnowledgeLevel | None = None
+    decomposition_metadata: dict | None = None
 
 
 class TopicRead(BaseModel):

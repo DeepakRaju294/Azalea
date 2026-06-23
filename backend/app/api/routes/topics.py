@@ -275,6 +275,7 @@ def create_topic(
         course_type=course_type,
         secondary_course_types=secondary_course_types,
         knowledge_level=knowledge_level,
+        decomposition_metadata=payload.decomposition_metadata,
     )
 
     db.add(topic)

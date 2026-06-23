@@ -431,6 +431,21 @@ Chunk index: {chunk.chunk_index}
             "from the learner goal only. Leave source_refs empty."
         )
 
+    # Capability-graph decomposition path (TOPIC_DECOMPOSITION_SPEC.md), flag-gated. Produces the same
+    # legacy topic-dict shape, so the rest of the pipeline is unchanged. Falls back to the legacy
+    # generator below if it yields nothing.
+    if os.getenv("AZALEA_TOPIC_DECOMPOSITION", "") not in ("", "0"):
+        try:
+            from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+
+            decomposed = generate_decomposed_topics(goal=goal, chunks_text=chunks_text, feedback=feedback)
+            if decomposed:
+                _log.info("topic_generator: used capability-graph decomposition (%d topics)", len(decomposed))
+                return decomposed
+            _log.warning("topic_generator: decomposition produced nothing — falling back to legacy")
+        except Exception as exc:  # noqa: BLE001 — never block generation; fall back to legacy
+            _log.warning("topic_generator: decomposition failed (%s) — falling back to legacy", exc)
+
     user_prompt = build_topic_prompt(
         goal=goal,
         chunks_text=chunks_text,

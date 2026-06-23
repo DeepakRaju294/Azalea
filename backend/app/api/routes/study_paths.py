@@ -207,6 +207,7 @@ def create_topic_from_generated_data(
         course_type=topic_data.get("topic_type") or topic_data.get("course_type"),
         secondary_course_types=topic_data.get("secondary_course_types") or [],
         knowledge_level=topic_data.get("knowledge_level"),
+        decomposition_metadata=topic_data.get("decomposition_metadata"),
         status="not_started",
     )
     db.add(topic)
@@ -1085,6 +1086,7 @@ def regenerate_study_path(
             course_type=topic_data.get("topic_type") or topic_data.get("course_type"),
             secondary_course_types=topic_data.get("secondary_course_types") or [],
             knowledge_level=topic_data.get("knowledge_level"),
+            decomposition_metadata=topic_data.get("decomposition_metadata"),
             status="not_started",
         )
         db.add(topic)

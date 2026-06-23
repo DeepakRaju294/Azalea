@@ -705,8 +705,12 @@ def build_lean_user_prompt(
 
     is_coding_continuation = False
     if topic_type == "coding_implementation" and len(blueprints) == 1:
+        # Explicit signal from the capability-graph decomposition (TOPIC_DECOMPOSITION_SPEC.md Part C):
+        # an implementation_follow_up topic omits background. Falls back to the preceding-type heuristic.
+        modifiers = getattr(topic, "modifiers", None) or []
+        explicit_follow_up = isinstance(modifiers, (list, tuple)) and "implementation_follow_up" in modifiers
         preceding_type = _get_preceding_topic_type(topic)
-        if preceding_type in _WALKTHROUGH_TOPIC_TYPES:
+        if explicit_follow_up or preceding_type in _WALKTHROUGH_TOPIC_TYPES:
             is_coding_continuation = True
             cont_seq = primary_blueprint.get("continuation_card_sequence")
             if cont_seq:
