@@ -9,11 +9,15 @@ billing figure.
 from __future__ import annotations
 
 import json
+import logging
+import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from .pipeline import RunResult
 from .validators import validate_artifact
+
+_log = logging.getLogger(__name__)
 
 
 def approx_tokens(obj: Any) -> int:
@@ -32,6 +36,12 @@ class ShadowMeasure:
     model_calls: int
     reconciliation_status: str
     degraded: bool
+    # Layer 1/3 execution signals (the oracle-gap measures) — defaults keep older callers working.
+    blocked: bool = False                          # would this run have been withheld from the learner?
+    executed: bool = False                         # did the executor actually run the code?
+    execution_skip_reason: Optional[str] = None    # why not (execution_disabled / unsafe / no_entry / ...)
+    final_answer_agreement: Optional[bool] = None  # executed answer vs the model's claim (None = uncheckable)
+    property_violations: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return self.__dict__.copy()
@@ -40,6 +50,7 @@ class ShadowMeasure:
 def measure_run(topic_id: str, result: RunResult) -> ShadowMeasure:
     artifact = result.artifact or {}
     cards = artifact.get("cards") or []
+    execution = result.reconciliation_telemetry.get("execution") or {}
     return ShadowMeasure(
         topic_id=topic_id,
         card_count=len(cards),
@@ -49,7 +60,29 @@ def measure_run(topic_id: str, result: RunResult) -> ShadowMeasure:
         model_calls=result.model_calls,
         reconciliation_status=result.reconciliation_telemetry.get("reconciliation_status", "n/a"),
         degraded=result.degraded,
+        blocked=bool(result.degraded or not result.ok or not result.artifact),
+        executed=bool(execution.get("executed")),
+        execution_skip_reason=execution.get("skip_reason"),
+        final_answer_agreement=execution.get("final_answer_agreement"),
+        property_violations=list(execution.get("property_violations") or []),
     )
+
+
+def record_run_telemetry(topic_id: str, result: RunResult, *, path: Optional[str] = None) -> None:
+    """Durably append one shadow run's measures as a JSON line so the oracle-gap rates (executed %,
+    skip reasons, answer-agreement, property violations, blocked %) are actually queryable. Sink is
+    ``AZALEA_GEN_FOUNDATION_TELEMETRY_PATH``; with none set we still structured-log it. Best-effort —
+    telemetry must never break generation."""
+    line = json.dumps(measure_run(topic_id, result).as_dict(), ensure_ascii=False)
+    sink = path or os.getenv("AZALEA_GEN_FOUNDATION_TELEMETRY_PATH")
+    if not sink:
+        _log.info("gen_foundation.telemetry %s", line)
+        return
+    try:
+        with open(sink, "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except OSError as exc:  # noqa: BLE001
+        _log.warning("gen_foundation: telemetry write to %s failed (%s)", sink, exc)
 
 
 @dataclass

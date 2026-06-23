@@ -82,6 +82,15 @@ def step_reaching_final(
     return None
 
 
+def card_reaches_final(card: dict[str, Any], final_answer: Any) -> Optional[bool]:
+    """Does this single card's state represent the final answer? True/False for a checkable answer,
+    None when the answer has no checkable signature (caller decides what to do with 'unknown')."""
+    sig = _answer_signature(final_answer)
+    if not sig.get("checkable"):
+        return None
+    return _card_reaches(card, sig)
+
+
 def completeness_errors(artifact: dict[str, Any]) -> list[str]:
     """Hard gate: a checkable final answer must be reached by some rendered step (§9.1, Layer 0)."""
     final_answer = artifact.get("final_answer")

@@ -84,6 +84,20 @@ class TestAdapter(unittest.TestCase):
         self.assertEqual(legacy["final_answer"], legacy["expected_final_answer"])
         self.assertEqual(legacy["generated_by"], "gen_foundation")
 
+    def test_no_terminal_card_when_last_reaches_answer(self):
+        # fixture's last card already shows 'sorted = [1,2,3]' -> nothing appended
+        legacy = artifact_to_legacy(simple_artifact_with_problem(3))
+        self.assertEqual(len(legacy["cards"]), 3)
+        self.assertFalse(legacy["cards"][-1].get("synthesized_terminal"))
+
+    def test_terminal_result_card_appended_when_missing(self):
+        art = simple_artifact_with_problem(3)
+        art["cards"][-1]["result"] = "still iterating"  # answer not shown on the last card
+        legacy = artifact_to_legacy(art)
+        self.assertEqual(len(legacy["cards"]), 4)              # one appended
+        self.assertEqual(legacy["cards"][-1]["result"], "[1,2,3]")
+        self.assertTrue(legacy["cards"][-1]["synthesized_terminal"])
+
 
 class TestSolveViaPipeline(unittest.TestCase):
     def test_returns_none_when_flag_off(self):

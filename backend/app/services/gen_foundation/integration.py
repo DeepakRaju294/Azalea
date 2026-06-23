@@ -62,10 +62,35 @@ def card_to_legacy(card: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _ensure_terminal_result_card(cards: list[dict[str, Any]], final_answer: Any) -> list[dict[str, Any]]:
+    """Layer 0 step 2: guarantee the learner SEES the answer. If a step already reaches it (the gate
+    upstream ensures one does), do nothing; otherwise append a deterministic Result card. This runs
+    only AFTER the completeness gate has passed — it never makes a truncated trace look complete, it
+    just surfaces an answer that was computed but not shown on the terminal card."""
+    if not final_answer or not cards:
+        return cards
+    from .completeness import card_reaches_final
+
+    reaches = card_reaches_final(cards[-1], final_answer)
+    if reaches:
+        return cards  # last card already shows the answer
+    if reaches is None:  # not numerically checkable — only append if the text isn't already there
+        last = (cards[-1].get("result", "") + " " + " ".join(cards[-1].get("work", []))).lower()
+        if str(final_answer).strip().lower() in last:
+            return cards
+    return cards + [{
+        "title": "Result", "goal": "State the final result of the computation.", "reasoning": "",
+        "work": [str(final_answer)], "result": str(final_answer), "teaching_note": None,
+        "cases_covered": [], "prior_state": None, "visual": "", "code_lines": None,
+        "synthesized_terminal": True,  # provenance: deterministic, not model-authored
+    }]
+
+
 def artifact_to_legacy(artifact: dict[str, Any]) -> dict[str, Any]:
     """Map a full worked-example artifact onto the legacy ``solve_worked_example`` return."""
     cards = [card_to_legacy(c) for c in (artifact.get("cards") or [])]
     final = artifact.get("final_answer")
+    cards = _ensure_terminal_result_card(cards, final)
     return {
         "problem": str(artifact.get("problem") or artifact.get("example_input") or "").strip(),
         "cards": cards,
@@ -106,6 +131,13 @@ def solve_via_pipeline(
         auditor=auditor or default_auditor,
         repair=repair or default_repair,
     )
+
+    # Durable shadow telemetry for EVERY run (success, fallback, or block) — the oracle-gap dataset.
+    try:
+        from .metrics import record_run_telemetry
+        record_run_telemetry(tid, result)
+    except Exception:  # noqa: BLE001 — measurement must never break generation
+        pass
 
     # Provenance: log WHY a topic uses the new path or falls back to legacy, so a missing/
     # legacy-shaped worked example is explainable from the logs instead of guesswork.
