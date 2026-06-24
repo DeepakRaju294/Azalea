@@ -1,0 +1,4 @@
+
+# gen_foundation shadow telemetry data
+backend/telemetry/
+telemetry/*.jsonl
