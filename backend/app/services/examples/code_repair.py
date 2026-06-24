@@ -213,6 +213,14 @@ _CODE_GEN_SYSTEM = (
     "write `return merge(left, right)` with `left = merge_sort(arr[:mid])`, NOT an in-place "
     "`merge_sort(left_half)` that returns None. EXCEPTION: keep inherently in-place algorithms in place "
     "(in-place reversal, partition/swap sorts, linked-list pointer surgery). "
+    "CONTRACT — get the INPUT and OUTPUT shape exactly right, this is where implementations silently go "
+    "wrong: decide a clear input representation and a clear return value, and make the code actually "
+    "produce THAT. For a graph algorithm, return the real result the name promises — an MST function "
+    "returns the tree's EDGES as (u, v, weight) tuples that connect ALL vertices (exactly V-1 of them), "
+    "never a list of (weight, vertex) records; a shortest-path function returns distances/paths. Handle "
+    "the obvious edge cases (empty input, a single element, a disconnected graph) without crashing or "
+    "silently dropping a vertex. Reason through a tiny example before finalizing to confirm the output "
+    "is COMPLETE and CORRECT (e.g. an MST on N nodes has N-1 edges covering every node). "
     'Return ONLY JSON: {"code": "<the python implementation>"}.'
 )
 
@@ -381,14 +389,22 @@ def apply_clean_code_to_lesson(
             return False
 
         snippets = [str(c.get("code_snippet")) for c in code_cards]
-        combined = _combine_snippets(snippets)
-        if combined and not code_has_undefined_names(combined):
-            authoritative = combined
+        # Focused-call-first (AZALEA_FOCUSED_CODE_GEN): get the authoritative code from ONE focused,
+        # full-attention "implement X" call rather than stitching the mega-lesson call's by-product.
+        # Used verbatim when valid; falls back to the combined snippets otherwise.
+        focused = (generate_clean_code(topic, generator=generator)
+                   if os.getenv("AZALEA_FOCUSED_CODE_GEN", "") not in ("", "0") else None)
+        if focused:
+            authoritative = focused
         else:
-            valid = [s for s in snippets if not code_has_undefined_names(s)]
-            authoritative = max(valid, key=len) if valid else generate_clean_code(
-                topic, broken_code=max(snippets, key=len), generator=generator,
-            )
+            combined = _combine_snippets(snippets)
+            if combined and not code_has_undefined_names(combined):
+                authoritative = combined
+            else:
+                valid = [s for s in snippets if not code_has_undefined_names(s)]
+                authoritative = max(valid, key=len) if valid else generate_clean_code(
+                    topic, broken_code=max(snippets, key=len), generator=generator,
+                )
         # Valid-but-incomplete: the assembled code parses and has no undefined names,
         # yet never defines the algorithm's own entry function (e.g. a merge sort topic
         # whose walkthrough only ever built `merge`, never `merge_sort`). Asked plainly,

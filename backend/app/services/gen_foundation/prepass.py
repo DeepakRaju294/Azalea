@@ -253,7 +253,13 @@ def generate_example_input(
 def build_prepass_config(topic: dict[str, Any]) -> PrepassConfig:
     """Derive the immutable pre-pass config from a topic record (pure)."""
     topic_type = str(topic.get("topic_type") or topic.get("type") or "concept")
-    topic_family = str(topic.get("topic_family") or topic.get("family") or "")
+    # Derive the family from the title when it isn't set, so the property gate / executor / telemetry
+    # actually dispatch (topics reach gen_foundation with topic_family empty -> the MST/sort checks
+    # never fired). Conservative: derive only from a recognized title keyword, else stays "".
+    from app.core.topic_family import derive_topic_family
+    topic_family = derive_topic_family(
+        topic.get("title") or topic.get("name"), topic_type,
+        str(topic.get("topic_family") or topic.get("family") or ""))
     coding = topic_type == "coding_implementation" or bool(topic.get("coding_implementation"))
     code_preexists = bool(topic.get("code"))  # code supplied before generation (§6.1)
 
