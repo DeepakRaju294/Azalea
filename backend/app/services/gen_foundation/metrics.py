@@ -36,12 +36,16 @@ class ShadowMeasure:
     model_calls: int
     reconciliation_status: str
     degraded: bool
+    # Slice dimensions (#4) — every gating decision is per-family; without these the data is unusable.
+    topic_family: str = ""
+    topic_type: str = ""
     # Layer 1/3 execution signals (the oracle-gap measures) — defaults keep older callers working.
     blocked: bool = False                          # would this run have been withheld from the learner?
     executed: bool = False                         # did the executor actually run the code?
     execution_skip_reason: Optional[str] = None    # why not (execution_disabled / unsafe / no_entry / ...)
     final_answer_agreement: Optional[bool] = None  # executed answer vs the model's claim (None = uncheckable)
     property_violations: list[str] = field(default_factory=list)
+    state_agreement: Optional[float] = None        # per-step model-vs-trace state match (Layer 2 signal)
 
     def as_dict(self) -> dict[str, Any]:
         return self.__dict__.copy()
@@ -60,11 +64,14 @@ def measure_run(topic_id: str, result: RunResult) -> ShadowMeasure:
         model_calls=result.model_calls,
         reconciliation_status=result.reconciliation_telemetry.get("reconciliation_status", "n/a"),
         degraded=result.degraded,
+        topic_family=str(artifact.get("topic_family") or ""),
+        topic_type=str(artifact.get("topic_type") or artifact.get("category") or ""),
         blocked=bool(result.degraded or not result.ok or not result.artifact),
         executed=bool(execution.get("executed")),
         execution_skip_reason=execution.get("skip_reason"),
         final_answer_agreement=execution.get("final_answer_agreement"),
         property_violations=list(execution.get("property_violations") or []),
+        state_agreement=execution.get("state_agreement"),
     )
 
 

@@ -56,6 +56,7 @@ def coding_artifact(n: int = 7) -> dict:
     return {
         "cards": coding_cards(n), "initial_resolved_state": {"merged": []},
         "projection_coverage": coverage, "final_answer": "[0,1,2,3,4,5,6]",
+        "example_input": [6, 5, 4, 3, 2, 1, 0],  # 7 elements -> sort claimed-answer gate is consistent
     }
 
 

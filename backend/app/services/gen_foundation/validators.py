@@ -272,6 +272,12 @@ def validate_artifact(artifact: dict[str, Any]) -> list[str]:
         # closing the teaching_step_reaching_final tautology (works even in model_only mode).
         from .completeness import completeness_errors
         errors.extend(completeness_errors(artifact))
+        # Model-only property gate (#1): the claimed answer must satisfy the family's structural
+        # invariants (MST has V-1 connected edges; sort is a permutation) — catches a consistent-but-
+        # wrong answer the completeness gate passes. No executor needed.
+        from .property_checks import claimed_answer_violations
+        errors.extend(claimed_answer_violations(
+            artifact.get("topic_family", ""), artifact.get("example_input"), artifact.get("final_answer")))
     if artifact.get("initial_resolved_state") is None and schema_name:
         errors.append("stateful artifact missing initial_resolved_state setup (§7/§9)")
     return errors

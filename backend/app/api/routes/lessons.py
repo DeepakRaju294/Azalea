@@ -245,26 +245,22 @@ def _audit_required_cards(lesson_json: dict, v2_topic: dict) -> None:
     worked_example because lean omits it). A genuinely-missing required card — e.g. the solver failed
     to produce a worked_example — is then visible and logged loudly instead of silently shipped."""
     try:
-        from app.core.course_blueprints import get_topic_blueprint
+        from app.services.card_backfill import backfill_missing_required_cards
 
-        blueprint = get_topic_blueprint(v2_topic.get("topic_type"))
-        optional = set(blueprint.get("optional_cards") or [])
-        required = [k for k in (blueprint.get("default_card_sequence") or []) if k not in optional]
-        present = {
-            str(c.get("blueprint_key") or "").strip().lower()
-            for c in (lesson_json.get("lesson_cards") or []) if isinstance(c, dict)
-        }
-        missing = [k for k in required if k not in present]
+        # #2: regenerate missing/empty required cards specifically (worked_example via the solver,
+        # others via a focused single-card call) instead of just flagging them. Returns what is STILL
+        # missing after backfill — that's the honest signal to stamp.
+        still_missing = backfill_missing_required_cards(lesson_json, v2_topic)
         meta = lesson_json.setdefault("metadata", {})
         if isinstance(meta, dict):
             quality = meta.setdefault("quality", {})
             if isinstance(quality, dict):
-                quality["missing_required_cards"] = missing
-        if missing:
+                quality["missing_required_cards"] = still_missing
+        if still_missing:
             import logging
             logging.getLogger(__name__).warning(
-                "lesson for topic %s STILL missing required cards after enrich: %s",
-                v2_topic.get("id"), missing,
+                "lesson for topic %s STILL missing required cards after backfill: %s",
+                v2_topic.get("id"), still_missing,
             )
     except Exception:  # noqa: BLE001 — auditing must never break a lesson
         pass

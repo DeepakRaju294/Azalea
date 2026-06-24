@@ -155,6 +155,7 @@ class TestExecutedReconcile(unittest.TestCase):
                 "teaching_step_reaching_final": f"step_{n}",
             },
             "final_answer": "[0,1,2,3,4,5,6]",
+            "example_input": [6, 5, 4, 3, 2, 1, 0],  # 7 elements -> sort claimed-answer gate consistent
         }
 
     def test_pipeline_reconciles_against_injected_trace(self):

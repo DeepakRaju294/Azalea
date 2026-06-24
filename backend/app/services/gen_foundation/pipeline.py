@@ -64,14 +64,37 @@ def _answers_agree(model_answer: Any, executor_return: Any) -> Optional[bool]:
     return all(tok in exec_numbers for tok in sig["sequence"])  # sequence elements all present
 
 
+def _state_agreement(cards: list[dict[str, Any]], trace_events: Optional[list[dict[str, Any]]]) -> Optional[float]:
+    """Per-step state agreement (#4, the Layer 2 signal): fraction of cards whose result numbers all
+    appear among the executor's recorded states. None when there's no trace or nothing numeric to compare."""
+    import re
+    if not trace_events:
+        return None
+    state_nums: set[str] = set()
+    for ev in trace_events:
+        for val in (ev.get("state") or {}).values():
+            state_nums.update(re.findall(r"-?\d+", str(val)))
+    if not state_nums:
+        return None
+    agree = total = 0
+    for c in cards or []:
+        nums = re.findall(r"-?\d+", str(c.get("result", "")))
+        if not nums:
+            continue
+        total += 1
+        if all(n in state_nums for n in nums):
+            agree += 1
+    return round(agree / total, 2) if total else None
+
+
 def _execution_telemetry(
     code: Any, lang: str, example_input: Any,
     trace_events: Optional[list[dict[str, Any]]], model_answer: Any, executor_final: Any,
-    *, topic_family: str = "",
+    *, topic_family: str = "", cards: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
-    """Shadow execution telemetry (Layer 1 + 3): did we execute, why not, does the executed answer agree
-    with the model's claim, and does the executed answer satisfy this family's invariants (Layer 3
-    property checks). Measured, not gated — `post_generation_trace` is not trace_backed."""
+    """Shadow execution telemetry (Layer 1 + 3 + 4): did we execute, why not, does the executed answer
+    agree with the model's claim, do the executed answer's invariants hold (Layer 3), and how well the
+    model's per-step states match the trace (#4). Measured, not gated — post_generation_trace isn't trace_backed."""
     from .executor import execution_skip_reason
     from .property_checks import family_properties
 
@@ -85,6 +108,7 @@ def _execution_telemetry(
         "final_answer_agreement": _answers_agree(model_answer, executor_final) if executed else None,
         "property_violations": (family_properties(topic_family, example_input, executor_final)
                                 if executed else []),
+        "state_agreement": _state_agreement(cards or [], trace_events),
     }
 
 
@@ -121,6 +145,9 @@ def _ensure_coverage(artifact: dict[str, Any]) -> None:
 
 def _enrich_for_validation(artifact: dict[str, Any], config: PrepassConfig) -> None:
     artifact.setdefault("category", config.example_category)
+    artifact.setdefault("topic_family", config.topic_family)        # for the model-only property gate (#1)
+    artifact.setdefault("topic_type", config.topic_type)            # telemetry slice dimension (#4)
+    artifact.setdefault("example_input", config.example_input)
     if config.state_schema:
         artifact.setdefault("state_schema", config.state_schema)
     artifact.setdefault(
@@ -189,7 +216,7 @@ def run_first_pass(
         recon_tele = recon.telemetry()
         recon_tele["execution"] = _execution_telemetry(
             code, lang, example_input, trace_events, artifact.get("final_answer"), executor_final,
-            topic_family=config.topic_family)
+            topic_family=config.topic_family, cards=artifact.get("cards"))
         if trace_events is not None:
             artifact["reconciliation"] = recon_tele
             artifact["trace_ranges"] = recon.attached_ranges

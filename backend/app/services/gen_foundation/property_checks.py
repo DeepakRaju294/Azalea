@@ -122,3 +122,92 @@ def family_properties(topic_family: str, example_input: Any, output: Any) -> lis
             except Exception:  # noqa: BLE001 — telemetry must never break generation
                 pass
     return violations
+
+
+# --------------------------------------------------------------------------------------------------
+# Model-only gate (#1): the SAME structural invariants, but checked against the model's free-text
+# claimed final answer (no executor). V comes from the input, so "7 edges, connected" is verifiable
+# from the model's own output — catching the Kruskal 4-edge disconnected MST and Prim's 2-edge result.
+# --------------------------------------------------------------------------------------------------
+import re as _re
+
+
+def _claimed_groups(text: str) -> list[str]:
+    return _re.findall(r"[\(\[][^\(\)\[\]]*[\)\]]", str(text or ""))
+
+
+def _connects_all(edges: list[tuple[str, str]], labels: set[str]) -> bool:
+    """Union-find over the claimed edges: do they connect every node into one component?"""
+    parent = {n: n for n in labels}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for a, b in edges:
+        if a in parent and b in parent:
+            parent[find(a)] = find(b)
+    roots = {find(n) for n in labels}
+    return len(roots) == 1
+
+
+def check_mst_claimed(example_input: Any, final_answer: Any) -> list[str]:
+    labels = _node_labels(example_input)
+    v = _node_count(example_input)
+    if not v or not labels:
+        return []
+    # Each parenthesised/bracketed group is one result item: an edge `(u, v, w)` (>=2 node labels) or
+    # Prim's `(weight, vertex)` (1 label). Count items generically so both formats are covered.
+    items: list[list[str]] = []
+    for group in _claimed_groups(final_answer):
+        toks = [t for t in _re.findall(r"[A-Za-z_]\w*|\d+", group) if t in labels]
+        if toks:
+            items.append(toks)
+    if not items:
+        return []  # couldn't parse a result — don't guess
+    viol: list[str] = []
+    if len(items) < v - 1:
+        viol.append(f"mst: claimed answer lists {len(items)} edges/vertices, but an MST on {v} nodes "
+                    f"needs at least V-1={v - 1} (truncated/incomplete result)")
+    edges = [(t[0], t[1]) for t in items if len(t) >= 2]
+    if edges and not _connects_all(edges, labels):
+        viol.append("mst: claimed MST edges do not connect all nodes (a disconnected forest, not a tree)")
+    return viol
+
+
+def check_sort_claimed(example_input: Any, final_answer: Any) -> list[str]:
+    src = _as_number_list(example_input if not isinstance(example_input, dict)
+                          else example_input.get("array"))
+    best: list[str] = []
+    for group in _claimed_groups(final_answer):
+        nums = _re.findall(r"-?\d+(?:\.\d+)?", group)
+        if len(nums) > len(best):
+            best = nums
+    if src is None or len(best) < 2:
+        return []
+    if len(best) != len(src):
+        return [f"sort: claimed result has {len(best)} elements but the input has {len(src)} "
+                f"(not a permutation of the input)"]
+    return []
+
+
+_CLAIMED_CHECKS: list[tuple[tuple[str, ...], Callable[[Any, Any], list[str]]]] = [
+    (("mst", "spanning", "prim", "kruskal"), check_mst_claimed),
+    (("sort",), check_sort_claimed),
+]
+
+
+def claimed_answer_violations(topic_family: str, example_input: Any, final_answer: Any) -> list[str]:
+    """Hard-gate version (#1): structural invariants checked on the model's CLAIMED final answer, with
+    no executor. Conservative — returns [] when it can't confidently parse the answer. Never raises."""
+    fam = (topic_family or "").lower()
+    violations: list[str] = []
+    for keywords, check in _CLAIMED_CHECKS:
+        if any(k in fam for k in keywords):
+            try:
+                violations.extend(check(example_input, final_answer))
+            except Exception:  # noqa: BLE001
+                pass
+    return violations

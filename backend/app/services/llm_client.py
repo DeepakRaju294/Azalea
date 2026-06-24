@@ -1178,6 +1178,70 @@ def resolve_topic_overlap(
     return decision if surviving in valid_ids else None  # only honor a valid survivor
 
 
+_SINGLE_CARD_INTENT = {
+    "background": "the minimal motivation/context the learner needs before the implementation — what "
+                 "problem it solves and where it fits. Do NOT re-teach the algorithm mechanics.",
+    "components_terms": "the key variables, data structures, and terms used in this implementation, each "
+                       "defined briefly in the context of the code.",
+    "edge_case": "the focused edge cases or failure modes for this implementation and how the code handles "
+                "them, with concrete values.",
+    "process": "the ordered steps of the procedure, each a concrete action.",
+}
+
+
+def generate_single_lesson_card(
+    blueprint_key: str,
+    lesson_json: dict[str, Any],
+    topic: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Focused regeneration of ONE missing lesson card (card backfill, #2). Returns a card dict
+    ({blueprint_key, card_type, title, points}) or None when offline/unsupported — the caller then logs a
+    drop. Scoped to a single card so it's cheap and can't disturb the rest of the lesson."""
+    key = (blueprint_key or "").strip().lower()
+    intent = _SINGLE_CARD_INTENT.get(key)
+    if not intent:
+        return None
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key or api_key.strip().lower() == "dummy":
+        return None
+
+    existing = [str(c.get("title") or "") for c in (lesson_json.get("lesson_cards") or [])
+                if isinstance(c, dict)]
+    user = json.dumps({
+        "topic_title": topic.get("title"),
+        "topic_type": topic.get("topic_type"),
+        "card_to_generate": key,
+        "what_this_card_must_contain": intent,
+        "source_summary": lesson_json.get("source_summary"),
+        "other_card_titles": existing[:12],
+        "rules": ["3-6 concise bullet points", "concrete and specific to THIS topic",
+                  "do not duplicate the other cards", "no meta-commentary"],
+    }, ensure_ascii=False)
+    try:
+        response = _create_with_usage(
+            "single_card_backfill",
+            model=OPENAI_MODEL,
+            input=[
+                {"role": "system", "content": "You write ONE lesson card. Return ONLY JSON "
+                 '{"title": "...", "points": ["...", "..."]}.'},
+                {"role": "user", "content": user},
+            ],
+            text={"format": {"type": "json_object"}},
+        )
+        parsed = json.loads(response.output_text)
+    except (json.JSONDecodeError, RuntimeError, KeyError, TypeError):
+        return None
+    points = [str(p) for p in (parsed.get("points") or []) if str(p).strip()]
+    if not points:
+        return None
+    return {
+        "blueprint_key": key,
+        "card_type": parsed.get("card_type") or "definition",
+        "title": str(parsed.get("title") or key.replace("_", " ").title()),
+        "points": points,
+    }
+
+
 def generate_class_qa_response(
     system_prompt: str,
     user_prompt: str,
