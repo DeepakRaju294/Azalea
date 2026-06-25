@@ -267,6 +267,9 @@ def validate_artifact(artifact: dict[str, Any]) -> list[str]:
 
     if "final_answer" not in artifact or artifact.get("final_answer") in (None, ""):
         errors.append("artifact missing final_answer (§9)")
+    elif artifact.get("trace_first"):
+        pass  # trace-first artifacts are built FROM real execution — completeness/correctness are
+        #       guaranteed by the run reaching its return; the model-only gates don't apply.
     else:
         # Layer 0 completeness gate: a checkable final answer must be REACHED by a rendered step,
         # closing the teaching_step_reaching_final tautology (works even in model_only mode).

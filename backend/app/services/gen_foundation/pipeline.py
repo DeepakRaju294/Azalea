@@ -15,6 +15,7 @@ pipeline is deterministic and offline in tests. Nothing here is wired into produ
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -201,7 +202,7 @@ def run_first_pass(
     #    Layer 1: we ALSO record execution telemetry (skip reason + model-vs-executor answer agreement)
     #    without gating — post_generation_trace is not `trace_backed`, so this is pure shadow measurement.
     recon_tele: dict[str, Any] = {}
-    if config.trace_mode == "post_generation_trace":
+    if config.trace_mode in ("post_generation_trace", "preexisting_trace"):  # both have code to execute
         code = artifact.get("code") or topic.get("code")
         lang = topic.get("code_language") or "python"
         example_input = artifact.get("example_input") or artifact.get("problem")
@@ -220,6 +221,18 @@ def run_first_pass(
         if trace_events is not None:
             artifact["reconciliation"] = recon_tele
             artifact["trace_ranges"] = recon.attached_ranges
+            # D (trace-first, AZALEA_TRACE_FIRST): replace the model's hand-simulated cards with cards
+            # built from the REAL execution trace -- states recorded not invented, run to completion.
+            if os.getenv("AZALEA_TRACE_FIRST", "") not in ("", "0"):
+                from .trace_first import build_cards_from_trace
+                tf = build_cards_from_trace(trace_events, code=str(code or ""))
+                if tf.get("cards"):
+                    artifact["cards"] = tf["cards"]
+                    artifact["final_answer"] = tf["final_answer"]
+                    artifact["final_answer_struct"] = tf.get("final_answer_struct")
+                    artifact["trace_first"] = True
+                    _assign_ids(artifact)
+                    _ensure_coverage(artifact)
 
     # 4. Mandatory worked-example audit (§8) — patch-only, re-validate, reject-on-fail.
     audit_tele: dict[str, Any] = {}

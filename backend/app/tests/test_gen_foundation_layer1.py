@@ -93,6 +93,25 @@ class ExecuteTests(unittest.TestCase):
         self.assertEqual(_executor_final_answer(events), [1, 2, 3])
 
 
+class SandboxTests(unittest.TestCase):
+    def setUp(self):
+        os.environ["AZALEA_GEN_FOUNDATION_EXECUTE"] = "1"
+
+    def tearDown(self):
+        os.environ.pop("AZALEA_GEN_FOUNDATION_EXECUTE", None)
+
+    def test_subprocess_matches_in_process(self):
+        from app.services.gen_foundation.executor import execute, execute_sandboxed
+        code = "def run(x):\n    return x * 3\n"
+        inp = {"entry": "run", "args": [7]}
+        ip = execute(code, "python", inp)
+        sb = execute_sandboxed(code, "python", inp)
+        self.assertEqual(ip.return_value, 21)
+        self.assertEqual(sb.return_value, 21)
+        self.assertEqual(sb.status, "executed")
+        self.assertTrue(sb.trace_events)
+
+
 class AgreementTests(unittest.TestCase):
     def test_scalar_agreement(self):
         self.assertTrue(_answers_agree("MST weight 57", (57, [("A", "B")])))

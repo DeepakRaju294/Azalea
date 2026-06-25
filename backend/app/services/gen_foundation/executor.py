@@ -255,6 +255,44 @@ def execute(code: str, language: str, input: Any) -> ExecutionResult:
                            round((time.time() - started) * 1000, 2))
 
 
+def _flag_sandbox() -> bool:
+    return os.getenv("AZALEA_GEN_FOUNDATION_SANDBOX", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def execute_sandboxed(code: str, language: str, input: Any) -> ExecutionResult:
+    """Run :func:`execute` in a SEPARATE process (isolation + a hard subprocess timeout). Same result
+    shape; a crash/hang in the snippet can't affect the worker. Off by default (AZALEA_GEN_FOUNDATION_SANDBOX)."""
+    import json
+    import subprocess
+    import tempfile
+
+    started = time.time()
+    backend = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))  # the dir holding app/
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            infile, outfile = os.path.join(d, "in.json"), os.path.join(d, "out.json")
+            with open(infile, "w", encoding="utf-8") as fh:
+                json.dump({"code": code, "language": language, "input": input}, fh, ensure_ascii=False)
+            subprocess.run(
+                [sys.executable, "-m", "app.services.gen_foundation._sandbox_runner", infile, outfile],
+                timeout=MAX_SECONDS + 5, capture_output=True, cwd=backend, env={**os.environ},
+            )
+            with open(outfile, encoding="utf-8") as fh:
+                data = json.load(fh)
+        return ExecutionResult(
+            status=data["status"], skip_reason=data["skip_reason"], trace_events=data["trace_events"],
+            return_value=data["return_value"], exception=data["exception"],
+            elapsed_ms=data.get("elapsed_ms", round((time.time() - started) * 1000, 2)),
+        )
+    except subprocess.TimeoutExpired:
+        return ExecutionResult("overflow", "subprocess_timeout", None, None, None,
+                               round((time.time() - started) * 1000, 2))
+    except Exception as exc:  # noqa: BLE001 — sandbox failure -> skip, never crash the caller
+        return ExecutionResult("error", "subprocess_failed", None, None, repr(exc),
+                               round((time.time() - started) * 1000, 2))
+
+
 def run_trace(code: str, language: str, input: Any) -> Optional[TraceEvents]:
-    """Back-compat events-or-None wrapper over :func:`execute` (the injected ExecutorFn shape, §6)."""
-    return execute(code, language, input).trace_events
+    """Back-compat events-or-None wrapper. Routes to the subprocess sandbox when enabled, else in-process."""
+    runner = execute_sandboxed if _flag_sandbox() else execute
+    return runner(code, language, input).trace_events

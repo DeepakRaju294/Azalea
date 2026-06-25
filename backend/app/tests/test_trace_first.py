@@ -51,5 +51,33 @@ class TraceFirstTests(unittest.TestCase):
         self.assertEqual(xs, [1, 2])
 
 
+class TraceFirstLiveWiringTests(unittest.TestCase):
+    def test_pipeline_replaces_model_cards_with_real_trace(self):
+        import os
+        from app.services.gen_foundation.pipeline import run_first_pass
+        os.environ["AZALEA_GEN_FOUNDATION_EXECUTE"] = "1"
+        os.environ["AZALEA_TRACE_FIRST"] = "1"
+        try:
+            code = "def run(nums):\n    out = []\n    for n in nums:\n        out.append(n * 2)\n    return out\n"
+            artifact = {
+                "cards": [{"title": "x", "goal": "g", "how": "h", "work": ["w"], "result": "r",
+                           "state_relevance": "none", "state_delta": None, "cases_covered": [],
+                           "explanation_mode": "implementation_how", "code_refs": [2]}],
+                "final_answer": "WRONG model claim", "code": code,
+                "example_input": {"entry": "run", "args": [[1, 2, 3]]},
+            }
+            res = run_first_pass(
+                {"topic_type": "coding_implementation", "title": "Doubler", "code_language": "python"},
+                solver=lambda p: dict(artifact), auditor=lambda p: None, repair=lambda p: None)
+            a = res.artifact or {}
+            self.assertTrue(a.get("trace_first"))
+            self.assertEqual(a.get("final_answer"), [2, 4, 6])      # REAL result replaces the wrong claim
+            self.assertTrue(res.ok)
+            self.assertGreater(len(a.get("cards") or []), 1)
+        finally:
+            os.environ.pop("AZALEA_GEN_FOUNDATION_EXECUTE", None)
+            os.environ.pop("AZALEA_TRACE_FIRST", None)
+
+
 if __name__ == "__main__":
     unittest.main()

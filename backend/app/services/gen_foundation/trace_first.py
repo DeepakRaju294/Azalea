@@ -63,23 +63,42 @@ def _state_summary(state: dict[str, Any] | None) -> str:
     return ", ".join(f"{k}={v!r}" for k, v in list(state.items())[:6])
 
 
+def _state_delta_narration(prior: dict[str, Any] | None, after: dict[str, Any]) -> str:
+    """A truthful, deterministic description of what changed — built from REAL states, so it cannot
+    misstate the computation. Falls back to a full-state summary when there's no clear single delta."""
+    prior = prior or {}
+    changed = [k for k in after if after.get(k) != prior.get(k)]
+    if len(changed) == 1:
+        k = changed[0]
+        return f"{k} is now {after[k]!r}"
+    if changed:
+        return ", ".join(f"{k} = {after[k]!r}" for k in changed[:4])
+    return _state_summary(after) or "(state updated)"
+
+
 def build_cards_from_trace(
     trace_events: Optional[list[dict[str, Any]]],
     *,
+    code: str = "",
     max_cards: int = 10,
 ) -> dict[str, Any]:
-    """Build a state-accurate worked-example skeleton from real execution events. Returns
+    """Build COMPLETE state-accurate worked-example cards from real execution events. Returns
     {cards, final_answer, trace_backed: True} or {} when there's no usable trace.
 
-    Each card carries the REAL before/after state and the code lines that produced it; `goal`/`reasoning`
-    are left empty for the narration pass. `final_answer` is the executor's actual return value."""
+    Work lines are the ACTUAL source lines executed (from `code` + the recorded line refs), and the
+    result is a truthful description of the REAL state change — both produced from execution, so the
+    trace cannot truncate, drift, or misstate state. `final_answer` is the executor's actual return."""
     if not trace_events:
         return {}
     final = next((e.get("return_value") for e in reversed(trace_events) if "return_value" in e), None)
+    src_lines = code.split("\n") if code else []
     events = _significant(trace_events)
     groups = _group(events, max_cards)
     if not groups:
         return {}
+
+    def line_text(n: int) -> str:
+        return src_lines[n - 1].strip() if 0 < n <= len(src_lines) else f"line {n}"
 
     cards: list[dict[str, Any]] = []
     prior_state: dict[str, Any] | None = None
@@ -88,17 +107,21 @@ def build_cards_from_trace(
         after = last.get("state") if isinstance(last.get("state"), dict) else {}
         code_refs = sorted({ln for ev in group for ln in (ev.get("code_line_refs") or [])
                             if isinstance(ln, int)})
+        narration = _state_delta_narration(prior_state, after)
+        work = [f"{line_text(ln)} // {narration}" for ln in code_refs] or [narration]
         cards.append({
             "card_id": f"step_{idx}",
-            "title": "",                 # narration pass fills these
-            "goal": "",
-            "reasoning": "",
-            "work": [f"line {ln}" for ln in code_refs] or ["(step)"],
+            "title": f"Step {idx}",
+            "goal": f"Run line{'s' if len(code_refs) > 1 else ''} "
+                    f"{', '.join(map(str, code_refs)) or 'of the algorithm'} on the current state.",
+            "reasoning": narration,
+            "work": work,
             "result": _state_summary(after) or "(state updated)",
             "prior_state": prior_state,
-            "state": after,              # REAL recorded state — not model-invented
+            "state": after,              # REAL recorded state — not model-invented (carried directly)
             "code_refs": code_refs,
-            "state_relevance": "stateful" if after else "none",
+            "state_relevance": "none",   # state is carried on the card, not reconstructed via deltas
+            "state_delta": None,
             "cases_covered": [],
             "trace_backed": True,
         })
