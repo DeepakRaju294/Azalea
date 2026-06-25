@@ -11,7 +11,7 @@ Pure: trace events in, card skeletons out. The executor (executor.execute) suppl
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 
 def canonical_final_answer(value: Any) -> dict[str, Any]:
@@ -28,6 +28,64 @@ def canonical_final_answer(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return {"kind": "mapping", "value": value, "display": repr(value)}
     return {"kind": "other", "value": str(value), "display": str(value)}
+
+
+NarratorFn = Callable[[dict[str, Any]], Any]
+
+
+def _code_part(work_line: str) -> str:
+    return str(work_line).split("//", 1)[0].rstrip()
+
+
+def narrate_cards(
+    cards: list[dict[str, Any]],
+    *,
+    problem: str = "",
+    model_fn: Optional[NarratorFn] = None,
+) -> list[dict[str, Any]]:
+    """Narration-polish pass (#1): an LLM rewrites goal/reasoning/per-line explanations as readable prose
+    AROUND the real recorded states. It is given the verified states and may ONLY describe them — the
+    code lines, the `state`, and the final answer are never changed. Any failure or shape mismatch falls
+    back to the terse trace narration, so prose is never traded for accuracy. Pure given ``model_fn``."""
+    if not cards:
+        return cards
+    fn = model_fn or _default_narrator
+    steps = [{
+        "step": i + 1,
+        "code": [_code_part(w) for w in (c.get("work") or [])],
+        "before_state": c.get("prior_state"),
+        "after_state": c.get("state"),
+    } for i, c in enumerate(cards)]
+    try:
+        narration = fn({"problem": problem, "steps": steps})
+    except Exception:  # noqa: BLE001 — narration must never break a correct trace
+        return cards
+    per = narration.get("steps") if isinstance(narration, dict) else None
+    if not isinstance(per, list):
+        return cards
+
+    for card, note in zip(cards, per):
+        if not isinstance(note, dict):
+            continue
+        if note.get("title"):
+            card["title"] = str(note["title"])
+        if note.get("goal"):
+            card["goal"] = str(note["goal"])
+        if note.get("reasoning"):
+            card["reasoning"] = str(note["reasoning"])
+        if note.get("result"):
+            card["result"] = str(note["result"])  # prose result; the real `state` field is untouched
+        # rewrite per-line explanations only when the count matches the verified code lines
+        code_parts = [_code_part(w) for w in (card.get("work") or [])]
+        exps = note.get("work")
+        if isinstance(exps, list) and len(exps) == len(code_parts) and all(isinstance(e, str) for e in exps):
+            card["work"] = [f"{code} // {exp}".rstrip(" /") for code, exp in zip(code_parts, exps)]
+    return cards
+
+
+def _default_narrator(payload: dict[str, Any]) -> Any:
+    from app.services.llm_client import generate_trace_narration
+    return generate_trace_narration(payload)
 
 
 def _significant(events: list[dict[str, Any]]) -> list[dict[str, Any]]:

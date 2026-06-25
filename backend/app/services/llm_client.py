@@ -1242,6 +1242,40 @@ def generate_single_lesson_card(
     }
 
 
+_TRACE_NARRATION_SYSTEM = (
+    "You write clear, learner-facing prose for the steps of a worked example whose states have ALREADY "
+    "been computed by running the code. You are given each step's code line(s) and its before/after "
+    "state. Describe what each step DOES and why, naming the concrete values from the given state. You "
+    "MUST NOT change, recompute, or contradict the given states or the final result — only narrate them. "
+    'Return ONLY JSON: {"steps": [{"title": "...", "goal": "...", "reasoning": "...", "result": "...", '
+    '"work": ["one short explanation per code line, in order"]}, ...]} with one entry per input step.'
+)
+
+
+def generate_trace_narration(payload: dict[str, Any]) -> dict[str, Any]:
+    """Narrate trace-first worked-example steps (#1). Input {problem, steps:[{code, before_state,
+    after_state}]} -> {steps:[{title, goal, reasoning, result, work}]}. Returns {} when offline so the
+    caller keeps the deterministic terse narration (accuracy is never traded for prose)."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key or api_key.strip().lower() == "dummy":
+        return {}
+    try:
+        response = _create_with_usage(
+            "trace_narration",
+            prompt_cache_key="azalea_trace_narration_v1",
+            model=OPENAI_MODEL,
+            input=[
+                {"role": "system", "content": _TRACE_NARRATION_SYSTEM},
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=False, default=str)},
+            ],
+            text={"format": {"type": "json_object"}},
+        )
+        parsed = json.loads(response.output_text)
+        return parsed if isinstance(parsed, dict) else {}
+    except (json.JSONDecodeError, RuntimeError, KeyError, TypeError):
+        return {}
+
+
 def generate_class_qa_response(
     system_prompt: str,
     user_prompt: str,

@@ -51,6 +51,44 @@ class TraceFirstTests(unittest.TestCase):
         self.assertEqual(xs, [1, 2])
 
 
+class NarrationTests(unittest.TestCase):
+    def _cards(self):
+        return [{"title": "Step 1", "goal": "g", "reasoning": "r",
+                 "work": ["out = [] // out is now []"], "result": "out=[]",
+                 "state": {"out": []}, "prior_state": None, "code_refs": [2]}]
+
+    def test_prose_applied_states_untouched(self):
+        from app.services.gen_foundation.trace_first import narrate_cards
+        model = lambda payload: {"steps": [{"title": "Initialize the result list",
+                                            "goal": "Start with an empty accumulator.",
+                                            "reasoning": "We collect doubled values as we go.",
+                                            "result": "The result list starts empty.",
+                                            "work": ["create the empty list that will hold the output"]}]}
+        cards = narrate_cards(self._cards(), model_fn=model)
+        self.assertEqual(cards[0]["title"], "Initialize the result list")
+        self.assertIn("empty accumulator", cards[0]["goal"])
+        self.assertEqual(cards[0]["work"][0],
+                         "out = [] // create the empty list that will hold the output")
+        # the verified state + code line are NOT changed by narration
+        self.assertEqual(cards[0]["state"], {"out": []})
+        self.assertEqual(cards[0]["work"][0].split("//")[0].strip(), "out = []")
+
+    def test_fallback_keeps_terse_on_empty_or_error(self):
+        from app.services.gen_foundation.trace_first import narrate_cards
+        orig = self._cards()
+        self.assertEqual(narrate_cards([c.copy() for c in orig], model_fn=lambda p: {})[0]["work"],
+                         orig[0]["work"])  # empty -> unchanged
+        def boom(p):
+            raise RuntimeError("llm down")
+        self.assertEqual(narrate_cards([c.copy() for c in orig], model_fn=boom)[0]["title"], "Step 1")
+
+    def test_mismatched_explanation_count_ignored(self):
+        from app.services.gen_foundation.trace_first import narrate_cards
+        # 2 explanations for a 1-line card -> keep the verified line, don't misalign
+        cards = narrate_cards(self._cards(), model_fn=lambda p: {"steps": [{"work": ["a", "b"]}]})
+        self.assertEqual(cards[0]["work"][0], "out = [] // out is now []")
+
+
 class TraceFirstLiveWiringTests(unittest.TestCase):
     def test_pipeline_replaces_model_cards_with_real_trace(self):
         import os

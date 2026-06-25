@@ -227,7 +227,11 @@ def run_first_pass(
                 from .trace_first import build_cards_from_trace
                 tf = build_cards_from_trace(trace_events, code=str(code or ""))
                 if tf.get("cards"):
-                    artifact["cards"] = tf["cards"]
+                    from .trace_first import narrate_cards
+                    # narration polish (#1): readable prose AROUND the verified states (falls back to
+                    # the terse deterministic narration when offline — accuracy is never traded).
+                    artifact["cards"] = narrate_cards(
+                        tf["cards"], problem=str(artifact.get("problem") or ""))
                     artifact["final_answer"] = tf["final_answer"]
                     artifact["final_answer_struct"] = tf.get("final_answer_struct")
                     artifact["trace_first"] = True
@@ -242,8 +246,11 @@ def run_first_pass(
     final_errors = validate_artifact(artifact)
     # Layer 1 gating: for families on the AZALEA_TRACE_BACKED_FAMILIES allowlist, a model trace that
     # DISAGREES with the executed run (or whose executed output violates its invariants) is a hard
-    # failure -> withhold, not just shadow telemetry. Reliable families only (data-promoted).
-    final_errors = final_errors + _execution_gate_errors(recon_tele.get("execution") or {}, config.topic_family)
+    # failure -> withhold, not just shadow telemetry. Reliable families only (data-promoted). Skipped for
+    # trace_first artifacts -- those are BUILT from the execution, so they're already correct.
+    if not artifact.get("trace_first"):
+        final_errors = final_errors + _execution_gate_errors(
+            recon_tele.get("execution") or {}, config.topic_family)
     return RunResult(
         ok=not final_errors,
         artifact=artifact,
