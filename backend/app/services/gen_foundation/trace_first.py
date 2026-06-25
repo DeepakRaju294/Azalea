@@ -14,6 +14,22 @@ from __future__ import annotations
 from typing import Any, Optional
 
 
+def canonical_final_answer(value: Any) -> dict[str, Any]:
+    """Structured final-answer schema ({kind, value, display}) derived from a REAL return value, so the
+    answer is produced by execution rather than self-declared by the model (feeds the property checks)."""
+    if value is None:
+        return {"kind": "none", "value": None, "display": ""}
+    if isinstance(value, bool):
+        return {"kind": "bool", "value": value, "display": str(value)}
+    if isinstance(value, (int, float)):
+        return {"kind": "scalar", "value": value, "display": str(value)}
+    if isinstance(value, (list, tuple)):
+        return {"kind": "sequence", "value": list(value), "display": repr(list(value))}
+    if isinstance(value, dict):
+        return {"kind": "mapping", "value": value, "display": repr(value)}
+    return {"kind": "other", "value": str(value), "display": str(value)}
+
+
 def _significant(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Keep events whose semantic state actually changed (drop no-op line steps) + the final return."""
     out: list[dict[str, Any]] = []
@@ -91,6 +107,7 @@ def build_cards_from_trace(
     return {
         "cards": cards,
         "final_answer": final,
+        "final_answer_struct": canonical_final_answer(final),
         "trace_backed": True,
         "source": "trace_first",
     }
