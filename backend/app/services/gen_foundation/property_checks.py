@@ -153,18 +153,55 @@ def _connects_all(edges: list[tuple[str, str]], labels: set[str]) -> bool:
     return len(roots) == 1
 
 
+def _weighted_edges(example_input: Any) -> list[tuple[str, str, float]]:
+    """Parse (u, v, weight) edges from a {nodes, edges:[[u,v,w]]} input (or an adjacency map)."""
+    out: list[tuple[str, str, float]] = []
+    if not isinstance(example_input, dict):
+        return out
+    raw = example_input.get("edges")
+    if isinstance(raw, (list, tuple)):
+        for e in raw:
+            if isinstance(e, (list, tuple)) and len(e) >= 3 and isinstance(e[2], (int, float)) \
+                    and not isinstance(e[2], bool):
+                out.append((str(e[0]), str(e[1]), float(e[2])))
+    return out
+
+
+def _reference_mst(nodes: set[str], edges: list[tuple[str, str, float]]) -> tuple[float, int]:
+    """Trusted internal Kruskal -> (minimum total weight, edge count). The differential oracle."""
+    parent = {n: n for n in nodes}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    total, count = 0.0, 0
+    for u, v, w in sorted(edges, key=lambda e: e[2]):
+        if u in parent and v in parent and find(u) != find(v):
+            parent[find(u)] = find(v)
+            total += w
+            count += 1
+    return total, count
+
+
 def check_mst_claimed(example_input: Any, final_answer: Any) -> list[str]:
     labels = _node_labels(example_input)
     v = _node_count(example_input)
     if not v or not labels:
         return []
     # Each parenthesised/bracketed group is one result item: an edge `(u, v, w)` (>=2 node labels) or
-    # Prim's `(weight, vertex)` (1 label). Count items generically so both formats are covered.
+    # Prim's `(weight, vertex)` (1 label). Track the node labels AND the numeric weight per group.
     items: list[list[str]] = []
+    claimed_weight = 0.0
     for group in _claimed_groups(final_answer):
         toks = [t for t in _re.findall(r"[A-Za-z_]\w*|\d+", group) if t in labels]
         if toks:
             items.append(toks)
+            nums = _re.findall(r"-?\d+(?:\.\d+)?", group)
+            if nums:
+                claimed_weight += float(nums[-1])  # the weight (last number in the tuple)
     if not items:
         return []  # couldn't parse a result — don't guess
     viol: list[str] = []
@@ -172,8 +209,17 @@ def check_mst_claimed(example_input: Any, final_answer: Any) -> list[str]:
         viol.append(f"mst: claimed answer lists {len(items)} edges/vertices, but an MST on {v} nodes "
                     f"needs at least V-1={v - 1} (truncated/incomplete result)")
     edges = [(t[0], t[1]) for t in items if len(t) >= 2]
-    if edges and not _connects_all(edges, labels):
+    connected = not edges or _connects_all(edges, labels)
+    if not connected:
         viol.append("mst: claimed MST edges do not connect all nodes (a disconnected forest, not a tree)")
+    # Differential (C): a structurally-valid MST must also be MINIMAL — compare its weight to a trusted
+    # reference. Catches the right-count-but-wrong-edges case (Prim taking G-H 31 over E-H 28).
+    weighted = _weighted_edges(example_input)
+    if weighted and len(items) == v - 1 and connected and claimed_weight > 0:
+        ref_weight, ref_count = _reference_mst(set(labels), weighted)
+        if ref_count == v - 1 and abs(claimed_weight - ref_weight) > 1e-6:
+            viol.append(f"mst: claimed MST weight {claimed_weight:g} is not minimal — the true minimum "
+                        f"spanning tree weighs {ref_weight:g} (wrong edges chosen)")
     return viol
 
 

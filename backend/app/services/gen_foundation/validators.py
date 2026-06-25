@@ -278,6 +278,12 @@ def validate_artifact(artifact: dict[str, Any]) -> list[str]:
         from .property_checks import claimed_answer_violations
         errors.extend(claimed_answer_violations(
             artifact.get("topic_family", ""), artifact.get("example_input"), artifact.get("final_answer")))
+    # Trace-not-walkthrough gate (#5): a CODING worked example must trace concrete values, not re-define
+    # the code. Flags `def`-definition steps / "ready for use" results -> routes to repair.
+    from .cards import is_coding_card
+    if any(is_coding_card(c) for c in cards):
+        from .trace_quality import walkthrough_mode_violations
+        errors.extend(walkthrough_mode_violations(cards))
     if artifact.get("initial_resolved_state") is None and schema_name:
         errors.append("stateful artifact missing initial_resolved_state setup (§7/§9)")
     return errors

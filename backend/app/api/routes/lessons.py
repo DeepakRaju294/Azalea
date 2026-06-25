@@ -262,6 +262,24 @@ def _audit_required_cards(lesson_json: dict, v2_topic: dict) -> None:
                 "lesson for topic %s STILL missing required cards after backfill: %s",
                 v2_topic.get("id"), still_missing,
             )
+
+        # B (#5 across paths): a CODING worked example must TRACE concrete values, not re-define the
+        # code. The gen_foundation gate handles its own path; this also catches the legacy-solver path.
+        if str(v2_topic.get("topic_type") or "").lower() == "coding_implementation":
+            from app.services.gen_foundation.trace_quality import walkthrough_mode_violations
+            we_cards = [c for c in (lesson_json.get("lesson_cards") or [])
+                        if isinstance(c, dict) and str(c.get("blueprint_key") or "").lower() == "worked_example"]
+            we_violations = walkthrough_mode_violations(we_cards)
+            if we_violations:
+                from app.services.card_failure_log import log_card_failure
+                log_card_failure(topic=v2_topic, card_key="worked_example", stage="trace_quality",
+                                 reason="walkthrough_instead_of_trace", action="flagged",
+                                 detail="; ".join(we_violations[:3]))
+                meta = lesson_json.setdefault("metadata", {})
+                if isinstance(meta, dict):
+                    q = meta.setdefault("quality", {})
+                    if isinstance(q, dict):
+                        q["worked_example_trace_violations"] = we_violations
     except Exception:  # noqa: BLE001 — auditing must never break a lesson
         pass
 
