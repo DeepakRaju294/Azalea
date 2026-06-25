@@ -265,32 +265,36 @@ def _audit_required_cards(lesson_json: dict, v2_topic: dict) -> None:
 
         # B (#5 across paths): a CODING worked example must TRACE concrete values, not re-define the
         # code. The gen_foundation gate handles its own path; this also catches the legacy-solver path.
-        if str(v2_topic.get("topic_type") or "").lower() == "coding_implementation":
-            from app.services.gen_foundation.trace_quality import walkthrough_mode_violations
-            we_cards = [c for c in (lesson_json.get("lesson_cards") or [])
-                        if isinstance(c, dict) and str(c.get("blueprint_key") or "").lower() == "worked_example"]
-            we_violations = walkthrough_mode_violations(we_cards)
+        # Reference-backed correctness guard on the FINAL worked example, for coding AND walkthrough
+        # topics -- this is what catches the wrong/vague MST examples shipped by the legacy solver. On a
+        # coding topic the failure triggers one focused re-solve; everything is logged + stamped.
+        ttype = str(v2_topic.get("topic_type") or "").lower()
+        if ttype in ("coding_implementation", "algorithm_walkthrough", "data_structure_operation"):
+            from app.services.gen_foundation.trace_quality import worked_example_correctness_violations
             from app.services.card_failure_log import log_card_failure
-            if we_violations:
-                # Regenerate-on-fail: a worked example that re-defines code instead of tracing gets one
-                # focused re-solve, then re-checked -- turns "detected" into "corrected" on this path too.
-                try:
-                    from app.services.examples.solver import apply_llm_solved_worked_example
-                    apply_llm_solved_worked_example(lesson_json, v2_topic)
-                except Exception:  # noqa: BLE001
-                    pass
-                we_cards = [c for c in (lesson_json.get("lesson_cards") or [])
-                            if isinstance(c, dict) and str(c.get("blueprint_key") or "").lower() == "worked_example"]
-                we_violations = walkthrough_mode_violations(we_cards)
-                log_card_failure(topic=v2_topic, card_key="worked_example", stage="trace_quality",
-                                 reason="walkthrough_instead_of_trace",
-                                 action="flagged" if we_violations else "regenerated",
-                                 detail="; ".join(we_violations[:3]))
+
+            def _we_cards():
+                return [c for c in (lesson_json.get("lesson_cards") or [])
+                        if isinstance(c, dict) and str(c.get("blueprint_key") or "").lower() == "worked_example"]
+
+            violations = worked_example_correctness_violations(_we_cards(), v2_topic)
+            if violations:
+                if ttype == "coding_implementation":
+                    try:  # regenerate-on-fail (coding has a focused re-solver)
+                        from app.services.examples.solver import apply_llm_solved_worked_example
+                        apply_llm_solved_worked_example(lesson_json, v2_topic)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    violations = worked_example_correctness_violations(_we_cards(), v2_topic)
+                log_card_failure(topic=v2_topic, card_key="worked_example", stage="correctness",
+                                 reason="incorrect_or_incomplete_worked_example",
+                                 action="flagged" if violations else "regenerated",
+                                 detail="; ".join(violations[:3]))
                 meta = lesson_json.setdefault("metadata", {})
                 if isinstance(meta, dict):
                     q = meta.setdefault("quality", {})
                     if isinstance(q, dict):
-                        q["worked_example_trace_violations"] = we_violations
+                        q["worked_example_correctness_violations"] = violations
     except Exception:  # noqa: BLE001 — auditing must never break a lesson
         pass
 

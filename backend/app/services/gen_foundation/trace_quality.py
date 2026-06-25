@@ -22,7 +22,55 @@ _READY_RESULT = re.compile(
 
 
 def _work_lines(card: dict[str, Any]) -> list[str]:
-    return [str(w) for w in (card.get("work") or [])]
+    """Work/step lines from a card in either shape: gen_foundation `work[]` or lesson-card `points[]`."""
+    if card.get("work"):
+        return [str(w) for w in card["work"]]
+    out: list[str] = []
+    for p in (card.get("points") or []):
+        if isinstance(p, str):
+            out.append(p)
+        elif isinstance(p, dict):
+            out.append(str(p.get("text") or p.get("value") or p.get("label") or ""))
+    return out
+
+
+def worked_example_correctness_violations(
+    cards: list[dict[str, Any]], topic: dict[str, Any]
+) -> list[str]:
+    """Reference-backed correctness for a FINAL worked example (any generator: gen_foundation OR the
+    legacy solver). Recovers the input graph from the problem card, derives the family, and runs the
+    structural + differential gates on the stated final answer — plus an MST-completeness check that
+    catches a VAGUE/incomplete final ('Final MST edges collection') the structural parser can't. This is
+    what gates the legacy path, where the wrong/vague MST examples actually ship."""
+    if not cards:
+        return []
+    from app.core.topic_family import derive_topic_family
+    from .property_checks import (
+        claimed_answer_violations, parse_weighted_graph_from_text, _claimed_groups,
+    )
+
+    family = derive_topic_family(topic.get("title"), topic.get("topic_type") or topic.get("course_type"))
+    problem = " ".join(_work_lines(cards[0]))
+    final = " ".join(_work_lines(cards[-1]))
+    example_input = parse_weighted_graph_from_text(problem)
+
+    violations = list(walkthrough_mode_violations(cards))
+    violations.extend(claimed_answer_violations(family, example_input, final))
+
+    # MST completeness: a vague/incomplete final states fewer than V-1 edges (claimed_answer_violations
+    # can't fire when it parses 0 edges, so check it explicitly here).
+    if "mst" in family or "spanning" in family:
+        labels = {str(n) for n in example_input.get("nodes") or []}
+        v = len(labels)
+        if v >= 2:
+            final_edges = sum(
+                1 for g in _claimed_groups(final)
+                if len([t for t in re.findall(r"[A-Za-z_]\w*", g) if t in labels]) >= 2)
+            if final_edges < v - 1:
+                violations.append(
+                    f"worked example: the final answer states {final_edges} MST edges, but a complete MST "
+                    f"on {v} nodes has V-1={v - 1} — the example is vague or incomplete")
+    return violations
 
 
 def walkthrough_mode_violations(cards: list[dict[str, Any]]) -> list[str]:

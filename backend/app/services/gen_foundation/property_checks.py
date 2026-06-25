@@ -265,6 +265,28 @@ _CLAIMED_CHECKS: list[tuple[tuple[str, ...], Callable[[Any, Any], list[str]]]] =
 ]
 
 
+def parse_weighted_graph_from_text(text: str) -> dict[str, Any]:
+    """Recover {nodes, edges:[[u,v,w]]} from a problem statement like 'nodes [A,B,C] and edges
+    [[A,B,3],...]'. Tolerant of quoted/unquoted labels and ()/[] groups. Used to reference-check a
+    worked example whose only record of the input is its prose problem card."""
+    text = str(text or "")
+    nodes: set[str] = set()
+    nm = _re.search(r"nodes?\b\s*(\[[^\[\]]*\])", text, _re.I)
+    if nm:
+        nodes.update(_re.findall(r"[A-Za-z_]\w*", nm.group(1)))
+    edges: list[list[Any]] = []
+    em = _re.search(r"edges?\b\s*(\[.*\])", text, _re.I | _re.S)
+    region = em.group(1) if em else text
+    for grp in _re.findall(r"[\(\[][^\(\)\[\]]*[\)\]]", region):
+        labels = _re.findall(r"[A-Za-z_]\w*", grp)
+        nums = _re.findall(r"-?\d+(?:\.\d+)?", grp)
+        if len(labels) >= 2 and nums:
+            u, v, w = labels[0], labels[1], float(nums[-1])
+            edges.append([u, v, w])
+            nodes.update((u, v))
+    return {"nodes": sorted(nodes), "edges": edges}
+
+
 def claimed_answer_violations(topic_family: str, example_input: Any, final_answer: Any) -> list[str]:
     """Hard-gate version (#1): structural invariants checked on the model's CLAIMED final answer, with
     no executor. Conservative — returns [] when it can't confidently parse the answer. Never raises."""
