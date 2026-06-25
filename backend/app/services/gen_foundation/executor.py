@@ -49,7 +49,7 @@ _SENTINEL_FILE = "<gen_foundation_trace>"
 
 # Only these AST node types may appear (allow-list is safer than a deny-list).
 _ALLOWED_NODES: frozenset[type] = frozenset({
-    ast.Module, ast.FunctionDef, ast.arguments, ast.arg, ast.Return,
+    ast.Module, ast.FunctionDef, ast.ClassDef, ast.Lambda, ast.arguments, ast.arg, ast.Return,
     ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Expr, ast.Pass,
     ast.If, ast.For, ast.While, ast.Break, ast.Continue, ast.IfExp,
     ast.Call, ast.Name, ast.Load, ast.Store, ast.Del, ast.Starred, ast.keyword,
@@ -98,7 +98,11 @@ def _guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
     return _real_import(name, globals, locals, fromlist, level)
 
 
-_EXEC_BUILTINS: dict[str, Any] = {**_SAFE_BUILTINS, "__import__": _guarded_import}
+# `__build_class__` is the builtin the `class` statement calls; it only constructs a class object, so
+# it's safe to expose, and class-based algorithms (union-find, custom heaps) can't run without it.
+_EXEC_BUILTINS: dict[str, Any] = {
+    **_SAFE_BUILTINS, "__import__": _guarded_import, "__build_class__": _builtins.__build_class__,
+}
 
 
 def _flag_execute() -> bool:
@@ -200,7 +204,8 @@ def execute(code: str, language: str, input: Any) -> ExecutionResult:
     tree = parse_safe(code, language)
     entry, args, kwargs = _entry_and_args(tree, input)
 
-    safe_globals: dict[str, Any] = {"__builtins__": _EXEC_BUILTINS}
+    # `__name__` must be present for the `class` statement to set __module__ on the class it builds.
+    safe_globals: dict[str, Any] = {"__builtins__": _EXEC_BUILTINS, "__name__": "__sandbox__"}
     try:
         exec(compile(code, _SENTINEL_FILE, "exec"), safe_globals)  # restricted namespace + guarded import
     except Exception as exc:  # noqa: BLE001

@@ -100,6 +100,20 @@ class SandboxTests(unittest.TestCase):
     def tearDown(self):
         os.environ.pop("AZALEA_GEN_FOUNDATION_EXECUTE", None)
 
+    def test_class_based_algorithm_executes(self):
+        # union-find (class) + a lambda sort key — the Kruskal/Prim shape that was silently rejected
+        from app.services.gen_foundation.executor import execute
+        code = ("class DS:\n    def __init__(self, n):\n        self.p = list(range(n))\n"
+                "    def find(self, u):\n        while self.p[u] != u:\n            u = self.p[u]\n"
+                "        return u\n    def union(self, u, v):\n        self.p[self.find(u)] = self.find(v)\n"
+                "def kruskal(n, edges):\n    ds = DS(n)\n    mst = []\n"
+                "    for u, v, w in sorted(edges, key=lambda e: e[2]):\n"
+                "        if ds.find(u) != ds.find(v):\n            ds.union(u, v)\n            mst.append((u, v, w))\n"
+                "    return mst\n")
+        res = execute(code, "python", {"entry": "kruskal", "args": [4, [[0, 1, 1], [1, 2, 2], [2, 3, 3], [0, 3, 9]]]})
+        self.assertEqual(res.status, "executed")
+        self.assertEqual(res.return_value, [[0, 1, 1], [1, 2, 2], [2, 3, 3]])  # 3 edges, correct MST
+
     def test_subprocess_matches_in_process(self):
         from app.services.gen_foundation.executor import execute, execute_sandboxed
         code = "def run(x):\n    return x * 3\n"
