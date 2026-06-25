@@ -111,7 +111,7 @@ class TestPickFixture(unittest.TestCase):
             ("The TCP Three-Way Handshake", "process_walkthrough", "protocol_sequence_concept_tcp_handshake_01"),
             ("The Pythagorean Theorem", "math_formula_method", "triangle_geometry_concept_3_4_5_01"),
             ("Proof by Induction", "proof_reasoning", "induction_proof_concept_sum_formula_01"),
-            ("BFS vs DFS", "compare_distinguish", "algorithm_comparison_concept_bfs_vs_dfs_01"),
+            # comparison topics no longer carry a worked_example (compare_distinguish -> comparison card only)
         ]
         for title, ttype, expected in cases:
             with self.subTest(title=title):

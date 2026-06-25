@@ -227,6 +227,10 @@ def run_first_pass(
         artifact, audit_tele, calls = _run_audit(artifact, auditor, calls)
 
     final_errors = validate_artifact(artifact)
+    # Layer 1 gating: for families on the AZALEA_TRACE_BACKED_FAMILIES allowlist, a model trace that
+    # DISAGREES with the executed run (or whose executed output violates its invariants) is a hard
+    # failure -> withhold, not just shadow telemetry. Reliable families only (data-promoted).
+    final_errors = final_errors + _execution_gate_errors(recon_tele.get("execution") or {}, config.topic_family)
     return RunResult(
         ok=not final_errors,
         artifact=artifact,
@@ -235,6 +239,22 @@ def run_first_pass(
         audit_telemetry=audit_tele,
         reconciliation_telemetry=recon_tele,
     )
+
+
+def _execution_gate_errors(execution: dict[str, Any], topic_family: str) -> list[str]:
+    """Hard-gate a family on the trace-backed allowlist when execution contradicts the model (Layer 1)."""
+    import os
+    allow = {f.strip().lower() for f in os.getenv("AZALEA_TRACE_BACKED_FAMILIES", "").split(",") if f.strip()}
+    fam = (topic_family or "").lower()
+    if not allow or not any(a in fam for a in allow) or not execution.get("executed"):
+        return []
+    errors: list[str] = []
+    if execution.get("final_answer_agreement") is False:
+        errors.append("execution gate: model's final answer disagrees with the executed result (§Layer1)")
+    if execution.get("property_violations"):
+        errors.append("execution gate: executed output violates its invariants: "
+                      f"{execution['property_violations'][:2]}")
+    return errors
 
 
 def _run_audit(artifact: dict[str, Any], auditor: ModelFn, calls: int) -> tuple[dict, dict, int]:

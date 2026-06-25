@@ -104,10 +104,24 @@ def check_traversal(example_input: Any, output: Any) -> list[str]:
     return viol
 
 
+def check_heap(example_input: Any, output: Any) -> list[str]:
+    """Heap property on an executed array output: every parent <= its children (min-heap)."""
+    arr = _as_number_list(output)
+    if arr is None or len(arr) < 2:
+        return []
+    for i in range(len(arr)):
+        for child in (2 * i + 1, 2 * i + 2):
+            if child < len(arr) and arr[i] > arr[child]:
+                return [f"heap: min-heap property violated at index {i} "
+                        f"(parent {arr[i]} > child {arr[child]})"]
+    return []
+
+
 _CHECKS: list[tuple[tuple[str, ...], Callable[[Any, Any], list[str]]]] = [
     (("sort",), check_sort),
     (("mst", "spanning", "prim", "kruskal"), check_mst),
     (("bfs", "dfs", "traversal", "breadth", "depth"), check_traversal),
+    (("heap", "heapify", "priority"), check_heap),
 ]
 
 
@@ -233,10 +247,16 @@ def check_sort_claimed(example_input: Any, final_answer: Any) -> list[str]:
             best = nums
     if src is None or len(best) < 2:
         return []
+    viol: list[str] = []
     if len(best) != len(src):
-        return [f"sort: claimed result has {len(best)} elements but the input has {len(src)} "
-                f"(not a permutation of the input)"]
-    return []
+        viol.append(f"sort: claimed result has {len(best)} elements but the input has {len(src)} "
+                    f"(not a permutation of the input)")
+    vals = [float(x) for x in best]
+    if any(vals[i] > vals[i + 1] for i in range(len(vals) - 1)):
+        viol.append("sort: claimed result is not in nondecreasing order")
+    elif len(best) == len(src) and sorted(vals) != sorted(src):
+        viol.append("sort: claimed result is ordered but not a permutation of the input (values changed)")
+    return viol
 
 
 _CLAIMED_CHECKS: list[tuple[tuple[str, ...], Callable[[Any, Any], list[str]]]] = [

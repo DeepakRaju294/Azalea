@@ -270,10 +270,21 @@ def _audit_required_cards(lesson_json: dict, v2_topic: dict) -> None:
             we_cards = [c for c in (lesson_json.get("lesson_cards") or [])
                         if isinstance(c, dict) and str(c.get("blueprint_key") or "").lower() == "worked_example"]
             we_violations = walkthrough_mode_violations(we_cards)
+            from app.services.card_failure_log import log_card_failure
             if we_violations:
-                from app.services.card_failure_log import log_card_failure
+                # Regenerate-on-fail: a worked example that re-defines code instead of tracing gets one
+                # focused re-solve, then re-checked -- turns "detected" into "corrected" on this path too.
+                try:
+                    from app.services.examples.solver import apply_llm_solved_worked_example
+                    apply_llm_solved_worked_example(lesson_json, v2_topic)
+                except Exception:  # noqa: BLE001
+                    pass
+                we_cards = [c for c in (lesson_json.get("lesson_cards") or [])
+                            if isinstance(c, dict) and str(c.get("blueprint_key") or "").lower() == "worked_example"]
+                we_violations = walkthrough_mode_violations(we_cards)
                 log_card_failure(topic=v2_topic, card_key="worked_example", stage="trace_quality",
-                                 reason="walkthrough_instead_of_trace", action="flagged",
+                                 reason="walkthrough_instead_of_trace",
+                                 action="flagged" if we_violations else "regenerated",
                                  detail="; ".join(we_violations[:3]))
                 meta = lesson_json.setdefault("metadata", {})
                 if isinstance(meta, dict):
