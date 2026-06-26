@@ -169,6 +169,26 @@ class BSTReferenceTests(unittest.TestCase):
         self.assertEqual(root["right"]["val"], 48)
 
 
+class RecursionReferenceTests(unittest.TestCase):
+    def test_fibonacci_correct(self):
+        r = build_reference_cards("dynamic_programming", "Fibonacci with DP", None)
+        self.assertEqual(r["final_answer"], 8)  # F(6)
+        self.assertEqual(r["source"], "reference_first")
+
+    def test_factorial_correct(self):
+        r = build_reference_cards("recursion", "Understanding Factorial", None)
+        self.assertEqual(r["final_answer"], 720)  # 6!
+
+    def test_unknown_recurrence_left_to_model(self):
+        # the discipline: only the canonical, unambiguous cases — never guess an unknown recurrence
+        self.assertEqual(build_reference_cards("dynamic_programming", "Coin Change Problem", None), {})
+        self.assertEqual(build_reference_cards("dynamic_programming", "0/1 Knapsack", None), {})
+
+    def test_respects_supplied_n(self):
+        r = build_reference_cards("dynamic_programming", "Fibonacci", {"n": 8})
+        self.assertEqual(r["final_answer"], 21)  # F(8)
+
+
 class LabelRestoreTests(unittest.TestCase):
     """Executed integer indices map back to the input's own labels, without corrupting weights."""
     L = ["A", "B", "C", "D"]

@@ -202,6 +202,57 @@ def build_sort_reference_cards(title: str, array: list) -> dict[str, Any]:
     }
 
 
+# --- recursion / DP references (the canonical teaching cases) ------------------------------------
+# DP/recursion is open-ended (every topic is a different recurrence), so this deliberately covers only
+# the few canonical, unambiguous teaching examples — fibonacci and factorial — where the computation is
+# fixed. Anything else returns {} and stays model-authored (no guessing a recurrence we don't know).
+
+def _recursion_kind_for(title: str) -> Optional[str]:
+    t = (title or "").lower()
+    if "fib" in t:
+        return "fibonacci"
+    if "factorial" in t:
+        return "factorial"
+    return None
+
+
+def build_recursion_reference_cards(title: str, n: int = 6) -> dict[str, Any]:
+    kind = _recursion_kind_for(title)
+    if not kind:
+        return {}
+    n = max(2, min(int(n), 10))  # keep the table a teachable length
+    cards: list[dict[str, Any]] = []
+    if kind == "fibonacci":
+        dp = [0, 1]
+        cards.append(_bst_card(1, "Base cases: F(0)=0, F(1)=1.",
+                               "The two smallest Fibonacci numbers are defined directly.",
+                               "dp[0]=0; dp[1]=1 // seed the table", "Table: [0, 1]"))
+        for i in range(2, n + 1):
+            dp.append(dp[i - 1] + dp[i - 2])
+            cards.append(_bst_card(
+                i, f"Compute F({i}).",
+                f"Each Fibonacci number is the sum of the previous two: F({i})=F({i-1})+F({i-2}).",
+                f"dp[{i}] = dp[{i-1}] + dp[{i-2}] = {dp[i-1]} + {dp[i-2]} = {dp[i]} // fill from below",
+                f"Table now: {dp[:i+1]}"))
+        final: Any = dp[n]
+        problem = f"Compute the {n}th Fibonacci number with bottom-up dynamic programming."
+    else:  # factorial
+        acc = 1
+        for i in range(1, n + 1):
+            acc *= i
+            cards.append(_bst_card(
+                i, f"Multiply by {i}.",
+                f"factorial({i}) = {i} × factorial({i-1}); unwind the recursion multiplying as it returns.",
+                f"acc = acc × {i} = {acc} // running product", f"Product so far: {acc}"))
+        final = acc
+        problem = f"Compute {n}! by recursion (or its iterative unwinding)."
+    return {
+        "cards": cards, "problem": problem, "final_answer": final,
+        "final_answer_struct": canonical_final_answer(final),
+        "trace_backed": True, "source": "reference_first",
+    }
+
+
 # --- binary search reference (walkthrough) ------------------------------------------------------
 
 def binary_search_steps(nums: list, target) -> tuple[list[dict[str, Any]], int]:
@@ -516,6 +567,9 @@ def build_reference_cards(topic_family: str, title: str, example_input: Any) -> 
         if isinstance(tree, list) and tree:
             return build_bst_reference_cards(title, tree)
         return {}
+    if _recursion_kind_for(title):  # canonical recursion/DP (fibonacci, factorial) regardless of family
+        n = example_input.get("n") if isinstance(example_input, dict) else None
+        return build_recursion_reference_cards(title, int(n) if isinstance(n, int) else 6)
     if "mst" not in fam:
         return {}
     nodes = _node_labels(example_input)
