@@ -89,6 +89,31 @@ class SortReferenceTests(unittest.TestCase):
         self.assertEqual(build_reference_cards("array_sort", "Bubble Sort", {"array": [1]}), {})
 
 
+class TraversalReferenceTests(unittest.TestCase):
+    G = {"graph": {"A": ["B", "C"], "B": ["A", "D"], "C": ["A", "D"], "D": ["B", "C", "E"], "E": ["D"]}}
+
+    def test_bfs_order_correct(self):
+        r = build_reference_cards("graph_traversal", "Breadth-First Search", self.G)
+        self.assertEqual(r["final_answer"], ["A", "B", "C", "D", "E"])
+        self.assertEqual(r["source"], "reference_first")
+
+    def test_dfs_order_correct(self):
+        r = build_reference_cards("graph_traversal", "Depth-First Search", self.G)
+        self.assertEqual(r["final_answer"], ["A", "B", "D", "C", "E"])
+
+    def test_visits_every_node_once(self):
+        for title in ["BFS", "DFS"]:
+            r = build_reference_cards("graph_traversal", title, self.G)
+            self.assertEqual(sorted(r["final_answer"]), ["A", "B", "C", "D", "E"], title)
+
+    def test_unknown_traversal_skipped(self):
+        self.assertEqual(build_reference_cards("graph_traversal", "Topological", self.G), {})
+
+    def test_weighted_graph_not_treated_as_traversal(self):
+        weighted = {"graph": {"nodes": ["A", "B"], "edges": [["A", "B", 3]]}}
+        self.assertEqual(build_reference_cards("graph_traversal", "BFS", weighted), {})
+
+
 class LabelRestoreTests(unittest.TestCase):
     """Executed integer indices map back to the input's own labels, without corrupting weights."""
     L = ["A", "B", "C", "D"]

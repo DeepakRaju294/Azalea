@@ -202,6 +202,84 @@ def build_sort_reference_cards(title: str, array: list) -> dict[str, Any]:
     }
 
 
+# --- graph traversal references (BFS / DFS walkthroughs) ----------------------------------------
+
+def _traversal_algorithm_for(title: str) -> Optional[str]:
+    t = (title or "").lower()
+    if "depth" in t or "dfs" in t:
+        return "dfs"
+    if "breadth" in t or "bfs" in t:
+        return "bfs"
+    return None
+
+
+def bfs_steps(graph: dict, start: str):
+    from collections import deque
+    visited = [start]
+    q = deque([start])
+    steps: list[dict[str, Any]] = []
+    while q:
+        node = q.popleft()
+        newly = []
+        for nb in graph.get(node, []):
+            if nb not in visited:
+                visited.append(nb)
+                q.append(nb)
+                newly.append(nb)
+        steps.append({"node": node, "added": newly, "frontier": list(q), "visited": list(visited)})
+    return steps, visited
+
+
+def dfs_steps(graph: dict, start: str):
+    visited: list[str] = []
+    stack = [start]
+    steps: list[dict[str, Any]] = []
+    while stack:
+        node = stack.pop()
+        if node in visited:
+            continue
+        visited.append(node)
+        newly = [nb for nb in reversed(graph.get(node, [])) if nb not in visited]
+        stack.extend(newly)
+        steps.append({"node": node, "added": newly, "frontier": list(stack), "visited": list(visited)})
+    return steps, visited
+
+
+def build_traversal_reference_cards(title: str, graph: dict) -> dict[str, Any]:
+    algo = _traversal_algorithm_for(title)
+    if not algo or not isinstance(graph, dict) or len(graph) < 2:
+        return {}
+    start = sorted(graph)[0]
+    steps, order = (bfs_steps if algo == "bfs" else dfs_steps)(graph, start)
+    if not steps:
+        return {}
+    holder = "queue" if algo == "bfs" else "stack"
+    cards: list[dict[str, Any]] = []
+    prior: dict[str, Any] | None = None
+    for idx, s in enumerate(steps, start=1):
+        added = ", ".join(s["added"]) if s["added"] else "nothing new"
+        front = "[" + ", ".join(s["frontier"]) + "]"
+        goal = f"Visit {s['node']}."
+        reasoning = (f"Take {s['node']} off the {holder}, mark it visited, and "
+                     f"{'enqueue' if algo == 'bfs' else 'push'} its unvisited neighbours ({added}).")
+        work = [f"visit {s['node']}; {'enqueue' if algo == 'bfs' else 'push'} {added} // {holder} -> {front}"]
+        cards.append({
+            "card_id": f"step_{idx}", "title": goal, "goal": goal, "reasoning": reasoning,
+            "work": work, "result": f"Visited so far: {', '.join(s['visited'])}",
+            "prior_state": prior, "state": {"visited": list(s["visited"]), holder: list(s["frontier"])},
+            "code_refs": [], "state_relevance": "none", "state_delta": None,
+            "cases_covered": [], "trace_backed": True,
+        })
+        prior = {"visited": list(s["visited"]), holder: list(s["frontier"])}
+    return {
+        "cards": cards,
+        "problem": f"Perform a {'breadth' if algo == 'bfs' else 'depth'}-first traversal from {start}.",
+        "final_answer": order,
+        "final_answer_struct": canonical_final_answer(order),
+        "trace_backed": True, "source": "reference_first",
+    }
+
+
 def _fmt_edge(e: tuple[str, str, float]) -> str:
     u, v, w = e
     return f"({u}, {v}, {w:g})"
@@ -224,6 +302,12 @@ def build_reference_cards(topic_family: str, title: str, example_input: Any) -> 
         arr = ei.get("array") if isinstance(ei, dict) else None
         if isinstance(arr, list) and arr:
             return build_sort_reference_cards(title, arr)
+        return {}
+    if "traversal" in fam:
+        g = example_input.get("graph") if isinstance(example_input, dict) else None
+        # traversal input is a plain adjacency map {node: [neighbours]}; skip the weighted {nodes,edges} form
+        if isinstance(g, dict) and g and not g.get("edges"):
+            return build_traversal_reference_cards(title, g)
         return {}
     if "mst" not in fam:
         return {}
