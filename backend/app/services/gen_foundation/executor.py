@@ -70,7 +70,7 @@ _ALLOWED_NODES: frozenset[type] = frozenset({
 # the executor can run exactly the algorithms it most needs to verify (heapq/deque/...). Imports outside
 # this set are rejected at the AST gate AND by the guarded __import__ below (defence in depth).
 _ALLOWED_IMPORT_MODULES = frozenset({
-    "heapq", "collections", "math", "itertools", "bisect", "functools",
+    "heapq", "collections", "math", "itertools", "bisect", "functools", "typing",
 })
 
 _DANGEROUS_NAMES = frozenset({

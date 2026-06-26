@@ -41,6 +41,47 @@ class RunResult:
     note: str = ""
 
 
+def _executable_input(code: Any, example_input: Any) -> Any:
+    """Adapt a graph example_input ({nodes, edges}) into executable {entry, args} matching the code's
+    entry-function signature, relabeling node names to integer indices (most graph code uses
+    list(range(n))). Returns the input unchanged when it's already executable or can't be adapted, so
+    execution simply stays off in that case. Heuristic but safe — never raises."""
+    if not isinstance(example_input, dict) or "entry" in example_input:
+        return example_input
+    edges = example_input.get("edges")
+    if not isinstance(edges, list) or not edges:
+        return example_input
+    try:
+        import ast as _ast
+        funcs = [n for n in _ast.parse(str(code or "")).body if isinstance(n, _ast.FunctionDef)]
+        if not funcs:
+            return example_input
+        entry = funcs[-1]
+        params = [a.arg.lower() for a in entry.args.args]
+        nodes = example_input.get("nodes") or sorted({str(e[0]) for e in edges} | {str(e[1]) for e in edges})
+        idx = {str(n): i for i, n in enumerate(nodes)}
+        n = len(nodes)
+        int_edges = [[idx[str(e[0])], idx[str(e[1])], e[2]] for e in edges
+                     if str(e[0]) in idx and str(e[1]) in idx and len(e) >= 3]
+        adj = {i: [] for i in range(n)}
+        for u, v, w in int_edges:
+            adj[u].append((v, w))
+            adj[v].append((u, w))
+        args: list[Any] = []
+        for p in params:
+            if p in ("n", "v", "num_vertices", "vertices", "num_nodes", "nodes", "size", "count"):
+                args.append(n)
+            elif "edge" in p:
+                args.append(int_edges)
+            elif "graph" in p or "adj" in p:
+                args.append(adj)
+            else:
+                args.append(int_edges)  # default to the edge list
+        return {"entry": entry.name, "args": args}
+    except Exception:  # noqa: BLE001
+        return example_input
+
+
 def _executor_final_answer(trace_events: Optional[list[dict[str, Any]]]) -> Any:
     """The executed function's return value (the last trace event carries it), or None."""
     if not trace_events:
@@ -206,7 +247,10 @@ def run_first_pass(
         code = artifact.get("code") or topic.get("code")
         lang = topic.get("code_language") or "python"
         example_input = artifact.get("example_input") or artifact.get("problem")
-        trace_events = executor(code, lang, example_input) if code else None
+        # Adapt the graph input into executable {entry, args} matching the code's signature so the
+        # executor can actually RUN it (the property gate keeps the {nodes, edges} form).
+        exec_input = _executable_input(code, example_input)
+        trace_events = executor(code, lang, exec_input) if code else None
         executor_final = _executor_final_answer(trace_events)
         recon = reconcile(
             artifact.get("cards") or [], trace_events,
@@ -216,7 +260,7 @@ def run_first_pass(
         )
         recon_tele = recon.telemetry()
         recon_tele["execution"] = _execution_telemetry(
-            code, lang, example_input, trace_events, artifact.get("final_answer"), executor_final,
+            code, lang, exec_input, trace_events, artifact.get("final_answer"), executor_final,
             topic_family=config.topic_family, cards=artifact.get("cards"))
         if trace_events is not None:
             artifact["reconciliation"] = recon_tele
