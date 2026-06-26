@@ -48,6 +48,8 @@ def _executable_input(code: Any, example_input: Any) -> Any:
     execution simply stays off in that case. Heuristic but safe — never raises."""
     if not isinstance(example_input, dict) or "entry" in example_input:
         return example_input
+    if isinstance(example_input.get("graph"), dict):      # inputs arrive as {'graph': {nodes, edges}}
+        example_input = example_input["graph"]
     edges = example_input.get("edges")
     if not isinstance(edges, list) or not edges:
         return example_input

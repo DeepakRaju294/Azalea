@@ -26,7 +26,15 @@ def _as_number_list(value: Any) -> Optional[list[float]]:
     return out
 
 
+def _unwrap_graph(example_input: Any) -> Any:
+    """Inputs arrive as {'graph': {nodes, edges}}; unwrap to the inner graph so nodes/edges are found."""
+    if isinstance(example_input, dict) and isinstance(example_input.get("graph"), dict):
+        return example_input["graph"]
+    return example_input
+
+
 def _node_count(example_input: Any) -> Optional[int]:
+    example_input = _unwrap_graph(example_input)
     if isinstance(example_input, dict):
         nodes = example_input.get("nodes")
         if isinstance(nodes, (list, tuple)):
@@ -40,6 +48,7 @@ def _node_count(example_input: Any) -> Optional[int]:
 
 
 def _node_labels(example_input: Any) -> set[str]:
+    example_input = _unwrap_graph(example_input)
     if isinstance(example_input, dict):
         nodes = example_input.get("nodes")
         if isinstance(nodes, (list, tuple)):
@@ -170,6 +179,7 @@ def _connects_all(edges: list[tuple[str, str]], labels: set[str]) -> bool:
 def _weighted_edges(example_input: Any) -> list[tuple[str, str, float]]:
     """Parse (u, v, weight) edges from a {nodes, edges:[[u,v,w]]} input (or an adjacency map)."""
     out: list[tuple[str, str, float]] = []
+    example_input = _unwrap_graph(example_input)
     if not isinstance(example_input, dict):
         return out
     raw = example_input.get("edges")
