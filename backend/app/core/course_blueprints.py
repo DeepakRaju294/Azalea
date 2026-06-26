@@ -327,11 +327,6 @@ EXAMPLE_CARD_RULES: dict[str, dict[str, dict[str, Any]]] = {
             "use_when": "Irregular input changes or tests the algorithm behavior.",
             "purpose": "Show the algorithm on a non-clean case.",
         },
-        "comparison": {
-            "example_type": "side_by_side_contrast_example",
-            "use_when": "A related algorithm has already been introduced.",
-            "purpose": "Show the same input under two related algorithms.",
-        },
         "practice": {
             "example_type": "transfer_trace_prompt",
             "purpose": "Ask learner to trace a different-looking input.",
@@ -422,14 +417,6 @@ EXAMPLE_CARD_RULES: dict[str, dict[str, dict[str, Any]]] = {
         "comparison": {
             "example_type": "side_by_side_contrast_example",
             "purpose": "Use the same setup to show how two ideas behave differently.",
-        },
-        "worked_example": {
-            "example_type": "classification_example",
-            "purpose": "Show how to decide which concept applies.",
-        },
-        "practice": {
-            "example_type": "classification_transfer_prompt",
-            "purpose": "Ask learner to classify a new scenario.",
         },
     },
     TopicType.PROBLEM_SOLVING_APPLICATION.value: {
@@ -1210,13 +1197,9 @@ TOPIC_BLUEPRINTS: dict[str, Blueprint] = {
         "name": "Compare / Distinguish",
         "description": "Separate similar ideas by what they share, how they differ, and when each applies.",
         "default_card_sequence": sequence(
-            "background",
-            "components_terms",
             "comparison",
-            "worked_example",
-            "practice",
         ),
-        "optional_cards": ["components_terms"],
+        "optional_cards": [],
         "preferred_question_types": ["multiple_choice", "short_answer"],
         "avoid": ["Do not compare ideas before both have been introduced."],
         "combination_rules": [],
