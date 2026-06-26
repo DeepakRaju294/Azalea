@@ -83,6 +83,8 @@ _SAFE_BUILTIN_NAMES = (
     "abs", "min", "max", "sum", "len", "range", "enumerate", "sorted", "reversed",
     "list", "dict", "set", "tuple", "str", "int", "float", "bool", "zip", "map",
     "filter", "all", "any", "round", "divmod", "isinstance",
+    # pure iterator/inspection builtins common in textbook algorithms (no I/O, no system state)
+    "next", "iter", "frozenset", "chr", "ord", "hash", "repr", "format",
 )
 _SAFE_BUILTINS: dict[str, Any] = {
     name: getattr(_builtins, name) for name in _SAFE_BUILTIN_NAMES if hasattr(_builtins, name)
