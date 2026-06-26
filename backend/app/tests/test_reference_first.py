@@ -114,6 +114,51 @@ class TraversalReferenceTests(unittest.TestCase):
         self.assertEqual(build_reference_cards("graph_traversal", "BFS", weighted), {})
 
 
+class BinarySearchReferenceTests(unittest.TestCase):
+    NUMS = [10, 20, 30, 40, 50, 60, 70]
+
+    def test_finds_present_targets(self):
+        from app.services.gen_foundation.reference_first import binary_search_steps
+        for i, t in enumerate(self.NUMS):
+            _steps, idx = binary_search_steps(self.NUMS, t)
+            self.assertEqual(idx, i, t)
+
+    def test_missing_target_returns_minus_one(self):
+        from app.services.gen_foundation.reference_first import binary_search_steps
+        _steps, idx = binary_search_steps(self.NUMS, 35)
+        self.assertEqual(idx, -1)
+
+    def test_cards_correct(self):
+        r = build_reference_cards("array_binary_search", "Binary Search", {"nums": self.NUMS, "target": 60})
+        self.assertEqual(r["final_answer"], 5)
+        self.assertEqual(r["source"], "reference_first")
+        self.assertTrue(all(c["goal"] and c["work"] for c in r["cards"]))
+
+
+class BSTReferenceTests(unittest.TestCase):
+    TREE = [15, 6, 48, None, None, None, 56, 49, 58]  # 15 -> (6, 48); 48 -> (_, 56); 56 -> (49, 58)
+
+    def test_search_walks_to_present_value(self):
+        r = build_reference_cards("tree_bst", "BST Search", {"tree": self.TREE})
+        self.assertEqual(r["source"], "reference_first")
+        self.assertIn("found", r["cards"][-1]["result"].lower() + r["cards"][-1]["goal"].lower())
+
+    def test_insert_places_a_new_value(self):
+        r = build_reference_cards("tree_bst", "BST Insertion", {"tree": self.TREE})
+        self.assertTrue(r["cards"])
+        self.assertIn("insert", r["cards"][-1]["goal"].lower())
+
+    def test_non_bst_op_skipped(self):
+        self.assertEqual(build_reference_cards("tree_bst", "BST Height", {"tree": self.TREE}), {})
+
+    def test_rebuild_from_level_order(self):
+        from app.services.gen_foundation.reference_first import _bst_from_level_order
+        root = _bst_from_level_order(self.TREE)
+        self.assertEqual(root["val"], 15)
+        self.assertEqual(root["left"]["val"], 6)
+        self.assertEqual(root["right"]["val"], 48)
+
+
 class LabelRestoreTests(unittest.TestCase):
     """Executed integer indices map back to the input's own labels, without corrupting weights."""
     L = ["A", "B", "C", "D"]

@@ -74,14 +74,17 @@ def _executable_input(code: Any, example_input: Any) -> Any:
     except Exception:  # noqa: BLE001
         return example_input
 
-    # Array families (sorting, searching, arrays, linked_list): {'array': [...]} -> map to the
-    # entry signature. General over the values; not a per-scenario template.
+    # Array families (sorting, searching, arrays, linked_list): {'array': [...]} or search's
+    # {'nums': [...], 'target': x} -> map to the entry signature. General over the values.
     arr = example_input.get("array")
+    if not isinstance(arr, list) or not arr:
+        arr = example_input.get("nums") if isinstance(example_input.get("nums"), list) else None
     if isinstance(arr, list) and arr:
+        tgt = example_input.get("target")
         args: list[Any] = []
         for p in params:
             if any(k in p for k in ("target", "key", "search", "find", "item", "needle", "query")):
-                args.append(arr[len(arr) // 2])           # a value guaranteed present
+                args.append(tgt if tgt is not None else arr[len(arr) // 2])  # a value guaranteed present
             elif p in ("n", "size", "length", "count", "k"):
                 args.append(len(arr))
             else:

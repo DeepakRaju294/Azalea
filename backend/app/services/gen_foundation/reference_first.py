@@ -202,6 +202,155 @@ def build_sort_reference_cards(title: str, array: list) -> dict[str, Any]:
     }
 
 
+# --- binary search reference (walkthrough) ------------------------------------------------------
+
+def binary_search_steps(nums: list, target) -> tuple[list[dict[str, Any]], int]:
+    lo, hi = 0, len(nums) - 1
+    steps: list[dict[str, Any]] = []
+    found = -1
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        val = nums[mid]
+        if val == target:
+            steps.append({"lo": lo, "hi": hi, "mid": mid, "val": val, "decision": "found"})
+            found = mid
+            break
+        decision = "right" if val < target else "left"
+        steps.append({"lo": lo, "hi": hi, "mid": mid, "val": val, "decision": decision})
+        if decision == "right":
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return steps, found
+
+
+def build_search_reference_cards(title: str, nums: list, target) -> dict[str, Any]:
+    if "binary" not in (title or "").lower() and "search" not in (title or "").lower():
+        return {}
+    if len(nums) < 2 or target is None:
+        return {}
+    steps, found = binary_search_steps(nums, target)
+    if not steps:
+        return {}
+    cards: list[dict[str, Any]] = []
+    for idx, s in enumerate(steps, start=1):
+        window = "[" + ", ".join(str(nums[i]) for i in range(s["lo"], s["hi"] + 1)) + "]"
+        if s["decision"] == "found":
+            goal = f"Found {target} at index {s['mid']}."
+            reasoning = f"The middle element {s['val']} equals the target, so the search succeeds."
+            work = [f"check middle nums[{s['mid']}]={s['val']} // equals target {target} -> done"]
+            result = f"Target {target} found at index {s['mid']}."
+        else:
+            side = "right" if s["decision"] == "right" else "left"
+            goal = f"Check the middle of {window}; discard the {('left' if side=='right' else 'right')} half."
+            reasoning = (f"Middle element {s['val']} is {'less' if side == 'right' else 'greater'} than "
+                         f"{target}, so the target can only be in the {side} half.")
+            work = [f"check middle nums[{s['mid']}]={s['val']} // {'<' if side=='right' else '>'} {target} "
+                    f"-> search {side}"]
+            result = f"Search window narrows to the {side} half."
+        cards.append({
+            "card_id": f"step_{idx}", "title": goal, "goal": goal, "reasoning": reasoning,
+            "work": work, "result": result,
+            "prior_state": None, "state": {"lo": s["lo"], "hi": s["hi"], "mid": s["mid"]},
+            "code_refs": [], "state_relevance": "none", "state_delta": None,
+            "cases_covered": [], "trace_backed": True,
+        })
+    arr_in = "[" + ", ".join(str(x) for x in nums) + "]"
+    return {
+        "cards": cards,
+        "problem": f"Use binary search to find {target} in the sorted array {arr_in}.",
+        "final_answer": found,
+        "final_answer_struct": canonical_final_answer(found),
+        "trace_backed": True, "source": "reference_first",
+    }
+
+
+# --- BST reference (search / insert walkthroughs) -----------------------------------------------
+
+def _bst_from_level_order(level: list) -> Optional[dict]:
+    """Rebuild a BST as nested {'val','left','right'} from a level-order list with None gaps."""
+    if not level or level[0] is None:
+        return None
+    nodes = [None if v is None else {"val": v, "left": None, "right": None} for v in level]
+    kids = iter(nodes[1:])
+    for node in nodes:
+        if node is None:
+            continue
+        try:
+            node["left"] = next(kids)
+            node["right"] = next(kids)
+        except StopIteration:
+            break
+    return nodes[0]
+
+
+def _bst_op_for(title: str) -> Optional[str]:
+    t = (title or "").lower()
+    if "insert" in t or "add" in t:
+        return "insert"
+    if "search" in t or "find" in t or "lookup" in t or "contains" in t:
+        return "search"
+    return None
+
+
+def build_bst_reference_cards(title: str, tree_level: list) -> dict[str, Any]:
+    op = _bst_op_for(title)
+    root = _bst_from_level_order(tree_level)
+    if not op or root is None:
+        return {}
+    present = [v for v in tree_level if v is not None]
+    if op == "search":
+        target = present[len(present) // 2]                      # a value that IS in the tree
+    else:  # insert a value NOT already present
+        target = next((x for x in range(1, 100) if x not in present), max(present) + 1)
+
+    cards: list[dict[str, Any]] = []
+    node = root
+    idx = 0
+    while node is not None:
+        idx += 1
+        v = node["val"]
+        if v == target and op == "search":
+            cards.append(_bst_card(idx, f"Found {target} at this node.",
+                                   f"{target} equals the current node, so the search succeeds.",
+                                   f"compare {target} with {v} // equal -> found", f"{target} is in the tree."))
+            break
+        go = "left" if target < v else "right"
+        nxt = node[go]
+        if op == "insert" and nxt is None:
+            cards.append(_bst_card(idx, f"Insert {target} as the {go} child of {v}.",
+                                   f"{target} is {'less' if go == 'left' else 'greater'} than {v} and the "
+                                   f"{go} slot is empty, so {target} is placed there.",
+                                   f"compare {target} with {v} // go {go}, slot empty -> insert",
+                                   f"{target} inserted as {v}'s {go} child."))
+            break
+        cards.append(_bst_card(idx, f"At node {v}: go {go}.",
+                               f"{target} is {'less' if go == 'left' else 'greater'} than {v}, so descend to the "
+                               f"{go} subtree.",
+                               f"compare {target} with {v} // {'<' if go == 'left' else '>'} -> go {go}",
+                               f"Move to the {go} child of {v}."))
+        node = nxt
+    if not cards:
+        return {}
+    verb = "Search for" if op == "search" else "Insert"
+    return {
+        "cards": cards,
+        "problem": f"{verb} {target} in the binary search tree (level-order {present}).",
+        "final_answer": target,
+        "final_answer_struct": canonical_final_answer(target),
+        "trace_backed": True, "source": "reference_first",
+    }
+
+
+def _bst_card(idx: int, goal: str, reasoning: str, work: str, result: str) -> dict[str, Any]:
+    return {
+        "card_id": f"step_{idx}", "title": goal, "goal": goal, "reasoning": reasoning,
+        "work": [work], "result": result, "prior_state": None, "state": None,
+        "code_refs": [], "state_relevance": "none", "state_delta": None,
+        "cases_covered": [], "trace_backed": True,
+    }
+
+
 # --- graph traversal references (BFS / DFS walkthroughs) ----------------------------------------
 
 def _traversal_algorithm_for(title: str) -> Optional[str]:
@@ -308,6 +457,13 @@ def build_reference_cards(topic_family: str, title: str, example_input: Any) -> 
         # traversal input is a plain adjacency map {node: [neighbours]}; skip the weighted {nodes,edges} form
         if isinstance(g, dict) and g and not g.get("edges"):
             return build_traversal_reference_cards(title, g)
+        return {}
+    if "search" in fam and isinstance(example_input, dict) and isinstance(example_input.get("nums"), list):
+        return build_search_reference_cards(title, example_input["nums"], example_input.get("target"))
+    if "bst" in fam or "tree" in fam:
+        tree = example_input.get("tree") if isinstance(example_input, dict) else None
+        if isinstance(tree, list) and tree:
+            return build_bst_reference_cards(title, tree)
         return {}
     if "mst" not in fam:
         return {}
