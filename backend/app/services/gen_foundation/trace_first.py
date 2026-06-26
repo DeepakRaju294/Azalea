@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
+_MAX_WORK_LINES = 6  # per-card projection cap (§5.2) — trace-first cards must stay within it to validate
+
 
 def canonical_final_answer(value: Any) -> dict[str, Any]:
     """Structured final-answer schema ({kind, value, display}) derived from a REAL return value, so the
@@ -166,7 +168,9 @@ def build_cards_from_trace(
         code_refs = sorted({ln for ev in group for ln in (ev.get("code_line_refs") or [])
                             if isinstance(ln, int)})
         narration = _state_delta_narration(prior_state, after)
-        work = [f"{line_text(ln)} // {narration}" for ln in code_refs] or [narration]
+        # Cap work lines to the per-card limit (§5.2): show the LAST lines of the action (the ones that
+        # produced the recorded state) so the card stays within the projection cap and validates.
+        work = [f"{line_text(ln)} // {narration}" for ln in code_refs[-_MAX_WORK_LINES:]] or [narration]
         cards.append({
             "card_id": f"step_{idx}",
             "title": f"Step {idx}",
