@@ -35,14 +35,13 @@ class ConfidenceMeta(TypedDict, total=False):
 
 
 # --- projection caps (§5.2): (min cards, max cards) per category ----------------
-# Maxes raised: a faithful trace of a real algorithm (an MST on 8 nodes considers ~10-15 edges) needs
-# more than ~10 cards, and hard-capping it made gen_foundation degrade -> fall back to the (wrong)
-# legacy example. A COMPLETE example is better than a truncated/fallback one; trace-first still keeps
-# its own concise grouping. Gated by AZALEA_GEN_FOUNDATION_RAISED_CAPS (default on) so the original
-# tight caps can be restored without a code change — part of the new-system rollback contract.
+# Default = the original TIGHT caps (concise examples — the format we want back). With ground-truth-first
+# (trace-first / executed-reference), examples are naturally bounded, so the cap rarely binds and we no
+# longer need to raise it to avoid fallbacks. The raised caps remain available via
+# AZALEA_GEN_FOUNDATION_RAISED_CAPS=1 for the rare genuinely-long trace, but they are OFF by default.
 import os as _os
 
-if _os.getenv("AZALEA_GEN_FOUNDATION_RAISED_CAPS", "1").strip().lower() not in {"0", "false", "off", "no"}:
+if _os.getenv("AZALEA_GEN_FOUNDATION_RAISED_CAPS", "0").strip().lower() in {"1", "true", "on", "yes"}:
     PROJECTION_CAPS: dict[str, tuple[int, int]] = {
         "simple_concept": (4, 14),
         "algorithm_walkthrough": (6, 30),

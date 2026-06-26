@@ -21,6 +21,7 @@ from typing import Any, Optional
 
 from . import prompts
 from .audit import PatchBudgetError, apply_patch
+from .executed_reference import ALGORITHMIC_TOPIC_TYPES
 from .executor import ExecutorFn, run_trace
 from .llm import ModelFn, default_auditor, default_repair, default_solver
 from .normalize import normalize_artifact
@@ -248,6 +249,7 @@ def run_first_pass(
     solver: ModelFn = default_solver,
     auditor: ModelFn = default_auditor,
     repair: ModelFn = default_repair,
+    reference_coder: ModelFn = default_solver,   # writes a reference impl for the executed-reference path
     executor: ExecutorFn = run_trace,
     run_audit: bool = True,
 ) -> RunResult:
@@ -263,15 +265,24 @@ def run_first_pass(
     _assign_ids(artifact)                                # ids/coverage derived from cleaned cards
     _enrich_for_validation(artifact, config)
 
-    # 1b. Reference-first override (ground truth FIRST): for algorithmic families with a trusted
-    #     reference (MST, sorting), build the worked example from a real reference run on the input and
-    #     REPLACE the model's cards before validation — so a wrong/short model example can't degrade us
-    #     to a (worse) fallback. For coding, the trace-first reconcile below still supersedes this with
-    #     the user's actual executed code; this is the floor, execution is the ceiling.
+    # 1b. Ground-truth-first override: build the worked example from a REAL run on the input and replace
+    #     the model's cards before validation — so a wrong/short model example can't degrade us to a
+    #     (worse) fallback. Two sources, in order:
+    #       (a) a tiny deterministic fast-path for the most common algorithms (free, offline), then
+    #       (b) the GENERAL path — the model writes a reference implementation, we EXECUTE it and trace
+    #           the real run (any algorithm, no per-algorithm code). (b) is what makes walkthroughs of
+    #           arbitrary algorithms correct without hardcoding.
+    #     For coding, the trace-first reconcile below still supersedes this with the user's own executed
+    #     code; this is the floor, execution of the shown code is the ceiling.
     if os.getenv("AZALEA_TRACE_FIRST", "") not in ("", "0"):
         from .reference_first import build_reference_cards
         _ref = build_reference_cards(config.topic_family, str(topic.get("title") or ""),
                                      config.example_input)
+        if not _ref.get("cards") and config.topic_type in ALGORITHMIC_TOPIC_TYPES and config.example_input:
+            from .executed_reference import build_executed_reference
+            _ref = build_executed_reference(
+                topic, config.example_input, generate=reference_coder,
+                executable_input=_executable_input, node_labels=_graph_nodes(config.example_input))
         if _ref.get("cards"):
             from .trace_first import narrate_cards
             if _ref.get("problem"):
