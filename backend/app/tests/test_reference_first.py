@@ -148,6 +148,16 @@ class BSTReferenceTests(unittest.TestCase):
         self.assertTrue(r["cards"])
         self.assertIn("insert", r["cards"][-1]["goal"].lower())
 
+    def test_delete_two_child_uses_inorder_successor(self):
+        r = build_reference_cards("tree_bst", "Deleting from a BST", {"tree": [50, 30, 70, 20, 40, 60, 80]})
+        self.assertEqual(r["final_answer"], 50)  # root: the two-child instructive case
+        self.assertIn("successor", r["cards"][-1]["reasoning"].lower())
+
+    def test_delete_leaf_when_no_internal_node(self):
+        from app.services.gen_foundation.reference_first import _bst_best_delete_target, _bst_from_level_order
+        # a single-child chain still has an internal node; a lone root has no delete-target -> None
+        self.assertIsNone(_bst_best_delete_target(_bst_from_level_order([42])))
+
     def test_non_bst_op_skipped(self):
         self.assertEqual(build_reference_cards("tree_bst", "BST Height", {"tree": self.TREE}), {})
 

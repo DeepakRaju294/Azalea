@@ -286,11 +286,55 @@ def _bst_from_level_order(level: list) -> Optional[dict]:
 
 def _bst_op_for(title: str) -> Optional[str]:
     t = (title or "").lower()
+    if "delet" in t or "remov" in t:
+        return "delete"
     if "insert" in t or "add" in t:
         return "insert"
     if "search" in t or "find" in t or "lookup" in t or "contains" in t:
         return "search"
     return None
+
+
+def _bst_best_delete_target(root: dict):
+    """The most instructive delete target: a node with two children if any, else one child, else None
+    (the caller then falls back to a leaf). Makes the walkthrough show the successor-replacement case."""
+    two_child = one_child = None
+    stack = [root]
+    while stack:
+        n = stack.pop()
+        if not n:
+            continue
+        left, right = n.get("left"), n.get("right")
+        if left and right and two_child is None:
+            two_child = n["val"]
+        elif (left or right) and one_child is None:
+            one_child = n["val"]
+        if left:
+            stack.append(left)
+        if right:
+            stack.append(right)
+    return two_child if two_child is not None else one_child
+
+
+def _bst_delete_card(idx: int, node: dict, target) -> dict[str, Any]:
+    """Describe the real deletion case (leaf / one child / two children -> inorder successor)."""
+    left, right = node.get("left"), node.get("right")
+    if not left and not right:
+        reasoning = f"{target} is a leaf, so it can be removed directly without breaking any links."
+        work = f"node {target} has no children // unlink it"
+    elif not left or not right:
+        child = (left or right)["val"]
+        reasoning = (f"{target} has a single child {child}; splice {target} out and connect {child} to "
+                     f"{target}'s parent.")
+        work = f"node {target} has one child ({child}) // replace {target} with {child}"
+    else:
+        succ = right
+        while succ.get("left"):
+            succ = succ["left"]
+        reasoning = (f"{target} has two children, so replace it with its inorder successor "
+                     f"{succ['val']} (the smallest value in the right subtree), then remove {succ['val']}.")
+        work = f"node {target} has two children // copy successor {succ['val']} up, delete the successor"
+    return _bst_card(idx, f"Delete {target}.", reasoning, work, f"{target} removed; BST ordering preserved.")
 
 
 def build_bst_reference_cards(title: str, tree_level: list) -> dict[str, Any]:
@@ -299,10 +343,14 @@ def build_bst_reference_cards(title: str, tree_level: list) -> dict[str, Any]:
     if not op or root is None:
         return {}
     present = [v for v in tree_level if v is not None]
-    if op == "search":
-        target = present[len(present) // 2]                      # a value that IS in the tree
-    else:  # insert a value NOT already present
+    if op == "insert":  # a value NOT already present
         target = next((x for x in range(1, 100) if x not in present), max(present) + 1)
+    elif op == "delete":  # prefer the instructive two-child node, else any present value
+        target = _bst_best_delete_target(root)
+        if target is None:
+            target = present[len(present) // 2]
+    else:               # search a value that IS in the tree
+        target = present[len(present) // 2]
 
     cards: list[dict[str, Any]] = []
     node = root
@@ -314,6 +362,9 @@ def build_bst_reference_cards(title: str, tree_level: list) -> dict[str, Any]:
             cards.append(_bst_card(idx, f"Found {target} at this node.",
                                    f"{target} equals the current node, so the search succeeds.",
                                    f"compare {target} with {v} // equal -> found", f"{target} is in the tree."))
+            break
+        if v == target and op == "delete":
+            cards.append(_bst_delete_card(idx, node, target))
             break
         go = "left" if target < v else "right"
         nxt = node[go]
@@ -332,7 +383,7 @@ def build_bst_reference_cards(title: str, tree_level: list) -> dict[str, Any]:
         node = nxt
     if not cards:
         return {}
-    verb = "Search for" if op == "search" else "Insert"
+    verb = {"search": "Search for", "insert": "Insert", "delete": "Delete"}[op]
     return {
         "cards": cards,
         "problem": f"{verb} {target} in the binary search tree (level-order {present}).",
