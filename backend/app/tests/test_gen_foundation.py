@@ -189,11 +189,12 @@ class TestProjectionCaps(unittest.TestCase):
         self.assertTrue(any("minimum" in e for e in out))
 
     def test_above_cap_flagged_split_topic(self):
-        out = validate_projection_caps("coding_implementation", [{} for _ in range(20)])
+        # caps raised so complete algorithm traces ship; only an absurd length is still rejected
+        out = validate_projection_caps("coding_implementation", [{} for _ in range(55)])
         self.assertTrue(any("split the topic" in e for e in out))
 
     def test_absolute_ceiling(self):
-        res = trace_mod.check_card_count("complex_recursive_dp", 17)
+        res = trace_mod.check_card_count("complex_recursive_dp", 55)
         self.assertFalse(res.ok)
 
     def test_event_budget(self):
