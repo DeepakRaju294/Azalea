@@ -59,6 +59,9 @@ def card_to_legacy(card: dict[str, Any]) -> dict[str, Any]:
         "prior_state": card.get("prior_state"),
         "visual": "",
         "code_lines": _flat_refs_to_ranges(card.get("code_refs")),
+        # provenance: carried onto the stored card so a ground-truth (executed/reference) example is
+        # visibly attributable in the DB (this is what was silently dropped -> trace_backed never showed)
+        "trace_backed": bool(card.get("trace_backed")),
     }
 
 
@@ -91,12 +94,19 @@ def artifact_to_legacy(artifact: dict[str, Any]) -> dict[str, Any]:
     cards = [card_to_legacy(c) for c in (artifact.get("cards") or [])]
     final = artifact.get("final_answer")
     cards = _ensure_terminal_result_card(cards, final)
+    # ground-truth provenance: source is "trace_first" (executed user code), "reference_first" (trusted
+    # reference run), or None (model-narrated). Carried through so downstream can attribute + so the
+    # gate can prefer/keep ground-truth examples over model guesses.
+    source = ("trace_first" if artifact.get("trace_first") and not artifact.get("reference_backed")
+              else "reference_first" if artifact.get("reference_backed") else None)
     return {
         "problem": str(artifact.get("problem") or artifact.get("example_input") or "").strip(),
         "cards": cards,
         "final_answer": final,
         "expected_final_answer": final,  # legacy alias
         "generated_by": "gen_foundation",  # provenance, so a render can be attributed/measured
+        "trace_first": bool(artifact.get("trace_first")),
+        "ground_truth_source": source,
     }
 
 

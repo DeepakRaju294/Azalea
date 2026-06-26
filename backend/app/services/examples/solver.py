@@ -1097,6 +1097,8 @@ def _build_solution_cards(
             "worked_example_solver": True,
             "example": {"role": "step", "index": n + 1, "total": total},
         }
+        if card.get("trace_backed"):
+            meta["trace_backed"] = True  # executed/reference ground-truth step (not a model guess)
         if card.get("prior_state") is not None:
             meta["prior_state"] = card["prior_state"]
         if card.get("cases_covered"):
@@ -1132,6 +1134,7 @@ def _build_solution_cards(
             "visual_description": str(card.get("visual") or ""),
             "continuation_group_id": gid,
             "metadata": meta,
+            "trace_backed": bool(card.get("trace_backed")),  # visible provenance on the stored card
             **_code_fields(),
         })
     if len(cards) < 2:
