@@ -243,6 +243,40 @@ def _enrich_for_validation(artifact: dict[str, Any], config: PrepassConfig) -> N
     _ensure_coverage(artifact)
 
 
+def _ground_truth_ref(config: PrepassConfig, topic: dict[str, Any], reference_coder: ModelFn) -> dict[str, Any]:
+    """Build the ground-truth worked example for an algorithmic topic, model-free where possible: the
+    deterministic fast-path (reference_first) first, then the general executed-reference. {} otherwise."""
+    if os.getenv("AZALEA_TRACE_FIRST", "") in ("", "0"):
+        return {}
+    from .reference_first import build_reference_cards
+    ref = build_reference_cards(config.topic_family, str(topic.get("title") or ""), config.example_input)
+    if not ref.get("cards") and config.topic_type in ALGORITHMIC_TOPIC_TYPES and config.example_input:
+        from .executed_reference import build_executed_reference
+        ref = build_executed_reference(
+            topic, config.example_input, generate=reference_coder,
+            executable_input=_executable_input, node_labels=_graph_nodes(config.example_input))
+    return ref
+
+
+def _apply_ground_truth(artifact: dict[str, Any], ref: dict[str, Any], *, narrate: bool = True) -> None:
+    """Replace the artifact's worked example with the ground-truth one (cards/answer/problem), stamped
+    trace_first/reference_backed. Narration is a best-effort LLM polish (falls back to terse, never
+    alters states); skip it when there's no model available / for speed."""
+    if ref.get("problem"):
+        artifact["problem"] = ref["problem"]      # state the same instance the cards solve
+    cards = ref["cards"]
+    if narrate:
+        from .trace_first import narrate_cards
+        cards = narrate_cards(cards, problem=str(artifact.get("problem") or ""))
+    artifact["cards"] = cards
+    artifact["final_answer"] = ref["final_answer"]
+    artifact["final_answer_struct"] = ref.get("final_answer_struct")
+    artifact["trace_first"] = True
+    artifact["reference_backed"] = True
+    _assign_ids(artifact)
+    _ensure_coverage(artifact)
+
+
 def run_first_pass(
     topic: dict[str, Any],
     *,
@@ -260,6 +294,16 @@ def run_first_pass(
     artifact = solver(prompts.build_first_pass_payload(config, topic))
     calls += 1
     if not artifact:
+        # The model solver failed (commonly a timeout). Ground truth needs NO model for covered
+        # algorithms, so build the worked example deterministically rather than degrading to the
+        # (wrong) legacy path. This is what makes algorithmic examples resilient to solver timeouts.
+        _ref = _ground_truth_ref(config, topic, reference_coder)
+        if _ref.get("cards"):
+            artifact = {"problem": str(_ref.get("problem") or ""), "cards": []}
+            _enrich_for_validation(artifact, config)
+            _apply_ground_truth(artifact, _ref, narrate=False)  # no model available -> skip narration
+            if not validate_artifact(artifact):
+                return RunResult(True, artifact, calls, [], note="ground_truth_no_solver")
         return RunResult(False, None, calls, ["first pass returned nothing"], note="solver_unavailable")
     normalize_artifact(artifact, config.state_schema)  # deterministic lossless fixes (§9.2 step 1)
     _assign_ids(artifact)                                # ids/coverage derived from cleaned cards
@@ -274,26 +318,9 @@ def run_first_pass(
     #           arbitrary algorithms correct without hardcoding.
     #     For coding, the trace-first reconcile below still supersedes this with the user's own executed
     #     code; this is the floor, execution of the shown code is the ceiling.
-    if os.getenv("AZALEA_TRACE_FIRST", "") not in ("", "0"):
-        from .reference_first import build_reference_cards
-        _ref = build_reference_cards(config.topic_family, str(topic.get("title") or ""),
-                                     config.example_input)
-        if not _ref.get("cards") and config.topic_type in ALGORITHMIC_TOPIC_TYPES and config.example_input:
-            from .executed_reference import build_executed_reference
-            _ref = build_executed_reference(
-                topic, config.example_input, generate=reference_coder,
-                executable_input=_executable_input, node_labels=_graph_nodes(config.example_input))
-        if _ref.get("cards"):
-            from .trace_first import narrate_cards
-            if _ref.get("problem"):
-                artifact["problem"] = _ref["problem"]   # state the same instance the cards solve
-            artifact["cards"] = narrate_cards(_ref["cards"], problem=str(artifact.get("problem") or ""))
-            artifact["final_answer"] = _ref["final_answer"]
-            artifact["final_answer_struct"] = _ref.get("final_answer_struct")
-            artifact["trace_first"] = True
-            artifact["reference_backed"] = True
-            _assign_ids(artifact)
-            _ensure_coverage(artifact)
+    _ref = _ground_truth_ref(config, topic, reference_coder)
+    if _ref.get("cards"):
+        _apply_ground_truth(artifact, _ref, narrate=True)
 
     # 2. Deterministic validation — on failure, enter recovery (§9.2), not normal flow.
     errors = validate_artifact(artifact)

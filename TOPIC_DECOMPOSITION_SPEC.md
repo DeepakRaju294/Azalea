@@ -193,15 +193,21 @@ AMBIGUOUS_OVERLAP → one bounded "merge-or-justify" LLM call (action schema), e
 4. **Dependency DAG & ordering:** the DAG and `order_index` come from **capability `prerequisite_capability_ids` (canonical)**, NOT from `topic_relationships`. `topic_relationships` carry pedagogical/structural meaning; **only relationship types declared dependency-bearing induce a prereq/order edge.** For `implementation_follow_up`, the ordering already follows from the coding capability's prerequisite on the walkthrough/operation capability — so the topic edge need not (and does not) separately induce order. (`RELATIONSHIP_TYPES`: `implementation_follow_up` = pedagogical-only at the topic layer / dependency via capability prereq; `concept_lead_in` = similar; future `compare_with` / `alternative_to` / `related_case` = non-dependency-bearing.)
 5. **Role↔type consistency** per B.3.
 
-**Action matching (deterministic, three levels) — on `primary_action`:**
+**Action matching (deterministic) — on the NORMALIZED `primary_action`:**
+Raw model phrasing is first normalized to a canonical enum value via a closed **alias table**; the
+validator then compares ONLY canonical enum values. Non-enum phrasings are normalized away **before**
+the check and are never persisted.
 ```
-exact enum match                         → CLEAR_DUPLICATE candidate
-known CLOSED synonym-family match        → CLEAR_DUPLICATE candidate   (e.g. {trace, walk_through, simulate})
-not in a known family                    → AMBIGUOUS_OVERLAP
-```
-No broad semantic interpretation — only the curated closed families over the closed action enum.
+normalization (raw model phrasing → primary_action enum):
+  "walk through" / "simulate"   → trace
+  …                             → …            (closed alias table; extend as needed)
 
-**`CLEAR_DUPLICATE`** (all of): same `subject_key`; exact-or-closed-synonym `primary_action`; same `practice_evidence_type` + equivalent `expected_output`; no valid parent-child relationship; **and neither topic is the sole owner of a required capability not owned elsewhere.** Includes dropping a second same-capability standalone topic. Softer → `AMBIGUOUS_OVERLAP`.
+exact enum match (post-normalization)    → CLEAR_DUPLICATE candidate
+no enum match                            → AMBIGUOUS_OVERLAP
+```
+No broad semantic interpretation — only the curated alias table feeding the closed action enum.
+
+**`CLEAR_DUPLICATE`** (all of): same `subject_key`; exact (post-normalization) `primary_action`; same `practice_evidence_type` + equivalent `expected_output`; no valid parent-child relationship; **and neither topic is the sole owner of a required capability not owned elsewhere.** Includes dropping a second same-capability standalone topic. Softer → `AMBIGUOUS_OVERLAP`.
 
 **SAFE_REPAIR (corrections only):** force a paired coding topic's `practice_format = coding` / `practice_evidence_type = write_code`; replace inherited scope with the implementation template; attach a missing parent edge; repair ordering; set the derived continuation variant.
 
