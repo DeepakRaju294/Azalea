@@ -123,6 +123,13 @@ def _trace_mode_for(*, coding: bool, code_preexists: bool) -> TraceMode:
 _SORT_KEYWORDS = ("sort", "partition", "merge", "quick", "bubble", "insertion", "selection", "heap")
 _SEARCH_KEYWORDS = ("binary search", "binary_search")
 _ARRAY_KEYWORDS = ("array", "list", "subarray")
+# recursion/DP: no fixed input shape, so a small array/int is supplied. The adapter maps a numeric
+# param (`fib(n)`) to its length and an array param (sequence DP) to the array itself. Kept SMALL so a
+# naive exponential recursion (un-memoized fib) still terminates quickly under the executor.
+_RECURSION_DP_KEYWORDS = (
+    "recursion", "recursive", "dynamic programming", "memoization", "memoi", "tabulation",
+    "fibonacci", "factorial", "knapsack", "subsequence", "subset sum", "coin change", "backtrack",
+)
 # tree keywords are checked BEFORE search/array so "binary search TREE" isn't read as array search.
 _TREE_KEYWORDS = ("tree", "bst", "binary tree", "inorder", "preorder", "postorder", "subtree", "leaf")
 _GRAPH_KEYWORDS = ("graph", "bfs", "dfs", "breadth-first", "depth-first", "adjacency", "topological")
@@ -232,6 +239,8 @@ def generate_example_input(
         or any(k in text for k in _SORT_KEYWORDS)
     )
     is_array = is_sort or (not _struct and any(k in text for k in _ARRAY_KEYWORDS))
+    is_recursion_dp = (not _struct and not is_search and not is_array
+                       and (fam in _COMPLEX_FAMILIES or any(k in text for k in _RECURSION_DP_KEYWORDS)))
 
     if is_wgraph:
         return {"graph": _random_weighted_graph(size)}
@@ -247,6 +256,11 @@ def generate_example_input(
         if size >= 4:  # a duplicate makes the example more instructive (stable/partition behaviour)
             arr[random.randrange(size)] = arr[random.randrange(size)]
         return {"array": arr}
+    if is_recursion_dp:
+        # SMALL on purpose: a numeric recursion uses the length as n, and naive (un-memoized) recursion
+        # must still finish quickly. The adapter passes the array to an array param or its length to `n`.
+        small = random.randint(5, 7)
+        return {"array": [random.randint(1, 20) for _ in range(small)]}
     return None
 
 

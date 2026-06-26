@@ -189,6 +189,31 @@ class RecursionReferenceTests(unittest.TestCase):
         self.assertEqual(r["final_answer"], 21)  # F(8)
 
 
+class RecursionDPInputGenTests(unittest.TestCase):
+    """DP/recursion coding now gets a (small) input so trace-first can execute it."""
+
+    def test_recursion_dp_titles_get_input(self):
+        from app.services.gen_foundation.prepass import generate_example_input
+        for title in ["Recursion Fundamentals", "Understanding Fibonacci", "Dynamic Programming",
+                      "The Knapsack Problem", "Factorial with Recursion"]:
+            ei = generate_example_input("", title)
+            self.assertIsInstance(ei, dict, title)
+            self.assertTrue(ei.get("array"), title)
+            self.assertLessEqual(len(ei["array"]), 7, title)  # small: naive recursion must terminate
+
+    def test_adapter_maps_numeric_param_to_length(self):
+        from app.services.gen_foundation.pipeline import _executable_input
+        fib = "def fibonacci(n):\n    a,b=0,1\n    for _ in range(n): a,b=b,a+b\n    return a\n"
+        ei = _executable_input(fib, {"array": [1, 2, 3, 4, 5, 6]})
+        self.assertEqual(ei, {"entry": "fibonacci", "args": [6]})  # n <- length
+
+    def test_adapter_passes_array_to_array_param(self):
+        from app.services.gen_foundation.pipeline import _executable_input
+        lis = "def lis(arr):\n    return len(arr)\n"
+        ei = _executable_input(lis, {"array": [3, 7, 2]})
+        self.assertEqual(ei, {"entry": "lis", "args": [[3, 7, 2]]})
+
+
 class LabelRestoreTests(unittest.TestCase):
     """Executed integer indices map back to the input's own labels, without corrupting weights."""
     L = ["A", "B", "C", "D"]
