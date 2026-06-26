@@ -65,6 +65,30 @@ class ReferenceFirstTests(unittest.TestCase):
         self.assertEqual(build_reference_cards("graph_mst", "Kruskal", {"nodes": ["A", "B"]}), {})
 
 
+class SortReferenceTests(unittest.TestCase):
+    ARR = [5, 2, 8, 1, 9, 3, 3]
+
+    def test_each_sort_is_correct_and_conceptual(self):
+        for title in ["Understanding Bubble Sort", "How Selection Sort Works", "Insertion Sort Walkthrough"]:
+            r = build_reference_cards("array_sort", title, {"array": list(self.ARR)})
+            self.assertTrue(r["cards"], title)
+            self.assertEqual(r["final_answer"], sorted(self.ARR), title)
+            self.assertEqual(r["source"], "reference_first")
+            for c in r["cards"]:                       # conceptual: no executed code refs
+                self.assertTrue(c["goal"] and c["work"] and c["result"])
+                self.assertEqual(c["code_refs"], [])
+
+    def test_problem_states_the_array(self):
+        r = build_reference_cards("array_sort", "Bubble Sort", {"array": [4, 1, 2]})
+        self.assertIn("[4, 1, 2]", r["problem"])
+
+    def test_unknown_algorithm_skipped(self):
+        self.assertEqual(build_reference_cards("array_sort", "Quantum Teleportation", {"array": [1, 2]}), {})
+
+    def test_single_element_skipped(self):
+        self.assertEqual(build_reference_cards("array_sort", "Bubble Sort", {"array": [1]}), {})
+
+
 class LabelRestoreTests(unittest.TestCase):
     """Executed integer indices map back to the input's own labels, without corrupting weights."""
     L = ["A", "B", "C", "D"]

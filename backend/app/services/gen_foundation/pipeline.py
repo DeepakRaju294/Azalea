@@ -260,6 +260,27 @@ def run_first_pass(
     _assign_ids(artifact)                                # ids/coverage derived from cleaned cards
     _enrich_for_validation(artifact, config)
 
+    # 1b. Reference-first override (ground truth FIRST): for algorithmic families with a trusted
+    #     reference (MST, sorting), build the worked example from a real reference run on the input and
+    #     REPLACE the model's cards before validation — so a wrong/short model example can't degrade us
+    #     to a (worse) fallback. For coding, the trace-first reconcile below still supersedes this with
+    #     the user's actual executed code; this is the floor, execution is the ceiling.
+    if os.getenv("AZALEA_TRACE_FIRST", "") not in ("", "0"):
+        from .reference_first import build_reference_cards
+        _ref = build_reference_cards(config.topic_family, str(topic.get("title") or ""),
+                                     config.example_input)
+        if _ref.get("cards"):
+            from .trace_first import narrate_cards
+            if _ref.get("problem"):
+                artifact["problem"] = _ref["problem"]   # state the same instance the cards solve
+            artifact["cards"] = narrate_cards(_ref["cards"], problem=str(artifact.get("problem") or ""))
+            artifact["final_answer"] = _ref["final_answer"]
+            artifact["final_answer_struct"] = _ref.get("final_answer_struct")
+            artifact["trace_first"] = True
+            artifact["reference_backed"] = True
+            _assign_ids(artifact)
+            _ensure_coverage(artifact)
+
     # 2. Deterministic validation — on failure, enter recovery (§9.2), not normal flow.
     errors = validate_artifact(artifact)
     if errors:
@@ -317,28 +338,9 @@ def run_first_pass(
                     artifact["final_answer"] = tf["final_answer"]
                     artifact["final_answer_struct"] = tf.get("final_answer_struct")
                     artifact["trace_first"] = True
+                    artifact.pop("reference_backed", None)  # real executed code supersedes the reference
                     _assign_ids(artifact)
                     _ensure_coverage(artifact)
-
-    # 3b. Reference-first (correctness for algorithmic families WITHOUT an executable trace): when
-    #     execution didn't yield trace-first cards — walkthroughs have no code; some code won't run —
-    #     build the worked example from a TRUSTED reference run of the algorithm on the real input.
-    #     Ground-truth-sourced like trace_first, so it carries the same trace_first flag (gate skip).
-    if not artifact.get("trace_first") and os.getenv("AZALEA_TRACE_FIRST", "") not in ("", "0"):
-        from .reference_first import build_reference_cards
-        ref = build_reference_cards(config.topic_family, str(topic.get("title") or ""),
-                                    config.example_input)
-        if ref.get("cards"):
-            from .trace_first import narrate_cards
-            if ref.get("problem"):
-                artifact["problem"] = ref["problem"]  # state the same graph the cards solve
-            artifact["cards"] = narrate_cards(ref["cards"], problem=str(artifact.get("problem") or ""))
-            artifact["final_answer"] = ref["final_answer"]
-            artifact["final_answer_struct"] = ref.get("final_answer_struct")
-            artifact["trace_first"] = True
-            artifact["reference_backed"] = True
-            _assign_ids(artifact)
-            _ensure_coverage(artifact)
 
     # 4. Mandatory worked-example audit (§8) — patch-only, re-validate, reject-on-fail.
     audit_tele: dict[str, Any] = {}

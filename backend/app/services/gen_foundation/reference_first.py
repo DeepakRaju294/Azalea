@@ -93,6 +93,115 @@ def prim_steps(nodes: set[str], edges: list[tuple[str, str, float]], start: str)
     return steps, mst
 
 
+# --- sorting references (the next walkthrough family) -------------------------------------------
+# Same principle as MST: run the REAL algorithm on the REAL input and emit one conceptual, state-
+# accurate card per outer pass (bounded to ~n cards, not per-comparison). The array state on each
+# card is the true intermediate, so the trace can't truncate or misstate it.
+
+def _sort_algorithm_for(title: str) -> Optional[str]:
+    t = (title or "").lower()
+    for key in ("insertion", "selection", "bubble"):
+        if key in t:
+            return key
+    if "sort" in t:
+        return "bubble"  # a generic comparison sort when the name doesn't pin one
+    return None
+
+
+def bubble_sort_steps(arr: list) -> list[dict[str, Any]]:
+    a = list(arr)
+    steps: list[dict[str, Any]] = []
+    n = len(a)
+    for i in range(n - 1):
+        swapped = False
+        for j in range(n - 1 - i):
+            if a[j] > a[j + 1]:
+                a[j], a[j + 1] = a[j + 1], a[j]
+                swapped = True
+        steps.append({"array": list(a), "sorted_tail": i + 1, "swapped": swapped})
+        if not swapped:
+            break
+    return steps
+
+
+def selection_sort_steps(arr: list) -> list[dict[str, Any]]:
+    a = list(arr)
+    steps: list[dict[str, Any]] = []
+    n = len(a)
+    for i in range(n - 1):
+        m = i
+        for j in range(i + 1, n):
+            if a[j] < a[m]:
+                m = j
+        a[i], a[m] = a[m], a[i]
+        steps.append({"array": list(a), "placed_index": i, "placed_value": a[i]})
+    return steps
+
+
+def insertion_sort_steps(arr: list) -> list[dict[str, Any]]:
+    a = list(arr)
+    steps: list[dict[str, Any]] = []
+    for i in range(1, len(a)):
+        key = a[i]
+        j = i - 1
+        while j >= 0 and a[j] > key:
+            a[j + 1] = a[j]
+            j -= 1
+        a[j + 1] = key
+        steps.append({"array": list(a), "inserted_value": key, "sorted_prefix": i + 1})
+    return steps
+
+
+_SORT_STEPPERS = {
+    "bubble": bubble_sort_steps, "selection": selection_sort_steps, "insertion": insertion_sort_steps,
+}
+
+
+def build_sort_reference_cards(title: str, array: list) -> dict[str, Any]:
+    algo = _sort_algorithm_for(title)
+    if not algo or len(array) < 2:
+        return {}
+    steps = _SORT_STEPPERS[algo](array)
+    if not steps:
+        return {}
+    cards: list[dict[str, Any]] = []
+    prior = list(array)
+    for idx, s in enumerate(steps, start=1):
+        arr_str = "[" + ", ".join(str(x) for x in s["array"]) + "]"
+        if algo == "bubble":
+            goal = f"Pass {idx}: bubble the largest unsorted value to the end."
+            reasoning = ("Compare each adjacent pair across the unsorted region and swap when out of order; "
+                         "the largest remaining value settles into place.")
+            work = [f"sweep & swap adjacent out-of-order pairs // array -> {arr_str}"]
+        elif algo == "selection":
+            goal = f"Pass {idx}: select the smallest remaining value into position {s['placed_index'] + 1}."
+            reasoning = (f"Scan the unsorted region for its minimum ({s['placed_value']}) and place it at the "
+                         f"front of that region.")
+            work = [f"select min of unsorted, place at index {s['placed_index']} // array -> {arr_str}"]
+        else:  # insertion
+            goal = f"Step {idx}: insert {s['inserted_value']} into the sorted prefix."
+            reasoning = (f"Shift larger values right and drop {s['inserted_value']} into its correct slot so the "
+                         f"prefix of length {s['sorted_prefix']} stays sorted.")
+            work = [f"insert {s['inserted_value']} into the sorted prefix // array -> {arr_str}"]
+        cards.append({
+            "card_id": f"step_{idx}", "title": goal, "goal": goal, "reasoning": reasoning,
+            "work": work, "result": f"Array now: {arr_str}",
+            "prior_state": {"array": prior}, "state": {"array": list(s["array"])},
+            "code_refs": [], "state_relevance": "none", "state_delta": None,
+            "cases_covered": [], "trace_backed": True,
+        })
+        prior = list(s["array"])
+    final = list(steps[-1]["array"])
+    arr_in = "[" + ", ".join(str(x) for x in array) + "]"
+    return {
+        "cards": cards,
+        "problem": f"Sort the array {arr_in} in ascending order using {algo} sort.",
+        "final_answer": final,
+        "final_answer_struct": canonical_final_answer(final),
+        "trace_backed": True, "source": "reference_first",
+    }
+
+
 def _fmt_edge(e: tuple[str, str, float]) -> str:
     u, v, w = e
     return f"({u}, {v}, {w:g})"
@@ -107,8 +216,16 @@ def build_reference_cards(topic_family: str, title: str, example_input: Any) -> 
     algorithm. Returns {cards, final_answer, ...} or {} when this isn't an MST topic / has no graph.
 
     The cards mirror ``trace_first`` card shape (goal/reasoning/work/result + real ``state``), so the
-    same renderer, validators, and gate-skip semantics apply. ``final_answer`` is the real MST."""
-    if "mst" not in (topic_family or "").lower():
+    same renderer, validators, and gate-skip semantics apply. ``final_answer`` is the real result."""
+    fam = (topic_family or "").lower()
+    if "sort" in fam:
+        ei = example_input.get("graph") if isinstance(example_input, dict) and isinstance(
+            example_input.get("graph"), dict) else example_input
+        arr = ei.get("array") if isinstance(ei, dict) else None
+        if isinstance(arr, list) and arr:
+            return build_sort_reference_cards(title, arr)
+        return {}
+    if "mst" not in fam:
         return {}
     nodes = _node_labels(example_input)
     edges = _weighted_edges(example_input)
