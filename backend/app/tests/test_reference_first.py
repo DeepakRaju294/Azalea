@@ -65,5 +65,36 @@ class ReferenceFirstTests(unittest.TestCase):
         self.assertEqual(build_reference_cards("graph_mst", "Kruskal", {"nodes": ["A", "B"]}), {})
 
 
+class LabelRestoreTests(unittest.TestCase):
+    """Executed integer indices map back to the input's own labels, without corrupting weights."""
+    L = ["A", "B", "C", "D"]
+
+    def test_edge_triple_maps_endpoints_keeps_weight(self):
+        from app.services.gen_foundation.trace_first import _restore_node_labels
+        self.assertEqual(_restore_node_labels([0, 2, 7], self.L), ["A", "C", 7])
+
+    def test_list_of_edges(self):
+        from app.services.gen_foundation.trace_first import _restore_node_labels
+        self.assertEqual(_restore_node_labels([[0, 1, 6], [2, 3, 9]], self.L),
+                         [["A", "B", 6], ["C", "D", 9]])
+
+    def test_node_set_all_mapped(self):
+        from app.services.gen_foundation.trace_first import _restore_node_labels
+        self.assertEqual(_restore_node_labels({0, 1, 3}, self.L), {"A", "B", "D"})
+
+    def test_weight_scalar_untouched(self):
+        from app.services.gen_foundation.trace_first import _restore_node_labels
+        self.assertEqual(_restore_node_labels({"cost": 6, "mst": [[0, 1, 6]]}, self.L),
+                         {"cost": 6, "mst": [["A", "B", 6]]})
+
+    def test_no_labels_is_noop(self):
+        from app.services.gen_foundation.trace_first import _restore_node_labels
+        self.assertEqual(_restore_node_labels([0, 1, 6], []), [0, 1, 6])
+
+    def test_out_of_range_index_left_alone(self):
+        from app.services.gen_foundation.trace_first import _restore_node_labels
+        self.assertEqual(_restore_node_labels([0, 99, 6], self.L), ["A", 99, 6])
+
+
 if __name__ == "__main__":
     unittest.main()

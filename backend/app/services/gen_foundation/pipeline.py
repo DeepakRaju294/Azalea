@@ -41,6 +41,22 @@ class RunResult:
     note: str = ""
 
 
+def _graph_nodes(example_input: Any) -> Optional[list[str]]:
+    """The ordered node labels of a {nodes, edges} graph input — the SAME order ``_executable_input``
+    relabels to integer indices, so index i corresponds to labels[i]. Used to map executed integer
+    indices back to the input's own labels (letters, ids, whatever they are). None when not a graph."""
+    ei = example_input
+    if isinstance(ei, dict) and isinstance(ei.get("graph"), dict):
+        ei = ei["graph"]
+    if not isinstance(ei, dict):
+        return None
+    edges = ei.get("edges")
+    if not isinstance(edges, list) or not edges:
+        return None
+    nodes = ei.get("nodes") or sorted({str(e[0]) for e in edges} | {str(e[1]) for e in edges})
+    return [str(x) for x in nodes]
+
+
 def _executable_input(code: Any, example_input: Any) -> Any:
     """Adapt a graph example_input ({nodes, edges}) into executable {entry, args} matching the code's
     entry-function signature, relabeling node names to integer indices (most graph code uses
@@ -271,7 +287,9 @@ def run_first_pass(
             # built from the REAL execution trace -- states recorded not invented, run to completion.
             if os.getenv("AZALEA_TRACE_FIRST", "") not in ("", "0"):
                 from .trace_first import build_cards_from_trace
-                tf = build_cards_from_trace(trace_events, code=str(code or ""))
+                # map executed integer indices back to the input's own node labels (best-effort, general)
+                tf = build_cards_from_trace(trace_events, code=str(code or ""),
+                                            node_labels=_graph_nodes(example_input))
                 if tf.get("cards"):
                     from .trace_first import narrate_cards
                     # narration polish (#1): readable prose AROUND the verified states (falls back to

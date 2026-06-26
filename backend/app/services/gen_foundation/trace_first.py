@@ -90,6 +90,30 @@ def _default_narrator(payload: dict[str, Any]) -> Any:
     return generate_trace_narration(payload)
 
 
+def _restore_node_labels(obj: Any, labels: list[str]) -> Any:
+    """Best-effort, GENERAL mapping of executed integer node-indices back to the input's own labels
+    (whatever they are — letters, ids). Only maps in unambiguous graph shapes so it can't corrupt a
+    weight: edge triples [u, v, w] map the two endpoints (not w), and sets of indices map every member.
+    Anything else is recursed into untouched. No-op when there are no labels."""
+    n = len(labels)
+
+    def lab(x: Any) -> Any:
+        return labels[x] if isinstance(x, int) and not isinstance(x, bool) and 0 <= x < n else x
+
+    if isinstance(obj, dict):
+        return {k: _restore_node_labels(v, labels) for k, v in obj.items()}
+    if isinstance(obj, set):
+        return {lab(x) for x in obj}
+    if isinstance(obj, (list, tuple)):
+        seq = list(obj)
+        if (len(seq) == 3 and isinstance(seq[0], int) and not isinstance(seq[0], bool)
+                and isinstance(seq[1], int) and not isinstance(seq[1], bool)
+                and isinstance(seq[2], (int, float)) and not isinstance(seq[2], bool)):
+            return [lab(seq[0]), lab(seq[1]), seq[2]]  # edge: map endpoints, keep the weight
+        return [_restore_node_labels(x, labels) for x in seq]
+    return obj
+
+
 def _significant(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Keep events whose semantic state actually changed (drop no-op line steps) + the final return."""
     out: list[dict[str, Any]] = []
@@ -141,6 +165,7 @@ def build_cards_from_trace(
     *,
     code: str = "",
     max_cards: int = 10,
+    node_labels: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     """Build COMPLETE state-accurate worked-example cards from real execution events. Returns
     {cards, final_answer, trace_backed: True} or {} when there's no usable trace.
@@ -151,6 +176,8 @@ def build_cards_from_trace(
     if not trace_events:
         return {}
     final = next((e.get("return_value") for e in reversed(trace_events) if "return_value" in e), None)
+    if node_labels:
+        final = _restore_node_labels(final, node_labels)
     src_lines = code.split("\n") if code else []
     events = _significant(trace_events)
     groups = _group(events, max_cards)
@@ -165,6 +192,8 @@ def build_cards_from_trace(
     for idx, group in enumerate(groups, start=1):
         last = group[-1]
         after = last.get("state") if isinstance(last.get("state"), dict) else {}
+        if node_labels:
+            after = _restore_node_labels(after, node_labels)
         code_refs = sorted({ln for ev in group for ln in (ev.get("code_line_refs") or [])
                             if isinstance(ln, int)})
         narration = _state_delta_narration(prior_state, after)
