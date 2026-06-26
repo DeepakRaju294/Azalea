@@ -64,11 +64,6 @@ def _executable_input(code: Any, example_input: Any) -> Any:
     execution simply stays off in that case. Heuristic but safe — never raises."""
     if not isinstance(example_input, dict) or "entry" in example_input:
         return example_input
-    if isinstance(example_input.get("graph"), dict):      # inputs arrive as {'graph': {nodes, edges}}
-        example_input = example_input["graph"]
-    edges = example_input.get("edges")
-    if not isinstance(edges, list) or not edges:
-        return example_input
     try:
         import ast as _ast
         funcs = [n for n in _ast.parse(str(code or "")).body if isinstance(n, _ast.FunctionDef)]
@@ -76,6 +71,29 @@ def _executable_input(code: Any, example_input: Any) -> Any:
             return example_input
         entry = funcs[-1]
         params = [a.arg.lower() for a in entry.args.args]
+    except Exception:  # noqa: BLE001
+        return example_input
+
+    # Array families (sorting, searching, arrays, linked_list): {'array': [...]} -> map to the
+    # entry signature. General over the values; not a per-scenario template.
+    arr = example_input.get("array")
+    if isinstance(arr, list) and arr:
+        args: list[Any] = []
+        for p in params:
+            if any(k in p for k in ("target", "key", "search", "find", "item", "needle", "query")):
+                args.append(arr[len(arr) // 2])           # a value guaranteed present
+            elif p in ("n", "size", "length", "count", "k"):
+                args.append(len(arr))
+            else:
+                args.append(list(arr))                    # the array/list itself
+        return {"entry": entry.name, "args": args}
+
+    if isinstance(example_input.get("graph"), dict):      # inputs arrive as {'graph': {nodes, edges}}
+        example_input = example_input["graph"]
+    edges = example_input.get("edges")
+    if not isinstance(edges, list) or not edges:
+        return example_input
+    try:
         nodes = example_input.get("nodes") or sorted({str(e[0]) for e in edges} | {str(e[1]) for e in edges})
         idx = {str(n): i for i, n in enumerate(nodes)}
         n = len(nodes)
