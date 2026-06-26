@@ -38,14 +38,26 @@ class ConfidenceMeta(TypedDict, total=False):
 # Maxes raised: a faithful trace of a real algorithm (an MST on 8 nodes considers ~10-15 edges) needs
 # more than ~10 cards, and hard-capping it made gen_foundation degrade -> fall back to the (wrong)
 # legacy example. A COMPLETE example is better than a truncated/fallback one; trace-first still keeps
-# its own concise grouping. The min stays as a soft signal; only an absurd length is rejected now.
-PROJECTION_CAPS: dict[str, tuple[int, int]] = {
-    "simple_concept": (4, 14),
-    "algorithm_walkthrough": (6, 30),
-    "coding_implementation": (7, 30),
-    "complex_recursive_dp": (8, 30),
-}
-ABSOLUTE_CEILING = 50          # sanity ceiling only (§5.2) — effectively removes the production cap
+# its own concise grouping. Gated by AZALEA_GEN_FOUNDATION_RAISED_CAPS (default on) so the original
+# tight caps can be restored without a code change — part of the new-system rollback contract.
+import os as _os
+
+if _os.getenv("AZALEA_GEN_FOUNDATION_RAISED_CAPS", "1").strip().lower() not in {"0", "false", "off", "no"}:
+    PROJECTION_CAPS: dict[str, tuple[int, int]] = {
+        "simple_concept": (4, 14),
+        "algorithm_walkthrough": (6, 30),
+        "coding_implementation": (7, 30),
+        "complex_recursive_dp": (8, 30),
+    }
+    ABSOLUTE_CEILING = 50      # sanity ceiling only (§5.2) — effectively removes the production cap
+else:  # original tight caps — restored when the raised-caps flag is off (pre-new-system behavior)
+    PROJECTION_CAPS = {
+        "simple_concept": (4, 7),
+        "algorithm_walkthrough": (6, 10),
+        "coding_implementation": (7, 12),
+        "complex_recursive_dp": (8, 14),
+    }
+    ABSOLUTE_CEILING = 16
 MAX_WORK_LINES_PER_CARD = 6    # max ~6 work lines per card (§5.2)
 
 # Per-card trace-event budget (§5): default span, and the larger span a backend-approved

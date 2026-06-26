@@ -344,7 +344,10 @@ class TestSchemaCapEnforcement(unittest.TestCase):
         topic = {"id": "qs", "title": "Intro to Quick Sort", "topic_type": "concept"}
         out, bounded = _enforce_worked_example_schema_cap(sol, topic, None)
         self.assertFalse(bounded)  # no key -> can't re-solve, but the violation is recorded
-        self.assertEqual(out["_schema"]["projection_cap_exceeded"], {"cards": 25, "cap": 7})
+        # cap is read from the live config so this stays correct whether the raised-caps flag is on/off
+        from app.services.gen_foundation.prepass import build_prepass_config
+        cap = build_prepass_config(topic).maximum_example_cards
+        self.assertEqual(out["_schema"]["projection_cap_exceeded"], {"cards": 25, "cap": cap})
 
     def test_failure_safe_on_bad_sol(self):
         topic = {"id": "x", "topic_type": "concept"}
