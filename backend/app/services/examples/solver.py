@@ -779,6 +779,20 @@ def solve_worked_example(
 
     Coding-implementation topics take the STRUCTURAL path (CODING_WORKED_EXAMPLE_SPEC): structural-step
     outline + hard gate + code-anchored cards — NOT the runtime line-execution trace."""
+    # WORKED_EXAMPLE_REASONING_SPEC (trace pipeline) — OFF by default. Only when
+    # AZALEA_WORKED_EXAMPLE_TRACE_PIPELINE is set do supported deterministic topics (Phase 1: binary
+    # search) route to the trace-first pipeline; it returns None (defer) for unsupported topics or any
+    # failure, so the flag can only replace an example or defer — never break a working topic.
+    try:
+        from app.services.examples.trace_pipeline import _enabled as _tp_enabled, solve_trace_pipeline
+
+        if _tp_enabled():
+            tp_result = solve_trace_pipeline(topic)
+            if tp_result is not None:
+                return tp_result
+    except Exception:  # noqa: BLE001 — the trace pipeline must never break legacy generation
+        pass
+
     # GENERATION_AND_VISUAL_FOUNDATION_SPEC §12 step 6 cutover — OFF by default. Only when
     # AZALEA_GEN_FOUNDATION_SHADOW is set does the new single-pass path run; it returns None
     # (and we fall back to the legacy path below) when offline / on any failure, so flipping the
