@@ -121,5 +121,15 @@ class SelfContainedTopicCheck(unittest.TestCase):
         self.assertEqual(check_graph_topic_code(_KRUSKAL_OK, "binary_search").status, "unverifiable")
 
 
+class CodeSwapHelper(unittest.TestCase):
+    def test_replace_lesson_code_snippets_swaps_only_code_cards(self):
+        from app.services.examples.solver import _replace_lesson_code_snippets
+        cards = [{"code_snippet": "old1"}, {"blueprint_key": "background"}, {"code_snippet": "old2"}]
+        _replace_lesson_code_snippets(cards, "NEWCODE")
+        self.assertEqual(cards[0]["code_snippet"], "NEWCODE")
+        self.assertNotIn("code_snippet", cards[1])      # non-code card untouched
+        self.assertEqual(cards[2]["code_snippet"], "NEWCODE")
+
+
 if __name__ == "__main__":
     unittest.main()

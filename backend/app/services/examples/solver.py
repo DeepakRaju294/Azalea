@@ -1257,6 +1257,15 @@ def _replace_worked_example_cards(lesson_json: dict[str, Any], step_cards: list[
     lesson_json["lesson_cards"] = rebuilt
 
 
+def _replace_lesson_code_snippets(cards: list[Any], new_code: str) -> None:
+    """Swap a corrected implementation into every card that carries a code_snippet. The code_walkthrough
+    cards all hold the full code (the frontend recomputes the progressive reveal from it), so a uniform
+    replace keeps the lesson consistent. Used when A2 catches a broken displayed implementation."""
+    for c in cards:
+        if isinstance(c, dict) and str(c.get("code_snippet") or "").strip():
+            c["code_snippet"] = new_code
+
+
 def _extract_lesson_code(cards: list[Any]) -> str:
     """The longest code_snippet the lesson already carries (the LLM's own implementation),
     shown verbatim in the IDE panel — we don't re-generate or trace it."""
@@ -1456,18 +1465,34 @@ def apply_llm_solved_worked_example(
         is_coding = str(topic.get("topic_type") or "").lower() == "coding_implementation"
         code = _validated_lesson_code(cards, topic) if is_coding else None
 
-        if code:                                           # A2: execute the displayed code -> record to M7
+        if code:                                           # A2: execute the displayed code; fix on failure
             try:
                 from app.services.examples.code_execution_check import check_graph_topic_code
                 from app.services.examples.trace_pipeline import route_adapter
 
                 _ad = route_adapter(topic)
-                if _ad is not None:
-                    _chk = check_graph_topic_code(code, getattr(_ad, "slug", ""))
+                _slug = getattr(_ad, "slug", "") if _ad is not None else ""
+                _chk = check_graph_topic_code(code, _slug) if _slug else None
+                if _chk is not None and _chk.status == "fail":   # broken displayed code -> regen + re-check
+                    _fixed = None
+                    try:
+                        from app.services.examples.code_repair import generate_clean_code
+
+                        _fixed = generate_clean_code(topic, broken_code=code)
+                    except Exception:  # noqa: BLE001
+                        _fixed = None
+                    if _fixed and check_graph_topic_code(_fixed, _slug).status == "ok":
+                        _replace_lesson_code_snippets(cards, _fixed)
+                        code = _fixed                            # the worked example uses the fixed code too
+                        _gr.we(code_validation={"status": "fixed", "reason": _chk.reason})
+                        _log.info("worked-example: A2 caught broken %s code for %s — regenerated a valid impl",
+                                  _slug, topic.get("id"))
+                    else:
+                        _gr.we(code_validation={"status": "fail", "reason": _chk.reason})
+                        _gr.error(f"displayed code is not a valid implementation (regen failed): {_chk.reason}")
+                elif _chk is not None:
                     _gr.we(code_validation={"status": _chk.status, "reason": _chk.reason})
-                    if _chk.status == "fail":
-                        _gr.error(f"displayed code is not a valid implementation: {_chk.reason}")
-            except Exception:  # noqa: BLE001 — validation/telemetry must never break the lesson
+            except Exception:  # noqa: BLE001 — validation must never break the lesson
                 pass
 
         existing = _existing_problem_text(cards)
