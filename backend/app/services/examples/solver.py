@@ -806,6 +806,8 @@ def solve_worked_example(
         if _tp_enabled():
             tp_result = solve_trace_pipeline(topic, code=code)     # coding topics anchor Work to this code
             if tp_result is not None:
+                from . import generation_report as _gr
+                _gr.we(final_source="trace_pipeline")
                 return tp_result
     except Exception:  # noqa: BLE001 — the trace pipeline must never break legacy generation
         pass
@@ -822,6 +824,8 @@ def solve_worked_example(
 
             shadow = solve_via_pipeline(topic, code=code, solver=solver)  # type: ignore[arg-type]
             if shadow:
+                from . import generation_report as _gr
+                _gr.we(final_source="gen_foundation")
                 return shadow
     except Exception:  # noqa: BLE001 — the shadow path must never break legacy generation
         pass
@@ -829,6 +833,8 @@ def solve_worked_example(
     fn = solver or _default_solver
 
     if code:
+        from . import generation_report as _gr
+        _gr.we(final_source="legacy_coding")
         return _solve_coding_worked_example(
             topic, fn, existing_problem=existing_problem, code=code, feedback=feedback)
 
@@ -869,6 +875,8 @@ def solve_worked_example(
     if not cards:
         return None
 
+    from . import generation_report as _gr
+    _gr.we(final_source="legacy_outline")
     final = str(outline.get("expected_final_answer") or "").strip()
     full_steps = len({a.get("full_step") for a in plan if a.get("full_step") is not None})
     return {
@@ -1426,11 +1434,14 @@ def apply_llm_solved_worked_example(
     """Replace a topic's worked example with an LLM-solved, start-to-finish text breakdown.
     For a coding topic the solve EXPLAINS the code's execution conceptually (never by line
     number) and each card carries the code for the IDE panel. Failure-safe throughout."""
+    from app.services.examples import generation_report as _gr
+    _gr.start(topic)
     try:
         if not solver_enabled() or not isinstance(lesson_json, dict):
             return False
         cards = lesson_json.get("lesson_cards")
         if not isinstance(cards, list) or not cards:
+            _gr.error("lesson has no cards to attach a worked example to")
             return False
         has_we = any(
             str(c.get("blueprint_key") or c.get("card_type") or "").lower() == "worked_example"
@@ -1458,6 +1469,8 @@ def apply_llm_solved_worked_example(
             }
             _log.warning("worked-example solver: produced nothing for %s (api_key=%s) — lean fallback shown",
                          topic.get("id"), has_key)
+            _gr.we(final_source=None)
+            _gr.error("solver_returned_none" + ("" if has_key else "_no_api_key"))
             return False
         if sol.get("coding_fallback_used"):
             # The structural coding solver could not pass the gate (or the cards call errored). Keep
@@ -1514,7 +1527,16 @@ def apply_llm_solved_worked_example(
             "version": SOLVER_VERSION, "steps": len(step_cards), "coding": bool(code),
             "complete": status.get("complete"), "reason": status.get("reason"), "attempts": attempts,
         }
+        _gr.we(completeness={"complete": status.get("complete"), "reason": status.get("reason"),
+                             "steps": len(step_cards), "attempts": attempts})
         return True
     except Exception as exc:  # noqa: BLE001 — the solver must never break a lesson
         _log.warning("worked-example solver: apply failed for %s: %s", topic.get("id"), exc)
+        _gr.error(f"apply raised: {exc!r}")
         return False
+    finally:
+        # Persist the causal record (§M7) to logs/generation_report.jsonl and onto the lesson metadata,
+        # on EVERY exit. Best-effort — never affects the return value.
+        _report = _gr.finish_and_persist()
+        if _report is not None and isinstance(lesson_json, dict):
+            lesson_json.setdefault("metadata", {})["generation_report"] = _report

@@ -195,6 +195,7 @@ def solve_trace_pipeline(topic: dict[str, Any], *, format_fn: Optional[FormatFn]
                          critic_fn: Optional[FormatFn] = None, seed: Optional[int] = None,
                          code: Optional[str] = None
                          ) -> Optional[dict[str, Any]]:
+    from . import generation_report as _gr
     fmt = format_fn or default_format_fn
     title = str(topic.get("title") or topic.get("name") or topic.get("id") or "?")
     ctype = str(topic.get("topic_type") or topic.get("course_type") or "?")
@@ -202,11 +203,13 @@ def solve_trace_pipeline(topic: dict[str, Any], *, format_fn: Optional[FormatFn]
     if adapter is not None:                                        # deterministic path (HARD guarantee)
         _log.info("WORKED-EXAMPLE ADAPTER: topic=%r type=%s -> adapter=%s (verified trace path)",
                   title, ctype, adapter.slug)
+        _gr.we(adapter=adapter.slug, tp_attempted=True)
         seed = seed if seed is not None else _seed_for(topic)
         trace = select_instance(adapter, seed)                     # Stage 0 + 1
         if trace is None or structural_invariants(trace, adapter):  # §5 gate (Stage 2 is ground truth)
             _log.warning("WORKED-EXAMPLE ADAPTER: topic=%r adapter=%s -> WITHHELD (no teaching trace) — defer",
                          title, adapter.slug)
+            _gr.we(tp_shipped=False, tp_reason="no_teaching_trace")
             return None
         result = _format_validate_ship(topic, trace, adapter, fmt, code=code)
         _log.info("WORKED-EXAMPLE ADAPTER: topic=%r adapter=%s -> %s",
@@ -215,6 +218,7 @@ def solve_trace_pipeline(topic: dict[str, Any], *, format_fn: Optional[FormatFn]
     _guard = " [BLOCKED by coding_implementation guard - needs C2]" if ctype == "coding_implementation" else ""
     _log.info("WORKED-EXAMPLE ADAPTER: topic=%r type=%s -> NO adapter%s (deferring to gen_foundation/legacy)",
               title, ctype, _guard)
+    _gr.we(adapter=None, tp_attempted=False, tp_reason="no_adapter")
     if _reason_extract_enabled():                                  # non-deterministic path (SOFT) — opt-in
         return _solve_via_reason_extract(topic, fmt, reason_fn, extract_fn, critic_fn)
     return None                                                    # defer to existing systems
@@ -225,18 +229,27 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
     then SPLIT BY FAILURE SOURCE — a fidelity failure is a backend/trace defect a formatter retry cannot
     fix (withhold + log immediately); only a HARD prose contradiction is worth re-formatting; missing/soft
     prose is advisory in Phase 1 (logged, not blocking). `validate_visual_state=False` in Phase 1."""
+    from . import generation_report as _gr
     last_raw, last_cards, last_prose = None, None, None
+    reason, detail, attempts = "formatter_none", [], 0
+    n_steps = len(trace.steps)
     for _ in range(_MAX_FORMAT_ATTEMPTS):
+        attempts += 1
         raw = fmt(build_format_payload(trace, code=code))
         cards = _normalize_and_attach(raw, trace)
         last_raw, last_cards = raw, cards
-        if cards is None:
-            continue                                               # formatter produced nothing usable -> retry
+        if cards is None:                                          # formatter produced nothing usable -> retry
+            n_raw = len(raw["cards"]) if isinstance(raw, dict) and isinstance(raw.get("cards"), list) else None
+            reason = "count_mismatch" if (n_raw is not None and n_raw != n_steps) else "formatter_none"
+            detail = [f"formatter cards={n_raw} vs verified steps={n_steps}"] if reason == "count_mismatch" else ["formatter returned no usable cards"]
+            continue
         fid = validate_fidelity(cards, trace, adapter, validate_visual_state=False)
         if not fid.ok:                                             # BACKEND/TRACE defect — retry can't fix it
             _log.error("trace_pipeline: %s fidelity failure %r (backend/trace defect) — withholding",
                        getattr(adapter, "slug", "?"), fid.code)
             _retain_debug(topic, trace, raw, cards, fid, [], shipped=False)
+            _gr.we(tp_shipped=False, tp_reason="fidelity_fail", tp_detail=[str(fid.code)],
+                   verified_steps=n_steps, formatter_cards=len(cards), tp_attempts=attempts)
             return None
         prose = validate_prose(cards, trace, adapter, code_anchored=bool(code))
         last_prose = prose
@@ -246,9 +259,14 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
             _log.info("trace_pipeline: %s advisory prose (missing/soft) x%d", adapter.slug, len(advisory))
         if not hard:                                               # contradictions are the only blocker
             _retain_debug(topic, trace, raw, cards, fid, prose, shipped=True)
+            _gr.we(tp_shipped=True, tp_reason="shipped", verified_steps=n_steps,
+                   formatter_cards=len(cards), tp_attempts=attempts)
             return _to_solve_result(trace, cards)
-        # else: a hard contradiction -> re-format (the formatter is the fixable source)
+        reason = "prose_fail"                                      # a hard contradiction -> re-format
+        detail = [f"{v.code} {v.detail} ({v.trace_step_id})" for v in hard][:6]
     _retain_debug(topic, trace, last_raw, last_cards, None, last_prose, shipped=False)
+    _gr.we(tp_shipped=False, tp_reason=reason, tp_detail=detail, verified_steps=n_steps,
+           formatter_cards=(len(last_cards) if last_cards else None), tp_attempts=attempts)
     return None
 
 

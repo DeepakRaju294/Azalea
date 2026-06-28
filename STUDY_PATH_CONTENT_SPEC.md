@@ -36,6 +36,7 @@ Every Fix is one of these. The card-structure work concentrates in **M2 / §1**.
 | **M4** | **Deterministic planning rule** | `lean_lesson_generator.py` post-generation enforcement / `topic_decomposition.py` |
 | **M5** | **Frontend rendering** | `learn/page.tsx` |
 | **M6** | **Content acceptance suite** (instructional-quality regression gate) | golden-lesson fixtures + content-shape assertions (§H) |
+| **M7** | **Generation observability** (causal record, so issues are *read* not *guessed*) | `generation_report.py` → `lesson_json.metadata.generation_report` + `logs/generation_report.jsonl` |
 
 ---
 
@@ -393,6 +394,16 @@ change:
 ```
 This becomes the permanent quality gate — the product's differentiator is *correct output that is fast
 to understand and reconstruct*, not correctness alone.
+
+## §M7. Generation observability (IMPLEMENTED — always-on causal record)
+Issues were being diagnosed by inferring from the *output* (e.g. guessing the walkthrough withhold was
+`value_not_allowed` — it was actually `prose_fail`: `edge_not_discussed`/`decision_mismatch`). Fix: a
+per-topic **Generation Report** records the worked-example decision tree — `adapter`, trace-pipeline
+`tp_shipped`/`tp_reason` (`shipped` | `formatter_none` | `count_mismatch` | `fidelity_fail` |
+`prose_fail` with `tp_detail`), `final_source` (`trace_pipeline` | `gen_foundation` | `legacy_*` | None),
+`completeness`, and `errors` (incl. empty-lesson). Persisted to `lesson_json.metadata.generation_report`
+and `logs/generation_report.jsonl`. **Every audit now reads this** instead of guessing. Future: extend to
+lean-lesson and topic-planning levels.
 
 ## §I. Sequencing (severity × leverage — v2, revised)
 The key change from v1: **variant alignment (D2) moves much earlier** — it affects correctness, formatter
