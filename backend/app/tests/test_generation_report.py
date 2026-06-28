@@ -67,5 +67,31 @@ class TracePipelineRecordsOutcome(unittest.TestCase):
         gr.finish_and_persist()
 
 
+class TargetedRetry(unittest.TestCase):
+    """M7-driven: the retry loop now feeds the failure back into the next attempt, so a recoverable
+    withhold (wrong card count) is fixed instead of discarded. Proven with a feedback-responsive stub."""
+    def test_count_mismatch_recovers_with_feedback(self):
+        topic = {"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"}
+        gr.start(topic)
+        calls = {"n": 0}
+
+        def fmt(payload):
+            calls["n"] += 1
+            if "FIX FROM THE PREVIOUS ATTEMPT" not in payload["user"]:
+                return {"cards": [{"title": "x", "work": ["w"], "result": "r"}]}   # wrong count -> withhold
+            import json
+            body = payload["user"].split("STEPS (verified, describe faithfully):", 1)[1].split("\n\nFIX", 1)[0]
+            steps = json.loads(body)                                              # got feedback -> faithful N cards
+            return {"cards": [{"title": s["operation"], "goal": "", "reasoning": "",
+                               "work": s["facts"].get("required_facts", []) + [s["expected_visible_result"]],
+                               "result": s["expected_visible_result"]} for s in steps]}
+
+        res = tp.solve_trace_pipeline(topic, format_fn=fmt)
+        self.assertIsNotNone(res, "targeted retry did not recover the count mismatch")
+        self.assertEqual(calls["n"], 2)                                          # 2nd attempt saw the feedback
+        self.assertTrue(gr.current().worked_example.get("tp_shipped"))
+        gr.finish_and_persist()
+
+
 if __name__ == "__main__":
     unittest.main()

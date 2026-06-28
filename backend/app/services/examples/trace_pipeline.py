@@ -100,27 +100,46 @@ _CODING_FORMAT_SYSTEM = (
 )
 
 
-def build_format_payload(trace: ContractTrace, code: Optional[str] = None) -> dict[str, str]:
+def _retry_feedback(reason: str, detail: list[str], n_steps: int) -> str:
+    """Targeted feedback for the NEXT format attempt (the dominant withholds — prose_fail/count_mismatch
+    — were retried with the SAME payload, so they never improved). Evidence from M7."""
+    if reason == "count_mismatch":
+        return (f"Your previous output had the WRONG number of cards. Produce EXACTLY {n_steps} cards — "
+                "ONE per verified step, in order. Do not split a step into several cards or merge steps.")
+    if reason == "prose_fail":
+        return ("Your previous output failed these checks: " + "; ".join(detail) + ". "
+                "Fix each: every step must NAME the exact entity/values it acts on (e.g. the edge and its "
+                "weight) AND explicitly state its decision in words (accept/add vs skip/reject-as-cycle).")
+    return ""
+
+
+def build_format_payload(trace: ContractTrace, code: Optional[str] = None,
+                         feedback: str = "") -> dict[str, str]:
     steps = [{
         "id": s.id, "operation": s.operation, "inputs": s.inputs,
         "prior_state": s.prior_state, "state_after": s.state_after,
         "expected_visible_result": s.expected_visible_result, "facts": s.facts,
     } for s in trace.steps]
+    fb = f"\n\nFIX FROM THE PREVIOUS ATTEMPT (address ALL of this):\n{feedback}" if feedback else ""
     if code:                                                   # coding topic — anchor Work to the shown code
         numbered = "\n".join(f"{i:>3}  {ln}" for i, ln in enumerate(code.split("\n"), start=1))
         user = (f"PROBLEM: {trace.problem}\n\nCODE (1-based line numbers — anchor every work line and "
                 f"code_lines entry to THESE lines):\n{numbered}\n\nSTEPS (verified, describe faithfully):\n"
-                f"{json.dumps(steps, default=str)}")
+                f"{json.dumps(steps, default=str)}{fb}")
         return {"system": _CODING_FORMAT_SYSTEM, "user": user}
     system = (
         "You format an ALREADY-CORRECT, verified solution into learner-facing step cards. Write EXACTLY "
-        "one card per step, in order. For each card write only: title, goal, reasoning, work (list), "
-        "result. Use ONLY the step's facts — state the required_facts, use only allowed_values, never make "
-        "a forbidden_claim. Describe the operation and resulting window accurately; do NOT invent or alter "
-        "any value, and do NOT output any machine-state/JSON-state fields. "
+        "one card per step, in order (do NOT split or merge steps). For each card write only: title, goal, "
+        "reasoning, work (list), result. Use ONLY the step's facts — state EVERY required_fact, use only "
+        "allowed_values, never make a forbidden_claim. "
+        "EACH card MUST (a) NAME the exact entity and values the step acts on — e.g. the edge and its weight "
+        "like '(A,C,13)' — and (b) STATE the decision in words (e.g. 'add it to the MST' / 'accept', or "
+        "'skip it — it would form a cycle'). A step that omits the entity/values or the decision is INVALID. "
+        "Do NOT invent or alter any value, and do NOT output any machine-state/JSON-state fields. "
         'Return ONLY JSON: {"cards":[{"title","goal","reasoning","work":[...],"result"}, ...]}'
     )
-    user = f"PROBLEM: {trace.problem}\nSTEPS (verified, describe faithfully):\n{json.dumps(steps, default=str)}"
+    user = (f"PROBLEM: {trace.problem}\nSTEPS (verified, describe faithfully):\n"
+            f"{json.dumps(steps, default=str)}{fb}")
     return {"system": system, "user": user}
 
 
@@ -231,17 +250,18 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
     prose is advisory in Phase 1 (logged, not blocking). `validate_visual_state=False` in Phase 1."""
     from . import generation_report as _gr
     last_raw, last_cards, last_prose = None, None, None
-    reason, detail, attempts = "formatter_none", [], 0
+    reason, detail, attempts, feedback = "formatter_none", [], 0, ""
     n_steps = len(trace.steps)
     for _ in range(_MAX_FORMAT_ATTEMPTS):
         attempts += 1
-        raw = fmt(build_format_payload(trace, code=code))
+        raw = fmt(build_format_payload(trace, code=code, feedback=feedback))   # M7-driven: targeted retry
         cards = _normalize_and_attach(raw, trace)
         last_raw, last_cards = raw, cards
         if cards is None:                                          # formatter produced nothing usable -> retry
             n_raw = len(raw["cards"]) if isinstance(raw, dict) and isinstance(raw.get("cards"), list) else None
             reason = "count_mismatch" if (n_raw is not None and n_raw != n_steps) else "formatter_none"
             detail = [f"formatter cards={n_raw} vs verified steps={n_steps}"] if reason == "count_mismatch" else ["formatter returned no usable cards"]
+            feedback = _retry_feedback(reason, detail, n_steps)
             continue
         fid = validate_fidelity(cards, trace, adapter, validate_visual_state=False)
         if not fid.ok:                                             # BACKEND/TRACE defect — retry can't fix it
@@ -264,6 +284,7 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
             return _to_solve_result(trace, cards)
         reason = "prose_fail"                                      # a hard contradiction -> re-format
         detail = [f"{v.code} {v.detail} ({v.trace_step_id})" for v in hard][:6]
+        feedback = _retry_feedback(reason, detail, n_steps)        # targeted: tell it exactly what to fix
     _retain_debug(topic, trace, last_raw, last_cards, None, last_prose, shipped=False)
     _gr.we(tp_shipped=False, tp_reason=reason, tp_detail=detail, verified_steps=n_steps,
            formatter_cards=(len(last_cards) if last_cards else None), tp_attempts=attempts)
