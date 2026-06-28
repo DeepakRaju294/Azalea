@@ -1960,6 +1960,7 @@ _UNIVERSAL_LEAN_RULES: dict[str, CardStageRule] = {
             "Start from a tiny valid beginning: usually the function signature, then base case or initialization. Each later code_walkthrough card must show code_snippet as the full implementation-so-far.",
             "Do not show the completed code until the final code_walkthrough card. Earlier cards must not include future lines or future branches.",
             "Explain the newly added functional block only. Do not re-explain the algorithm behavior already taught in the walkthrough topic.",
+            "BRIDGE concept->code at least once: explicitly connect the idea from the walkthrough to its code realization (e.g. 'the components you merged in the walkthrough ARE these disjoint sets'; 'the cheapest crossing edge is what this heap pops'). Keep the implementation the SAME variant the walkthrough taught.",
             "Use sub-bullets under each main bullet for how the code works, why it is shaped that way, and which state/variable changes. Do not flatten those details into separate unrelated main bullets.",
             "For each major line or block: state what it does, why it must exist, and what variable/structure it changes.",
             "Do NOT begin bullets with 'This line…' / 'This code…' (a robotic decompiler reading). Lead with the PURPOSE and the connection to the algorithm — e.g. 'Union-find IS the cycle check: if two endpoints already share a root, adding the edge would close a loop', not 'This line calls find on u'.",

@@ -85,8 +85,7 @@ _CODING_FORMAT_SYSTEM = (
     "EXACTLY one card per step, in order. The trace is the source of truth: use ONLY each step's "
     "operation/decision/facts; never invent or alter a value, never add, remove, or reorder steps.\n"
     "FIELDS per card:\n"
-    "- goal: the structural step THIS iteration performs ('consider the next edge', 'settle the nearest "
-    "node') — empty if the title already says it.\n"
+    "- goal: leave EMPTY — the card title already states the structural step (do not restate it).\n"
     "- reasoning: WHICH code construct implements it and why (the condition / loop / call / branch).\n"
     "- work: REQUIRED list. Each line BEGINS with the LITERAL code line from the CODE below, quoted "
     "VERBATIM with its variable names (e.g. `if ds.find(u) != ds.find(v):` then `mst.append((u, v, w))`), "
@@ -167,6 +166,8 @@ def build_format_payload(trace: ContractTrace, code: Optional[str] = None,
         "EACH card MUST (a) NAME the exact entity and values the step acts on — e.g. the edge and its weight "
         "like '(A,C,13)' — and (b) STATE the decision in words (e.g. 'add it to the MST' / 'accept', or "
         "'skip it — it would form a cycle'). A step that omits the entity/values or the decision is INVALID. "
+        "On the step that COMPLETES the structure (the final accept that finishes the spanning tree / the "
+        "result), say so explicitly in the result (e.g. 'all vertices connected — the MST is complete'). "
         "Do NOT invent or alter any value, and do NOT output any machine-state/JSON-state fields. "
         'Return ONLY JSON: {"cards":[{"title","goal","reasoning","work":[...],"result"}, ...]}'
     ) + g_rule
