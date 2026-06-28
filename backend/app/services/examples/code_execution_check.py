@@ -217,6 +217,76 @@ def _i(label: Any) -> Any:
     return ord(s) - 65 if len(s) == 1 and "A" <= s <= "Z" else label
 
 
+def _reference_mst_total(num_nodes: int, edges: list) -> Optional[int]:
+    """The true minimum-spanning-tree total weight via Kruskal over the labelled graph — the ground truth
+    A2 checks the displayed code against. None if the graph is not connected."""
+    nodes: set = set()
+    triples = [_as_edge(e) for e in edges]
+    for u, v, _ in triples:
+        if u is not None:
+            nodes.add(str(u)); nodes.add(str(v))
+    parent = {n: n for n in nodes}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]; x = parent[x]
+        return x
+
+    total, count = 0, 0
+    for u, v, w in sorted((t for t in triples if t[0] is not None), key=lambda t: t[2]):
+        a, b = find(str(u)), find(str(v))
+        if a != b:
+            parent[a] = b; total += w; count += 1
+    return total if count == num_nodes - 1 else None
+
+
+def _test_graph(seed: int) -> tuple:
+    """A small connected weighted graph (spanning tree + a few cross edges), as (n, edges, adjacency)."""
+    import random
+    rng = random.Random(seed)
+    n = rng.randint(5, 6)
+    labels = [chr(65 + i) for i in range(n)]
+    edges: list = []
+    seen: set = set()                                       # avoid PARALLEL edges (same pair, two weights)
+    w = list(range(1, 21)); rng.shuffle(w)                  # distinct weights -> unambiguous MST
+    wi = iter(w)
+    for j in range(1, n):                                   # spanning tree -> connected
+        p = labels[rng.randrange(j)]
+        seen.add(frozenset((labels[j], p)))
+        edges.append([labels[j], p, next(wi)])
+    target, tries = rng.randint(2, 4), 0
+    while len(edges) - (n - 1) < target and tries < 30:     # cross edges -> real choices
+        tries += 1
+        a, b = rng.sample(labels, 2)
+        if frozenset((a, b)) in seen:
+            continue
+        seen.add(frozenset((a, b)))
+        edges.append([a, b, next(wi)])
+    adjacency: dict = {x: [] for x in labels}
+    for u, v, w in edges:
+        adjacency[u].append([v, w]); adjacency[v].append([u, w])
+    return n, edges, adjacency
+
+
+def check_graph_topic_code(code: str, slug: str, *, trials: int = 2) -> CodeCheck:
+    """A2 entry for a graph-MST coding topic: run the displayed code on freshly generated test graphs and
+    assert it produces a valid MST (caught the live Prim-returns-vertices bug). Returns the FIRST `fail`
+    or `unverifiable`; `ok` only if every trial passes. `unverifiable` for non-graph topics / unrunnable
+    code — never a false `fail`."""
+    if slug not in ("kruskal", "prim"):
+        return CodeCheck("unverifiable", f"no executable check for adapter {slug!r}")
+    for s in range(1, trials + 1):
+        n, edges, adjacency = _test_graph(s)
+        expected = _reference_mst_total(n, edges)
+        if expected is None:
+            continue
+        result = validate_graph_implementation(code, num_nodes=n, edges=edges, adjacency=adjacency,
+                                               expected_total=expected, slug=slug)
+        if result.status in ("fail", "unverifiable"):
+            return result
+    return CodeCheck("ok")
+
+
 def validate_graph_implementation(code: str, *, num_nodes: int, edges: list, adjacency: dict,
                                   expected_total: Optional[int], slug: str = "") -> CodeCheck:
     """Run the displayed graph-MST code on the instance and check the result is a valid MST. Returns

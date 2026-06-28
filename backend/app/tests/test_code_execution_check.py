@@ -3,8 +3,8 @@ Pure MST property checker + runnable detection + real subprocess execution on co
 Fully offline (no LLM); the subprocess runs the venv python on a temp harness."""
 import unittest
 
-from app.services.examples.code_execution_check import (find_entry_function, is_runnable,
-                                                        mst_properties,
+from app.services.examples.code_execution_check import (check_graph_topic_code, find_entry_function,
+                                                        is_runnable, mst_properties,
                                                         validate_graph_implementation)
 
 # A 4-node graph (A,B,C,D); a minimum spanning tree has weight 1+1+2 = 4.
@@ -107,6 +107,18 @@ class EndToEndExecution(unittest.TestCase):
         r = validate_graph_implementation(_PRIM_VERTICES, num_nodes=_NODES, edges=_EDGES, adjacency=_ADJ,
                                           expected_total=_MIN_TOTAL, slug="prim")
         self.assertEqual(r.status, "fail", r.reason)   # the live A2 bug is caught by execution
+
+
+class SelfContainedTopicCheck(unittest.TestCase):
+    """The wired entry: generate test graphs internally, compute the true MST total, run the code."""
+    def test_correct_kruskal_passes_on_generated_graphs(self):
+        self.assertEqual(check_graph_topic_code(_KRUSKAL_OK, "kruskal").status, "ok")
+
+    def test_prim_returning_vertices_fails_on_generated_graphs(self):
+        self.assertEqual(check_graph_topic_code(_PRIM_VERTICES, "prim").status, "fail")
+
+    def test_non_graph_topic_is_unverifiable(self):
+        self.assertEqual(check_graph_topic_code(_KRUSKAL_OK, "binary_search").status, "unverifiable")
 
 
 if __name__ == "__main__":

@@ -1456,6 +1456,20 @@ def apply_llm_solved_worked_example(
         is_coding = str(topic.get("topic_type") or "").lower() == "coding_implementation"
         code = _validated_lesson_code(cards, topic) if is_coding else None
 
+        if code:                                           # A2: execute the displayed code -> record to M7
+            try:
+                from app.services.examples.code_execution_check import check_graph_topic_code
+                from app.services.examples.trace_pipeline import route_adapter
+
+                _ad = route_adapter(topic)
+                if _ad is not None:
+                    _chk = check_graph_topic_code(code, getattr(_ad, "slug", ""))
+                    _gr.we(code_validation={"status": _chk.status, "reason": _chk.reason})
+                    if _chk.status == "fail":
+                        _gr.error(f"displayed code is not a valid implementation: {_chk.reason}")
+            except Exception:  # noqa: BLE001 — validation/telemetry must never break the lesson
+                pass
+
         existing = _existing_problem_text(cards)
         sol = solve_worked_example(topic, existing_problem=existing, code=code, solver=solver)
         if sol is None:
