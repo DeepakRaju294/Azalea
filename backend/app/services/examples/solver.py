@@ -779,6 +779,37 @@ def solve_worked_example(
 
     Coding-implementation topics take the STRUCTURAL path (CODING_WORKED_EXAMPLE_SPEC): structural-step
     outline + hard gate + code-anchored cards — NOT the runtime line-execution trace."""
+    # WORKED_EXAMPLE_ACCURACY_SPEC (the verification ladder) — OFF by default. When
+    # AZALEA_WORKED_EXAMPLE_ACCURACY_LADDER is set, this is the FRONT DOOR: a determinate computation is
+    # routed to (verified trace) ∨ (verified endpoint) ∨ (guided_fallback) and NEVER reaches the legacy
+    # self-graded path below (Phase A1 invariant). A conceptual topic returns None → defers to the existing
+    # path (no false rigor). Returns None ⇒ defer; any non-None result is shipped as-is.
+    try:
+        from app.services.examples.accuracy_ladder import (_enabled as _ladder_enabled,
+                                                           solve_via_accuracy_ladder)
+        if _ladder_enabled():
+            ladder_result = solve_via_accuracy_ladder(
+                topic, existing_problem=existing_problem, code=code, solver=solver)
+            if ladder_result is not None:
+                return ladder_result
+            # None here means a conceptual/illustrative topic → fall through to the existing card path.
+    except Exception:  # noqa: BLE001 — the ladder must never break legacy generation
+        pass
+
+    # WORKED_EXAMPLE_REASONING_SPEC (trace pipeline) — OFF by default. Only when
+    # AZALEA_WORKED_EXAMPLE_TRACE_PIPELINE is set do supported deterministic topics (Phase 1: binary
+    # search) route to the trace-first pipeline; it returns None (defer) for unsupported topics or any
+    # failure, so the flag can only replace an example or defer — never break a working topic.
+    try:
+        from app.services.examples.trace_pipeline import _enabled as _tp_enabled, solve_trace_pipeline
+
+        if _tp_enabled():
+            tp_result = solve_trace_pipeline(topic, code=code)     # coding topics anchor Work to this code
+            if tp_result is not None:
+                return tp_result
+    except Exception:  # noqa: BLE001 — the trace pipeline must never break legacy generation
+        pass
+
     # GENERATION_AND_VISUAL_FOUNDATION_SPEC §12 step 6 cutover — OFF by default. Only when
     # AZALEA_GEN_FOUNDATION_SHADOW is set does the new single-pass path run; it returns None
     # (and we fall back to the legacy path below) when offline / on any failure, so flipping the
@@ -1040,6 +1071,32 @@ def _fix_work_line_casing(line: str, identifiers: list[str]) -> str:
     return _fix_identifier_casing(line[:idx], identifiers) + line[idx:]
 
 
+def _step_summary(goal: str, result: str) -> str:
+    """A short (≤8 word) summary phrase for a worked-example step, from its goal/result. '' if none."""
+    src = (goal or result or "").strip()
+    if not src:
+        return ""
+    head = re.split(r"[.;:\n]", src, 1)[0].strip()
+    head = re.sub(r"\b(on|in|of|to|for|with) the current state\b", "", head, flags=re.IGNORECASE).strip()
+    head = re.sub(r"\s+", " ", head).strip(" ,")
+    summary = " ".join(head.split(" ")[:8])[:56].rstrip(" ,")
+    return summary
+
+
+def _step_card_title(raw_title: Any, goal: str, result: str, n: int) -> str:
+    """Worked-example step titles use ONE consistent system: ``Step N: <few-word summary>`` (the
+    algorithm-walkthrough style). The model's title (minus any 'Step N:' it already added) is the summary;
+    if absent, derive it from goal/result; only when there is truly nothing to say is it a bare ``Step N``."""
+    # strip any leading "Step N" the model added — WITH or WITHOUT a separator, so a bare "Step 10"
+    # title doesn't get re-prefixed into "Step 10: Step 10".
+    raw = re.sub(r"^\s*step\s+\d+\b\s*[:.\-]?\s*", "", str(raw_title or "").strip(), flags=re.IGNORECASE).strip()
+    summary = raw or _step_summary(goal, result)
+    if summary:
+        summary = summary[:1].upper() + summary[1:]
+        return f"Step {n + 1}: {summary}"
+    return f"Step {n + 1}"
+
+
 def _build_solution_cards(
     sol: dict[str, Any], topic: dict[str, Any], *, code: Optional[str] = None,
 ) -> list[dict[str, Any]]:
@@ -1082,7 +1139,7 @@ def _build_solution_cards(
         reasoning = str(card.get("reasoning") or "").strip()
         work = [str(w) for w in (card.get("work") or [])]
         result = str(card.get("result") or "").strip()
-        card_title = str(card.get("title") or f"Step {n + 1}")
+        card_title = _step_card_title(card.get("title"), goal, result, n)
         # Prose (goal/reasoning/result/title): match FUNCTION names to code casing only — leave other
         # words alone. Work lines are CODE: match every identifier so a leading `Mst` becomes `mst`.
         if fn_names:
@@ -1103,9 +1160,21 @@ def _build_solution_cards(
             meta["prior_state"] = card["prior_state"]
         if card.get("cases_covered"):
             meta["cases_covered"] = card["cases_covered"]
-        # Best-effort per-action code anchor — keep ONLY when it matches the work length 1:1
-        # (a mismatched/absent anchor is discarded; it never blocks rendering — spec §9).
+        # Per-action code anchor (CODING_WORKED_EXAMPLE_SPEC §5/§9). The trace-pipeline coding formatter
+        # now emits `code_lines` itself (Work = verbatim code), but we TRUST it only when it validates
+        # (every cited line in range + identifiers overlap the work line). On absence/failure we derive
+        # anchors deterministically from the work prose (works now that Work is verbatim code); the trace
+        # is already verified, so a near-miss line is only cosmetic.
         code_lines = card.get("code_lines")
+        if code and work:
+            try:
+                from app.services.examples.code_trace_map import (map_work_lines_to_code,
+                                                                  validate_code_lines)
+
+                if not (isinstance(code_lines, list) and validate_code_lines(code, work, code_lines)):
+                    code_lines = map_work_lines_to_code(code, work)
+            except Exception:  # noqa: BLE001 — anchors are best-effort; never block rendering
+                pass
         if isinstance(code_lines, list) and len(code_lines) == len(work):
             meta["code_lines"] = code_lines
         # Card-level block fallback: the span of EVERY line this card references. When the per-action
@@ -1118,6 +1187,19 @@ def _build_solution_cards(
             flat += [n for n in code_lines if isinstance(n, int) and n > 0]
             if flat:
                 meta["code_block"] = [min(flat), max(flat)]
+        elif code:
+            # No per-action anchor (work was a STATE dump, not operation prose). A step is one
+            # iteration of the main loop, so highlight that loop's body — narrowed to the guard line
+            # when this step skips (a no-progress iteration). Structural (AST), no hardcoded lines.
+            try:
+                from app.services.examples.code_trace_map import code_block_for_step, looks_negative
+
+                blob = " ".join([result, reasoning, " ".join(work)])
+                block = code_block_for_step(code, negative=looks_negative(blob))
+                if block:
+                    meta["code_block"] = block
+            except Exception:  # noqa: BLE001 — anchors are best-effort; never block rendering
+                pass
         cards.append({
             "id": f"we-solve-{tid}-{n}",
             "blueprint_key": "worked_example",

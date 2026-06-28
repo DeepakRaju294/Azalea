@@ -724,6 +724,10 @@ export default function StudyPathLearnPage() {
   >("initial");
   const cardScrollContainerRef = useRef<HTMLDivElement | null>(null);
   const lessonCacheRef = useRef<Record<string, Lesson>>({});
+  // A topic that has EVER been ready stays visitable: the backend keeps its lesson_json during an in-place
+  // refresh/re-claim (it only flips generation_status ready->generating), so a momentary "generating" on a
+  // previously-ready topic must NOT lock it in the nav. Tracks topic ids that were ready at least once.
+  const everReadyTopicIdsRef = useRef<Set<string>>(new Set());
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const lastTransitionAtRef = useRef<number | null>(null);
   const segmentRegenerationCooldownRef = useRef<{
@@ -1095,12 +1099,24 @@ export default function StudyPathLearnPage() {
   const isTopicLessonReady = useCallback(
     (topicId: string) =>
       Boolean(lessonCacheRef.current[topicId]) ||
+      everReadyTopicIdsRef.current.has(topicId) ||
       topicLessonStatuses[topicId] === "ready" ||
       (topicId === selectedTopicId &&
         lesson?.topic_id === topicId &&
         lesson.generation_status === "ready"),
     [lesson, selectedTopicId, topicLessonStatuses],
   );
+
+  // Record every topic that reaches "ready" so a later in-place refresh (status momentarily flips to
+  // "generating" while lesson_json is preserved) can never re-lock it in the nav.
+  useEffect(() => {
+    const seen = everReadyTopicIdsRef.current;
+    for (const [tid, st] of Object.entries(topicLessonStatuses)) {
+      if (st === "ready") seen.add(tid);
+    }
+    if (lesson?.topic_id && lesson.generation_status === "ready") seen.add(lesson.topic_id);
+    for (const tid of Object.keys(lessonCacheRef.current)) seen.add(tid);
+  }, [topicLessonStatuses, lesson]);
   const nextTopicStatus = upcomingTopic
     ? topicLessonStatuses[upcomingTopic.id]
     : "";
