@@ -67,6 +67,14 @@ def worked_example_shape_violations(cards: list[dict[str, Any]], *,
         if coding and not ((c.get("metadata") or {}).get("code_lines")
                            or (c.get("metadata") or {}).get("code_block")):
             issues.append(f"{title}: coding step has no code anchor (code_lines/code_block)")
+    # titles: a raw stage-id title ("Step 3: Select_edge") repeats every step and reads generated
+    suffixes = [re.sub(r"^step\s+\d+\s*[:.\-]?\s*", "", str(c.get("title") or ""), flags=re.I).strip().lower()
+                for c in steps]
+    if any(re.fullmatch(r"[a-z]+(?:_[a-z]+)*", s) for s in suffixes if s):
+        issues.append("a step title is a raw operation id (e.g. 'Select_edge')")
+    nonempty = [s for s in suffixes if s]
+    if len(nonempty) >= 3 and len(set(nonempty)) == 1:
+        issues.append(f"all step titles repeat the same label ('{nonempty[0]}')")
     if steps:
         last = _result_text(steps[-1]).lower()
         if not re.search(r"complete|all (?:nodes|vertices|elements)|finished|done|final", last):

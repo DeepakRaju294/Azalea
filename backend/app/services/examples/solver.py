@@ -1084,6 +1084,8 @@ def _step_summary(goal: str, result: str) -> str:
     src = (goal or result or "").strip()
     if not src:
         return ""
+    if src.startswith("{") or re.match(r"^[\w']+\s*[:=]\s", src):   # a state/dict dump -> not a usable title
+        return ""
     head = re.split(r"[.;:\n]", src, 1)[0].strip()
     head = re.sub(r"\b(on|in|of|to|for|with) the current state\b", "", head, flags=re.IGNORECASE).strip()
     head = re.sub(r"\s+", " ", head).strip(" ,")
@@ -1098,6 +1100,8 @@ def _step_card_title(raw_title: Any, goal: str, result: str, n: int) -> str:
     # strip any leading "Step N" the model added — WITH or WITHOUT a separator, so a bare "Step 10"
     # title doesn't get re-prefixed into "Step 10: Step 10".
     raw = re.sub(r"^\s*step\s+\d+\b\s*[:.\-]?\s*", "", str(raw_title or "").strip(), flags=re.IGNORECASE).strip()
+    if re.fullmatch(r"[a-z]+(?:_[a-z]+)*", raw):   # a raw stage/operation id ('select_edge') -> not a summary
+        raw = ""                                   # (drops the repeated 'Step N: Select_edge' titles)
     summary = raw or _step_summary(goal, result)
     if summary:
         summary = summary[:1].upper() + summary[1:]

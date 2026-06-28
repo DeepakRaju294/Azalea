@@ -85,6 +85,8 @@ _CODING_FORMAT_SYSTEM = (
     "EXACTLY one card per step, in order. The trace is the source of truth: use ONLY each step's "
     "operation/decision/facts; never invent or alter a value, never add, remove, or reorder steps.\n"
     "FIELDS per card:\n"
+    "- title: a SHORT, DISTINCT name for THIS step that NAMES the entity it acts on (e.g. 'Add edge "
+    "(A,B,7)', 'Pop vertex A') — NEVER the raw operation id like 'select_edge' (that repeats every step).\n"
     "- goal: leave EMPTY — the card title already states the structural step (do not restate it).\n"
     "- reasoning: WHICH code construct implements it and why (the condition / loop / call / branch).\n"
     "- work: REQUIRED list. Each line BEGINS with the LITERAL code line from the CODE below, quoted "
