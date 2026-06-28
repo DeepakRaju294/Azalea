@@ -2014,22 +2014,30 @@ STAGE_RULES.update(
             "background": _lean_rule(
                 "what the overall concept area is",
                 "the central idea that ties all upcoming topics together",
-                "why it matters in the context of the study path — what it enables or what problem it solves for the learner",
+                "why it matters in the context of the study path — what it enables or what problem it solves for the learner (a concrete motivating problem when one fits)",
                 "the main mental model the learner should carry into the path",
                 "keep this broad and orienting — do not teach any subtopic here",
                 visual="plain-English visual_description for a high-level overview diagram when the concept area has a natural spatial or structural form (e.g. a tree, a graph, a chain) that helps the learner picture the central idea before the path begins",
             ),
+            "prerequisites": _lean_rule(
+                "the foundational ideas this path ASSUMES the learner already has — name them briefly so a rusty learner is grounded (e.g. for an MST path: what a weighted graph is, what a spanning tree is)",
+                "a ONE-LINE anchor for the subject itself (e.g. 'a minimum spanning tree is the spanning tree of smallest total weight') — an anchor, NOT a lesson",
+                "an optional 'if X is new to you, review it first' signpost",
+                visual="",
+                notes=[
+                    "Orientation only — keep it to a few sentences. The deep intuition belongs to the concept/first topic; do NOT teach it here or you duplicate that topic.",
+                    "Anchor the subject in ONE line; never walk through how it works.",
+                ],
+            ),
             "components_terms": _lean_rule(
-                "the minimum vocabulary the learner needs before the rest of the path makes sense",
-                "simple meaning and role of each term",
+                "the SHARED, cross-cutting vocabulary used across MULTIPLE later topics (e.g. vertex, edge, weight, cycle, connected, greedy) — defined ONCE here so each topic need not redefine them",
+                "a simple one-line meaning and role of each term",
                 "how the terms relate to each other",
                 visual="plain-English visual_description for a labeled diagram that shows how the terms fit together — only when the concept area has a clear structural or spatial form",
                 notes=[
-                    "OPTIONAL card: include it when at least 2 genuine bridge terms remain after removing assumed prerequisites and later topic titles/subtopics, and they help the learner orient before the path begins.",
-                    "Do not include assumed prerequisites here; name them only if absolutely needed and do not explain them.",
-                    "Do not define upcoming topics or traversal variants here; preview those in roadmap instead.",
-                    "If no genuine bridge terms remain (only assumed prerequisites or later-topic names), skip this card and mention any needed term briefly in background or roadmap.",
-                    "Keep it lightweight — a short shared vocabulary, not a full terminology lesson unless the first real topic is terminology_components.",
+                    "Include the terms that recur across the path; ONE line each — a shared glossary, not a terminology lesson.",
+                    "Define ONLY cross-cutting terms (used in 2+ topics). Topic-specific terms (union-find, priority queue) belong in that topic's components_terms, not here.",
+                    "Do not explain assumed prerequisites (those go in the prerequisites card) and do not define upcoming topics (those go in roadmap).",
                 ],
             ),
             "roadmap": _lean_rule(

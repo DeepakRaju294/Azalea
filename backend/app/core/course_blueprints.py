@@ -625,6 +625,8 @@ VISUAL_FAMILY_DEFINITIONS: dict[str, dict[str, Any]] = {
 VISUAL_CARD_RULES: dict[str, dict[str, dict[str, Any]]] = {
     TopicType.STUDY_PATH_INTRODUCTION.value: {
         "background": {"visual_type": "node_link_diagram | array_state_diagram | graph_chart", "purpose": "Show the actual system, process, or structure for the central concept, such as divide-and-conquer splitting/solving/combining, merge sort splitting and merging an array, a graph algorithm on a graph, or a probability topic on a curve."},
+        "prerequisites": {"visual_type": "none", "purpose": "Briefly ground the foundations the path assumes (e.g. a weighted graph, a spanning tree) plus a one-line anchor for the subject. Orientation only — the intuition is developed in the concept/first topic."},
+        "components_terms": {"visual_type": "none", "purpose": "Define the SHARED cross-cutting terms used across every later topic (vertex, edge, weight, cycle, greedy) — one line each. Not topic-specific terms, which stay in their topic."},
         "roadmap": {"visual_type": "none", "purpose": ("Show the conceptual roadmap only: the major ideas, variants, or methods "
             "the learner will understand by the end. Do not mirror the study path topic "
             "list. Merge implementation topics into their underlying algorithm concept. "
@@ -1240,16 +1242,18 @@ TOPIC_BLUEPRINTS: dict[str, Blueprint] = {
         "description": "Frame the overall concept area, orient the learner, and preview the upcoming topics before any subtopic is taught.",
         "default_card_sequence": sequence(
             "background",
+            "prerequisites",
+            "components_terms",
             "roadmap",
         ),
-        "optional_cards": ["roadmap"],
+        "optional_cards": ["prerequisites", "components_terms", "roadmap"],
         "preferred_question_types": [],
         "avoid": [
             "Do not teach any individual subtopic in depth.",
             "Do not include any practice card, practice question, quiz, check, mastery task, or applied exercise.",
-            "Do not include a components_terms card — vocabulary belongs in the subtopic that introduces the term, not in the intro.",
+            "The intro's components_terms card defines ONLY shared, cross-cutting terms used across multiple later topics (e.g. vertex, edge, weight); topic-specific terms (union-find, priority queue) belong in their subtopic, not here.",
             "Do not write vague filler — every card must have a specific orienting purpose.",
-            "Do not repeat content that the first real topic will cover.",
+            "Do not repeat content that the first real topic will cover — the prerequisites card ANCHORS the subject in one line; the deeper intuition belongs to the concept/first topic.",
         ],
         "combination_rules": [],
     },

@@ -45,9 +45,9 @@ class TestSkeleton(unittest.TestCase):
         self.assertIn("worked_example", keys)
         self.assertIn("practice", keys)
 
-    def test_intro_skeleton_is_background_and_roadmap_only(self):
+    def test_intro_skeleton_follows_intro_contract_v2(self):
         keys = [s.blueprint_key for s in build_card_skeleton(_topic("Intro", "study_path_introduction"))]
-        self.assertEqual(keys, ["background", "roadmap"])
+        self.assertEqual(keys, ["background", "prerequisites", "components_terms", "roadmap"])
 
 
 class TestFill(unittest.TestCase):

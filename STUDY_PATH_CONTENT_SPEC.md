@@ -289,10 +289,43 @@ Present in `f6443a34` (6 topics), absent in `fce190a4` (5 topics), same subject.
   `topic_family`/decomposition metadata), ensure a `compare_distinguish` topic exists; inject if missing
   (same pattern as `_enforce_roadmap_coverage`).
 
-### E3. 🟠 Introduction too thin
-Background ≈3 bullets; missing what a spanning tree is (vs MST), what weight represents, a **motivating
-problem**, and a prerequisite signpost.
-- **Fix (M2):** strengthen the `study_path_introduction` background `_lean_rule` to require those.
+### E3. 🟠 Introduction too thin — **Intro Contract v2** (M1 + M2)
+Today the intro is just `background` (≈2–3 sentences) + `roadmap`. It never grounds a cold learner in the
+foundations or the shared vocabulary the later topics assume, and the same cross-cutting terms (Edge,
+Vertex, Weight) get **re-defined in every topic's `components_terms`** (observed: Kruskal *and* Prim both
+redefine them). Principle: **intro = orientation + shared foundation; topics = depth + topic-specific
+detail.**
+
+**New intro card sequence:** `background → prerequisites → key_terms → roadmap`.
+
+1. **`background`** *(keep, lightly strengthen):* the motivating hook + what this path covers (add a
+   concrete real problem, e.g. "the cheapest way to wire all the offices so they're all connected").
+2. **`prerequisites` (NEW card, M1):** *"What you need going in."* A **brief** primer on the foundations
+   the path assumes — what a **weighted graph** is, what a **spanning tree** is (connects all vertices,
+   no cycles, V−1 edges), and a **one-line anchor** for the subject (e.g. "an MST is the spanning tree of
+   smallest total weight"). An anchor only — the *intuition* belongs to the `concept_intuition` topic.
+   Optional "review X first" signpost.
+3. **`key_terms` (NEW card, M1):** the **shared glossary** used across *every* later topic, defined once
+   (vertex/node, edge, weight, cycle, connected, spanning tree, greedy) — one line each. Explicitly the
+   **cross-cutting** terms, NOT topic-specific ones (`union-find`, `priority queue` stay in their topics).
+4. **`roadmap`** *(keep, unchanged).*
+
+**Boundary rules (avoid duplication):**
+- **Intro ↔ `concept_intuition`:** the intro only *anchors* the subject in one sentence; the deep
+  intuition is developed in the `concept_intuition` topic. Decision: **Option A — the intro is ALWAYS
+  brief** (never teaches), for consistency across path shapes (chosen over the adaptive Option B).
+- **Intro ↔ per-topic `components_terms`:** the intro owns **shared** terms (appear in ≥2 topics); each
+  topic's `components_terms` keeps only its **unique** terms — removing the Edge/Vertex/Weight repetition.
+  Shared set = terms common across the path's topics (derivable from the topics' term lists, or
+  LLM-identified as "used throughout").
+
+**System changes (Fix):**
+- **M1:** register `prerequisites` + `key_terms` blueprints; add to `study_path_introduction`
+  `default_card_sequence` → `[background, prerequisites, key_terms, roadmap]`.
+- **M2:** `_lean_rule`s for the two new cards (content above; primer stays brief — no re-teaching the
+  `concept_intuition` topic). **Flip the current intro rule** that *forbids* `components_terms`
+  ("vocabulary belongs in the subtopic") → the intro defines **cross-cutting** vocabulary, subtopics
+  define **topic-specific** vocabulary.
 
 ### E4. 🟡 Code walkthrough is robotic
 Every bullet starts "This line…"; narrates *what* a line is, never *why*.

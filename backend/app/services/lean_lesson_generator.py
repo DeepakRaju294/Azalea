@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 # Lean card types → existing frontend card types
 _LEAN_TYPE_MAP: dict[str, str] = {
     "background": "purpose_context",
+    "prerequisites": "purpose_context",
     "components_terms": "definition",
     "core_idea": "core_idea",
     "process": "method_process",
@@ -889,6 +890,7 @@ def _normalize_card_title(
         default_title = {
             "roadmap": "Where this path goes",
             "components_terms": "Key terms",
+            "prerequisites": "Before you start",
             "background": "What this topic is",
             "process": "How it works",
             "method_process": "How it works",

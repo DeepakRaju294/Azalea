@@ -37,10 +37,13 @@ def _c(key, **extra):
 
 
 class TestEnforceBlueprintCards(unittest.TestCase):
-    def test_intro_keeps_only_background_and_roadmap(self):
-        cards = [_c("background"), _c("worked_example"), _c("edge_case"), _c("components_terms"), _c("roadmap"), _c("practice")]
+    def test_intro_keeps_orientation_cards_and_drops_teaching_cards(self):
+        # Intro Contract v2: background + prerequisites + components_terms (shared terms) + roadmap are
+        # kept; worked_example/edge_case/practice (teaching cards) are dropped.
+        cards = [_c("background"), _c("prerequisites"), _c("worked_example"), _c("edge_case"),
+                 _c("components_terms"), _c("roadmap"), _c("practice")]
         kept = [c["blueprint_key"] for c in _enforce_blueprint_cards(cards, "study_path_introduction")]
-        self.assertEqual(set(kept), {"background", "roadmap"})
+        self.assertEqual(set(kept), {"background", "prerequisites", "components_terms", "roadmap"})
 
     def test_coding_drops_disallowed_keys(self):
         cards = [_c("background"), _c("components_terms"), _c("code_walkthrough"), _c("worked_example"),
