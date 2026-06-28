@@ -1,7 +1,7 @@
 """Phase 1 (binary search) tests for the worked-example trace pipeline — fully offline (no LLM)."""
 import unittest
 
-from app.services.examples.trace_adapters.binary_search import BinarySearchAdapter
+from app.services.examples.trace_adapters.families.sequence import BinarySearchAdapter
 from app.services.examples.trace_contract import (structural_invariants, validate_fidelity, validate_prose)
 from app.services.examples import trace_pipeline as tp
 
@@ -86,8 +86,8 @@ class OrchestrationTests(unittest.TestCase):
         self.topic = {"id": "bs1", "title": "Understanding Binary Search"}
 
     def test_routing(self):
-        self.assertIsNotNone(tp.route_adapter(self.topic))
-        self.assertIsNone(tp.route_adapter({"title": "Understanding Kruskal's Algorithm"}))
+        self.assertEqual(tp.route_adapter(self.topic).slug, "binary_search")
+        self.assertEqual(tp.route_adapter({"title": "Understanding Kruskal's Algorithm"}).slug, "kruskal")
         self.assertIsNone(tp.route_adapter({"title": "Graph Algorithms"}))   # no fuzzy routing
 
     def test_end_to_end_ships_correct_result(self):

@@ -15,7 +15,8 @@ import os
 from typing import Any, Callable, Optional
 
 from .trace_adapters import ADAPTERS
-from .trace_contract import (ContractTrace, structural_invariants, validate_fidelity, validate_prose)
+from .trace_contract import (ContractTrace, hard_prose_violations, structural_invariants,
+                             validate_fidelity, validate_prose)
 
 _log = logging.getLogger(__name__)
 
@@ -30,11 +31,31 @@ def _enabled() -> bool:
 # --- routing (explicit, non-fuzzy, §17) ----------------------------------------------------------
 
 def route_adapter(topic: dict[str, Any]):
-    """Phase 1: only an explicit binary-search topic enters the pipeline; everything else returns None."""
+    """Explicit (non-fuzzy) routing: a topic enters the pipeline only when its slug/metadata or a tight
+    title alias names one of the supported algorithms. Anything else (e.g. a broad 'graph algorithms'
+    topic) returns None and defers to the existing systems.
+
+    C2 Part 1 (no canonical code): coding-implementation topics now ALSO route to the adapter — they get the
+    same VERIFIED conceptual trace as the walkthrough (correct), without per-step code-line highlighting
+    (canonical code is Part 2, deferred). The code-walkthrough card still shows the code separately."""
     slug = str(topic.get("slug") or topic.get("topic_family") or topic.get("family") or "").lower()
-    title = str(topic.get("title") or topic.get("name") or "").lower()
-    if "binary_search" in slug or "binary search" in title or "binary_search" in title:
+    text = (slug + " " + str(topic.get("title") or topic.get("name") or "")).lower()
+    if "binary_search" in slug or "binary search" in text:
         return ADAPTERS["binary_search"]
+    if "kruskal" in text:
+        return ADAPTERS["kruskal"]
+    if "prim" in text:
+        return ADAPTERS["prim"]
+    if "merge sort" in text or "merge_sort" in text:
+        return ADAPTERS["merge_sort"]
+    if "breadth-first" in text or "breadth first" in text or " bfs" in f" {text}":
+        return ADAPTERS["bfs"]
+    if "depth-first" in text or "depth first" in text or " dfs" in f" {text}":
+        return ADAPTERS["dfs_iter"]
+    if "order of operations" in text or "evaluate expression" in text or "arithmetic expression" in text:
+        return ADAPTERS["arithmetic_eval"]
+    if "dijkstra" in text or "shortest path" in text or "shortest-path" in text:
+        return ADAPTERS["dijkstra"]
     return None
 
 
@@ -101,8 +122,22 @@ def _normalize_and_attach(raw: Any, trace: ContractTrace) -> Optional[list[dict[
 
 
 def _final_answer_text(trace: ContractTrace) -> str:
-    k = (trace.final_answer or {}).get("found_index")
-    return f"found at index {k}" if isinstance(k, int) and k >= 0 else "target is absent (index -1)"
+    fa = trace.final_answer
+    if isinstance(fa, dict):
+        if "found_index" in fa:
+            k = fa["found_index"]
+            return f"found at index {k}" if isinstance(k, int) and k >= 0 else "target is absent (index -1)"
+        if "visit_order" in fa:
+            return "visit order: " + ", ".join(map(str, fa["visit_order"]))
+        if "mst_edges" in fa:
+            return f"MST edges {fa['mst_edges']} (total weight {fa.get('total_weight')})"
+        if "sorted" in fa:
+            return f"sorted: {fa['sorted']}"
+        if "value" in fa:
+            return f"= {fa['value']}"
+        if "dist" in fa:
+            return "shortest distances: " + ", ".join(f"{k}:{v}" for k, v in fa["dist"].items())
+    return str(fa)
 
 
 def _to_solve_result(trace: ContractTrace, cards: list[dict[str, Any]]) -> dict[str, Any]:
@@ -119,50 +154,150 @@ def _to_solve_result(trace: ContractTrace, cards: list[dict[str, Any]]) -> dict[
 
 # --- top-level orchestration --------------------------------------------------------------------
 
-def solve_trace_pipeline(topic: dict[str, Any], *, format_fn: Optional[FormatFn] = None,
-                         seed: Optional[int] = None) -> Optional[dict[str, Any]]:
-    adapter = route_adapter(topic)
-    if adapter is None:
-        return None
-    fmt = format_fn or default_format_fn
-    seed = seed if seed is not None else _seed_for(topic)
+def _reason_extract_enabled() -> bool:
+    return os.getenv("AZALEA_WORKED_EXAMPLE_REASON_EXTRACT", "").strip().lower() in {"1", "true", "on", "yes"}
 
-    trace = select_instance(adapter, seed)                         # Stage 0 + 1
+
+def solve_trace_pipeline(topic: dict[str, Any], *, format_fn: Optional[FormatFn] = None,
+                         reason_fn: Optional[FormatFn] = None, extract_fn: Optional[FormatFn] = None,
+                         critic_fn: Optional[FormatFn] = None, seed: Optional[int] = None
+                         ) -> Optional[dict[str, Any]]:
+    fmt = format_fn or default_format_fn
+    title = str(topic.get("title") or topic.get("name") or topic.get("id") or "?")
+    ctype = str(topic.get("topic_type") or topic.get("course_type") or "?")
+    adapter = route_adapter(topic)
+    if adapter is not None:                                        # deterministic path (HARD guarantee)
+        _log.info("WORKED-EXAMPLE ADAPTER: topic=%r type=%s -> adapter=%s (verified trace path)",
+                  title, ctype, adapter.slug)
+        seed = seed if seed is not None else _seed_for(topic)
+        trace = select_instance(adapter, seed)                     # Stage 0 + 1
+        if trace is None or structural_invariants(trace, adapter):  # §5 gate (Stage 2 is ground truth)
+            _log.warning("WORKED-EXAMPLE ADAPTER: topic=%r adapter=%s -> WITHHELD (no teaching trace) — defer",
+                         title, adapter.slug)
+            return None
+        result = _format_validate_ship(topic, trace, adapter, fmt)
+        _log.info("WORKED-EXAMPLE ADAPTER: topic=%r adapter=%s -> %s",
+                  title, adapter.slug, "SHIPPED (verified)" if result is not None else "withheld (defer)")
+        return result
+    _guard = " [BLOCKED by coding_implementation guard - needs C2]" if ctype == "coding_implementation" else ""
+    _log.info("WORKED-EXAMPLE ADAPTER: topic=%r type=%s -> NO adapter%s (deferring to gen_foundation/legacy)",
+              title, ctype, _guard)
+    if _reason_extract_enabled():                                  # non-deterministic path (SOFT) — opt-in
+        return _solve_via_reason_extract(topic, fmt, reason_fn, extract_fn, critic_fn)
+    return None                                                    # defer to existing systems
+
+
+def _format_validate_ship(topic, trace, adapter, fmt) -> Optional[dict[str, Any]]:
+    """Stage 3 + 4 + 4b (WORKED_EXAMPLE_REASONING_SPEC v8 §13): prose-only format, backend state-attach,
+    then SPLIT BY FAILURE SOURCE — a fidelity failure is a backend/trace defect a formatter retry cannot
+    fix (withhold + log immediately); only a HARD prose contradiction is worth re-formatting; missing/soft
+    prose is advisory in Phase 1 (logged, not blocking). `validate_visual_state=False` in Phase 1."""
+    last_raw, last_cards, last_prose = None, None, None
+    for _ in range(_MAX_FORMAT_ATTEMPTS):
+        raw = fmt(build_format_payload(trace))
+        cards = _normalize_and_attach(raw, trace)
+        last_raw, last_cards = raw, cards
+        if cards is None:
+            continue                                               # formatter produced nothing usable -> retry
+        fid = validate_fidelity(cards, trace, adapter, validate_visual_state=False)
+        if not fid.ok:                                             # BACKEND/TRACE defect — retry can't fix it
+            _log.error("trace_pipeline: %s fidelity failure %r (backend/trace defect) — withholding",
+                       getattr(adapter, "slug", "?"), fid.code)
+            _retain_debug(topic, trace, raw, cards, fid, [], shipped=False)
+            return None
+        prose = validate_prose(cards, trace, adapter)
+        last_prose = prose
+        hard = hard_prose_violations(prose)
+        advisory = [v for v in prose if v.severity != "hard"]
+        if advisory:
+            _log.info("trace_pipeline: %s advisory prose (missing/soft) x%d", adapter.slug, len(advisory))
+        if not hard:                                               # contradictions are the only blocker
+            _retain_debug(topic, trace, raw, cards, fid, prose, shipped=True)
+            return _to_solve_result(trace, cards)
+        # else: a hard contradiction -> re-format (the formatter is the fixable source)
+    _retain_debug(topic, trace, last_raw, last_cards, None, last_prose, shipped=False)
+    return None
+
+
+def _solve_via_reason_extract(topic, fmt, reason_fn, extract_fn, critic_fn) -> Optional[dict[str, Any]]:
+    """SOFT path: the model reasons in prose then a trace is extracted; a critic verifies it (Stage 2);
+    then the same format + fidelity + prose machinery applies. Offline / on any miss -> None (defer)."""
+    from .reason_extract import produce_via_reason_extract
+    from .verifiers import verify_via_critic
+    from .trace_adapters.generic import GenericAdapter
+    trace = produce_via_reason_extract(
+        topic, topic.get("example_input") or {},
+        reason_fn=reason_fn or _default_reason_fn, extract_fn=extract_fn or _default_extract_fn)
     if trace is None:
         return None
-    if structural_invariants(trace, adapter):                     # §5 gate (Stage 2 is ground truth here)
-        _log.warning("trace_pipeline: %s trace failed structural gate", adapter.slug)
+    adapter = GenericAdapter()
+    if structural_invariants(trace, adapter):
         return None
-
-    for _ in range(_MAX_FORMAT_ATTEMPTS):                         # Stage 3 + 4 + 4b
-        cards = _normalize_and_attach(fmt(build_format_payload(trace)), trace)
-        if cards is None:
-            continue
-        fid = validate_fidelity(cards, trace, adapter)
-        prose = validate_prose(cards, trace, adapter)
-        if fid.ok and not prose:
-            return _to_solve_result(trace, cards)
-    return None                                                  # withhold — defer to existing systems
+    if verify_via_critic(trace, critic_fn=critic_fn or _default_critic_fn).illegal_step:
+        return None                                               # critic rejected -> withhold
+    return _format_validate_ship(topic, trace, adapter, fmt)
 
 
-def default_format_fn(payload: dict[str, str]) -> Optional[Any]:
-    """Production prose-only formatter call (mirrors examples.llm); None offline / on failure."""
+def _retain_debug(topic: dict[str, Any], trace: ContractTrace, raw: Any, cards: Any,
+                  fid: Any, prose: Any, *, shipped: bool) -> None:
+    """Internal-only debug payload (§18): input, conventions, trace, formatter raw, cards, results — so a
+    failure reads as 'reference correct -> formatter prose drifted at card N'. Off unless a path is set."""
+    path = os.getenv("AZALEA_TRACE_PIPELINE_DEBUG_PATH")
+    if not path:
+        return
+    try:
+        from dataclasses import asdict
+        payload = {
+            "topic": {k: topic.get(k) for k in ("id", "title", "slug")},
+            "shipped": shipped, "provenance": trace.provenance, "conventions": trace.conventions,
+            "problem": trace.problem, "final_answer": trace.final_answer,
+            "steps": [asdict(s) for s in trace.steps],
+            "formatter_raw": raw, "normalized_cards": cards,
+            "fidelity": (asdict(fid) if fid else None),
+            "prose_violations": [asdict(p) for p in (prose or [])],
+        }
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, default=str) + "\n")
+    except Exception as exc:  # noqa: BLE001 — debug retention must never affect generation
+        _log.debug("trace_pipeline debug retain failed: %s", exc)
+
+
+def _llm_call(payload: dict[str, str], label: str, *, json_mode: bool = True) -> Optional[Any]:
+    """Shared LLM seam (None offline / on failure). json_mode=True parses a JSON object; False returns text."""
     key = os.getenv("OPENAI_API_KEY")
     if not key or key.strip().lower() == "dummy":
         return None
     try:
         from app.services.llm_client import OPENAI_MODEL, client, llm_call
-        with llm_call("worked_example_trace_pipeline"):
+        kwargs: dict[str, Any] = {
+            "model": OPENAI_MODEL,
+            "input": [{"role": "system", "content": payload.get("system", "")},
+                      {"role": "user", "content": payload.get("user", "")}],
+        }
+        if json_mode:
+            kwargs["text"] = {"format": {"type": "json_object"}}
+        with llm_call(label):
             response = client.with_options(
                 timeout=float(os.getenv("AZALEA_ENRICH_TIMEOUT_SECONDS", "60")),
                 max_retries=max(0, int(os.getenv("AZALEA_ENRICH_MAX_RETRIES", "2"))),
-            ).responses.create(
-                model=OPENAI_MODEL,
-                input=[{"role": "system", "content": payload.get("system", "")},
-                       {"role": "user", "content": payload.get("user", "")}],
-                text={"format": {"type": "json_object"}},
-            )
-        return json.loads(response.output_text)
+            ).responses.create(**kwargs)
+        return json.loads(response.output_text) if json_mode else response.output_text
     except Exception as exc:  # noqa: BLE001
-        _log.warning("trace_pipeline format call failed: %s", exc)
+        _log.warning("trace_pipeline %s call failed: %s", label, exc)
         return None
+
+
+def default_format_fn(payload: dict[str, str]) -> Optional[Any]:
+    return _llm_call(payload, "we_trace_format", json_mode=True)
+
+
+def _default_reason_fn(payload: dict[str, str]) -> Optional[Any]:
+    return _llm_call(payload, "we_trace_reason", json_mode=False)
+
+
+def _default_extract_fn(payload: dict[str, str]) -> Optional[Any]:
+    return _llm_call(payload, "we_trace_extract", json_mode=True)
+
+
+def _default_critic_fn(payload: dict[str, str]) -> Optional[Any]:
+    return _llm_call(payload, "we_trace_critic", json_mode=True)

@@ -71,6 +71,14 @@ class ProseViolation:
     detail: str
     card_index: int
     trace_step_id: str
+    # §12b severity (WORKED_EXAMPLE_REASONING_SPEC v8): only HARD contradictions block in Phase 1;
+    # `missing` (a required fact not stated) and `soft` (vague-but-correct) are advisory.
+    severity: str = "hard"   # "hard" | "missing" | "soft"
+
+
+def hard_prose_violations(violations: list[ProseViolation]) -> list[ProseViolation]:
+    """The blocking subset (§12b): contradictions only. Missing/soft are logged, not withheld, in Phase 1."""
+    return [v for v in violations if v.severity == "hard"]
 
 
 # --- §5 structural-invariant gate (pre-verification) --------------------------------------------
@@ -107,9 +115,14 @@ def structural_invariants(trace: ContractTrace, adapter) -> list[str]:
 
 # --- §12 Stage-4 machine-state fidelity ---------------------------------------------------------
 
-def validate_fidelity(cards: list[dict[str, Any]], trace: ContractTrace, adapter) -> FidelityResult:
+def validate_fidelity(cards: list[dict[str, Any]], trace: ContractTrace, adapter,
+                      *, validate_visual_state: bool = False) -> FidelityResult:
     """Every card's backend-attached prior/result state replays the cited step; the chain is gap-free;
-    the endpoint entails the final answer; every required-case step is actually rendered."""
+    the endpoint entails the final answer; every required-case step is actually rendered.
+
+    `validate_visual_state` (§12, WORKED_EXAMPLE_REASONING_SPEC v8): Phase 1 passes False — `visual_state`
+    is carried as METADATA only; enforcing it before the renderer consumes it (Phase 1.5) would raise
+    spurious failures on a field nothing reads yet. Phase 1.5 flips this to True."""
     for i, card in enumerate(cards):
         sids = card.get("trace_step_ids") or []
         cited = [trace.by_id(s) for s in sids]
@@ -121,6 +134,11 @@ def validate_fidelity(cards: list[dict[str, Any]], trace: ContractTrace, adapter
         if not adapter.states_equivalent(card.get("result_state"), cited[-1].state_after):
             return FidelityResult(False, "result_mismatch", i, cited[-1].id,
                                   cited[-1].state_after, card.get("result_state"))
+        # visual-source fidelity — ENFORCED only in Phase 1.5+ (see docstring)
+        if validate_visual_state and cited[-1].visual_state and card.get("visual_state") not in (None, {}) \
+                and card.get("visual_state") != cited[-1].visual_state:
+            return FidelityResult(False, "visual_mismatch", i, cited[-1].id,
+                                  cited[-1].visual_state, card.get("visual_state"))
     if cards and not adapter.states_equivalent(cards[0].get("prior_state"), trace.initial_state):
         return FidelityResult(False, "chain_start", 0)
     for i, (a, b) in enumerate(zip(cards, cards[1:])):
@@ -140,13 +158,13 @@ def validate_fidelity(cards: list[dict[str, Any]], trace: ContractTrace, adapter
 def _prose_of(card: dict[str, Any]) -> str:
     parts = [card.get("title", ""), card.get("goal", ""), card.get("reasoning", ""),
              " ".join(card.get("work") or []), card.get("result", "")]
-    return " ".join(str(p) for p in parts).lower()
+    return re.sub(r"\s+", " ", " ".join(str(p) for p in parts).lower()).strip()
 
 
 def _states(prose: str, fact: str) -> bool:
-    """Lenient: all significant tokens of `fact` appear in `prose` (order-independent)."""
-    toks = [t for t in re.findall(r"[a-z0-9]+", str(fact).lower()) if t]
-    return all(t in prose for t in toks)
+    """The fact phrase appears CONTIGUOUSLY in the (whitespace-normalized) prose — so 'visit' does not
+    match 'visited' and tokens must actually be adjacent, not merely both present somewhere."""
+    return re.sub(r"\s+", " ", str(fact).lower()).strip() in prose
 
 
 def validate_prose(cards: list[dict[str, Any]], trace: ContractTrace, adapter) -> list[ProseViolation]:
@@ -168,10 +186,12 @@ def validate_prose(cards: list[dict[str, Any]], trace: ContractTrace, adapter) -
                     out.append(ProseViolation("value_not_allowed", n, i, step.id))
         for f in facts.get("required_facts", []):
             if not _states(prose, f):
-                out.append(ProseViolation("missing_fact", str(f), i, step.id))
+                # advisory in Phase 1: a paraphrase/omission is not a contradiction (§12b)
+                out.append(ProseViolation("missing_fact", str(f), i, step.id, severity="missing"))
         for c in facts.get("forbidden_claims", []):
             if _states(prose, c):
-                out.append(ProseViolation("forbidden_claim", str(c), i, step.id))
+                out.append(ProseViolation("forbidden_claim", str(c), i, step.id))   # hard (default)
+        # adapter-specific claims are contradictions (wrong node / decision / membership) -> hard
         out += [ProseViolation(code, detail, i, step.id)
                 for code, detail in adapter.validate_prose_claims(card, step)]
     return out

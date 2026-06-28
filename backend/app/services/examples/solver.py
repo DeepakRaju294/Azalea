@@ -779,6 +779,23 @@ def solve_worked_example(
 
     Coding-implementation topics take the STRUCTURAL path (CODING_WORKED_EXAMPLE_SPEC): structural-step
     outline + hard gate + code-anchored cards — NOT the runtime line-execution trace."""
+    # WORKED_EXAMPLE_ACCURACY_SPEC (the verification ladder) — OFF by default. When
+    # AZALEA_WORKED_EXAMPLE_ACCURACY_LADDER is set, this is the FRONT DOOR: a determinate computation is
+    # routed to (verified trace) ∨ (verified endpoint) ∨ (guided_fallback) and NEVER reaches the legacy
+    # self-graded path below (Phase A1 invariant). A conceptual topic returns None → defers to the existing
+    # path (no false rigor). Returns None ⇒ defer; any non-None result is shipped as-is.
+    try:
+        from app.services.examples.accuracy_ladder import (_enabled as _ladder_enabled,
+                                                           solve_via_accuracy_ladder)
+        if _ladder_enabled():
+            ladder_result = solve_via_accuracy_ladder(
+                topic, existing_problem=existing_problem, code=code, solver=solver)
+            if ladder_result is not None:
+                return ladder_result
+            # None here means a conceptual/illustrative topic → fall through to the existing card path.
+    except Exception:  # noqa: BLE001 — the ladder must never break legacy generation
+        pass
+
     # WORKED_EXAMPLE_REASONING_SPEC (trace pipeline) — OFF by default. Only when
     # AZALEA_WORKED_EXAMPLE_TRACE_PIPELINE is set do supported deterministic topics (Phase 1: binary
     # search) route to the trace-first pipeline; it returns None (defer) for unsupported topics or any
@@ -1054,6 +1071,32 @@ def _fix_work_line_casing(line: str, identifiers: list[str]) -> str:
     return _fix_identifier_casing(line[:idx], identifiers) + line[idx:]
 
 
+def _step_summary(goal: str, result: str) -> str:
+    """A short (≤8 word) summary phrase for a worked-example step, from its goal/result. '' if none."""
+    src = (goal or result or "").strip()
+    if not src:
+        return ""
+    head = re.split(r"[.;:\n]", src, 1)[0].strip()
+    head = re.sub(r"\b(on|in|of|to|for|with) the current state\b", "", head, flags=re.IGNORECASE).strip()
+    head = re.sub(r"\s+", " ", head).strip(" ,")
+    summary = " ".join(head.split(" ")[:8])[:56].rstrip(" ,")
+    return summary
+
+
+def _step_card_title(raw_title: Any, goal: str, result: str, n: int) -> str:
+    """Worked-example step titles use ONE consistent system: ``Step N: <few-word summary>`` (the
+    algorithm-walkthrough style). The model's title (minus any 'Step N:' it already added) is the summary;
+    if absent, derive it from goal/result; only when there is truly nothing to say is it a bare ``Step N``."""
+    # strip any leading "Step N" the model added — WITH or WITHOUT a separator, so a bare "Step 10"
+    # title doesn't get re-prefixed into "Step 10: Step 10".
+    raw = re.sub(r"^\s*step\s+\d+\b\s*[:.\-]?\s*", "", str(raw_title or "").strip(), flags=re.IGNORECASE).strip()
+    summary = raw or _step_summary(goal, result)
+    if summary:
+        summary = summary[:1].upper() + summary[1:]
+        return f"Step {n + 1}: {summary}"
+    return f"Step {n + 1}"
+
+
 def _build_solution_cards(
     sol: dict[str, Any], topic: dict[str, Any], *, code: Optional[str] = None,
 ) -> list[dict[str, Any]]:
@@ -1096,7 +1139,7 @@ def _build_solution_cards(
         reasoning = str(card.get("reasoning") or "").strip()
         work = [str(w) for w in (card.get("work") or [])]
         result = str(card.get("result") or "").strip()
-        card_title = str(card.get("title") or f"Step {n + 1}")
+        card_title = _step_card_title(card.get("title"), goal, result, n)
         # Prose (goal/reasoning/result/title): match FUNCTION names to code casing only — leave other
         # words alone. Work lines are CODE: match every identifier so a leading `Mst` becomes `mst`.
         if fn_names:

@@ -2025,12 +2025,11 @@ STAGE_RULES.update(
                 "how the terms relate to each other",
                 visual="plain-English visual_description for a labeled diagram that shows how the terms fit together — only when the concept area has a clear structural or spatial form",
                 notes=[
-                    "Only include this card when at least 3 bridge terms remain after removing assumed prerequisites and later topic titles/subtopics.",
+                    "OPTIONAL card: include it when at least 2 genuine bridge terms remain after removing assumed prerequisites and later topic titles/subtopics, and they help the learner orient before the path begins.",
                     "Do not include assumed prerequisites here; name them only if absolutely needed and do not explain them.",
                     "Do not define upcoming topics or traversal variants here; preview those in roadmap instead.",
-                    "If only one or two bridge terms remain, skip this card and mention the term briefly in background or roadmap.",
-                    "Only include when the learner genuinely cannot follow the upcoming topics without these terms.",
-                    "Keep it lightweight — do not turn this into a full terminology lesson unless the first real topic is terminology_components.",
+                    "If no genuine bridge terms remain (only assumed prerequisites or later-topic names), skip this card and mention any needed term briefly in background or roadmap.",
+                    "Keep it lightweight — a short shared vocabulary, not a full terminology lesson unless the first real topic is terminology_components.",
                 ],
             ),
             "roadmap": _lean_rule(
