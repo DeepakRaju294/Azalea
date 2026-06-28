@@ -1163,6 +1163,18 @@ def _build_solution_cards(
         # Best-effort per-action code anchor — keep ONLY when it matches the work length 1:1
         # (a mismatched/absent anchor is discarded; it never blocks rendering — spec §9).
         code_lines = card.get("code_lines")
+        if not (isinstance(code_lines, list) and len(code_lines) == len(work)) and code and work:
+            # Adapter-backed/conceptual traces carry no line anchors. Derive them deterministically
+            # by matching each work action's identifiers against the shown code (Option 1: no LLM,
+            # no canonical code). The trace is already verified, so a near-miss is only cosmetic.
+            try:
+                from app.services.examples.code_trace_map import map_work_lines_to_code
+
+                mapped = map_work_lines_to_code(code, work)
+                if mapped is not None:
+                    code_lines = mapped
+            except Exception:  # noqa: BLE001 — anchors are best-effort; never block rendering
+                pass
         if isinstance(code_lines, list) and len(code_lines) == len(work):
             meta["code_lines"] = code_lines
         # Card-level block fallback: the span of EVERY line this card references. When the per-action
@@ -1175,6 +1187,19 @@ def _build_solution_cards(
             flat += [n for n in code_lines if isinstance(n, int) and n > 0]
             if flat:
                 meta["code_block"] = [min(flat), max(flat)]
+        elif code:
+            # No per-action anchor (work was a STATE dump, not operation prose). A step is one
+            # iteration of the main loop, so highlight that loop's body — narrowed to the guard line
+            # when this step skips (a no-progress iteration). Structural (AST), no hardcoded lines.
+            try:
+                from app.services.examples.code_trace_map import code_block_for_step, looks_negative
+
+                blob = " ".join([result, reasoning, " ".join(work)])
+                block = code_block_for_step(code, negative=looks_negative(blob))
+                if block:
+                    meta["code_block"] = block
+            except Exception:  # noqa: BLE001 — anchors are best-effort; never block rendering
+                pass
         cards.append({
             "id": f"we-solve-{tid}-{n}",
             "blueprint_key": "worked_example",
