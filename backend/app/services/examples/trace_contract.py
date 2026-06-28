@@ -167,10 +167,55 @@ def _states(prose: str, fact: str) -> bool:
     return re.sub(r"\s+", " ", str(fact).lower()).strip() in prose
 
 
-def validate_prose(cards: list[dict[str, Any]], trace: ContractTrace, adapter) -> list[ProseViolation]:
+# A1 (STUDY_PATH_CONTENT_SPEC §A1) — decision-contradiction guard. Temporary keyword layer; the durable
+# plan is a structured decision/claim check. ACCEPT-family and REJECT-family action verbs; a step whose
+# verified `decision` is one family but whose Work/Result asserts the other (un-negated) is a hard
+# contradiction (the Step-5 "skip vs accept" bug).
+_ACCEPT_VERBS = ("accept", "add", "append", "include", "select", "settle")
+_REJECT_VERBS = ("skip", "reject", "discard")
+_REJECT_PHRASES = ("already connected", "already linked", "already in the same", "forms a cycle",
+                   "form a cycle", "would create a cycle", "creates a cycle")
+_NEG = re.compile(r"\b(not|no|never|don't|do not|does not|doesn't|cannot|can't|isn't|won't|avoid|"
+                  r"without|wouldn't)\b")
+
+
+def _asserts(text: str, verbs: tuple[str, ...], phrases: tuple[str, ...] = ()) -> bool:
+    """True if `text` asserts one of these action verbs/phrases as a positive claim (no negation within
+    the ~5 words before it)."""
+    for pat in [rf"\b{v}(s|ed|ing)?\b" for v in verbs] + [re.escape(p) for p in phrases]:
+        for m in re.finditer(pat, text):
+            window = text[max(0, m.start() - 28):m.start()]
+            if not _NEG.search(window):
+                return True
+    return False
+
+
+def _decision_contradiction(card: dict[str, Any], step, i: int) -> list[ProseViolation]:
+    dec = str(getattr(step, "decision", "") or "").strip().lower()
+    if not dec:
+        return []
+    # Work + Result are the action-bearing fields (reasoning may legitimately discuss the rejected option).
+    text = re.sub(r"\s+", " ", (" ".join(str(w) for w in (card.get("work") or [])) + " . "
+                               + str(card.get("result", ""))).lower())
+    accept_like = any(dec.startswith(v) for v in _ACCEPT_VERBS)
+    reject_like = any(dec.startswith(v) for v in _REJECT_VERBS)
+    if accept_like and _asserts(text, _REJECT_VERBS, _REJECT_PHRASES):
+        return [ProseViolation("decision_contradiction", f"decision={dec!r} but prose rejects/skips", i, step.id)]
+    if reject_like and _asserts(text, _ACCEPT_VERBS):
+        return [ProseViolation("decision_contradiction", f"decision={dec!r} but prose accepts/adds", i, step.id)]
+    return []
+
+
+def validate_prose(cards: list[dict[str, Any]], trace: ContractTrace, adapter,
+                   *, code_anchored: bool = False) -> list[ProseViolation]:
     """Generic guard: numbers in the prose must be in `allowed_values`, every `required_fact` must be
-    stated, no `forbidden_claim` may appear — plus any adapter-specific claim checks. Bounded, not a
-    natural-language prover."""
+    stated, no `forbidden_claim` may appear, the prose must not contradict the step's decision — plus any
+    adapter-specific claim checks. Bounded, not a natural-language prover.
+
+    `code_anchored` (A3): for a CODE-anchored worked example the numeric allowlist does NOT apply — the
+    allowlist encodes the CONCEPTUAL trace vocabulary (edge weights), but code execution legitimately
+    surfaces runtime values outside it (heap start cost 0, indices, accumulated totals). required_facts +
+    the decision guard + executable validation (A2) carry the guarantees instead."""
     out: list[ProseViolation] = []
     for i, card in enumerate(cards):
         sids = card.get("trace_step_ids") or []
@@ -180,7 +225,7 @@ def validate_prose(cards: list[dict[str, Any]], trace: ContractTrace, adapter) -
         prose = _prose_of(card)
         facts = step.facts or {}
         allowed = {str(x) for x in facts.get("allowed_values", [])}
-        if allowed:
+        if allowed and not code_anchored:
             for n in set(re.findall(r"-?\d+", prose)):
                 if n not in allowed:
                     out.append(ProseViolation("value_not_allowed", n, i, step.id))
@@ -191,6 +236,7 @@ def validate_prose(cards: list[dict[str, Any]], trace: ContractTrace, adapter) -
         for c in facts.get("forbidden_claims", []):
             if _states(prose, c):
                 out.append(ProseViolation("forbidden_claim", str(c), i, step.id))   # hard (default)
+        out += _decision_contradiction(card, step, i)                               # A1 (hard)
         # adapter-specific claims are contradictions (wrong node / decision / membership) -> hard
         out += [ProseViolation(code, detail, i, step.id)
                 for code, detail in adapter.validate_prose_claims(card, step)]

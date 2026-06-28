@@ -107,5 +107,56 @@ class LyingFormatterIsCaught(unittest.TestCase):
                         "binary search un-discussed probe not caught")
 
 
+class DecisionContradictionGuard(unittest.TestCase):
+    """A1 (STUDY_PATH_CONTENT_SPEC): the LIVE Step-5 bug — Result says 'accept' (satisfying the adapter's
+    mention-check) while Work asserts 'skip'/'already linked'. The generic guard must catch what the
+    adapter's narrow check misses, without false-positiving on a negated mention."""
+    def _trace(self, slug):
+        a = ADAPTERS[slug]
+        return a, tp.select_instance(a, seed=3)
+
+    def test_skip_in_work_with_accept_in_result_is_caught(self):
+        a, tr = self._trace("kruskal")
+        accept = next(s for s in tr.steps if s.decision == "accept")
+        u, v, w = accept.inputs["edge"]
+        card = {"trace_step_ids": [accept.id], "title": "", "goal": "", "reasoning": "",
+                "work": [f"edge ({u},{v},{w}) connects components already linked", "skip the edge"],
+                "result": f"Edge ({u},{v},{w}) accept; MST so far [...]",   # 'accept' satisfies the adapter
+                "prior_state": accept.prior_state, "result_state": accept.state_after}
+        hard = hard_prose_violations(validate_prose([card], tr, a))
+        self.assertTrue(any(x.code == "decision_contradiction" for x in hard),
+                        "accept step with 'skip' in Work not caught")
+
+    def test_negated_skip_on_accept_is_not_flagged(self):
+        a, tr = self._trace("kruskal")
+        accept = next(s for s in tr.steps if s.decision == "accept")
+        u, v, w = accept.inputs["edge"]
+        card = {"trace_step_ids": [accept.id], "title": "", "goal": "", "reasoning": "",
+                "work": [f"add edge ({u},{v},{w}) to the MST; we do not skip it — the components differ"],
+                "result": f"Edge ({u},{v},{w}) accept; MST so far [...]",
+                "prior_state": accept.prior_state, "result_state": accept.state_after}
+        hard = hard_prose_violations(validate_prose([card], tr, a))
+        self.assertFalse(any(x.code == "decision_contradiction" for x in hard),
+                         "negated 'do not skip' wrongly flagged")
+
+
+class CodeAnchoredAllowlist(unittest.TestCase):
+    """A3: the numeric allowlist (conceptual-trace vocabulary) must NOT apply to a code-anchored worked
+    example, where code runtime values (heap start cost 0, indices) legitimately appear."""
+    def _step_trace(self):
+        step = Step(id="s1", operation="x", prior_state={}, state_after={},
+                    facts={"allowed_values": [1, 2, 4, 7, 14], "required_facts": [], "forbidden_claims": []})
+        return step, ContractTrace(problem="p", conventions={}, initial_state={}, final_answer=None,
+                                   steps=[step])
+
+    def test_default_flags_structural_number_but_code_anchored_exempts_it(self):
+        step, tr = self._step_trace()
+        card = _card(step, ["cost, u = heapq.heappop(min_heap) // pop (0, 'A')"])   # 0 not in allowed
+        self.assertTrue(any(x.code == "value_not_allowed"
+                            for x in validate_prose([card], tr, _StubAdapter())))
+        self.assertFalse(any(x.code == "value_not_allowed"
+                             for x in validate_prose([card], tr, _StubAdapter(), code_anchored=True)))
+
+
 if __name__ == "__main__":
     unittest.main()

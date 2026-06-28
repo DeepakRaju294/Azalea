@@ -238,7 +238,7 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
                        getattr(adapter, "slug", "?"), fid.code)
             _retain_debug(topic, trace, raw, cards, fid, [], shipped=False)
             return None
-        prose = validate_prose(cards, trace, adapter)
+        prose = validate_prose(cards, trace, adapter, code_anchored=bool(code))
         last_prose = prose
         hard = hard_prose_violations(prose)
         advisory = [v for v in prose if v.severity != "hard"]
