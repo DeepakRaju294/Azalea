@@ -43,6 +43,14 @@ class ContentShapeChecker(unittest.TestCase):
         self.assertFalse(any("no code anchor" in v
                              for v in worked_example_shape_violations(cards2, coding=True)))
 
+    def test_coding_line_trace_explosion_flagged(self):
+        many = [_step(f"Step {i}", ["x"], "complete") for i in range(20)]
+        self.assertTrue(any("line-trace explosion" in v
+                            for v in worked_example_shape_violations(many, coding=True)))
+        few = [_step(f"Step {i}", ["x"], "complete") for i in range(6)]
+        self.assertFalse(any("explosion" in v
+                             for v in worked_example_shape_violations(few, coding=True)))
+
     def test_missing_completion_flagged(self):
         cards = [_step("Step 1", ["add edge"], "Edge (A,B,2) accept; MST so far [...]")]
         self.assertIn("final step does not state completion", worked_example_shape_violations(cards))

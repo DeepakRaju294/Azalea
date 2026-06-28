@@ -12,6 +12,7 @@ import re
 from typing import Any
 
 _MAX_WORK_LINES = 2
+_MAX_CODING_STEP_CARDS = 12        # a coding worked example over the projection cap is a line-trace explosion
 _RAW_STAGE_GOAL = re.compile(r"^\s*goal:\s*[a-z_]+\s*$", re.I)     # "Goal: consider_edge"
 _RAW_DICT = re.compile(r"\{\s*['\"]")                              # a JSON/dict literal in the text
 
@@ -52,6 +53,9 @@ def worked_example_shape_violations(cards: list[dict[str, Any]], *,
     """The §H content-shape issues in a lesson's worked-example steps (empty list = clean)."""
     steps = [c for c in (cards or []) if isinstance(c, dict) and _is_step(c)]
     issues: list[str] = []
+    if coding and len(steps) > _MAX_CODING_STEP_CARDS:
+        issues.append(f"{len(steps)} step cards (> {_MAX_CODING_STEP_CARDS}) — line-trace explosion, "
+                      "not bounded structural steps")
     cap = 4 if coding else _MAX_WORK_LINES          # coding Work = verbatim code lines, so a higher cap
     for c in steps:
         title = str(c.get("title") or "?")[:40]

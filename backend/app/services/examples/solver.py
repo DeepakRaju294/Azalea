@@ -1403,8 +1403,12 @@ def _enforce_worked_example_schema_cap(
             "topic_family": topic.get("topic_family") or "",
         }
         cap = build_prepass_config(tdict).maximum_example_cards
+        from app.services.examples import generation_report as _gr
+        _gr.we(we_card_count=len(cards), we_card_cap=cap)
         if len(cards) <= cap:
             return sol, False
+        _gr.we(we_over_cap=True)
+        _gr.error(f"worked example has {len(cards)} cards over the {cap}-card projection cap (line-trace)")
 
         _log.warning(
             "worked-example: %d step cards exceed projection cap %d for topic %s (%s) — re-solving "

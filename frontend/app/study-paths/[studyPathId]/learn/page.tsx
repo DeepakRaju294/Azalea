@@ -7776,6 +7776,8 @@ const REVEAL_BUILD_TYPES = new Set([
   "edge_case",
   "formula_breakdown",
   "roadmap",
+  "prerequisites",        // reveal each prerequisite 1-by-1 on one card (like process), not 1-per-card
+  "complexity_analysis",  // same: build the analysis bullets up on a single card
 ]);
 
 
