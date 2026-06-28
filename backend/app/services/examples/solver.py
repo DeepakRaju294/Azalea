@@ -449,15 +449,22 @@ def _gate_outline(outline: dict[str, Any]) -> tuple[bool, str]:
 # Coding-implementation structural path (CODING_WORKED_EXAMPLE_SPEC.md v1)
 # ----------------------------------------------------------------------------------------------
 
-# v1 flat teaching ranges (input-size-aware ranges are v1.1). `max` is a CEILING, not a target.
+# Fallback step bands used ONLY when an algorithm has no adapter to sample (coding_step_band below derives
+# the band from the adapter's natural trace length when one routes). These were re-grounded against the
+# adapters' measured teaching-trace lengths: merge_sort naturally makes 4-7 (the old min of 8 force-padded
+# every example), graph algorithms were absent (fell to a loose default that hid line traces), and the
+# default ceiling was tightened so a 33-step line trace can't pass under it.
 CODING_STEP_RANGES: dict[str, tuple[int, int]] = {
-    "binary_search": (3, 6),
-    "merge_sort": (8, 18),
-    "dfs": (5, 12),
-    "bfs": (5, 12),
+    "binary_search": (3, 8),
+    "merge_sort": (4, 12),
+    "dfs": (5, 16),
+    "bfs": (4, 12),
+    "kruskal": (4, 13),
+    "prim": (3, 9),
+    "dijkstra": (4, 11),
     "linked_list_operation": (4, 10),
     "dynamic_programming": (8, 20),
-    "default": (5, 25),
+    "default": (4, 14),
 }
 
 # Structural step kinds the outline may use; line-level kinds are a HARD reject.
@@ -504,17 +511,40 @@ def _coding_step_range(slug: str) -> tuple[int, int]:
     return CODING_STEP_RANGES.get(slug, CODING_STEP_RANGES["default"])
 
 
+def coding_step_band(topic: dict[str, Any], *, samples: int = 12) -> tuple[int, int]:
+    """A GUIDELINE [lo, hi] for roughly how many structural steps this algorithm's worked example should
+    have. Read off the algorithm's own adapter — the adapter is the per-concept SPECIFICATION, and its
+    teaching trace already encodes the input size, the edge cases selected, and the structural step kinds,
+    so its natural trace length is the rough step count (Prim ~4-5, Kruskal ~5-8, ...). We take only the
+    COUNT, never the adapter's data/values/example — those are never injected into the authoring prompt.
+    The band is padded WIDE (never reject a natural-length example; only a line-trace explosion ~2x+ fails)
+    per the 'no too-narrow range' requirement. Falls back to the static ranges when no adapter routes."""
+    try:
+        from app.services.examples.trace_pipeline import route_adapter, select_instance
+
+        ad = route_adapter(topic)
+        if ad is not None:
+            lens = [len(tr.steps) for seed in range(samples)
+                    if (tr := select_instance(ad, seed)) is not None and getattr(tr, "steps", None)]
+            if lens:
+                lo, hi = min(lens), max(lens)
+                return max(2, lo - 1), max(hi + 3, int(round(hi * 1.6)))   # generous pad, both sides
+    except Exception:  # noqa: BLE001 — estimation must never break generation
+        pass
+    return _coding_step_range(_coding_topic_slug(topic))
+
+
 def _gate_coding_outline(
     outline: dict[str, Any], *, step_range: tuple[int, int], required: list[str],
 ) -> tuple[bool, str, str]:
     """HARD gate on the structural coding outline, BEFORE the expensive cards call. Rejects on:
-    too FEW steps (min), line-level kinds, `other` over cap, and missing required-case coverage.
-    There is intentionally NO upper bound — the structural plan must run the FULL trace to the final
-    result and is never trimmed for length (a trimmed plan ships an incomplete worked example).
-    Returns (ok, feedback, fail_reason)."""
+    too FEW steps (min), too MANY (the generous adapter-derived ceiling — a line trace), line-level kinds,
+    `other` over cap, and missing required-case coverage. The ceiling is wide (only an explosion, ~2x the
+    natural length, fails) so a legitimately full trace is never trimmed; over-ceiling triggers a COLLAPSE
+    retry, not a blank. Returns (ok, feedback, fail_reason)."""
     plan = [a for a in (outline.get("solution_plan") or []) if isinstance(a, dict)]
     actions = [a for a in plan if str(a.get("description") or a.get("action") or "").strip()]
-    lo, _ = step_range
+    lo, hi = step_range
     problems: list[str] = []
     reason = ""
 
@@ -526,6 +556,13 @@ def _gate_coding_outline(
         problems.append(f"the plan has only {n} actions — at least {lo} are needed. Show each structural "
                         "step (split / recursive call / base case / merge selection / tail copy).")
         reason = reason or "outline_under_min"
+
+    if n > hi:
+        problems.append(f"the plan has {n} actions — more than the ~{hi} structural steps this input size "
+                        "needs. You are tracing LINE-LEVEL operations (each find / compare / union / swap as "
+                        "its own step); COLLAPSE them into the structural step they belong to (one step per "
+                        "pass / edge considered / recursive call), still running the FULL trace to the result.")
+        reason = reason or "outline_over_max"
 
     bad_kinds = sorted({_norm(a.get("kind")).replace(" ", "_") for a in actions
                         if _norm(a.get("kind")).replace(" ", "_") in _LINE_LEVEL_KINDS})
@@ -555,7 +592,7 @@ def _build_coding_outline_user_prompt(
     topic: dict[str, Any], existing_problem: str, code: Optional[str], *,
     required: list[str], step_range: tuple[int, int], feedback: str = "",
 ) -> str:
-    lo, _ = step_range
+    lo, hi = step_range
     parts = [f"Topic: {topic.get('title') or ''}"]
     concept = topic.get("concept") or topic.get("learning_goal") or topic.get("main_concept")
     if concept:
@@ -566,10 +603,11 @@ def _build_coding_outline_user_prompt(
     if required:
         parts.append("required_cases — use EXACTLY these and map each action's cases_covered to them:\n- "
                      + "\n- ".join(required))
-    parts.append(f"Produce AT LEAST {lo} structural actions, and AS MANY AS THE COMPLETE TRACE NEEDS "
-                 "— every split, recursive call, base case, merge selection, and tail copy, all the way "
-                 "to the final returned result. NEVER stop the trace early or omit steps to save space; "
-                 "there is no upper limit.")
+    parts.append(f"Produce roughly {lo}-{hi} STRUCTURAL actions — one per split / recursive call / base "
+                 "case / merge selection / tail copy / edge considered — running the COMPLETE trace to the "
+                 f"final returned result. Never stop early or omit steps. Do NOT trace line-level operations "
+                 "(individual find / compare / union / swap calls) as their own steps — those belong INSIDE "
+                 f"one structural step. ~{hi} is a generous ceiling, not a target.")
     if feedback:
         parts.append(feedback)
     return "\n".join(parts)
@@ -603,7 +641,7 @@ def _solve_coding_worked_example(
     return a {coding_fallback_used, reason} marker so the caller keeps the base example and records
     WHY. The old line-execution trace is NOT a fallback."""
     slug = _coding_topic_slug(topic)
-    step_range = _coding_step_range(slug)
+    step_range = coding_step_band(topic)          # adapter-derived guideline band (floor + generous ceiling)
     required = list(REQUIRED_CASES_BY_TOPIC.get(slug, []))
 
     def run_outline(fb: str) -> Optional[dict[str, Any]]:

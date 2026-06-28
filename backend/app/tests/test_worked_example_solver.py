@@ -364,17 +364,25 @@ class TestCodingStructural(unittest.TestCase):
         self.assertEqual(_coding_topic_slug({"title": "Implementing Merge Sort"}), "merge_sort")
         self.assertEqual(_coding_topic_slug({"title": "Binary Search in Python"}), "binary_search")
         self.assertEqual(_coding_topic_slug({"title": "Some Custom Algorithm"}), "default")
-        self.assertEqual(_coding_step_range("merge_sort"), (8, 18))   # v1 teaching default, not (12, 30)
+        # Fallback ranges re-grounded against the adapters' natural lengths: merge_sort makes 4-7, so the
+        # old (8,18) over-padded; the band is now derived per-topic by coding_step_band (the live path).
+        self.assertEqual(_coding_step_range("merge_sort"), (4, 12))
 
-    def test_gate_allows_large_plan_no_upper_bound(self):
-        # The gate intentionally has NO upper bound — a long structural plan must NOT be rejected,
-        # so the worked example runs the full trace to the result instead of being cut short.
+    def test_gate_accepts_full_trace_but_rejects_line_trace_explosion(self):
+        # The gate now enforces a GENEROUS adapter-derived ceiling: a legitimately full structural plan
+        # within the band passes, but a line-trace explosion (~2x+ the natural length) is rejected so it
+        # can be collapsed back to structural steps.
         from app.services.examples.solver import _gate_coding_outline
-        outline = {"required_cases": [], "solution_plan": [
-            {"kind": "pass", "description": f"a{i}", "cases_covered": []} for i in range(40)]}
-        ok, _, reason = _gate_coding_outline(outline, step_range=(3, 6), required=[])
+        full = {"required_cases": [], "solution_plan": [
+            {"kind": "pass", "description": f"a{i}", "cases_covered": []} for i in range(6)]}
+        ok, _, reason = _gate_coding_outline(full, step_range=(3, 10), required=[])
         self.assertTrue(ok)
         self.assertEqual(reason, "")
+        explosion = {"required_cases": [], "solution_plan": [
+            {"kind": "pass", "description": f"a{i}", "cases_covered": []} for i in range(40)]}
+        ok2, _, reason2 = _gate_coding_outline(explosion, step_range=(3, 10), required=[])
+        self.assertFalse(ok2)
+        self.assertEqual(reason2, "outline_over_max")
 
     def test_gate_rejects_line_level_kinds(self):
         from app.services.examples.solver import _gate_coding_outline
