@@ -113,20 +113,52 @@ def _retry_feedback(reason: str, detail: list[str], n_steps: int) -> str:
     return ""
 
 
+# §1a (STUDY_PATH_CONTENT_SPEC) — the instructional grammar the formatter was flying blind without.
+_STAGE_GRAMMAR_RULE = (
+    "\nINSTRUCTIONAL GRAMMAR — use STAGE_GUIDANCE below (keyed by each step's `operation`):\n"
+    "- Lead the `reasoning` with the stage's `teaching_focus` (the ONE thing the step teaches).\n"
+    "- In `work`: surface the `required` operation as the step's single DECISION line; combine ALL "
+    "`aggregated_supporting` operations into ONE summary line; OMIT `internal` operations unless the "
+    "teaching_focus needs them. Aim for ~1-2 work lines — surface the decision, do not narrate machinery."
+)
+
+
+def _stage_guidance(adapter: Any) -> dict[str, Any]:
+    """Per-operation instructional grammar from the adapter's example_spec: teaching_focus + the role of
+    each contained operation (required / aggregated_supporting / internal). Empty if not declared."""
+    spec = getattr(adapter, "example_spec", None)
+    stages = getattr(spec, "stages", None) if spec is not None else None
+    if not stages:
+        return {}
+    out: dict[str, Any] = {}
+    for sid, st in stages.items():
+        contains = getattr(st, "contains", None) or {}
+        out[sid] = {
+            "teaching_focus": getattr(st, "teaching_focus", "") or "",
+            "required": [op for op, r in contains.items() if r == "required"],
+            "aggregated_supporting": [op for op, r in contains.items() if r == "aggregated_supporting"],
+            "internal": [op for op, r in contains.items() if r == "internal"],
+        }
+    return out
+
+
 def build_format_payload(trace: ContractTrace, code: Optional[str] = None,
-                         feedback: str = "") -> dict[str, str]:
+                         feedback: str = "", adapter: Any = None) -> dict[str, str]:
     steps = [{
         "id": s.id, "operation": s.operation, "inputs": s.inputs,
         "prior_state": s.prior_state, "state_after": s.state_after,
         "expected_visible_result": s.expected_visible_result, "facts": s.facts,
     } for s in trace.steps]
     fb = f"\n\nFIX FROM THE PREVIOUS ATTEMPT (address ALL of this):\n{feedback}" if feedback else ""
+    guidance = _stage_guidance(adapter)
+    g_rule = _STAGE_GRAMMAR_RULE if guidance else ""
+    g_text = f"\n\nSTAGE_GUIDANCE (per step.operation):\n{json.dumps(guidance, default=str)}" if guidance else ""
     if code:                                                   # coding topic — anchor Work to the shown code
         numbered = "\n".join(f"{i:>3}  {ln}" for i, ln in enumerate(code.split("\n"), start=1))
         user = (f"PROBLEM: {trace.problem}\n\nCODE (1-based line numbers — anchor every work line and "
-                f"code_lines entry to THESE lines):\n{numbered}\n\nSTEPS (verified, describe faithfully):\n"
-                f"{json.dumps(steps, default=str)}{fb}")
-        return {"system": _CODING_FORMAT_SYSTEM, "user": user}
+                f"code_lines entry to THESE lines):\n{numbered}{g_text}{fb}\n\nSTEPS (verified, describe "
+                f"faithfully):\n{json.dumps(steps, default=str)}")
+        return {"system": _CODING_FORMAT_SYSTEM + g_rule, "user": user}
     system = (
         "You format an ALREADY-CORRECT, verified solution into learner-facing step cards. Write EXACTLY "
         "one card per step, in order (do NOT split or merge steps). For each card write only: title, goal, "
@@ -137,9 +169,9 @@ def build_format_payload(trace: ContractTrace, code: Optional[str] = None,
         "'skip it — it would form a cycle'). A step that omits the entity/values or the decision is INVALID. "
         "Do NOT invent or alter any value, and do NOT output any machine-state/JSON-state fields. "
         'Return ONLY JSON: {"cards":[{"title","goal","reasoning","work":[...],"result"}, ...]}'
-    )
-    user = (f"PROBLEM: {trace.problem}\nSTEPS (verified, describe faithfully):\n"
-            f"{json.dumps(steps, default=str)}{fb}")
+    ) + g_rule
+    user = (f"PROBLEM: {trace.problem}{g_text}{fb}\nSTEPS (verified, describe faithfully):\n"
+            f"{json.dumps(steps, default=str)}")
     return {"system": system, "user": user}
 
 
@@ -254,7 +286,7 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
     n_steps = len(trace.steps)
     for _ in range(_MAX_FORMAT_ATTEMPTS):
         attempts += 1
-        raw = fmt(build_format_payload(trace, code=code, feedback=feedback))   # M7-driven: targeted retry
+        raw = fmt(build_format_payload(trace, code=code, feedback=feedback, adapter=adapter))   # §1a + M7 retry
         cards = _normalize_and_attach(raw, trace)
         last_raw, last_cards = raw, cards
         if cards is None:                                          # formatter produced nothing usable -> retry

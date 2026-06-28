@@ -84,6 +84,19 @@ class CodingPayloadTests(unittest.TestCase):
         self.assertIn("machine-state", p["system"])
         self.assertNotIn("CODE-ANCHORED", p["system"])
 
+    def test_stage_grammar_threads_into_payload_when_adapter_given(self):
+        # §1a: with the adapter, the payload carries the instructional grammar (teaching_focus + roles).
+        from app.services.examples import trace_pipeline as tp
+        from app.services.examples.trace_adapters import ADAPTERS
+        a = ADAPTERS["kruskal"]
+        trace = tp.select_instance(a, seed=5)
+        p = tp.build_format_payload(trace, code=None, adapter=a)
+        self.assertIn("INSTRUCTIONAL GRAMMAR", p["system"])
+        self.assertIn("STAGE_GUIDANCE", p["user"])
+        self.assertIn("teaching_focus", p["user"])
+        self.assertIn("decide_accept_or_skip", p["user"])    # the required op surfaces
+        self.assertNotIn("INSTRUCTIONAL GRAMMAR", tp.build_format_payload(trace, code=None)["system"])
+
 
 class StructuralFallbackTests(unittest.TestCase):
     def test_main_loop_span_finds_the_for_loop(self):
