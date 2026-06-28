@@ -2909,6 +2909,88 @@ def _move_first_card_with_key(
     return reordered
 
 
+# Glue/scaffolding words dropped when deciding whether the roadmap already previews a topic. The
+# CONCEPT (kruskal, prim) and the distinguishing modifier (implementing / walkthrough / comparing)
+# are kept, so the two topics of one algorithm are told apart; 'algorithm' and pure glue are dropped.
+_ROADMAP_GLUE = {
+    "the", "a", "an", "of", "to", "for", "and", "in", "with", "on", "using", "its", "your", "as",
+    "algorithm", "algorithms", "introduction", "intro", "overview", "basics", "fundamentals",
+    "how", "what", "it", "this", "that", "into", "is", "are", "be",
+}
+
+
+def _roadmap_terms(title: str) -> set[str]:
+    """Distinctive lowercased words of a topic title used to detect whether the roadmap previews it."""
+    import re
+    words = re.findall(r"[a-z]+", title.lower())
+    return {w for w in words if w not in _ROADMAP_GLUE and len(w) >= 3} or {w for w in words if len(w) >= 3}
+
+
+def _roadmap_summary_for(t: Topic) -> str:
+    """A one-line preview for a topic the model dropped: the topic's own purpose / learner_outcome
+    (first sentence, de-boilerplated) or a topic-type-aware template from the title."""
+    import re
+    for attr in ("purpose", "learner_outcome"):
+        val = str(getattr(t, attr, "") or "").strip()
+        if val:
+            s = re.split(r"(?<=[.!?])\s+", val)[0].strip()
+            s = re.sub(r"^(this topic|in this topic,?|here,? you|you will|learners?(\s+will)?)\s+",
+                       "", s, flags=re.I).strip().rstrip(".")
+            if s:
+                return s[0].upper() + s[1:]
+    title = str(getattr(t, "title", "") or "").lower()
+    ttype = str(getattr(t, "course_type", None) or getattr(t, "topic_type", None) or "").lower()
+    if "coding" in ttype or "implement" in title:
+        return "How to implement it in code"
+    if "walkthrough" in title or "walkthrough" in ttype:
+        return "How it works, traced step by step"
+    if "compar" in title or "compar" in ttype:
+        return "How the approaches compare and when to use each"
+    return "What it covers and why it matters"
+
+
+def _enforce_roadmap_coverage(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
+    """Guarantee every non-intro sibling topic is previewed in the roadmap. The roadmap rule is
+    prompt-only ("cover all upcoming topics"), so the model sometimes drops one; here we append a
+    one-line summary for any topic whose distinctive terms appear in no single roadmap line, and
+    create a roadmap card when the intro produced none but has siblings to preview."""
+    import re
+    study_path = getattr(topic, "study_path", None)
+    sibs = getattr(study_path, "topics", None) if study_path is not None else None
+    if not sibs:
+        return cards
+    current_id = str(getattr(topic, "id", "") or "")
+    siblings = [s for s in sorted(sibs, key=lambda x: int(getattr(x, "order_index", 0) or 0))
+                if str(getattr(s, "id", "") or "") != current_id
+                and _topic_type_key(s) != "study_path_introduction"
+                and str(getattr(s, "title", "") or "").strip()]
+    if not siblings:
+        return cards
+
+    roadmaps = [c for c in cards if _lean_card_key(c) == "roadmap"]
+    # per-LINE word sets — a topic is covered only when ONE line holds all its terms (so two
+    # 'Implementing …' topics aren't both satisfied by 'implementing' + a concept in separate lines).
+    line_words = [set(re.findall(r"[a-z]+", str(b).lower()))
+                  for rm in roadmaps for b in (rm.get("points") or rm.get("bullets") or [])]
+    missing = [s for s in siblings
+               if not any(_roadmap_terms(str(s.title)) <= lw for lw in line_words)]
+    if not missing:
+        return cards
+
+    added: list[str] = []
+    for s in missing:
+        added.append(f"{str(s.title).strip()}:")
+        added.append(f"  - {_roadmap_summary_for(s)}.")
+    if roadmaps:
+        tgt = roadmaps[-1]
+        tgt["points"] = list(tgt.get("points") or tgt.get("bullets") or []) + added
+        return cards
+    return [*cards, {
+        "blueprint_key": "roadmap", "card_type": "roadmap",
+        "title": "Where this path goes", "points": ["This path covers:", *added],
+    }]
+
+
 def _normalize_lean_card_order(
     cards: list[Any],
     topic: Topic,
@@ -2964,6 +3046,9 @@ def _normalize_lean_card_order(
     normalized = _enforce_blueprint_cards(normalized, topic_type)
 
     if topic_type == "study_path_introduction":
+        # Guarantee every non-intro topic is previewed (the roadmap rule is prompt-only) BEFORE ordering,
+        # so a freshly-created roadmap card lands in the roadmap slot below.
+        normalized = _enforce_roadmap_coverage(normalized, topic)
         # Intro = background(s) then roadmap(s); everything else has been filtered out.
         backgrounds = [c for c in normalized if _lean_card_key(c) == "background"]
         roadmaps = [c for c in normalized if _lean_card_key(c) == "roadmap"]

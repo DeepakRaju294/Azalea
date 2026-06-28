@@ -17,7 +17,7 @@ from __future__ import annotations
 import ast
 import keyword
 import re
-from typing import Optional
+from typing import Any, Optional
 
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
@@ -35,6 +35,29 @@ _STOP = {
 def _idents(text: str) -> set[str]:
     """Lower-cased identifier tokens in `text`, minus glue/keywords."""
     return {m.group(0).lower() for m in _IDENT.finditer(text or "")} - _STOP
+
+
+def validate_code_lines(code: str, work: list[str], code_lines: Any) -> bool:
+    """True when a formatter-supplied per-action anchor is trustworthy: same length as ``work``, every
+    cited line in range, and a majority of the anchored actions share an identifier with the line they
+    point at. Rejects out-of-range or hallucinated maps so we can recompute deterministically instead."""
+    if not isinstance(code_lines, list) or len(code_lines) != len(work):
+        return False
+    raw = (code or "").split("\n")
+    n = len(raw)
+    line_idents = [_idents(ln) for ln in raw]
+    anchored = agree = 0
+    for w, entry in zip(work, code_lines):
+        nums = [x for x in entry if isinstance(x, int) and not isinstance(x, bool)] \
+            if isinstance(entry, (list, tuple)) else []
+        if any(x < 1 or x > n for x in nums):
+            return False                                   # out of range -> reject outright
+        if nums:
+            anchored += 1
+            wt = _idents(w)
+            if any(wt & line_idents[x - 1] for x in nums):
+                agree += 1
+    return anchored == 0 or agree * 2 >= anchored          # majority of anchored lines must overlap
 
 
 def map_work_lines_to_code(code: str, work: list[str]) -> Optional[list[list[int]]]:

@@ -76,12 +76,42 @@ def select_instance(adapter, seed: int) -> Optional[ContractTrace]:
 
 # --- Stage 3: prose-only formatter + backend state attach ---------------------------------------
 
-def build_format_payload(trace: ContractTrace) -> dict[str, str]:
+# Coding worked-example field contract (carried over from solver._CODING_CARDS_SYSTEM, §ADAPTER): the
+# trace is the verified source of truth; the formatter's only job is to MAP each verified step onto the
+# code the learner is shown — Work = the literal code line(s), Result = the runtime state. This is what
+# makes the per-bullet active-line highlight precise (each Work bullet anchors to one source line).
+_CODING_FORMAT_SYSTEM = (
+    "You format an ALREADY-CORRECT, verified execution trace into CODE-ANCHORED worked-example cards — "
+    "EXACTLY one card per step, in order. The trace is the source of truth: use ONLY each step's "
+    "operation/decision/facts; never invent or alter a value, never add, remove, or reorder steps.\n"
+    "FIELDS per card:\n"
+    "- goal: the structural step THIS iteration performs ('consider the next edge', 'settle the nearest "
+    "node') — empty if the title already says it.\n"
+    "- reasoning: WHICH code construct implements it and why (the condition / loop / call / branch).\n"
+    "- work: REQUIRED list. Each line BEGINS with the LITERAL code line from the CODE below, quoted "
+    "VERBATIM with its variable names (e.g. `if ds.find(u) != ds.find(v):` then `mst.append((u, v, w))`), "
+    "THEN — REQUIRED on every line — ` // <plain-English of what this line does NOW, naming the concrete "
+    "value(s) from this step>`. Do NOT substitute the values into the code itself — put them in the // "
+    "part. A line with no ` // ` is INVALID. List the lines this step executes, in source order.\n"
+    "- result: the concrete RUNTIME state after this step (variables/structures mutated, branch taken).\n"
+    "- code_lines: for EACH work action, the 1-based line number(s) in the CODE it maps to, as a list of "
+    "lists (e.g. [[18],[19],[20]]); use [] for a pure-narration line. One entry per work line.\n"
+    'Return ONLY JSON: {"cards":[{"title","goal","reasoning","work":[...],"result","code_lines":[...]}, ...]}'
+)
+
+
+def build_format_payload(trace: ContractTrace, code: Optional[str] = None) -> dict[str, str]:
     steps = [{
         "id": s.id, "operation": s.operation, "inputs": s.inputs,
         "prior_state": s.prior_state, "state_after": s.state_after,
         "expected_visible_result": s.expected_visible_result, "facts": s.facts,
     } for s in trace.steps]
+    if code:                                                   # coding topic — anchor Work to the shown code
+        numbered = "\n".join(f"{i:>3}  {ln}" for i, ln in enumerate(code.split("\n"), start=1))
+        user = (f"PROBLEM: {trace.problem}\n\nCODE (1-based line numbers — anchor every work line and "
+                f"code_lines entry to THESE lines):\n{numbered}\n\nSTEPS (verified, describe faithfully):\n"
+                f"{json.dumps(steps, default=str)}")
+        return {"system": _CODING_FORMAT_SYSTEM, "user": user}
     system = (
         "You format an ALREADY-CORRECT, verified solution into learner-facing step cards. Write EXACTLY "
         "one card per step, in order. For each card write only: title, goal, reasoning, work (list), "
@@ -109,6 +139,8 @@ def _normalize_and_attach(raw: Any, trace: ContractTrace) -> Optional[list[dict[
             "work": [str(w) for w in (card.get("work") or [])],
             "result": str(card.get("result", "")).strip(),
         }
+        if isinstance(card.get("code_lines"), list):           # coding path: per-action anchors (validated downstream)
+            c["code_lines"] = card["code_lines"]
         # backend attaches the truth-bearing fields deterministically (§11) — the model never produced them
         c["trace_step_ids"] = [step.id]
         c["prior_state"] = step.prior_state
@@ -160,7 +192,8 @@ def _reason_extract_enabled() -> bool:
 
 def solve_trace_pipeline(topic: dict[str, Any], *, format_fn: Optional[FormatFn] = None,
                          reason_fn: Optional[FormatFn] = None, extract_fn: Optional[FormatFn] = None,
-                         critic_fn: Optional[FormatFn] = None, seed: Optional[int] = None
+                         critic_fn: Optional[FormatFn] = None, seed: Optional[int] = None,
+                         code: Optional[str] = None
                          ) -> Optional[dict[str, Any]]:
     fmt = format_fn or default_format_fn
     title = str(topic.get("title") or topic.get("name") or topic.get("id") or "?")
@@ -175,7 +208,7 @@ def solve_trace_pipeline(topic: dict[str, Any], *, format_fn: Optional[FormatFn]
             _log.warning("WORKED-EXAMPLE ADAPTER: topic=%r adapter=%s -> WITHHELD (no teaching trace) — defer",
                          title, adapter.slug)
             return None
-        result = _format_validate_ship(topic, trace, adapter, fmt)
+        result = _format_validate_ship(topic, trace, adapter, fmt, code=code)
         _log.info("WORKED-EXAMPLE ADAPTER: topic=%r adapter=%s -> %s",
                   title, adapter.slug, "SHIPPED (verified)" if result is not None else "withheld (defer)")
         return result
@@ -187,14 +220,14 @@ def solve_trace_pipeline(topic: dict[str, Any], *, format_fn: Optional[FormatFn]
     return None                                                    # defer to existing systems
 
 
-def _format_validate_ship(topic, trace, adapter, fmt) -> Optional[dict[str, Any]]:
+def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = None) -> Optional[dict[str, Any]]:
     """Stage 3 + 4 + 4b (WORKED_EXAMPLE_REASONING_SPEC v8 §13): prose-only format, backend state-attach,
     then SPLIT BY FAILURE SOURCE — a fidelity failure is a backend/trace defect a formatter retry cannot
     fix (withhold + log immediately); only a HARD prose contradiction is worth re-formatting; missing/soft
     prose is advisory in Phase 1 (logged, not blocking). `validate_visual_state=False` in Phase 1."""
     last_raw, last_cards, last_prose = None, None, None
     for _ in range(_MAX_FORMAT_ATTEMPTS):
-        raw = fmt(build_format_payload(trace))
+        raw = fmt(build_format_payload(trace, code=code))
         cards = _normalize_and_attach(raw, trace)
         last_raw, last_cards = raw, cards
         if cards is None:

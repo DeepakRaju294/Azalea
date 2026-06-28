@@ -804,7 +804,7 @@ def solve_worked_example(
         from app.services.examples.trace_pipeline import _enabled as _tp_enabled, solve_trace_pipeline
 
         if _tp_enabled():
-            tp_result = solve_trace_pipeline(topic)
+            tp_result = solve_trace_pipeline(topic, code=code)     # coding topics anchor Work to this code
             if tp_result is not None:
                 return tp_result
     except Exception:  # noqa: BLE001 — the trace pipeline must never break legacy generation
@@ -1160,19 +1160,19 @@ def _build_solution_cards(
             meta["prior_state"] = card["prior_state"]
         if card.get("cases_covered"):
             meta["cases_covered"] = card["cases_covered"]
-        # Best-effort per-action code anchor — keep ONLY when it matches the work length 1:1
-        # (a mismatched/absent anchor is discarded; it never blocks rendering — spec §9).
+        # Per-action code anchor (CODING_WORKED_EXAMPLE_SPEC §5/§9). The trace-pipeline coding formatter
+        # now emits `code_lines` itself (Work = verbatim code), but we TRUST it only when it validates
+        # (every cited line in range + identifiers overlap the work line). On absence/failure we derive
+        # anchors deterministically from the work prose (works now that Work is verbatim code); the trace
+        # is already verified, so a near-miss line is only cosmetic.
         code_lines = card.get("code_lines")
-        if not (isinstance(code_lines, list) and len(code_lines) == len(work)) and code and work:
-            # Adapter-backed/conceptual traces carry no line anchors. Derive them deterministically
-            # by matching each work action's identifiers against the shown code (Option 1: no LLM,
-            # no canonical code). The trace is already verified, so a near-miss is only cosmetic.
+        if code and work:
             try:
-                from app.services.examples.code_trace_map import map_work_lines_to_code
+                from app.services.examples.code_trace_map import (map_work_lines_to_code,
+                                                                  validate_code_lines)
 
-                mapped = map_work_lines_to_code(code, work)
-                if mapped is not None:
-                    code_lines = mapped
+                if not (isinstance(code_lines, list) and validate_code_lines(code, work, code_lines)):
+                    code_lines = map_work_lines_to_code(code, work)
             except Exception:  # noqa: BLE001 — anchors are best-effort; never block rendering
                 pass
         if isinstance(code_lines, list) and len(code_lines) == len(work):

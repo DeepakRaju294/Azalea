@@ -3,7 +3,8 @@ AST loop-body fallback for state-dump prose. No LLM, no hardcoded code. Fully of
 import unittest
 
 from app.services.examples.code_trace_map import (code_block_for_step, looks_negative,
-                                                  main_loop_span, map_work_lines_to_code)
+                                                  main_loop_span, map_work_lines_to_code,
+                                                  validate_code_lines)
 
 _KRUSKAL = """class DisjointSet:
     def __init__(self, size):
@@ -45,6 +46,43 @@ class TokenOverlapTests(unittest.TestCase):
     def test_empty_inputs(self):
         self.assertIsNone(map_work_lines_to_code("", ["x"]))
         self.assertIsNone(map_work_lines_to_code(_KRUSKAL, []))
+
+
+class ValidateCodeLinesTests(unittest.TestCase):
+    # work lines are verbatim code (the coding contract) anchored to their real lines
+    _work = ["ds.union(u, v) // merge", "mst.append((u, v, weight)) // add edge"]
+
+    def test_accepts_a_correct_in_range_overlapping_map(self):
+        self.assertTrue(validate_code_lines(_KRUSKAL, self._work, [[19], [20]]))
+
+    def test_rejects_out_of_range(self):
+        self.assertFalse(validate_code_lines(_KRUSKAL, self._work, [[19], [999]]))
+
+    def test_rejects_length_mismatch(self):
+        self.assertFalse(validate_code_lines(_KRUSKAL, self._work, [[19]]))
+
+    def test_rejects_no_overlap(self):
+        # in range but pointing at unrelated lines (the class header / blank) -> majority fails
+        self.assertFalse(validate_code_lines(_KRUSKAL, self._work, [[1], [2]]))
+
+
+class CodingPayloadTests(unittest.TestCase):
+    def test_coding_payload_uses_contract_and_numbers_code(self):
+        from app.services.examples import trace_pipeline as tp
+        from app.services.examples.trace_adapters import ADAPTERS
+        trace = tp.select_instance(ADAPTERS["kruskal"], seed=5)
+        p = tp.build_format_payload(trace, code=_KRUSKAL)
+        self.assertIn("CODE-ANCHORED", p["system"])
+        self.assertIn("code_lines", p["system"])
+        self.assertIn("  1  class DisjointSet", p["user"])      # 1-based numbered code present
+
+    def test_non_coding_payload_unchanged(self):
+        from app.services.examples import trace_pipeline as tp
+        from app.services.examples.trace_adapters import ADAPTERS
+        trace = tp.select_instance(ADAPTERS["kruskal"], seed=5)
+        p = tp.build_format_payload(trace, code=None)
+        self.assertIn("machine-state", p["system"])
+        self.assertNotIn("CODE-ANCHORED", p["system"])
 
 
 class StructuralFallbackTests(unittest.TestCase):
