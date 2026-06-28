@@ -2,10 +2,28 @@
 Verifies the accumulator records the trace-pipeline decision (adapter, ship/withhold + reason) so an
 audit reads the record instead of guessing. Offline."""
 import unittest
+from unittest import mock
 
 from app.services.examples import generation_report as gr
 from app.services.examples import trace_pipeline as tp
 from app.services.examples.trace_adapters import ADAPTERS
+
+
+class CodingRouting(unittest.TestCase):
+    def test_coding_prefers_legacy_over_gen_foundation(self):
+        # When the adapter defers, a CODING topic must use the bounded legacy structural solver, NOT
+        # gen_foundation (which over-produces a line trace). gen_foundation still owns non-coding.
+        from app.services.examples import solver
+        topic = {"title": "Implementing Kruskal", "topic_type": "coding_implementation"}
+        with mock.patch("app.services.gen_foundation.flags.is_shadow_enabled", return_value=True), \
+             mock.patch("app.services.examples.trace_pipeline._enabled", return_value=False), \
+             mock.patch("app.services.gen_foundation.integration.solve_via_pipeline") as gf, \
+             mock.patch.object(solver, "_solve_coding_worked_example",
+                               return_value={"cards": [{"x": 1}]}) as legacy:
+            res = solver.solve_worked_example(topic, code="def kruskal(g): return []")
+        gf.assert_not_called()                 # gen_foundation skipped for coding
+        legacy.assert_called_once()            # bounded legacy structural solver used instead
+        self.assertIsNotNone(res)
 
 
 class GenerationReportAccumulator(unittest.TestCase):

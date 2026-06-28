@@ -819,7 +819,12 @@ def solve_worked_example(
     try:
         from app.services.gen_foundation import flags as _gf_flags
 
-        if _gf_flags.is_shadow_enabled():
+        # Coding worked examples PREFER the bounded legacy structural solver (below) over gen_foundation,
+        # which tends to over-produce cards — on graph MST it shipped a 33-step find/union LINE TRACE.
+        # The legacy path is gated against line-level kinds and bounded by CODING_STEP_RANGES, so it
+        # yields structural steps. gen_foundation still owns NON-coding. Override: AZALEA_GEN_FOUNDATION_CODING=1.
+        _gf_coding = os.getenv("AZALEA_GEN_FOUNDATION_CODING", "0").strip().lower() in {"1", "true", "on", "yes"}
+        if _gf_flags.is_shadow_enabled() and (not code or _gf_coding):
             from app.services.gen_foundation.integration import solve_via_pipeline
 
             shadow = solve_via_pipeline(topic, code=code, solver=solver)  # type: ignore[arg-type]
