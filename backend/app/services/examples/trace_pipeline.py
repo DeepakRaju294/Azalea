@@ -109,6 +109,10 @@ def _retry_feedback(reason: str, detail: list[str], n_steps: int) -> str:
         return ("Your previous output failed these checks: " + "; ".join(detail) + ". "
                 "Fix each: every step must NAME the exact entity/values it acts on (e.g. the edge and its "
                 "weight) AND explicitly state its decision in words (accept/add vs skip/reject-as-cycle).")
+    if reason == "work_too_long":
+        return ("Some steps have too many `work` lines. Per step, surface the ONE decision as a single "
+                "line and COMBINE the supporting operations into ONE more line — aim for 1-2 work lines "
+                "total, not a separate line for each operation. Use the STAGE_GUIDANCE roles.")
     return ""
 
 
@@ -311,9 +315,18 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
         if advisory:
             _log.info("trace_pipeline: %s advisory prose (missing/soft) x%d", adapter.slug, len(advisory))
         if not hard:                                               # contradictions are the only blocker
+            # M6 quality gate (§1a aggregation): a WALKTHROUGH step should be ~1-2 work lines. Retry to
+            # enforce it, but NEVER withhold over shape — ship on the final attempt even if still verbose.
+            from .content_shape import _MAX_WORK_LINES
+            over = sum(1 for c in cards if len(c.get("work") or []) > _MAX_WORK_LINES)
+            if not code and over and attempts < _MAX_FORMAT_ATTEMPTS:
+                reason = "work_too_long"
+                detail = [f"{over} step(s) have > {_MAX_WORK_LINES} work lines"]
+                feedback = _retry_feedback(reason, detail, n_steps)
+                continue
             _retain_debug(topic, trace, raw, cards, fid, prose, shipped=True)
             _gr.we(tp_shipped=True, tp_reason="shipped", verified_steps=n_steps,
-                   formatter_cards=len(cards), tp_attempts=attempts)
+                   formatter_cards=len(cards), tp_attempts=attempts, work_over_cap=over or None)
             return _to_solve_result(trace, cards)
         reason = "prose_fail"                                      # a hard contradiction -> re-format
         detail = [f"{v.code} {v.detail} ({v.trace_step_id})" for v in hard][:6]

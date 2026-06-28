@@ -92,6 +92,31 @@ class TargetedRetry(unittest.TestCase):
         self.assertTrue(gr.current().worked_example.get("tp_shipped"))
         gr.finish_and_persist()
 
+    def test_too_many_work_lines_triggers_aggregation_retry(self):
+        # M6->retry: a walkthrough with 3 work lines must be re-formatted to <=2 (never withheld).
+        topic = {"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"}
+        gr.start(topic)
+        calls = {"n": 0}
+
+        def fmt(payload):
+            calls["n"] += 1
+            import json
+            steps = json.loads(payload["user"].split("STEPS (verified, describe faithfully):", 1)[1])
+            aggregated = "work lines total" in payload["user"]                    # the retry feedback marker
+            out = []
+            for s in steps:
+                evr = s["expected_visible_result"]                               # names the edge + decision
+                # neutral supporting lines (no accept/reject verbs -> only the decision lives in evr)
+                work = [evr, "update the structure"] if aggregated else [evr, "examine the endpoints", "update the structure"]
+                out.append({"title": s["operation"], "goal": "", "reasoning": "", "work": work, "result": evr})
+            return {"cards": out}
+
+        res = tp.solve_trace_pipeline(topic, format_fn=fmt)
+        self.assertIsNotNone(res)
+        self.assertEqual(calls["n"], 2)                                          # retried once to aggregate
+        self.assertTrue(all(len(c.get("work") or []) <= 2 for c in res["cards"] if c.get("work")))
+        gr.finish_and_persist()
+
 
 if __name__ == "__main__":
     unittest.main()
