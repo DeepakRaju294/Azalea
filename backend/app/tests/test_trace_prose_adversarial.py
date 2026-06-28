@@ -139,6 +139,21 @@ class DecisionContradictionGuard(unittest.TestCase):
         self.assertFalse(any(x.code == "decision_contradiction" for x in hard),
                          "negated 'do not skip' wrongly flagged")
 
+    def test_reference_to_prior_skipped_edge_is_not_flagged(self):
+        # over-withholding risk: an accept line that REFERENCES a previously-skipped edge while asserting
+        # 'add' must not be flagged (the line states the real action + merely mentions the other).
+        a, tr = self._trace("kruskal")
+        accept = next(s for s in tr.steps if s.decision == "accept")
+        u, v, w = accept.inputs["edge"]
+        card = {"trace_step_ids": [accept.id], "title": "", "goal": "", "reasoning": "",
+                "work": [f"Add edge ({u},{v},{w}) to the MST; unlike edge (D,E) which we skipped earlier, "
+                         "this one connects new components"],
+                "result": f"Edge ({u},{v},{w}) accept; MST so far [...]",
+                "prior_state": accept.prior_state, "result_state": accept.state_after}
+        hard = hard_prose_violations(validate_prose([card], tr, a))
+        self.assertFalse(any(x.code == "decision_contradiction" for x in hard),
+                         "prior-skipped-edge reference wrongly flagged (over-withholding)")
+
 
 class CodeAnchoredAllowlist(unittest.TestCase):
     """A3: the numeric allowlist (conceptual-trace vocabulary) must NOT apply to a code-anchored worked

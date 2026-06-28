@@ -181,8 +181,9 @@ _NEG = re.compile(r"\b(not|no|never|don't|do not|does not|doesn't|cannot|can't|i
 
 def _asserts(text: str, verbs: tuple[str, ...], phrases: tuple[str, ...] = ()) -> bool:
     """True if `text` asserts one of these action verbs/phrases as a positive claim (no negation within
-    the ~5 words before it)."""
-    for pat in [rf"\b{v}(s|ed|ing)?\b" for v in verbs] + [re.escape(p) for p in phrases]:
+    the ~5 words before it). The suffix group covers inflections incl. doubled forms (skip -> skipped/
+    skipping, add -> added)."""
+    for pat in [rf"\b{v}(s|es|ed|ped|ping|ing|d)?\b" for v in verbs] + [re.escape(p) for p in phrases]:
         for m in re.finditer(pat, text):
             window = text[max(0, m.start() - 28):m.start()]
             if not _NEG.search(window):
@@ -191,18 +192,21 @@ def _asserts(text: str, verbs: tuple[str, ...], phrases: tuple[str, ...] = ()) -
 
 
 def _decision_contradiction(card: dict[str, Any], step, i: int) -> list[ProseViolation]:
+    """Flag a HARD contradiction when the verified `decision` is one family (accept/select vs skip/reject)
+    but a Work/Result line asserts ONLY the opposite family. Checked PER LINE: a line that mentions BOTH
+    (e.g. "add edge X, unlike edge Y which we skipped") is not a contradiction — it states the real action
+    and merely references the other. (Temporary keyword layer; the durable plan is a structured check.)"""
     dec = str(getattr(step, "decision", "") or "").strip().lower()
-    if not dec:
-        return []
-    # Work + Result are the action-bearing fields (reasoning may legitimately discuss the rejected option).
-    text = re.sub(r"\s+", " ", (" ".join(str(w) for w in (card.get("work") or [])) + " . "
-                               + str(card.get("result", ""))).lower())
     accept_like = any(dec.startswith(v) for v in _ACCEPT_VERBS)
     reject_like = any(dec.startswith(v) for v in _REJECT_VERBS)
-    if accept_like and _asserts(text, _REJECT_VERBS, _REJECT_PHRASES):
-        return [ProseViolation("decision_contradiction", f"decision={dec!r} but prose rejects/skips", i, step.id)]
-    if reject_like and _asserts(text, _ACCEPT_VERBS):
-        return [ProseViolation("decision_contradiction", f"decision={dec!r} but prose accepts/adds", i, step.id)]
+    if not (accept_like or reject_like):
+        return []
+    for line in [str(w) for w in (card.get("work") or [])] + [str(card.get("result", ""))]:
+        t = re.sub(r"\s+", " ", line.lower())
+        if accept_like and _asserts(t, _REJECT_VERBS, _REJECT_PHRASES) and not _asserts(t, _ACCEPT_VERBS):
+            return [ProseViolation("decision_contradiction", f"decision={dec!r}; line rejects: {line[:48]!r}", i, step.id)]
+        if reject_like and _asserts(t, _ACCEPT_VERBS) and not _asserts(t, _REJECT_VERBS, _REJECT_PHRASES):
+            return [ProseViolation("decision_contradiction", f"decision={dec!r}; line accepts: {line[:48]!r}", i, step.id)]
     return []
 
 
