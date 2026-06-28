@@ -21,7 +21,7 @@ from .trace_contract import (ContractTrace, hard_prose_violations, structural_in
 _log = logging.getLogger(__name__)
 
 FormatFn = Callable[[dict[str, str]], Optional[Any]]   # {"system","user"} -> {"cards":[...]} | None
-_MAX_FORMAT_ATTEMPTS = max(1, int(os.getenv("AZALEA_TRACE_PIPELINE_MAX_FORMAT_ATTEMPTS", "2")))
+_MAX_FORMAT_ATTEMPTS = max(1, int(os.getenv("AZALEA_TRACE_PIPELINE_MAX_FORMAT_ATTEMPTS", "3")))
 
 
 def _enabled() -> bool:
@@ -112,9 +112,10 @@ def _retry_feedback(reason: str, detail: list[str], n_steps: int) -> str:
                 "Fix each: every step must NAME the exact entity/values it acts on (e.g. the edge and its "
                 "weight) AND explicitly state its decision in words (accept/add vs skip/reject-as-cycle).")
     if reason == "work_too_long":
-        return ("Some steps have too many `work` lines. Per step, surface the ONE decision as a single "
-                "line and COMBINE the supporting operations into ONE more line — aim for 1-2 work lines "
-                "total, not a separate line for each operation. Use the STAGE_GUIDANCE roles.")
+        return ("HARD LIMIT: each step's `work` MUST have AT MOST 2 lines. " + "; ".join(detail) + ". "
+                "Line 1 = the single decision (the required op, naming the entity/values). Line 2 (only if "
+                "needed) = ALL supporting operations combined into ONE phrase. Drop internal machinery "
+                "entirely. Do NOT emit a separate work line per operation.")
     return ""
 
 

@@ -52,11 +52,12 @@ def worked_example_shape_violations(cards: list[dict[str, Any]], *,
     """The §H content-shape issues in a lesson's worked-example steps (empty list = clean)."""
     steps = [c for c in (cards or []) if isinstance(c, dict) and _is_step(c)]
     issues: list[str] = []
+    cap = 4 if coding else _MAX_WORK_LINES          # coding Work = verbatim code lines, so a higher cap
     for c in steps:
         title = str(c.get("title") or "?")[:40]
         work = _work_lines(c)
-        if len(work) > _MAX_WORK_LINES:
-            issues.append(f"{title}: {len(work)} Work lines (> {_MAX_WORK_LINES})")
+        if len(work) > cap:
+            issues.append(f"{title}: {len(work)} Work lines (> {cap})")
         result = _result_text(c)
         if _RAW_DICT.search(result):
             issues.append(f"{title}: Result is a raw dict, not prose")

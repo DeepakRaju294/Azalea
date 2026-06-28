@@ -202,12 +202,19 @@ def _arg_candidates(num_nodes: int, edges: list, adjacency: dict) -> list:
     code that uses int node indices is checked against int edges, not the label graph)."""
     int_edges = [[_i(u), _i(v), w] for (u, v, w) in edges]
     label_edges = [list(e) for e in edges]
+    labels = sorted(adjacency.keys())
     int_adj = {_i(k): [[_i(a), b] for (a, b) in v] for k, v in adjacency.items()}
+    nested_adj = {k: {a: b for (a, b) in v} for k, v in adjacency.items()}      # {u: {v: w}}
     return [
         ([num_nodes, int_edges], int_edges),             # kruskal(n, edges) with int nodes
         ([num_nodes, label_edges], label_edges),         # kruskal(n, edges) with label nodes
-        ([adjacency], label_edges),                      # prim(graph) label-keyed adjacency
+        ([adjacency], label_edges),                      # prim(graph) label-keyed adjacency [u: [(v,w)]]
         ([int_adj], int_edges),                          # prim(graph) int-keyed adjacency
+        ([int_edges], int_edges),                        # kruskal(edges) — edges only, int nodes
+        ([label_edges], label_edges),                    # kruskal(edges) — edges only, labels
+        ([nested_adj], label_edges),                     # prim(graph) nested-dict adjacency {u: {v: w}}
+        ([{"nodes": labels, "edges": label_edges}], label_edges),       # graph dict with nodes/edges keys
+        ([{"num_nodes": num_nodes, "edges": int_edges}], int_edges),    # graph dict, int edges
     ]
 
 

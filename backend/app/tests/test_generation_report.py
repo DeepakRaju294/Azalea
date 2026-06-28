@@ -83,7 +83,7 @@ class TargetedRetry(unittest.TestCase):
             body = payload["user"].split("STEPS (verified, describe faithfully):", 1)[1].split("\n\nFIX", 1)[0]
             steps = json.loads(body)                                              # got feedback -> faithful N cards
             return {"cards": [{"title": s["operation"], "goal": "", "reasoning": "",
-                               "work": s["facts"].get("required_facts", []) + [s["expected_visible_result"]],
+                               "work": [s["expected_visible_result"]],            # 1 line -> no aggregation retry
                                "result": s["expected_visible_result"]} for s in steps]}
 
         res = tp.solve_trace_pipeline(topic, format_fn=fmt)
@@ -102,7 +102,7 @@ class TargetedRetry(unittest.TestCase):
             calls["n"] += 1
             import json
             steps = json.loads(payload["user"].split("STEPS (verified, describe faithfully):", 1)[1])
-            aggregated = "work lines total" in payload["user"]                    # the retry feedback marker
+            aggregated = "AT MOST 2" in payload["user"]                           # the retry feedback marker
             out = []
             for s in steps:
                 evr = s["expected_visible_result"]                               # names the edge + decision
