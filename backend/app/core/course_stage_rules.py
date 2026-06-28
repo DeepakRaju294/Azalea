@@ -1897,6 +1897,19 @@ _UNIVERSAL_LEAN_RULES: dict[str, CardStageRule] = {
             "Do not write generic comparison points like 'these ideas have similarities and differences'.",
         ],
     ),
+    "complexity_analysis": _lean_rule(
+        "the cost driver — which operation dominates the running time (and how many times it runs)",
+        "time and space complexity in Big-O, stating the assumptions (what n is, the structures used)",
+        "why this approach exists — its practical advantage",
+        "when to PREFER it — concrete input/data-structure conditions",
+        "when NOT to — a sibling algorithm or condition under which it is weaker",
+        visual="",
+        notes=[
+            "Big-O is a FACTUAL claim — state the correct, standard complexity for THIS algorithm; do not approximate or guess.",
+            "Not a generic Big-O dump: every line must be specific to this algorithm (its cost driver, its tradeoff, its when-to-use).",
+            "Tie the cost driver to the code/structure already taught (e.g. 'sorting the edges dominates: O(E log E)').",
+        ],
+    ),
     # "common_mistake": _lean_rule(
     #     "the tempting wrong interpretation or step",
     #     "why it is wrong",
@@ -1949,6 +1962,7 @@ _UNIVERSAL_LEAN_RULES: dict[str, CardStageRule] = {
             "Explain the newly added functional block only. Do not re-explain the algorithm behavior already taught in the walkthrough topic.",
             "Use sub-bullets under each main bullet for how the code works, why it is shaped that way, and which state/variable changes. Do not flatten those details into separate unrelated main bullets.",
             "For each major line or block: state what it does, why it must exist, and what variable/structure it changes.",
+            "Do NOT begin bullets with 'This line…' / 'This code…' (a robotic decompiler reading). Lead with the PURPOSE and the connection to the algorithm — e.g. 'Union-find IS the cycle check: if two endpoints already share a root, adding the edge would close a loop', not 'This line calls find on u'.",
             "Do not write 'this loop iterates over elements' — write what the loop variable holds, what the condition checks, and what changes per iteration.",
             "If a line initializes a variable, name the variable, its type, and its starting value and why that starting value is correct.",
             "Map each code construct to the code responsibility it fulfills: setup, base case, loop/recursion, branch, state update, or return.",
