@@ -404,13 +404,21 @@ class KruskalAdapter(FamilyAdapterBase):
     example_spec = ExampleSpec(
         input=InstanceShape("weighted_graph", count=(5, 6), value_range=(1, 30),
                             structure=["connected", "distinct_edges", "has_cycle_edge"]),
-        stages={"consider_edge": StageSpec(
-            "consider_edge", "consider one edge (in weight order): accept it or skip it as a cycle",
-            teaching_focus="add an edge only when it connects two separate components",
-            contains={"find_roots": "internal", "decide_accept_or_skip": "required",
-                      "union_components": "aggregated_supporting", "append_to_mst": "aggregated_supporting"},
-            state_effects=["edge accepted (components merged + MST grows) or skipped (cycle)"])},
-        structure="setup_sorted_edges (setup card), then consider_edge+ until V-1 edges accepted",
+        stages={
+            "setup_sorted_edges": StageSpec(
+                "setup_sorted_edges", "sort every edge by weight and present that processing order",
+                teaching_focus="Kruskal sorts all edges by weight first, then walks them cheapest-first",
+                cardinality="exactly_once",
+                contains={"sort_edges": "required"},
+                state_effects=["edges presented in nondecreasing weight order; the MST is still empty"]),
+            "consider_edge": StageSpec(
+                "consider_edge", "consider one edge (in weight order): accept it or skip it as a cycle",
+                teaching_focus="add an edge only when it connects two separate components",
+                contains={"find_roots": "internal", "decide_accept_or_skip": "required",
+                          "union_components": "aggregated_supporting", "append_to_mst": "aggregated_supporting"},
+                state_effects=["edge accepted (components merged + MST grows) or skipped (cycle)"]),
+        },
+        structure="setup_sorted_edges, then consider_edge+ until V-1 edges accepted",
         must_exercise=["edge_acceptance", "cycle_rejection", "completion"],
         must_avoid=["tree_only_no_cycle_edge"],
         terminal="V-1 edges accepted (a spanning tree)", output_shape="MST edge set + total weight")
@@ -458,6 +466,18 @@ class KruskalAdapter(FamilyAdapterBase):
         evidence: dict[str, list[str]] = {}
         total = 0
         target = len(nodes) - 1
+        # setup_sorted_edges stage (multi-stage grammar §0): present the FULL sorted edge list up front so the
+        # learner sees Kruskal's defining "sort, then add cheapest-first" before any decision (fixes C3).
+        _init = {"selected_edges": [], "components": comps()}
+        steps.append(Step(
+            id="s0", operation="setup_sorted_edges", prior_state=_init, state_after=_init,
+            inputs={"sorted_edges": [list(e) for e in edges]}, decision="sort",
+            reason="Kruskal processes edges cheapest-first, so sort every edge by weight before adding any.",
+            visual_state={"kind": "weighted_graph", "selected": [], "components": comps(), "active_edge": None},
+            visual_delta={"sorted": [list(e) for e in edges]},
+            expected_visible_result=("Edges sorted by weight: "
+                                     + ", ".join(f"({u},{v},{w})" for u, v, w in edges) + ". MST starts empty."),
+            facts={"allowed_values": sorted({e[2] for e in edges}), "required_facts": [], "forbidden_claims": []}))
         for i, (u, v, w) in enumerate(edges, start=1):
             sid = f"s{i}"
             prior = {"selected_edges": [list(e) for e in selected], "components": comps()}
@@ -519,6 +539,10 @@ class KruskalAdapter(FamilyAdapterBase):
 
     def validate_step_shape(self, step):
         errs = []
+        if step.operation == "setup_sorted_edges":       # multi-stage: the sort/present step
+            if "sorted_edges" not in step.inputs:
+                errs.append("setup missing inputs.sorted_edges")
+            return errs
         if step.operation != "consider_edge":
             errs.append(f"unexpected operation {step.operation!r}")
         if "edge" not in step.inputs:
@@ -528,6 +552,8 @@ class KruskalAdapter(FamilyAdapterBase):
         return errs
 
     def validate_prose_claims(self, card, step):
+        if step.operation == "setup_sorted_edges":       # presents the sorted list; no per-edge decision
+            return []
         prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
                           str(card.get("result", ""))]).lower()
         u, v, w = step.inputs["edge"]
