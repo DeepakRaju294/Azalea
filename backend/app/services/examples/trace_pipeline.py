@@ -163,8 +163,9 @@ def build_format_payload(trace: ContractTrace, code: Optional[str] = None,
     if code:                                                   # coding topic — anchor Work to the shown code
         numbered = "\n".join(f"{i:>3}  {ln}" for i, ln in enumerate(code.split("\n"), start=1))
         user = (f"PROBLEM: {trace.problem}\n\nCODE (1-based line numbers — anchor every work line and "
-                f"code_lines entry to THESE lines):\n{numbered}{g_text}{fb}\n\nSTEPS (verified, describe "
-                f"faithfully):\n{json.dumps(steps, default=str)}")
+                f"code_lines entry to THESE lines):\n{numbered}{g_text}{fb}\n\nProduce EXACTLY {len(steps)} "
+                f"cards — one per step below, in order; do NOT merge or split steps.\n\nSTEPS (verified, "
+                f"describe faithfully):\n{json.dumps(steps, default=str)}")
         return {"system": _CODING_FORMAT_SYSTEM + g_rule, "user": user}
     system = (
         "You format an ALREADY-CORRECT, verified solution into learner-facing step cards. Write EXACTLY "
@@ -179,7 +180,8 @@ def build_format_payload(trace: ContractTrace, code: Optional[str] = None,
         "Do NOT invent or alter any value, and do NOT output any machine-state/JSON-state fields. "
         'Return ONLY JSON: {"cards":[{"title","goal","reasoning","work":[...],"result"}, ...]}'
     ) + g_rule
-    user = (f"PROBLEM: {trace.problem}{g_text}{fb}\nSTEPS (verified, describe faithfully):\n"
+    user = (f"PROBLEM: {trace.problem}{g_text}{fb}\nProduce EXACTLY {len(steps)} cards — one per step below, "
+            f"in order; do NOT merge or split steps.\nSTEPS (verified, describe faithfully):\n"
             f"{json.dumps(steps, default=str)}")
     return {"system": system, "user": user}
 
