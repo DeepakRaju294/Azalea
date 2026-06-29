@@ -270,17 +270,29 @@ _DIJ_INV = [{"id": "dist_nonneg", "scope": "every_step", "statement": "all dista
 
 class DijkstraAdapter(FamilyAdapterBase):
     slug = "dijkstra"
-    # NOTE: current behavior settles + relaxes in ONE step (`settle_relax`). The contract's finer
-    # settle_node / relax_edge split is a planned iteration; this spec declares present behavior honestly.
+    # Multi-stage grammar (§0): init -> settle_node -> relax_edge. Each relaxation is its own learner-visible
+    # decision (improve vs no-change), not aggregated — the relaxation IS the Dijkstra decision.
     example_spec = ExampleSpec(
         input=InstanceShape("weighted_graph", count=(4, 6), value_range=(1, 12),
                             structure=["connected", "non_negative_weights"]),
-        stages={"settle_relax": StageSpec(
-            "settle_relax", "settle the nearest unvisited node and relax its outgoing edges",
-            teaching_focus="finalize the closest node and update its neighbors' distances",
-            contains={"settle_node": "required", "relax_edge": "aggregated_supporting"},
-            state_effects=["one node added to visited at its final distance", "neighbor distances updated"])},
-        structure="settle_relax+ until all reachable settled",
+        stages={
+            "init": StageSpec(
+                "init", "set the source to 0 and every other node to infinity",
+                teaching_focus="Dijkstra starts with the source at distance 0 and all others at infinity",
+                cardinality="exactly_once", contains={"init_distances": "required"},
+                state_effects=["source distance 0, all others infinity, nothing settled"]),
+            "settle_node": StageSpec(
+                "settle_node", "settle the nearest unvisited node — its distance is now final",
+                teaching_focus="the closest unvisited node's distance can never improve, so finalize it",
+                contains={"pick_min": "required"},
+                state_effects=["one node moved to visited at its final distance"]),
+            "relax_edge": StageSpec(
+                "relax_edge", "relax ONE outgoing edge: improve the neighbor's distance, or leave it",
+                teaching_focus="try a shorter path through the settled node to each neighbor",
+                contains={"compare_candidate": "required", "update_distance": "aggregated_supporting"},
+                state_effects=["the neighbor's distance is lowered, or unchanged"]),
+        },
+        structure="init, then (settle_node, relax_edge*)+ until all reachable settled",
         must_exercise=["relax_improves", "no_improvement", "completion"],
         must_avoid=["star_graph_no_competition"],
         terminal="every reachable node settled", output_shape="shortest-distance map from the source")
@@ -315,41 +327,78 @@ class DijkstraAdapter(FamilyAdapterBase):
         visited: set[str] = set()
         steps: list[Step] = []
         evidence: dict[str, list[str]] = {}
-        i = 0
+        _n = 0
+
+        def _sid():
+            nonlocal _n
+            _n += 1
+            return f"s{_n}"
+
+        def _dmap():
+            return {k: (None if d >= inf else d) for k, d in dist.items()}
+
+        def _dstr():
+            return ", ".join(f"{k}:{'inf' if d >= inf else d}" for k, d in sorted(dist.items()))
+
+        all_w = sorted({w for nb in graph.values() for w in nb.values()})
+        # init stage
+        _init = {"dist": dict(dist), "visited": []}
+        steps.append(Step(
+            id=_sid(), operation="init", prior_state=_init, state_after=_init, inputs={"source": source},
+            decision="initialize distances", reason=(f"set the source {source} to distance 0 and every other "
+                                                     "node to infinity; nothing is settled yet."),
+            visual_state={"kind": "dist_graph", "dist": _dmap(), "visited": [], "active": source},
+            visual_delta={"source": source},
+            expected_visible_result=f"Initialize distances: {source} at 0, all others at infinity. Distances {{{_dstr()}}}.",
+            facts={"allowed_values": [0], "required_facts": [], "forbidden_claims": []}))
         while len(visited) < len(graph):
             u = min((x for x in graph if x not in visited), key=lambda x: (dist[x], x))
             if dist[u] >= inf:
                 break
-            i += 1
-            sid = f"s{i}"
+            # settle_node stage — u's distance is final
+            s_id = _sid()
             prior = {"dist": dict(dist), "visited": sorted(visited)}
             visited.add(u)
-            improved, unchanged = [], []
+            steps.append(Step(
+                id=s_id, operation="settle_node", prior_state=prior, state_after={"dist": dict(dist), "visited": sorted(visited)},
+                inputs={"node": u, "dist": dist[u]}, decision=f"settle {u} (final distance {dist[u]})",
+                reason=f"{u} is the closest unvisited node, so its distance {dist[u]} can never improve — finalize it.",
+                visual_state={"kind": "dist_graph", "dist": _dmap(), "visited": sorted(visited), "active": u},
+                visual_delta={"settled": u},
+                expected_visible_result=f"Settle {u}: its shortest distance is final at {dist[u]}.",
+                facts={"allowed_values": sorted({d for d in dist.values() if d < inf}),
+                       "required_facts": [f"settle {u}", str(dist[u])], "forbidden_claims": []}))
+            # relax_edge stages — one learner-visible decision per outgoing edge
             for v, w in sorted(graph[u].items()):
                 if v in visited:
                     continue
-                if dist[u] + w < dist[v]:
-                    dist[v] = dist[u] + w; improved.append(v)
+                r_id = _sid()
+                prior = {"dist": dict(dist), "visited": sorted(visited)}
+                cand = dist[u] + w
+                pv = dist[v]
+                pv_s = "inf" if pv >= inf else str(pv)
+                improved = cand < pv
+                if improved:
+                    dist[v] = cand
+                    evidence.setdefault("relax_improves", []).append(r_id)
+                    decision = f"relax {u}->{v}: {dist[u]}+{w}={cand} < {pv_s} -> improve {v} to {cand}"
+                    res = f"Relax edge {u}->{v} (weight {w}): {cand} beats {pv_s}, so improve {v} to {cand}."
                 else:
-                    unchanged.append(v)
-            after = {"dist": dict(dist), "visited": sorted(visited)}
-            if improved:
-                evidence.setdefault("relax_improves", []).append(sid)
-            if unchanged:
-                evidence.setdefault("no_improvement", []).append(sid)
-            dist_str = ", ".join(f"{k}:{'inf' if d >= inf else d}" for k, d in sorted(dist.items()))
-            steps.append(Step(
-                id=sid, operation="settle_relax", prior_state=prior, state_after=after,
-                inputs={"node": u, "dist": dist[u], "improved": improved, "unchanged": unchanged},
-                decision=f"settle {u} (distance {dist[u]}); relax to {improved or 'none'}",
-                reason=f"{u} is the closest unvisited node (distance {dist[u]}); update its neighbours",
-                visual_state={"kind": "dist_graph", "dist": {k: (None if d >= inf else d) for k, d in dist.items()},
-                              "visited": sorted(visited), "active": u},
-                visual_delta={"settled": u, "improved": improved},
-                expected_visible_result=f"Settle {u} at distance {dist[u]}; distances {{{dist_str}}}",
-                facts={"allowed_values": sorted({d for d in dist.values() if d < inf}
-                                                | {w for nb in graph.values() for w in nb.values()}),
-                       "required_facts": [f"settle {u}", str(dist[u])], "forbidden_claims": []}))
+                    evidence.setdefault("no_improvement", []).append(r_id)
+                    decision = f"relax {u}->{v}: {dist[u]}+{w}={cand} >= {pv_s} -> no change"
+                    res = f"Relax edge {u}->{v} (weight {w}): {cand} does not beat {pv_s}, so {v} stays {pv_s}."
+                steps.append(Step(
+                    id=r_id, operation="relax_edge", prior_state=prior, state_after={"dist": dict(dist), "visited": sorted(visited)},
+                    inputs={"edge": [u, v, w], "from": u, "to": v, "weight": w, "candidate": cand, "improved": improved},
+                    decision=decision,
+                    reason=(f"through {u}, {v} is reachable in {dist[u]}+{w}={cand}; "
+                            + ("that beats its current distance, so lower it." if improved else
+                               "that does not beat its current distance, so keep it.")),
+                    visual_state={"kind": "dist_graph", "dist": _dmap(), "visited": sorted(visited), "active": u},
+                    visual_delta={"relaxed": [u, v], "improved": improved},
+                    expected_visible_result=res,
+                    facts={"allowed_values": sorted(set(all_w) | {d for d in dist.values() if d < inf} | {cand}),
+                           "required_facts": [str(u), str(v), str(w)], "forbidden_claims": []}))
         if steps:
             evidence.setdefault("completion", []).append(steps[-1].id)
         return ContractTrace(
@@ -375,18 +424,35 @@ class DijkstraAdapter(FamilyAdapterBase):
 
     def validate_step_shape(self, step):
         errs = []
-        if step.operation != "settle_relax":
-            errs.append(f"unexpected operation {step.operation!r}")
-        if "node" not in step.inputs:
-            errs.append("missing inputs.node")
+        if step.operation == "init":
+            if "source" not in step.inputs:
+                errs.append("init missing inputs.source")
+            return errs
+        if step.operation == "settle_node":
+            if "node" not in step.inputs:
+                errs.append("settle missing inputs.node")
+            return errs
+        if step.operation == "relax_edge":
+            if "edge" not in step.inputs:
+                errs.append("relax missing inputs.edge")
+            return errs
+        errs.append(f"unexpected operation {step.operation!r}")
         return errs
 
     def validate_prose_claims(self, card, step):
         prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
                           str(card.get("result", ""))]).lower()
-        u = step.inputs["node"]
-        return [] if u.lower() in prose and str(step.inputs["dist"]) in prose else \
-            [("node_or_distance_not_discussed", f"{u}={step.inputs['dist']}")]
+        if step.operation == "init":
+            return []
+        if step.operation == "settle_node":
+            u = step.inputs["node"]
+            return [] if u.lower() in prose and str(step.inputs["dist"]) in prose else \
+                [("node_or_distance_not_discussed", f"{u}={step.inputs['dist']}")]
+        # relax_edge: the prose must name the edge endpoints + weight
+        u, v, w = step.inputs["edge"]
+        if str(u).lower() in prose and str(v).lower() in prose and str(w) in prose:
+            return []
+        return [("edge_not_discussed", f"{u}->{v}({w})")]
 
 
 # ===================================================================================================
