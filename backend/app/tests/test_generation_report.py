@@ -32,6 +32,27 @@ class Cp1InvariantStanding(unittest.TestCase):
                                                 "tp_shipped": True, "verification_level": "model_only"}}
         self.assertTrue(gr.invariant_violations(rep))
 
+    def test_coverage_fields_recorded_and_clean(self):
+        # CP6: a shipped adapter topic records coverage + terminal instrumentation, and it's clean.
+        topic = {"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"}
+        gr.start(topic)
+        tp.solve_trace_pipeline(topic, format_fn=lambda p: {"cards": [{"title": "x", "work": ["w"], "result": "r"}]})
+        gr.we(final_source="trace_pipeline", verification_level="trace_verified")
+        we = gr.current().worked_example
+        self.assertTrue(we.get("trace_ids_rendered"))
+        self.assertTrue(we.get("required_transition_ids"))
+        self.assertEqual(we.get("missing_required_transition_ids"), [])   # every required case covered
+        self.assertTrue(we.get("terminal_rendered"))                      # completion stated (C4)
+        self.assertEqual(gr.invariant_violations(gr.current().to_dict()), [])
+        gr.finish_and_persist()
+
+    def test_missing_terminal_or_required_is_a_violation(self):
+        base = {"adapter": "prim", "final_source": "trace_pipeline", "tp_shipped": True,
+                "verification_level": "trace_verified", "missing_required_transition_ids": []}
+        self.assertTrue(gr.invariant_violations({"worked_example": {**base, "terminal_rendered": False}}))
+        self.assertTrue(gr.invariant_violations(
+            {"worked_example": {**base, "terminal_rendered": True, "missing_required_transition_ids": ["cycle_skip"]}}))
+
     def test_live_supported_failure_keeps_invariant(self):
         # a supported topic whose formatter fails ships trace-preserving narration → no §1.2 violation
         topic = {"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"}

@@ -259,6 +259,22 @@ def _ensure_completion(cards: list[dict[str, Any]], trace: ContractTrace) -> Non
     last["result"] = (res.rstrip(".") + ". Complete — final result: " + _final_answer_text(trace) + ".").lstrip(". ")
 
 
+def _coverage_fields(trace: ContractTrace, cards: list[dict[str, Any]]) -> dict[str, Any]:
+    """CP6 report invariants: which verified transitions the shipped cards actually rendered, whether every
+    required case is covered, and whether the terminal/completion is stated. Lets an audit (and the standing
+    invariant check) catch a missing required transition or a missing completion without eyeballing."""
+    rendered = [sid for c in cards for sid in (c.get("trace_step_ids") or [])]
+    rendered_set = set(rendered)
+    required = list(getattr(trace, "required_cases", []) or [])
+    evidence = getattr(trace, "case_evidence", {}) or {}
+    missing = [rc for rc in required if not (set(evidence.get(rc, [])) & rendered_set)]
+    last_result = str(cards[-1].get("result", "")) if cards else ""
+    terminal_rendered = bool(_COMPLETE_RE.search(last_result)) and bool(
+        trace.steps and trace.steps[-1].id in rendered_set)
+    return {"trace_ids_rendered": rendered, "required_transition_ids": required,
+            "missing_required_transition_ids": missing, "terminal_rendered": terminal_rendered}
+
+
 def _to_solve_result(trace: ContractTrace, cards: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "problem": trace.problem,
@@ -392,6 +408,7 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
             _retain_debug(topic, trace, raw, cards, fid, prose, shipped=True)
             _gr.we(tp_shipped=True, tp_reason="shipped", verified_steps=n_steps,
                    formatter_cards=len(cards), tp_attempts=attempts, work_over_cap=over or None)
+            _gr.we(**_coverage_fields(trace, cards))           # CP6 coverage/terminal instrumentation
             return _to_solve_result(trace, cards)
         reason = "prose_fail"                                      # a hard contradiction -> re-format
         detail = [f"{v.code} {v.detail} ({v.trace_step_id})" for v in hard][:6]
@@ -405,6 +422,7 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
     _gr.we(tp_shipped=True, tp_reason="trace_preserving_narration", narration="deterministic",
            narration_failed_reason=reason, tp_detail=detail, verified_steps=n_steps,
            formatter_cards=len(det_cards), tp_attempts=attempts)
+    _gr.we(**_coverage_fields(trace, det_cards))               # CP6 coverage/terminal instrumentation
     return _to_solve_result(trace, det_cards)
 
 

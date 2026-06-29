@@ -63,6 +63,13 @@ def invariant_violations(report: dict[str, Any]) -> list[str]:
     if adapter and we.get("tp_shipped") and we.get("verification_level") not in (None, "trace_verified"):
         out.append(f"§1.2: adapter-supported ship has verification_level="
                    f"{we.get('verification_level')!r} (expected trace_verified)")
+    # CP6 coverage invariants — only assert when the fields are present (instrumented ships)
+    if adapter and we.get("tp_shipped"):
+        if we.get("missing_required_transition_ids"):
+            out.append(f"CP6: adapter '{adapter}' shipped missing required transitions "
+                       f"{we.get('missing_required_transition_ids')}")
+        if we.get("terminal_rendered") is False:
+            out.append(f"CP6: adapter '{adapter}' shipped without a rendered terminal/completion step")
     return out
 
 
