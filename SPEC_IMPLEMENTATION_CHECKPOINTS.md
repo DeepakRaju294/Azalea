@@ -10,12 +10,12 @@
 | CP | Title | Status | Where |
 |---|---|---|---|
 | 0 | Baseline safety / observability | ✅ | M7 `generation_report`, full suite (18 pre-existing fails, steady) |
-| 1 | No from-scratch fallback for supported topics | ✅ | P0a `545ae26` + single-path `40a34df` |
+| 1 | No from-scratch fallback for supported topics | ✅ | P0a `545ae26` + single-path `40a34df` + invariant lock `8bd40c7` |
 | 2 | Trace-preserving fallback narration | ✅ | P0a `_deterministic_narration` `545ae26` |
 | 3 | Relax `count_mismatch` safely (coverage-based) | 🟡 | P0b `04f93ff` cuts the rate + P0a never-withholds; **coverage-based ACCEPT of a different count not yet built** |
 | 4 | Prose hard/soft boundary | 🟡 | `hard_prose_violations` + A3 soft `value_not_allowed`; not yet a declared contract |
 | 5 | Regression fixtures (golden lessons) | ❌ | carried from `STUDY_PATH_CONTENT_SPEC` §H |
-| 6 | Generation-report invariants | 🟡 | M7 records adapter/source/reason; **trace_ids_rendered / required_transition_ids / terminal_rendered / hard-violation asserts not yet added** |
+| 6 | Generation-report invariants | 🟡 | **§1.2 invariant check + `verification_level` DONE** (`invariant_violations`, `8bd40c7`); **trace_ids_rendered / required_transition_ids / terminal_rendered fields not yet added** |
 | 7 | Manual product QA | ❌ | needs regenerate + review |
 
 ---
