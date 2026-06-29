@@ -291,7 +291,7 @@ def _det_step_title(step: Step, i: int) -> str:
     # prefer the visible result (it names the entity: "Edge (A,C,1) accept") over the bare decision verb
     src = str(getattr(step, "expected_visible_result", "") or getattr(step, "decision", "")
               or getattr(step, "operation", "") or "").strip()
-    head = re.split(r"[;:.\n]", src, 1)[0].strip()[:60].strip()
+    head = re.split(r"[;:.\n]", src, maxsplit=1)[0].strip()[:60].strip()
     return f"Step {i + 1}: {head}" if head else f"Step {i + 1}"
 
 
