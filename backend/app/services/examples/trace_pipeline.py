@@ -96,8 +96,10 @@ _CODING_FORMAT_SYSTEM = (
     "value(s) from this step>`. Do NOT substitute the values into the code itself — put them in the // "
     "part. A line with no ` // ` is INVALID. List the lines this step executes, in source order.\n"
     "- result: a PROSE sentence describing the state after this step, naming the concrete values (e.g. "
-    "'Tree now spans A, B; MST edges so far (A,B,4)'). NEVER a raw dict/JSON — write it as a sentence. On "
-    "the final step say so (e.g. 'all vertices connected — the MST is complete').\n"
+    "'Tree now spans A, B; MST edges so far (A,B,4)'). NEVER a raw dict/JSON — write it as a sentence. On the "
+    "final step, state plainly that THIS algorithm has finished, in ITS OWN terms (e.g. 'the array is now "
+    "fully sorted', 'the MST is complete', 'the target is found at index 3') — never borrow another "
+    "algorithm's wording.\n"
     "- code_lines: for EACH work action, the 1-based line number(s) in the CODE it maps to, as a list of "
     "lists (e.g. [[18],[19],[20]]); use [] for a pure-narration line. One entry per work line.\n"
     'Return ONLY JSON: {"cards":[{"title","goal","reasoning","work":[...],"result","code_lines":[...]}, ...]}'
@@ -177,8 +179,9 @@ def build_format_payload(trace: ContractTrace, code: Optional[str] = None,
         "EACH card MUST (a) NAME the exact entity and values the step acts on — e.g. the edge and its weight "
         "like '(A,C,13)' — and (b) STATE the decision in words (e.g. 'add it to the MST' / 'accept', or "
         "'skip it — it would form a cycle'). A step that omits the entity/values or the decision is INVALID. "
-        "On the step that COMPLETES the structure (the final accept that finishes the spanning tree / the "
-        "result), say so explicitly in the result (e.g. 'all vertices connected — the MST is complete'). "
+        "On the FINAL step, state plainly that THIS algorithm has finished, in ITS OWN terms (e.g. 'all "
+        "vertices are connected — the MST is complete', 'the array is now fully sorted', 'the target is found "
+        "at index 3') — never borrow another algorithm's wording. "
         "Do NOT invent or alter any value, and do NOT output any machine-state/JSON-state fields. "
         'Return ONLY JSON: {"cards":[{"title","goal","reasoning","work":[...],"result"}, ...]}'
     ) + g_rule
