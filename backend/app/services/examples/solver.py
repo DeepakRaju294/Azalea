@@ -839,7 +839,8 @@ def solve_worked_example(
     # search) route to the trace-first pipeline; it returns None (defer) for unsupported topics or any
     # failure, so the flag can only replace an example or defer — never break a working topic.
     try:
-        from app.services.examples.trace_pipeline import _enabled as _tp_enabled, solve_trace_pipeline
+        from app.services.examples.trace_pipeline import (_enabled as _tp_enabled, route_adapter,
+                                                          solve_trace_pipeline)
 
         if _tp_enabled():
             tp_result = solve_trace_pipeline(topic, code=code)     # coding topics anchor Work to this code
@@ -847,6 +848,16 @@ def solve_worked_example(
                 from . import generation_report as _gr
                 _gr.we(final_source="trace_pipeline")
                 return tp_result
+            # SPEC §1.2 (single path for supported topics): an adapter-supported topic must NEVER fall to a
+            # from-scratch generator. With P0a the pipeline returns None only when the adapter produced NO
+            # shippable trace at all — WITHHOLD then (the lean base example stays) rather than fabricate via
+            # gen_foundation/legacy. Reversible for debugging via AZALEA_ADAPTER_SOFT_FALLBACK=1.
+            _soft = os.getenv("AZALEA_ADAPTER_SOFT_FALLBACK", "0").strip().lower() in {"1", "true", "on", "yes"}
+            if not _soft and route_adapter(topic) is not None:
+                from . import generation_report as _gr
+                _gr.we(final_source=None, tp_reason="withheld_supported_no_trace")
+                _gr.error("adapter-supported topic withheld (no shippable trace) — not falling to fallback")
+                return None
     except Exception:  # noqa: BLE001 — the trace pipeline must never break legacy generation
         pass
 

@@ -41,6 +41,25 @@ class TracePreservingFallback(unittest.TestCase):
 
 
 class CodingRouting(unittest.TestCase):
+    def test_supported_topic_withholds_instead_of_fabricating(self):
+        # SPEC §1.2: an adapter-supported topic with NO shippable trace must WITHHOLD, never fall to a
+        # from-scratch generator (gen_foundation/legacy).
+        from app.services.examples import solver
+
+        class _Ad:
+            slug = "kruskal"
+        topic = {"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"}
+        with mock.patch("app.services.examples.trace_pipeline._enabled", return_value=True), \
+             mock.patch("app.services.examples.trace_pipeline.solve_trace_pipeline", return_value=None), \
+             mock.patch("app.services.examples.trace_pipeline.route_adapter", return_value=_Ad()), \
+             mock.patch("app.services.gen_foundation.flags.is_shadow_enabled", return_value=True), \
+             mock.patch("app.services.gen_foundation.integration.solve_via_pipeline") as gf, \
+             mock.patch.object(solver, "_solve_coding_worked_example") as legacy:
+            res = solver.solve_worked_example(topic)
+        self.assertIsNone(res)                 # withheld (lean base stays)
+        gf.assert_not_called()                 # never gen_foundation
+        legacy.assert_not_called()             # never legacy
+
     def test_coding_prefers_legacy_over_gen_foundation(self):
         # When the adapter defers, a CODING topic must use the bounded legacy structural solver, NOT
         # gen_foundation (which over-produces a line trace). gen_foundation still owns non-coding.
