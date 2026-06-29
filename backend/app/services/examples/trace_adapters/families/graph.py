@@ -587,13 +587,21 @@ class PrimAdapter(FamilyAdapterBase):
     example_spec = ExampleSpec(
         input=InstanceShape("weighted_graph", count=(5, 6), value_range=(1, 30),
                             structure=["connected", "distinct_edges"]),
-        stages={"select_edge": StageSpec(
-            "select_edge", "select the cheapest edge crossing out of the tree and add its new vertex",
-            teaching_focus="grow the tree by the lowest-weight edge to a new vertex",
-            contains={"scan_crossing_edges": "internal", "select_min_crossing_edge": "required",
-                      "add_vertex": "aggregated_supporting", "update_frontier": "aggregated_supporting"},
-            state_effects=["one new vertex added to the tree", "the selected edge added to the MST"])},
-        structure="select_edge+ until all vertices in the tree",
+        stages={
+            "setup_start": StageSpec(
+                "setup_start", "choose the start vertex; the tree begins with just that vertex",
+                teaching_focus="Prim grows ONE tree from a chosen start, adding the cheapest crossing edge each step",
+                cardinality="exactly_once",
+                contains={"pick_start": "required"},
+                state_effects=["the tree contains only the start vertex; no edges yet"]),
+            "select_edge": StageSpec(
+                "select_edge", "select the cheapest edge crossing out of the tree and add its new vertex",
+                teaching_focus="grow the tree by the lowest-weight edge to a new vertex",
+                contains={"scan_crossing_edges": "internal", "select_min_crossing_edge": "required",
+                          "add_vertex": "aggregated_supporting", "update_frontier": "aggregated_supporting"},
+                state_effects=["one new vertex added to the tree", "the selected edge added to the MST"]),
+        },
+        structure="setup_start, then select_edge+ until all vertices in the tree",
         must_exercise=["edge_selection", "competing_candidates", "completion"],
         must_avoid=["no_competing_crossing_edges"],
         terminal="all vertices in the tree (V-1 edges)", output_shape="MST edge set + total weight")
@@ -632,6 +640,16 @@ class PrimAdapter(FamilyAdapterBase):
         evidence: dict[str, list[str]] = {}
         i = 0
         all_weights = sorted({e[2] for e in example_input["graph"]["edges"]})
+        # setup_start stage (multi-stage grammar §0): make Prim's opening explicit — start vertex + empty tree.
+        _init = {"in_tree": [start], "selected_edges": []}
+        steps.append(Step(
+            id="s0", operation="setup_start", prior_state=_init, state_after=_init,
+            inputs={"start": start}, decision="start",
+            reason="Prim grows one tree from a chosen start vertex, repeatedly adding the cheapest edge to a new vertex.",
+            visual_state={"kind": "weighted_graph", "in_tree": [start], "selected": [], "active_edge": None},
+            visual_delta={"start": start},
+            expected_visible_result=f"Start Prim from {start}. Tree begins as {{{start}}}; no edges selected yet.",
+            facts={"allowed_values": sorted(set(all_weights) | {0}), "required_facts": [], "forbidden_claims": []}))
         while len(in_tree) < len(nodes):
             crossing = sorted((w, u, v) for u in in_tree for v, w in adj[u].items() if v not in in_tree)
             if not crossing:
@@ -690,6 +708,10 @@ class PrimAdapter(FamilyAdapterBase):
 
     def validate_step_shape(self, step):
         errs = []
+        if step.operation == "setup_start":              # multi-stage: the start/initialize step
+            if "start" not in step.inputs:
+                errs.append("setup missing inputs.start")
+            return errs
         if step.operation != "select_edge":
             errs.append(f"unexpected operation {step.operation!r}")
         if "edge" not in step.inputs:
@@ -697,6 +719,8 @@ class PrimAdapter(FamilyAdapterBase):
         return errs
 
     def validate_prose_claims(self, card, step):
+        if step.operation == "setup_start":              # presents the start vertex; no edge decision
+            return []
         prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
                           str(card.get("result", ""))]).lower()
         u, v, w = step.inputs["edge"]
