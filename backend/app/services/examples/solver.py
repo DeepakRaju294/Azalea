@@ -846,7 +846,7 @@ def solve_worked_example(
             tp_result = solve_trace_pipeline(topic, code=code)     # coding topics anchor Work to this code
             if tp_result is not None:
                 from . import generation_report as _gr
-                _gr.we(final_source="trace_pipeline")
+                _gr.we(final_source="trace_pipeline", verification_level="trace_verified")  # §1.2 / CP6
                 return tp_result
             # SPEC §1.2 (single path for supported topics): an adapter-supported topic must NEVER fall to a
             # from-scratch generator. With P0a the pipeline returns None only when the adapter produced NO

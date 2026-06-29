@@ -46,6 +46,26 @@ class GenerationReport:
                 "worked_example": self.worked_example, "errors": self.errors}
 
 
+# ADAPTER_AND_GENERATION_SYSTEM_SPEC §1.2 — sources that mean "from-scratch LLM derivation".
+_FROM_SCRATCH_SOURCES = {"gen_foundation", "legacy_coding", "legacy_outline"}
+
+
+def invariant_violations(report: dict[str, Any]) -> list[str]:
+    """The SPEC §1.2 hard invariant (Checkpoints CP1/CP6): an adapter-supported topic's worked example must
+    descend from the adapter trace — it may NEVER ship from a from-scratch generator. Returns the list of
+    violations (empty = conformant). Pure; usable as a standing test and in batch audits over the JSONL log."""
+    we = (report or {}).get("worked_example") or {}
+    adapter, src = we.get("adapter"), we.get("final_source")
+    out: list[str] = []
+    if adapter and src in _FROM_SCRATCH_SOURCES:
+        out.append(f"§1.2: adapter-supported topic '{adapter}' shipped from from-scratch source '{src}' "
+                   f"(title={(report or {}).get('title')!r})")
+    if adapter and we.get("tp_shipped") and we.get("verification_level") not in (None, "trace_verified"):
+        out.append(f"§1.2: adapter-supported ship has verification_level="
+                   f"{we.get('verification_level')!r} (expected trace_verified)")
+    return out
+
+
 def start(topic: Any) -> GenerationReport:
     report = GenerationReport(topic)
     _current.set(report)

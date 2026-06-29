@@ -9,6 +9,39 @@ from app.services.examples import trace_pipeline as tp
 from app.services.examples.trace_adapters import ADAPTERS
 
 
+class Cp1InvariantStanding(unittest.TestCase):
+    """CP1/CP6 standing guarantee: an adapter-supported topic may NEVER ship from a from-scratch source.
+    `invariant_violations` is the machine check that locks it in (and runs over the JSONL log in audits)."""
+
+    def test_supported_from_scratch_source_is_a_violation(self):
+        for src in ("gen_foundation", "legacy_coding", "legacy_outline"):
+            rep = {"title": "t", "worked_example": {"adapter": "kruskal", "final_source": src}}
+            self.assertTrue(gr.invariant_violations(rep), f"{src} must be flagged")
+
+    def test_supported_trace_pipeline_ship_is_clean(self):
+        rep = {"title": "t", "worked_example": {"adapter": "kruskal", "final_source": "trace_pipeline",
+                                                "tp_shipped": True, "verification_level": "trace_verified"}}
+        self.assertEqual(gr.invariant_violations(rep), [])
+
+    def test_unsupported_topic_may_use_legacy(self):
+        rep = {"title": "t", "worked_example": {"adapter": None, "final_source": "legacy_coding"}}
+        self.assertEqual(gr.invariant_violations(rep), [])
+
+    def test_supported_ship_must_be_trace_verified(self):
+        rep = {"title": "t", "worked_example": {"adapter": "prim", "final_source": "trace_pipeline",
+                                                "tp_shipped": True, "verification_level": "model_only"}}
+        self.assertTrue(gr.invariant_violations(rep))
+
+    def test_live_supported_failure_keeps_invariant(self):
+        # a supported topic whose formatter fails ships trace-preserving narration → no §1.2 violation
+        topic = {"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"}
+        gr.start(topic)
+        tp.solve_trace_pipeline(topic, format_fn=lambda p: {"cards": [{"title": "x", "work": ["w"], "result": "r"}]})
+        gr.we(final_source="trace_pipeline", verification_level="trace_verified")  # solver normally records this
+        self.assertEqual(gr.invariant_violations(gr.current().to_dict()), [])
+        gr.finish_and_persist()
+
+
 class TracePreservingFallback(unittest.TestCase):
     """ADAPTER_AND_GENERATION_SYSTEM_SPEC §1.2 / §4.3.1 step 2: when the LLM narration fails its gate on
     every retry, the trace pipeline ships a trace-preserving deterministic narration of the SAME verified
