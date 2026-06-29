@@ -86,20 +86,18 @@ _CODING_FORMAT_SYSTEM = (
     "EXACTLY one card per step, in order. The trace is the source of truth: use ONLY each step's "
     "operation/decision/facts; never invent or alter a value, never add, remove, or reorder steps.\n"
     "FIELDS per card:\n"
-    "- title: a SHORT, DISTINCT name for THIS step that NAMES the entity it acts on (e.g. 'Add edge "
-    "(A,B,7)', 'Pop vertex A') — NEVER the raw operation id like 'select_edge' (that repeats every step).\n"
+    "- title: a SHORT, DISTINCT name for THIS step that NAMES the entity it acts on, in THIS algorithm's own "
+    "terms (e.g. 'Add edge (A,B,7)', 'Compare arr[3] with the target', 'Merge two sorted runs') — NEVER the "
+    "raw operation id like 'select_edge' (that repeats every step), and never borrow another algorithm's nouns.\n"
     "- goal: leave EMPTY — the card title already states the structural step (do not restate it).\n"
     "- reasoning: WHICH code construct implements it and why (the condition / loop / call / branch).\n"
     "- work: REQUIRED list. Each line BEGINS with the LITERAL code line from the CODE below, quoted "
-    "VERBATIM with its variable names (e.g. `if ds.find(u) != ds.find(v):` then `mst.append((u, v, w))`), "
-    "THEN — REQUIRED on every line — ` // <plain-English of what this line does NOW, naming the concrete "
-    "value(s) from this step>`. Do NOT substitute the values into the code itself — put them in the // "
-    "part. A line with no ` // ` is INVALID. List the lines this step executes, in source order.\n"
-    "- result: a PROSE sentence describing the state after this step, naming the concrete values (e.g. "
-    "'Tree now spans A, B; MST edges so far (A,B,4)'). NEVER a raw dict/JSON — write it as a sentence. On the "
-    "final step, state plainly that THIS algorithm has finished, in ITS OWN terms (e.g. 'the array is now "
-    "fully sorted', 'the MST is complete', 'the target is found at index 3') — never borrow another "
-    "algorithm's wording.\n"
+    "VERBATIM with its variable names, THEN — REQUIRED on every line — ` // <plain-English of what this line "
+    "does NOW, naming the concrete value(s) from this step>` (e.g. `lo = mid + 1  // move the lower bound "
+    "past index 4`). Do NOT substitute the values into the code itself — put them in the // part. A line "
+    "with no ` // ` is INVALID. List the lines this step executes, in source order.\n"
+    "- result: leave it BRIEF — it is REPLACED downstream by the step's verified state description, so it is "
+    "only a fallback; focus your effort on reasoning + work. Never output a raw dict/JSON.\n"
     "- code_lines: for EACH work action, the 1-based line number(s) in the CODE it maps to, as a list of "
     "lists (e.g. [[18],[19],[20]]); use [] for a pure-narration line. One entry per work line.\n"
     'Return ONLY JSON: {"cards":[{"title","goal","reasoning","work":[...],"result","code_lines":[...]}, ...]}'
@@ -176,12 +174,11 @@ def build_format_payload(trace: ContractTrace, code: Optional[str] = None,
         "one card per step, in order (do NOT split or merge steps). For each card write only: title, goal, "
         "reasoning, work (list), result. Use ONLY the step's facts — state EVERY required_fact, use only "
         "allowed_values, never make a forbidden_claim. "
-        "EACH card MUST (a) NAME the exact entity and values the step acts on — e.g. the edge and its weight "
-        "like '(A,C,13)' — and (b) STATE the decision in words (e.g. 'add it to the MST' / 'accept', or "
-        "'skip it — it would form a cycle'). A step that omits the entity/values or the decision is INVALID. "
-        "On the FINAL step, state plainly that THIS algorithm has finished, in ITS OWN terms (e.g. 'all "
-        "vertices are connected — the MST is complete', 'the array is now fully sorted', 'the target is found "
-        "at index 3') — never borrow another algorithm's wording. "
+        "EACH card MUST (a) NAME the exact entity and values the step acts on — taken from THIS step's facts "
+        "(e.g. an edge '(A,C,13)', a probe 'arr[3]=21', a merge of '[3] and [5]') — and (b) STATE the "
+        "decision in words, in THIS algorithm's own terms (e.g. 'add it / accept'; 'move the lower bound to "
+        "6'; 'copy 3 to the output'; 'skip it — it would form a cycle'). Use this algorithm's nouns, never "
+        "another's. A step that omits the entity/values or the decision is INVALID. "
         "Do NOT invent or alter any value, and do NOT output any machine-state/JSON-state fields. "
         'Return ONLY JSON: {"cards":[{"title","goal","reasoning","work":[...],"result"}, ...]}'
     ) + g_rule
@@ -199,12 +196,13 @@ def _normalize_and_attach(raw: Any, trace: ContractTrace) -> Optional[list[dict[
     for card, step in zip(cards, trace.steps):
         if not isinstance(card, dict):
             return None
-        result = str(card.get("result", "")).strip()
-        # C7: the learner-facing result must be PROSE. If the formatter echoed the raw state dict (the coding
-        # path used to ask for it), replace it with the step's VERIFIED prose result — trace-preserving, so it
-        # can't introduce an inaccuracy. The raw state stays on `result_state` below for the panel/visual.
-        if result.startswith("{") and str(getattr(step, "expected_visible_result", "") or "").strip():
-            result = str(step.expected_visible_result).strip()
+        # C7 / anti-hardcoding: the learner-facing `result` is ALWAYS the step's VERIFIED prose
+        # (expected_visible_result) — never the LLM's. This makes it correct by construction (no raw-dict, no
+        # cross-algorithm wording leak — the model can't write "all vertices connected" on a sort because it
+        # doesn't write the result at all) and removes the truth-bearing field from the LLM. The model still
+        # writes reasoning/work. Falls back to the LLM result only if the adapter gives no EVR for this step.
+        evr = str(getattr(step, "expected_visible_result", "") or "").strip()
+        result = evr or str(card.get("result", "")).strip()
         c: dict[str, Any] = {
             "title": str(card.get("title", "")).strip(),
             "goal": str(card.get("goal", "")).strip(),
