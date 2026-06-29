@@ -80,12 +80,14 @@ class LadderRoutingTests(unittest.TestCase):
 
     def test_determinate_coding_topic_never_returns_none(self):
         # THE Phase-A1 FIX: Prim coding is computational → must not fall to the self-graded path.
-        # Offline the verified paths defer → guided_fallback (not a stub, not None).
+        # ADAPTER_AND_GENERATION_SYSTEM_SPEC §1.2: the verified-trace tier now ships a trace-preserving
+        # narration even offline (no LLM needed), so this determinate adapter-supported topic gets Tier 1
+        # (hard) — STRONGER than the old offline guided_fallback, and still never None / never self-graded.
         r = solve_via_accuracy_ladder(
             {"title": "Implementing Prim's Algorithm", "topic_type": "coding_implementation"})
         self.assertIsNotNone(r)
-        self.assertEqual(r["metadata"]["treatment"], "guided_fallback")
-        self.assertEqual(r["metadata"]["withhold_reason"], "no_independent_answer_anchor")
+        self.assertEqual(r["metadata"]["treatment"], "hard")
+        self.assertEqual(r["metadata"]["verification_level"], "hard_trace")
 
 
 if __name__ == "__main__":

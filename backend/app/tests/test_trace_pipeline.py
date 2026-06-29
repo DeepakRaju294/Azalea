@@ -100,11 +100,19 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(len(res["cards"]), len(trace.steps))
         self.assertTrue(all(c.get("trace_step_ids") for c in res["cards"]))
 
-    def test_withholds_on_bad_prose(self):
+    def test_bad_narration_ships_trace_preserving_not_none(self):
+        # SPEC §1.2/§4.3.1 step 2: a bad/contradicting LLM narration no longer withholds-to-None (which fell
+        # to a from-scratch fallback). It ships a trace-preserving deterministic narration of the SAME trace.
+        adapter = tp.route_adapter(self.topic)
+        trace = tp.select_instance(adapter, tp._seed_for(self.topic))
         res = tp.solve_trace_pipeline(self.topic, format_fn=lambda p: {"cards": [
             {"title": "x", "goal": "g", "reasoning": "r", "work": ["nonsense 999"], "result": "done"}
         ] * 99})
-        self.assertIsNone(res)   # wrong card count / bad prose -> withhold
+        self.assertIsNotNone(res)
+        self.assertEqual(res["generated_by"], "trace_pipeline")
+        self.assertEqual(len(res["cards"]), len(trace.steps))            # one card per verified step
+        self.assertTrue(all(c.get("trace_step_ids") for c in res["cards"]))
+        self.assertFalse(any("nonsense" in str(c.get("work")) for c in res["cards"]))  # not the bad prose
 
     def test_flag_off_by_default(self):
         self.assertFalse(tp._enabled())

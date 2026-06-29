@@ -12,10 +12,11 @@ import hashlib
 import json
 import logging
 import os
+import re
 from typing import Any, Callable, Optional
 
 from .trace_adapters import ADAPTERS
-from .trace_contract import (ContractTrace, hard_prose_violations, structural_invariants,
+from .trace_contract import (ContractTrace, Step, hard_prose_violations, structural_invariants,
                              validate_fidelity, validate_prose)
 
 _log = logging.getLogger(__name__)
@@ -243,6 +244,39 @@ def _to_solve_result(trace: ContractTrace, cards: list[dict[str, Any]]) -> dict[
     }
 
 
+def _det_step_title(step: Step, i: int) -> str:
+    # prefer the visible result (it names the entity: "Edge (A,C,1) accept") over the bare decision verb
+    src = str(getattr(step, "expected_visible_result", "") or getattr(step, "decision", "")
+              or getattr(step, "operation", "") or "").strip()
+    head = re.split(r"[;:.\n]", src, 1)[0].strip()[:60].strip()
+    return f"Step {i + 1}: {head}" if head else f"Step {i + 1}"
+
+
+def _deterministic_narration(trace: ContractTrace) -> list[dict[str, Any]]:
+    """ADAPTER_AND_GENERATION_SYSTEM_SPEC §4.3.1 step 2 — build cards DIRECTLY from the verified trace (no
+    LLM), trace-preserving by construction. Used when the LLM narration fails its gate: per §1.2 we never
+    discard the verified trace to a from-scratch fallback, so we ship a terse-but-correct narration of the
+    SAME trace. Each card's truth-bearing fields are the step's own (prior/after state, decision, result)."""
+    out: list[dict[str, Any]] = []
+    for i, step in enumerate(trace.steps):
+        evr = str(getattr(step, "expected_visible_result", "") or "").strip()
+        decision = str(getattr(step, "decision", "") or "").strip()
+        reason = str(getattr(step, "reason", "") or "").strip()
+        out.append({
+            "title": _det_step_title(step, i),
+            "goal": "",
+            "reasoning": reason,
+            "work": [decision] if decision else ([evr] if evr else ["state update"]),
+            "result": evr or decision or "state updated",
+            "trace_step_ids": [step.id],
+            "prior_state": step.prior_state,
+            "result_state": step.state_after,
+            "visual_state": step.visual_state,
+            "visual_delta": step.visual_delta,
+        })
+    return out
+
+
 # --- top-level orchestration --------------------------------------------------------------------
 
 def _reason_extract_enabled() -> bool:
@@ -334,10 +368,16 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
         reason = "prose_fail"                                      # a hard contradiction -> re-format
         detail = [f"{v.code} {v.detail} ({v.trace_step_id})" for v in hard][:6]
         feedback = _retry_feedback(reason, detail, n_steps)        # targeted: tell it exactly what to fix
-    _retain_debug(topic, trace, last_raw, last_cards, None, last_prose, shipped=False)
-    _gr.we(tp_shipped=False, tp_reason=reason, tp_detail=detail, verified_steps=n_steps,
-           formatter_cards=(len(last_cards) if last_cards else None), tp_attempts=attempts)
-    return None
+    # §1.2 / §4.3.1 step 2 — the LLM narration failed its gate after every retry, but the trace is GROUND
+    # TRUTH. We never discard it to a from-scratch fallback: ship a trace-preserving deterministic narration
+    # of the SAME verified trace. (A fidelity failure already returned None above — that's a trace defect,
+    # not a narration one.) `narration_failed_reason` records WHY the LLM path was abandoned, for M7.
+    det_cards = _deterministic_narration(trace)
+    _retain_debug(topic, trace, last_raw, last_cards, None, last_prose, shipped=True)
+    _gr.we(tp_shipped=True, tp_reason="trace_preserving_narration", narration="deterministic",
+           narration_failed_reason=reason, tp_detail=detail, verified_steps=n_steps,
+           formatter_cards=len(det_cards), tp_attempts=attempts)
+    return _to_solve_result(trace, det_cards)
 
 
 def _solve_via_reason_extract(topic, fmt, reason_fn, extract_fn, critic_fn) -> Optional[dict[str, Any]]:

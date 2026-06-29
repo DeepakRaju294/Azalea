@@ -9,6 +9,37 @@ from app.services.examples import trace_pipeline as tp
 from app.services.examples.trace_adapters import ADAPTERS
 
 
+class TracePreservingFallback(unittest.TestCase):
+    """ADAPTER_AND_GENERATION_SYSTEM_SPEC §1.2 / §4.3.1 step 2: when the LLM narration fails its gate on
+    every retry, the trace pipeline ships a trace-preserving deterministic narration of the SAME verified
+    trace — it NEVER returns None (which would fall to a from-scratch gen_foundation/legacy)."""
+
+    def test_narration_failure_ships_trace_preserving_narration_not_none(self):
+        topic = {"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"}
+        gr.start(topic)
+
+        def always_fails(payload):  # a hard contradiction on every attempt (says skip on accept steps)
+            import json
+            steps = json.loads(payload["user"].split("STEPS (verified, describe faithfully):", 1)[1])
+            return {"cards": [{"title": "x", "goal": "", "reasoning": "", "work": ["skip it"],
+                               "result": "skip; nothing"} for _ in steps]}
+
+        res = tp.solve_trace_pipeline(topic, format_fn=always_fails)
+        self.assertIsNotNone(res, "must ship a trace-preserving narration, never None → fallback")
+        we = gr.current().worked_example
+        self.assertEqual(we.get("tp_reason"), "trace_preserving_narration")
+        self.assertEqual(we.get("narration"), "deterministic")
+        self.assertTrue(we.get("tp_shipped"))
+        # every card descends from the verified trace (truth-bearing fields are the step's own)
+        self.assertTrue(all(c.get("trace_step_ids") and c.get("result_state") for c in res["cards"]))
+        # the narration is NOT the LLM's contradicted text — results come from the trace
+        self.assertTrue(any("accept" in c["result"].lower() for c in res["cards"]))
+        # titles are distinct (name the entity), not a repeated label
+        suffixes = [c["title"].split(":", 1)[-1].strip() for c in res["cards"]]
+        self.assertGreater(len(set(suffixes)), 1)
+        gr.finish_and_persist()
+
+
 class CodingRouting(unittest.TestCase):
     def test_coding_prefers_legacy_over_gen_foundation(self):
         # When the adapter defers, a CODING topic must use the bounded legacy structural solver, NOT
@@ -64,16 +95,18 @@ class TracePipelineRecordsOutcome(unittest.TestCase):
         self.assertEqual(we.get("formatter_cards"), we.get("verified_steps"))
         gr.finish_and_persist()
 
-    def test_count_mismatch_withhold_is_recorded(self):
+    def test_count_mismatch_ships_trace_preserving_and_records_cause(self):
+        # SPEC §1.2/§4.3.1: count_mismatch no longer withholds-to-None; it ships a trace-preserving
+        # narration and records WHY the LLM path was abandoned (narration_failed_reason=count_mismatch).
         gr.start({"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"})
-        # a formatter that returns the WRONG number of cards (1) -> count_mismatch withhold
-        bad = lambda p: {"cards": [{"title": "x", "work": ["w"], "result": "r"}]}
+        bad = lambda p: {"cards": [{"title": "x", "work": ["w"], "result": "r"}]}   # wrong card count (1)
         res = tp.solve_trace_pipeline({"title": "Kruskal's Algorithm Walkthrough",
                                        "topic_type": "algorithm_walkthrough"}, format_fn=bad)
-        self.assertIsNone(res)
+        self.assertIsNotNone(res)
         we = gr.current().worked_example
-        self.assertFalse(we.get("tp_shipped"))
-        self.assertEqual(we.get("tp_reason"), "count_mismatch")
+        self.assertTrue(we.get("tp_shipped"))
+        self.assertEqual(we.get("tp_reason"), "trace_preserving_narration")
+        self.assertEqual(we.get("narration_failed_reason"), "count_mismatch")
         gr.finish_and_persist()
 
     def test_no_adapter_is_recorded(self):
