@@ -90,6 +90,21 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(tp.route_adapter({"title": "Understanding Kruskal's Algorithm"}).slug, "kruskal")
         self.assertIsNone(tp.route_adapter({"title": "Graph Algorithms"}))   # no fuzzy routing
 
+    def test_raw_dict_result_replaced_with_prose_and_completion(self):
+        # C7: a formatter that echoes the raw state dict (old coding behavior) -> result becomes the verified
+        # prose EVR; the last card states completion. Both are deterministic + trace-preserving.
+        topic = {"title": "Understanding Kruskal's Algorithm"}
+        adapter = tp.route_adapter(topic)
+        trace = tp.select_instance(adapter, tp._seed_for(topic))
+        raw = {"cards": [{"title": "t", "goal": "", "reasoning": "r", "work": ["w"],
+                          "result": str(s.state_after)} for s in trace.steps]}
+        cards = tp._normalize_and_attach(raw, trace)
+        self.assertIsNotNone(cards)
+        self.assertFalse(any(str(c["result"]).startswith("{") for c in cards))   # no raw dict survives
+        self.assertEqual(cards[0]["result"], trace.steps[0].expected_visible_result)  # verified prose
+        self.assertRegex(cards[-1]["result"].lower(), r"complete|final")          # completion stated
+        self.assertEqual(cards[0]["result_state"], trace.steps[0].state_after)    # raw state kept for the panel
+
     def test_end_to_end_ships_correct_result(self):
         # inject a faithful formatter built from the selected trace
         adapter = tp.route_adapter(self.topic)

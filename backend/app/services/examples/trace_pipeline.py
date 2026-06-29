@@ -95,7 +95,9 @@ _CODING_FORMAT_SYSTEM = (
     "THEN — REQUIRED on every line — ` // <plain-English of what this line does NOW, naming the concrete "
     "value(s) from this step>`. Do NOT substitute the values into the code itself — put them in the // "
     "part. A line with no ` // ` is INVALID. List the lines this step executes, in source order.\n"
-    "- result: the concrete RUNTIME state after this step (variables/structures mutated, branch taken).\n"
+    "- result: a PROSE sentence describing the state after this step, naming the concrete values (e.g. "
+    "'Tree now spans A, B; MST edges so far (A,B,4)'). NEVER a raw dict/JSON — write it as a sentence. On "
+    "the final step say so (e.g. 'all vertices connected — the MST is complete').\n"
     "- code_lines: for EACH work action, the 1-based line number(s) in the CODE it maps to, as a list of "
     "lists (e.g. [[18],[19],[20]]); use [] for a pure-narration line. One entry per work line.\n"
     'Return ONLY JSON: {"cards":[{"title","goal","reasoning","work":[...],"result","code_lines":[...]}, ...]}'
@@ -194,12 +196,18 @@ def _normalize_and_attach(raw: Any, trace: ContractTrace) -> Optional[list[dict[
     for card, step in zip(cards, trace.steps):
         if not isinstance(card, dict):
             return None
+        result = str(card.get("result", "")).strip()
+        # C7: the learner-facing result must be PROSE. If the formatter echoed the raw state dict (the coding
+        # path used to ask for it), replace it with the step's VERIFIED prose result — trace-preserving, so it
+        # can't introduce an inaccuracy. The raw state stays on `result_state` below for the panel/visual.
+        if result.startswith("{") and str(getattr(step, "expected_visible_result", "") or "").strip():
+            result = str(step.expected_visible_result).strip()
         c: dict[str, Any] = {
             "title": str(card.get("title", "")).strip(),
             "goal": str(card.get("goal", "")).strip(),
             "reasoning": str(card.get("reasoning", "")).strip(),
             "work": [str(w) for w in (card.get("work") or [])],
-            "result": str(card.get("result", "")).strip(),
+            "result": result,
         }
         if isinstance(card.get("code_lines"), list):           # coding path: per-action anchors (validated downstream)
             c["code_lines"] = card["code_lines"]
@@ -212,6 +220,7 @@ def _normalize_and_attach(raw: Any, trace: ContractTrace) -> Optional[list[dict[
         if not c["work"] or not c["result"]:
             return None
         out.append(c)
+    _ensure_completion(out, trace)                              # C4: the last card states completion
     return out
 
 
@@ -232,6 +241,22 @@ def _final_answer_text(trace: ContractTrace) -> str:
         if "dist" in fa:
             return "shortest distances: " + ", ".join(f"{k}:{v}" for k, v in fa["dist"].items())
     return str(fa)
+
+
+_COMPLETE_RE = re.compile(r"complete|all (?:nodes|vertices|elements)|finished|\bdone\b|\bfinal\b", re.I)
+
+
+def _ensure_completion(cards: list[dict[str, Any]], trace: ContractTrace) -> None:
+    """C4/C7: the trace ran to its terminal, so the LAST card must state completion. If its result doesn't
+    already say so, append a deterministic, verified completion clause (the trace's final answer). Works for
+    every adapter and both the LLM and trace-preserving paths."""
+    if not cards:
+        return
+    last = cards[-1]
+    res = str(last.get("result") or "").rstrip()
+    if _COMPLETE_RE.search(res):
+        return
+    last["result"] = (res.rstrip(".") + ". Complete — final result: " + _final_answer_text(trace) + ".").lstrip(". ")
 
 
 def _to_solve_result(trace: ContractTrace, cards: list[dict[str, Any]]) -> dict[str, Any]:
@@ -276,6 +301,7 @@ def _deterministic_narration(trace: ContractTrace) -> list[dict[str, Any]]:
             "visual_state": step.visual_state,
             "visual_delta": step.visual_delta,
         })
+    _ensure_completion(out, trace)                              # C4: the last card states completion
     return out
 
 
