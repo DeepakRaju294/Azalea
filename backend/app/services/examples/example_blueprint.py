@@ -229,9 +229,13 @@ def stamp_example_metadata(
                     repeated_steps.append(index)
                 if sig and sig != " | ":
                     seen_sigs.setdefault(sig, index)
-                # continuity: this step's declared prior_state shares nothing with where the last ended
+                # continuity: this step's declared prior_state shares nothing with where the last ended.
+                # SKIP for trace-backed cards — a verified trace's state chain is guaranteed by fidelity, and
+                # the prose-token heuristic false-positives when the verified result describes the state in
+                # different words than the state's variable names (e.g. "window [0,3]" vs prior "lo 0 hi 3").
+                trace_backed = bool((card.get("metadata") or {}).get("trace_backed"))
                 ps_text = _prior_state_text(card)
-                if index >= 2 and ps_text and prev_end and len(_tokens(ps_text)) >= 2:
+                if index >= 2 and not trace_backed and ps_text and prev_end and len(_tokens(ps_text)) >= 2:
                     if not (_tokens(ps_text) & _tokens(prev_end)):
                         continuity_steps.append(index)
                 prev_work, prev_result = nw, nr

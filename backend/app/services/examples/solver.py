@@ -1220,8 +1220,9 @@ def _build_solution_cards(
             "worked_example_solver": True,
             "example": {"role": "step", "index": n + 1, "total": total},
         }
-        if card.get("trace_backed"):
-            meta["trace_backed"] = True  # executed/reference ground-truth step (not a model guess)
+        if card.get("trace_backed") or card.get("trace_step_ids"):
+            meta["trace_backed"] = True  # executed/reference ground-truth step (not a model guess);
+            # trace_step_ids ⇒ a verified trace-pipeline card whose state chain is guaranteed by fidelity
         if card.get("prior_state") is not None:
             meta["prior_state"] = card["prior_state"]
         if card.get("cases_covered"):
