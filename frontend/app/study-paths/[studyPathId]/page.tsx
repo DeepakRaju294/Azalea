@@ -28,6 +28,7 @@ import {
   getStudyPathSessions,
   getStudyPathTopics,
   regenerateStudyPath,
+  updateStudyPathLanguage,
   type StudyPath,
   type StudyPathRecommendation,
   type StudySession,
@@ -94,6 +95,7 @@ export default function StudyPathLandingPage() {
 
   const [knowledgeLevel, setKnowledgeLevel] = useState(0);
   const [experienceNotes, setExperienceNotes] = useState("");
+  const [pathLanguage, setPathLanguage] = useState<"python" | "cpp" | "java">("python");
   const [pathFeedback, setPathFeedback] = useState("");
 
   const [status, setStatus] = useState("");
@@ -177,6 +179,9 @@ export default function StudyPathLandingPage() {
     ]);
 
     setStudyPath(pathData);
+    if (pathData?.language === "python" || pathData?.language === "cpp" || pathData?.language === "java") {
+      setPathLanguage(pathData.language);
+    }
     setTopics(topicData);
     setRecommendation(recommendationData);
     setSessionSummary(summaryData);
@@ -472,6 +477,31 @@ export default function StudyPathLandingPage() {
                   className="mt-4 min-h-28"
                   placeholder="Example: I know recursion but struggle with memoization. I need this for an exam next week."
                 />
+
+                <div className="mt-5">
+                  <p className="text-sm font-semibold">Programming language</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Code, walkthroughs, and worked examples for coding topics use this language. Set it
+                    before generating or rerendering.
+                  </p>
+                  <select
+                    value={pathLanguage}
+                    onChange={async (e) => {
+                      const lang = e.target.value as "python" | "cpp" | "java";
+                      setPathLanguage(lang);
+                      try {
+                        await updateStudyPathLanguage(studyPathId, lang);
+                      } catch {
+                        /* non-fatal — the selection still applies if the PATCH persisted */
+                      }
+                    }}
+                    className="mt-2 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition focus:border-primary"
+                  >
+                    <option value="python">Python</option>
+                    <option value="cpp">C++</option>
+                    <option value="java">Java</option>
+                  </select>
+                </div>
               </CardContent>
             </Card>
 

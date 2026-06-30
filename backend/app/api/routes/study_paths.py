@@ -29,7 +29,7 @@ from app.models.study_path import StudyPath
 from app.models.study_session import StudySession
 from app.models.topic import Topic
 from app.schemas.lesson import LessonRead
-from app.schemas.study_path import StudyPathCreate, StudyPathRead
+from app.schemas.study_path import StudyPathCreate, StudyPathLanguageUpdate, StudyPathRead
 from app.schemas.study_path_recommendation import (
     RecommendedTopicRead,
     StudyPathRecommendationRead,
@@ -543,6 +543,26 @@ def get_study_path(
         db=db,
         current_user=current_user,
     )
+
+
+@router.patch("/{study_path_id}/language", response_model=StudyPathRead)
+def update_study_path_language(
+    study_path_id: str,
+    payload: StudyPathLanguageUpdate,
+    db: Session = Depends(get_db),
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    """Set the programming language for this path's coding content. Applies to lessons generated/regenerated
+    AFTER this call (set it before generating)."""
+    study_path = get_owned_study_path(
+        study_path_id=study_path_id,
+        db=db,
+        current_user=current_user,
+    )
+    study_path.language = payload.language
+    db.commit()
+    db.refresh(study_path)
+    return study_path
 
 
 @router.post(

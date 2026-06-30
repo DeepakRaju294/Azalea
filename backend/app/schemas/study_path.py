@@ -14,6 +14,10 @@ class StudyPathCreate(BaseModel):
     language: CodeLanguage = "python"
 
 
+class StudyPathLanguageUpdate(BaseModel):
+    language: CodeLanguage
+
+
 class StudyPathRead(BaseModel):
     id: str
     title: str

@@ -27,6 +27,7 @@ export type StudyPath = {
   goal: string | null;
   progress_percent: number;
   estimated_minutes_remaining: number | null;
+  language?: string;
   created_at: string;
 };
 
@@ -1875,6 +1876,16 @@ export function createStudyPath(payload: {
   return request<StudyPath>("/study-paths/", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function updateStudyPathLanguage(
+  studyPathId: string,
+  language: "python" | "cpp" | "java",
+) {
+  return request<StudyPath>(`/study-paths/${studyPathId}/language`, {
+    method: "PATCH",
+    body: JSON.stringify({ language }),
   });
 }
 
