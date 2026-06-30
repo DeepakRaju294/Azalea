@@ -205,6 +205,8 @@ def _arg_candidates(num_nodes: int, edges: list, adjacency: dict) -> list:
     labels = sorted(adjacency.keys())
     int_adj = {_i(k): [[_i(a), b] for (a, b) in v] for k, v in adjacency.items()}
     nested_adj = {k: {a: b for (a, b) in v} for k, v in adjacency.items()}      # {u: {v: w}}
+    s_lbl = labels[0] if labels else "A"               # a start vertex (Prim/BFS/DFS take graph + start)
+    s_int = _i(s_lbl)
     return [
         ([num_nodes, int_edges], int_edges),             # kruskal(n, edges) with int nodes
         ([num_nodes, label_edges], label_edges),         # kruskal(n, edges) with label nodes
@@ -215,6 +217,10 @@ def _arg_candidates(num_nodes: int, edges: list, adjacency: dict) -> list:
         ([nested_adj], label_edges),                     # prim(graph) nested-dict adjacency {u: {v: w}}
         ([{"nodes": labels, "edges": label_edges}], label_edges),       # graph dict with nodes/edges keys
         ([{"num_nodes": num_nodes, "edges": int_edges}], int_edges),    # graph dict, int edges
+        ([adjacency, s_lbl], label_edges),               # prim(graph, start) label adjacency + start vertex
+        ([nested_adj, s_lbl], label_edges),              # prim(graph, start) nested-dict + start
+        ([int_adj, s_int], int_edges),                   # prim(graph, start) int adjacency + start
+        ([num_nodes, label_edges, s_lbl], label_edges),  # prim(n, edges, start)
     ]
 
 

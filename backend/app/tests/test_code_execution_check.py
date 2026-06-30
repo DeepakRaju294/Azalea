@@ -117,6 +117,28 @@ class SelfContainedTopicCheck(unittest.TestCase):
     def test_prim_returning_vertices_fails_on_generated_graphs(self):
         self.assertEqual(check_graph_topic_code(_PRIM_VERTICES, "prim").status, "fail")
 
+    def test_prim_with_start_vertex_validates(self):
+        # A2 now handles the (graph, start) signature (Prim/BFS/DFS) rather than returning unverifiable.
+        code = """
+import heapq
+def prim(graph, start):
+    visited = {start}
+    edges = []
+    pq = [(w, start, v) for v, w in graph[start]]
+    heapq.heapify(pq)
+    while pq:
+        w, u, v = heapq.heappop(pq)
+        if v in visited:
+            continue
+        visited.add(v)
+        edges.append([u, v, w])
+        for nv, nw in graph[v]:
+            if nv not in visited:
+                heapq.heappush(pq, (nw, v, nv))
+    return edges
+"""
+        self.assertEqual(check_graph_topic_code(code, "prim").status, "ok")
+
     def test_non_graph_topic_is_unverifiable(self):
         self.assertEqual(check_graph_topic_code(_KRUSKAL_OK, "binary_search").status, "unverifiable")
 
