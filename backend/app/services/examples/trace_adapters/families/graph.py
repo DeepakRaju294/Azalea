@@ -45,13 +45,20 @@ class BFSAdapter(FamilyAdapterBase):
     slug = "bfs"
     example_spec = ExampleSpec(
         input=InstanceShape("letters", count=(5, 7), structure=["connected", "undirected", "has_cross_edge"]),
-        stages={"dequeue_enqueue": StageSpec(
-            "dequeue_enqueue", "process one node: dequeue it and enqueue its unvisited neighbors",
-            teaching_focus="expand one node and add newly discovered neighbors to the queue",
-            contains={"dequeue_node": "required", "enqueue_neighbor": "aggregated_supporting",
-                      "skip_visited": "aggregated_supporting"},
-            state_effects=["node moved from queue to order", "queue reflects newly enqueued neighbors"])},
-        structure="dequeue_enqueue+ until queue empty",
+        stages={
+            "setup_start": StageSpec(
+                "setup_start", "choose the start node and seed the queue with it",
+                teaching_focus="BFS explores outward level by level from a start node, using a FIFO queue",
+                cardinality="exactly_once", contains={"seed_queue": "required"},
+                state_effects=["the queue holds only the start node; nothing visited beyond it"]),
+            "dequeue_enqueue": StageSpec(
+                "dequeue_enqueue", "process one node: dequeue it and enqueue its unvisited neighbors",
+                teaching_focus="expand one node and add newly discovered neighbors to the queue",
+                contains={"dequeue_node": "required", "enqueue_neighbor": "aggregated_supporting",
+                          "skip_visited": "aggregated_supporting"},
+                state_effects=["node moved from queue to order", "queue reflects newly enqueued neighbors"]),
+        },
+        structure="setup_start, then dequeue_enqueue+ until queue empty",
         must_exercise=["enqueue_neighbors", "skip_visited", "completion"],
         must_avoid=["disconnected", "no_cross_edge_so_no_skip"],
         terminal="queue empty; every node visited", output_shape="visit order of all nodes")
@@ -73,6 +80,16 @@ class BFSAdapter(FamilyAdapterBase):
         steps: list[Step] = []
         evidence: dict[str, list[str]] = {}
         i = 0
+        # setup_start stage (multi-stage grammar §0): seed the queue with the start node.
+        _init = {"queue": [start], "visited": [start], "order": []}
+        steps.append(Step(
+            id="s0", operation="setup_start", prior_state=_init, state_after=_init, inputs={"start": start},
+            decision="seed the queue with the start node",
+            reason="BFS explores level by level from the start node, using a first-in-first-out queue.",
+            visual_state={"kind": "queue_graph", "queue": [start], "visited": [start], "active": start},
+            visual_delta={"start": start},
+            expected_visible_result=f"Start BFS from {start}: the queue holds [{start}], nothing emitted yet.",
+            facts={"allowed_values": sorted(graph), "required_facts": [], "forbidden_claims": []}))
         while queue:
             i += 1
             sid = f"s{i}"
@@ -128,6 +145,10 @@ class BFSAdapter(FamilyAdapterBase):
 
     def validate_step_shape(self, step):
         errs = []
+        if step.operation == "setup_start":              # multi-stage: the seed-the-queue step
+            if "start" not in step.inputs:
+                errs.append("setup missing inputs.start")
+            return errs
         if step.operation != "dequeue_enqueue":
             errs.append(f"unexpected operation {step.operation!r}")
         if "node" not in step.inputs:
@@ -138,6 +159,8 @@ class BFSAdapter(FamilyAdapterBase):
         return errs
 
     def validate_prose_claims(self, card, step):
+        if step.operation == "setup_start":              # seeds the frontier; no node-visit to check
+            return []
         prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
                           str(card.get("result", ""))]).lower()
         return [] if step.inputs["node"].lower() in prose else [("node_not_discussed", step.inputs["node"])]
@@ -158,13 +181,20 @@ class DFSIterativeAdapter(FamilyAdapterBase):
     slug = "dfs_iter"
     example_spec = ExampleSpec(
         input=InstanceShape("letters", count=(5, 7), structure=["connected", "undirected", "has_extra_edge"]),
-        stages={"pop": StageSpec(
-            "pop", "pop one node: visit it and push its unvisited neighbors (or skip if already visited)",
-            teaching_focus="pop a node, visit it, and push its neighbors for later",
-            contains={"pop_node": "required", "push_neighbor": "aggregated_supporting",
-                      "skip_revisit": "optional_supporting"},
-            state_effects=["node popped from stack", "visited+order updated if newly visited"])},
-        structure="pop+ until stack empty",
+        stages={
+            "setup_start": StageSpec(
+                "setup_start", "choose the start node and push it onto the stack",
+                teaching_focus="DFS dives as deep as possible from a start node, using a LIFO stack",
+                cardinality="exactly_once", contains={"seed_stack": "required"},
+                state_effects=["the stack holds only the start node; nothing visited yet"]),
+            "pop": StageSpec(
+                "pop", "pop one node: visit it and push its unvisited neighbors (or skip if already visited)",
+                teaching_focus="pop a node, visit it, and push its neighbors for later",
+                contains={"pop_node": "required", "push_neighbor": "aggregated_supporting",
+                          "skip_revisit": "optional_supporting"},
+                state_effects=["node popped from stack", "visited+order updated if newly visited"]),
+        },
+        structure="setup_start, then pop+ until stack empty",
         must_exercise=["push_neighbors", "revisit_prevention", "completion"],
         must_avoid=["no_revisit_so_no_skip"],
         terminal="stack empty; every node visited", output_shape="visit order of all nodes")
@@ -186,6 +216,16 @@ class DFSIterativeAdapter(FamilyAdapterBase):
         steps: list[Step] = []
         evidence: dict[str, list[str]] = {}
         i = 0
+        # setup_start stage (multi-stage grammar §0): push the start node onto the stack.
+        _init = {"stack": [start], "visited": [], "order": []}
+        steps.append(Step(
+            id="s0", operation="setup_start", prior_state=_init, state_after=_init, inputs={"start": start},
+            decision="seed the stack with the start node",
+            reason="DFS dives as deep as possible from the start node, using a last-in-first-out stack.",
+            visual_state={"kind": "stack_graph", "stack": [start], "stack_top": "right", "visited": [], "active": start},
+            visual_delta={"start": start},
+            expected_visible_result=f"Start DFS from {start}: the stack holds [{start}], nothing visited yet.",
+            facts={"allowed_values": sorted(graph), "required_facts": [], "forbidden_claims": []}))
         while stack:
             i += 1
             sid = f"s{i}"
@@ -243,6 +283,10 @@ class DFSIterativeAdapter(FamilyAdapterBase):
 
     def validate_step_shape(self, step):
         errs = []
+        if step.operation == "setup_start":              # multi-stage: the seed-the-stack step
+            if "start" not in step.inputs:
+                errs.append("setup missing inputs.start")
+            return errs
         if step.operation != "pop":
             errs.append(f"unexpected operation {step.operation!r}")
         if "node" not in step.inputs:
@@ -253,6 +297,8 @@ class DFSIterativeAdapter(FamilyAdapterBase):
         return errs
 
     def validate_prose_claims(self, card, step):
+        if step.operation == "setup_start":              # seeds the frontier; no node-visit to check
+            return []
         prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
                           str(card.get("result", ""))]).lower()
         return [] if step.inputs["node"].lower() in prose else [("node_not_discussed", step.inputs["node"])]
