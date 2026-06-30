@@ -206,13 +206,20 @@ class MergeSortAdapter(FamilyAdapterBase):
     # merge_select-per-card grain is a planned iteration (keep instances small so a full merge stays safe).
     example_spec = ExampleSpec(
         input=InstanceShape("integers", count=(5, 8), value_range=(1, 60), structure=["distinct", "unsorted"]),
-        stages={"merge": StageSpec(
-            "merge", "merge the two front runs into one sorted run",
-            teaching_focus="combine two sorted runs by repeatedly taking the smaller head",
-            contains={"compare_heads": "aggregated_supporting", "copy_value": "aggregated_supporting",
-                      "tail_copy": "aggregated_supporting"},
-            state_effects=["two runs replaced by one merged sorted run"])},
-        structure="merge+ until a single sorted run remains",
+        stages={
+            "init_runs": StageSpec(
+                "init_runs", "treat each element as its own sorted run of length 1",
+                teaching_focus="bottom-up merge sort starts by viewing every element as an already-sorted run",
+                cardinality="exactly_once", contains={"split_into_singletons": "required"},
+                state_effects=["the array becomes a list of length-1 runs, each trivially sorted"]),
+            "merge": StageSpec(
+                "merge", "merge the two front runs into one sorted run",
+                teaching_focus="combine two sorted runs by repeatedly taking the smaller head",
+                contains={"compare_heads": "aggregated_supporting", "copy_value": "aggregated_supporting",
+                          "tail_copy": "aggregated_supporting"},
+                state_effects=["two runs replaced by one merged sorted run"]),
+        },
+        structure="init_runs, then merge+ until a single sorted run remains",
         must_exercise=["merge_two_runs", "multi_element_merge", "completion"],
         must_avoid=["already_sorted"],
         terminal="exactly one sorted run of length N", output_shape="the sorted array")
@@ -235,6 +242,16 @@ class MergeSortAdapter(FamilyAdapterBase):
         steps: list[Step] = []
         evidence: dict[str, list[str]] = {}
         i = 0
+        # init_runs stage (multi-stage grammar §0): make bottom-up merge sort's opening explicit.
+        _init = {"runs": [list(r) for r in runs]}
+        steps.append(Step(
+            id="s0", operation="init_runs", prior_state=_init, state_after=_init, inputs={"array": list(arr)},
+            decision="split into single-element runs",
+            reason="bottom-up merge sort begins by treating every element as its own sorted run.",
+            visual_state={"kind": "run_list", "runs": [list(r) for r in runs], "merged": []},
+            visual_delta={"runs": [list(r) for r in runs]},
+            expected_visible_result=f"Initial runs: each element is its own sorted run: {runs}.",
+            facts={"allowed_values": sorted(set(arr)), "required_facts": [], "forbidden_claims": []}))
         while len(runs) > 1:
             i += 1
             sid = f"s{i}"
@@ -285,6 +302,10 @@ class MergeSortAdapter(FamilyAdapterBase):
 
     def validate_step_shape(self, step):
         errs = []
+        if step.operation == "init_runs":                # multi-stage: the split-into-singletons step
+            if "array" not in step.inputs:
+                errs.append("init missing inputs.array")
+            return errs
         if step.operation != "merge":
             errs.append(f"unexpected operation {step.operation!r}")
         for k in ("left", "right", "merged"):
@@ -293,6 +314,8 @@ class MergeSortAdapter(FamilyAdapterBase):
         return errs
 
     def validate_prose_claims(self, card, step):
+        if step.operation == "init_runs":                # presents the singleton runs; no merge to check
+            return []
         prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
                           str(card.get("result", ""))]).lower()
         merged = step.inputs["merged"]
