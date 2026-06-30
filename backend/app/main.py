@@ -44,6 +44,16 @@ def ensure_learning_material_scope_columns() -> None:
         )
 
 
+def ensure_study_path_language_column() -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "ALTER TABLE study_paths "
+                "ADD COLUMN IF NOT EXISTS language VARCHAR(32) NOT NULL DEFAULT 'python'"
+            )
+        )
+
+
 def ensure_quick_practice_schema() -> None:
     with engine.begin() as connection:
         connection.execute(
@@ -195,6 +205,7 @@ def ensure_topic_course_type_schema() -> None:
 
 
 ensure_learning_material_scope_columns()
+ensure_study_path_language_column()
 ensure_quick_practice_schema()
 ensure_quick_practice_title_column()
 ensure_topic_course_type_schema()

@@ -1325,11 +1325,12 @@ def _replace_lesson_code_snippets(cards: list[Any], new_code: str) -> None:
             c["code_snippet"] = new_code
 
 
-def _apply_canonical_code(cards: list[Any], topic: dict[str, Any]) -> dict[str, str] | None:
+def _apply_canonical_code(cards: list[Any], topic: dict[str, Any]) -> str | None:
     """For an adapter-supported coding topic, replace the LLM's displayed implementation with the VERIFIED
-    canonical solution (simplest-idiomatic form, imports stripped) and stamp the per-language variants so the
-    frontend can offer a python/cpp/java toggle. Returns the {lang: code} display dict, or None when the topic
-    has no canonical solution (then the LLM code is left untouched)."""
+    canonical solution in the PATH'S CHOSEN LANGUAGE (simplest-idiomatic form, imports stripped). Returns the
+    chosen-language code string (also stamped on every code card), or None when the topic has no canonical
+    solution (then the LLM code is left untouched). One language per path — no toggle variants are stamped."""
+    lang = str((topic or {}).get("language") or "python").lower()
     try:
         from app.services.examples.canonical_solutions import display_solutions
         from app.services.examples.trace_pipeline import route_adapter
@@ -1339,15 +1340,17 @@ def _apply_canonical_code(cards: list[Any], topic: dict[str, Any]) -> dict[str, 
         by_lang = display_solutions(slug) if slug else None
     except Exception:  # noqa: BLE001 — canonical code is an enhancement, never break the lesson
         by_lang = None
-    if not by_lang or not by_lang.get("python"):
+    if not by_lang:
         return None
-    py = by_lang["python"]
+    code = by_lang.get(lang) or by_lang.get("python")
+    if not code:
+        return None
     for c in cards:
         if isinstance(c, dict) and str(c.get("code_snippet") or "").strip():
-            c["code_snippet"] = py                 # default / fallback for non-toggle renderers
-            c["code_language"] = "python"
-            c["code_by_language"] = dict(by_lang)  # python/cpp/java for the language toggle
-    return by_lang
+            c["code_snippet"] = code
+            c["code_language"] = lang
+            c.pop("code_by_language", None)        # single language per path now — no toggle variants
+    return code
 
 
 def _extract_lesson_code(cards: list[Any]) -> str:
@@ -1559,6 +1562,7 @@ def apply_llm_solved_worked_example(
         # worked example still anchors to the LLM's own `code` — only the DISPLAYED implementation changes.
         canon = _apply_canonical_code(cards, topic) if is_coding else None
         if canon:
+            code = canon                                   # the worked example anchors to the SAME canonical code
             _gr.we(code_validation={"status": "canonical", "reason": "verified canonical solution"})
 
         if code and not canon:                             # A2: execute the displayed LLM code; fix on failure

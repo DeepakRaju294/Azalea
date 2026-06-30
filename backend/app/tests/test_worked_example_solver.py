@@ -201,9 +201,14 @@ class TestCoding(unittest.TestCase):
         cards_system = seen["systems"][-1]                    # the LAST call is the cards phase
         self.assertIn("structural", cards_system.lower())     # structural coding cards prompt used
         self.assertIn("line number", cards_system.lower())    # mentions code_lines / no prose line nums
-        self.assertIn(code, seen["user"])                     # the code was handed to the solve
+        # Merge Sort routes to an adapter -> the VERIFIED canonical solution REPLACES the provided stub, and
+        # the worked example anchors to that same canonical code (default language python here).
+        from app.services.examples.canonical_solutions import display_solutions
+        canonical = display_solutions("merge_sort")["python"]
+        self.assertIn(canonical, seen["user"])                # canonical code was handed to the solve
+        self.assertNotIn(code, seen["user"])                  # the provided stub was replaced
         we = [c for c in lesson["lesson_cards"] if c.get("blueprint_key") == "worked_example"]
-        self.assertTrue(all(c.get("code_snippet") == code for c in we))  # IDE code on every card
+        self.assertTrue(all(c.get("code_snippet") == canonical for c in we))  # canonical IDE code on every card
         joined = " ".join(p for c in we for p in c.get("points", [])).lower()
         self.assertNotIn("line ", joined)                     # no "line N executes" in the text
         # the per-action code anchor is carried into step metadata (best-effort, len-matched)

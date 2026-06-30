@@ -27,6 +27,12 @@ class StudyPath(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     goal: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Programming language for all coding content on this path (code walkthrough + worked example).
+    # Chosen at creation; threaded through generation. One of: python | cpp | java.
+    language: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="python", server_default="python",
+    )
+
     progress_percent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     estimated_minutes_remaining: Mapped[int | None] = mapped_column(
         Integer,

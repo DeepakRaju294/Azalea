@@ -345,6 +345,8 @@ def enrich_legacy_lesson_with_v2_visuals(
             "id": str(topic.id),
             "title": topic.title or "",
             "topic_type": str(getattr(topic, "course_type", None) or getattr(topic, "topic_type", "") or ""),
+            # the path's chosen programming language — drives canonical code + worked example language
+            "language": str(getattr(getattr(topic, "study_path", None), "language", None) or "python").lower(),
         }
         # Worked-example authoring: a single focused LLM solve for EVERY topic. For a coding
         # topic the solve explains how the code EXECUTES on a concrete input — conceptually,

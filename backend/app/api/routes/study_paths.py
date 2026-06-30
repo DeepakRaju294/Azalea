@@ -509,6 +509,7 @@ def create_study_path(
         title=title,
         goal=payload.goal,
         estimated_minutes_remaining=payload.estimated_minutes_remaining,
+        language=payload.language,
     )
 
     db.add(study_path)
