@@ -1332,23 +1332,27 @@ def _apply_canonical_code(cards: list[Any], topic: dict[str, Any]) -> str | None
     solution (then the LLM code is left untouched). One language per path — no toggle variants are stamped."""
     lang = str((topic or {}).get("language") or "python").lower()
     try:
-        from app.services.examples.canonical_solutions import display_solutions
+        from app.services.examples.canonical_solutions import display_solution
         from app.services.examples.trace_pipeline import route_adapter
 
         ad = route_adapter(topic)
         slug = getattr(ad, "slug", "") if ad is not None else ""
-        by_lang = display_solutions(slug) if slug else None
+        # Python is the verified source; cpp/java are translated-from-Python on demand (cached). If the
+        # translation is unavailable (offline / failure), fall back to the verified PYTHON rather than the
+        # LLM's unverified code — labelled python so the code and label always agree.
+        code = display_solution(slug, lang) if slug else None
+        used_lang = lang
+        if not code and slug and lang != "python":
+            code = display_solution(slug, "python")
+            used_lang = "python"
     except Exception:  # noqa: BLE001 — canonical code is an enhancement, never break the lesson
-        by_lang = None
-    if not by_lang:
-        return None
-    code = by_lang.get(lang) or by_lang.get("python")
+        code, used_lang = None, lang
     if not code:
         return None
     for c in cards:
         if isinstance(c, dict) and str(c.get("code_snippet") or "").strip():
             c["code_snippet"] = code
-            c["code_language"] = lang
+            c["code_language"] = used_lang
             c.pop("code_by_language", None)        # single language per path now — no toggle variants
     return code
 

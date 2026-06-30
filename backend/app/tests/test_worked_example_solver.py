@@ -203,8 +203,8 @@ class TestCoding(unittest.TestCase):
         self.assertIn("line number", cards_system.lower())    # mentions code_lines / no prose line nums
         # Merge Sort routes to an adapter -> the VERIFIED canonical solution REPLACES the provided stub, and
         # the worked example anchors to that same canonical code (default language python here).
-        from app.services.examples.canonical_solutions import display_solutions
-        canonical = display_solutions("merge_sort")["python"]
+        from app.services.examples.canonical_solutions import display_solution
+        canonical = display_solution("merge_sort", "python")
         self.assertIn(canonical, seen["user"])                # canonical code was handed to the solve
         self.assertNotIn(code, seen["user"])                  # the provided stub was replaced
         we = [c for c in lesson["lesson_cards"] if c.get("blueprint_key") == "worked_example"]
