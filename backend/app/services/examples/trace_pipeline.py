@@ -41,7 +41,13 @@ def route_adapter(topic: dict[str, Any]):
     (canonical code is Part 2, deferred). The code-walkthrough card still shows the code separately."""
     slug = str(topic.get("slug") or topic.get("topic_family") or topic.get("family") or "").lower()
     text = (slug + " " + str(topic.get("title") or topic.get("name") or "")).lower()
-    if "binary_search" in slug or "binary search" in text:
+    # Tree traversal is a DIFFERENT algorithm from graph BFS/DFS (no visited-set / cycle handling; a
+    # parent/child structure; pre/in/post/level order) — and a binary-search TREE is not array binary search.
+    # These graph/array adapters do NOT cover trees, so a tree topic must NOT route here; it defers (None)
+    # and degrades honestly per the coverage ladder rather than shipping a confidently-wrong trace.
+    is_tree = any(k in text for k in ("tree", "bst", "inorder", "preorder", "postorder", "level order",
+                                      "level-order", "subtree", "leaf"))
+    if ("binary_search" in slug or "binary search" in text) and not is_tree:
         return ADAPTERS["binary_search"]
     if "kruskal" in text:
         return ADAPTERS["kruskal"]
@@ -49,9 +55,9 @@ def route_adapter(topic: dict[str, Any]):
         return ADAPTERS["prim"]
     if "merge sort" in text or "merge_sort" in text:
         return ADAPTERS["merge_sort"]
-    if "breadth-first" in text or "breadth first" in text or " bfs" in f" {text}":
+    if not is_tree and ("breadth-first" in text or "breadth first" in text or " bfs" in f" {text}"):
         return ADAPTERS["bfs"]
-    if "depth-first" in text or "depth first" in text or " dfs" in f" {text}":
+    if not is_tree and ("depth-first" in text or "depth first" in text or " dfs" in f" {text}"):
         return ADAPTERS["dfs_iter"]
     if "order of operations" in text or "evaluate expression" in text or "arithmetic expression" in text:
         return ADAPTERS["arithmetic_eval"]

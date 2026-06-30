@@ -34,8 +34,12 @@ def random_unweighted_graph(rng: random.Random, *, extra_lo: int, extra_hi: int,
 # ===================================================================================================
 # BFS
 # ===================================================================================================
-_BFS_CONV = {"algorithm_variant": "breadth_first_search", "neighbor_order": "alphabetical",
-             "visited_when": "on_enqueue", "trace_granularity": "dequeue_and_enqueue"}
+# SCOPE: GRAPH breadth-first search (undirected, may contain CYCLES → needs a visited-set + skip-revisit).
+# This is NOT tree/level-order traversal — a tree has no cycles, no visited-set, and a parent/child shape;
+# that is a different algorithm and would be a separate adapter. Routing must keep tree topics out (§17).
+_BFS_CONV = {"algorithm_variant": "breadth_first_search", "domain": "undirected_graph",
+             "neighbor_order": "alphabetical", "visited_when": "on_enqueue",
+             "trace_granularity": "dequeue_and_enqueue"}
 _BFS_REQ = ["enqueue_neighbors", "skip_visited", "completion"]
 _BFS_INV = [{"id": "order_subset_visited", "scope": "every_step", "statement": "dequeued ⊆ visited"},
             {"id": "queue_empty_at_end", "scope": "final_only", "statement": "queue empty"}]
@@ -169,8 +173,11 @@ class BFSAdapter(FamilyAdapterBase):
 # ===================================================================================================
 # Iterative DFS (visited-on-pop, push reverse-alphabetical, duplicate stack entries skipped on pop)
 # ===================================================================================================
-_DFS_CONV = {"algorithm_variant": "iterative_dfs", "neighbor_order": "alphabetical",
-             "push_order": "reverse_alphabetical", "visited_when": "on_pop",
+# SCOPE: GRAPH iterative depth-first search (undirected, may contain CYCLES → needs a visited-set +
+# revisit-prevention). NOT tree traversal (pre/in/post-order on a parent/child tree has no visited-set and
+# is a different algorithm → a separate adapter). Routing must keep tree topics out (§17).
+_DFS_CONV = {"algorithm_variant": "iterative_dfs", "domain": "undirected_graph",
+             "neighbor_order": "alphabetical", "push_order": "reverse_alphabetical", "visited_when": "on_pop",
              "duplicate_stack_entries": "allowed", "trace_granularity": "one_pop"}
 _DFS_REQ = ["push_neighbors", "revisit_prevention", "completion"]
 _DFS_INV = [{"id": "order_subset_visited", "scope": "every_step", "statement": "order ⊆ visited"},

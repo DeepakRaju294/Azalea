@@ -90,6 +90,18 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(tp.route_adapter({"title": "Understanding Kruskal's Algorithm"}).slug, "kruskal")
         self.assertIsNone(tp.route_adapter({"title": "Graph Algorithms"}))   # no fuzzy routing
 
+    def test_graph_bfs_dfs_route_but_tree_traversal_does_not(self):
+        # graph BFS/DFS (visited-set, cycles) route to the graph adapters...
+        self.assertEqual(tp.route_adapter({"title": "Breadth-First Search on a graph"}).slug, "bfs")
+        self.assertEqual(tp.route_adapter({"title": "Depth-First Search traversal"}).slug, "dfs_iter")
+        # ...but TREE traversal is a different algorithm and must NOT route to the graph adapter (defers)
+        self.assertIsNone(tp.route_adapter({"title": "Level-order traversal of a binary tree"}))
+        self.assertIsNone(tp.route_adapter({"title": "BFS of a binary tree"}))
+        self.assertIsNone(tp.route_adapter({"title": "DFS preorder traversal of a tree"}))
+        # a binary-search TREE is not array binary search
+        self.assertIsNone(tp.route_adapter({"title": "Binary Search Tree insertion"}))
+        self.assertEqual(tp.route_adapter({"title": "Binary Search in a sorted array"}).slug, "binary_search")
+
     def test_raw_dict_result_replaced_with_prose_and_completion(self):
         # C7: a formatter that echoes the raw state dict (old coding behavior) -> result becomes the verified
         # prose EVR; the last card states completion. Both are deterministic + trace-preserving.
