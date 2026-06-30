@@ -1870,6 +1870,7 @@ export function createStudyPath(payload: {
   title: string;
   goal?: string;
   estimated_minutes_remaining?: number;
+  language?: "python" | "cpp" | "java";
 }) {
   return request<StudyPath>("/study-paths/", {
     method: "POST",

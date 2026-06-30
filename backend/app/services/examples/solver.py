@@ -1353,6 +1353,16 @@ def _apply_canonical_code(cards: list[Any], topic: dict[str, Any]) -> str | None
     return code
 
 
+def apply_canonical_code_to_lesson(lesson_json: dict[str, Any], topic: dict[str, Any]) -> str | None:
+    """Public entry: stamp the VERIFIED canonical solution (path language) onto a coding lesson's code cards
+    BEFORE the walkthrough is built, so the walkthrough explains that code and the python-only clean-code
+    repair can be skipped on it. Returns the chosen-language code, or None when the topic has no canonical."""
+    cards = lesson_json.get("lesson_cards") if isinstance(lesson_json, dict) else None
+    if not isinstance(cards, list):
+        return None
+    return _apply_canonical_code(cards, topic)
+
+
 def _extract_lesson_code(cards: list[Any]) -> str:
     """The longest code_snippet the lesson already carries (the LLM's own implementation),
     shown verbatim in the IDE panel — we don't re-generate or trace it."""

@@ -356,12 +356,19 @@ def enrich_legacy_lesson_with_v2_visuals(
         # example-type/fixture/ontology apparatus stays bypassed. Both remain in the tree.
         from app.services.examples.code_repair import apply_clean_code_to_lesson
         from app.services.examples.code_walkthrough import apply_line_explained_walkthrough
-        from app.services.examples.solver import apply_llm_solved_worked_example
+        from app.services.examples.solver import (apply_canonical_code_to_lesson,
+                                                  apply_llm_solved_worked_example)
 
-        # If a coding topic's code is broken (the incremental walkthrough transforms can ship
-        # code with undefined variables), replace it with one clean, validated LLM regeneration
-        # BEFORE the solver runs, so the worked-example IDE panel shows correct code.
-        apply_clean_code_to_lesson(lesson_json, _v2_topic)
+        # Adapter-supported coding topic: stamp the VERIFIED canonical solution in the PATH'S LANGUAGE
+        # (python/cpp/java) FIRST — so the per-line walkthrough below explains THAT code and the worked
+        # example anchors to it. Canonical is pre-verified, so we skip the python-only clean-code repair on
+        # it (which would corrupt non-python code). Non-adapter topics fall through to the LLM-code repair.
+        _canonical = apply_canonical_code_to_lesson(lesson_json, _v2_topic)
+        if not _canonical:
+            # If a coding topic's code is broken (the incremental walkthrough transforms can ship
+            # code with undefined variables), replace it with one clean, validated LLM regeneration
+            # BEFORE the solver runs, so the worked-example IDE panel shows correct code.
+            apply_clean_code_to_lesson(lesson_json, _v2_topic)
         # Rebuild the code_walkthrough as a per-LINE, one-step-at-a-time walkthrough off the now-
         # authoritative code (the general prompt summarizes code and the merge pass collapses it,
         # so the learner never gets a line-by-line walk). Structure is deterministic; the model

@@ -187,6 +187,7 @@ export default function HomePage() {
   const [classDescription, setClassDescription] = useState("");
 
   const [learningGoal, setLearningGoal] = useState("");
+  const [codeLanguage, setCodeLanguage] = useState<"python" | "cpp" | "java">("python");
   const [selectedPromptMode, setSelectedPromptMode] =
     useState<PromptMode | null>(null);
   const [selectedPromptClassId, setSelectedPromptClassId] = useState("");
@@ -373,6 +374,7 @@ export default function HomePage() {
         title: learningGoal.trim().slice(0, 80),
         goal: studyPathGoal,
         estimated_minutes_remaining: 45,
+        language: codeLanguage,
       });
 
       if (selectedPromptClassId && shouldAddPromptPathToClass) {
@@ -787,6 +789,19 @@ export default function HomePage() {
                       ))}
                     </select>
                   )}
+
+                  <select
+                    className="h-9 rounded-full border border-[#E1D9EA] bg-white px-3 text-sm font-medium text-[#6F6A7D] outline-none transition hover:border-[#D7C3FF]"
+                    value={codeLanguage}
+                    onChange={(e) =>
+                      setCodeLanguage(e.target.value as "python" | "cpp" | "java")
+                    }
+                    title="Programming language for any coding content (code, walkthrough, and worked examples)"
+                  >
+                    <option value="python">Python</option>
+                    <option value="cpp">C++</option>
+                    <option value="java">Java</option>
+                  </select>
                 </div>
 
                 <Button
