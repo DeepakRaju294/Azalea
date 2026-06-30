@@ -67,7 +67,17 @@ def route_adapter(topic: dict[str, Any]):
 
 
 def _seed_for(topic: dict[str, Any]) -> int:
-    key = str(topic.get("id") or topic.get("title") or topic.get("name") or "x")
+    tid = str(topic.get("id") or "").strip()
+    if tid:
+        key = tid                                          # a real topic id -> stable, reproducible instance
+    else:
+        # No id: salt with study-path + position so two SAME-TITLED topics (e.g. in different paths) do not
+        # collapse to the identical instance. Falls back to the title alone when nothing else is present, so
+        # title-only callers (tests) are unchanged.
+        salt = "|".join(str(topic.get(k)) for k in ("study_path_id", "path_id", "order_index")
+                        if topic.get(k) not in (None, ""))
+        title = str(topic.get("title") or topic.get("name") or "x")
+        key = f"{salt}|{title}" if salt else title
     return int(hashlib.md5(key.encode()).hexdigest(), 16) % 1_000_000
 
 
