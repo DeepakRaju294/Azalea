@@ -5104,9 +5104,9 @@ export default function StudyPathLearnPage() {
                       const card = currentStep.card as {
                         code_snippet?: string;
                         code_language?: string;
+                        code_by_language?: Record<string, string>;
                         highlight_lines_per_step?: [number, number][];
                       };
-                      const lang = String(card.code_language || "python");
                       // Per-bullet highlight: the reveal step carries this bullet's range; else
                       // a single per-card block range from the card.
                       let highlight: [number, number] | undefined = currentStep.highlightLines;
@@ -5116,25 +5116,7 @@ export default function StudyPathLearnPage() {
                           highlight = perStep[0] as [number, number];
                         }
                       }
-                      return (
-                        <div className="w-full overflow-hidden rounded-2xl border border-[#E2DDEC] bg-white shadow-sm shadow-purple-100/40">
-                          <div className="flex items-center gap-2 border-b border-[#E8E3EF] bg-[#F6F2FF] px-4 py-2.5">
-                            <span className="flex gap-1.5">
-                              <span className="h-3 w-3 rounded-full bg-[#FF5F57]" />
-                              <span className="h-3 w-3 rounded-full bg-[#FEBC2E]" />
-                              <span className="h-3 w-3 rounded-full bg-[#28C840]" />
-                            </span>
-                            <span className="ml-1 text-sm font-black text-foreground">{lang}</span>
-                          </div>
-                          <CodeWithHighlight
-                            code={String(card.code_snippet)}
-                            language={lang}
-                            highlightLines={highlight}
-                            variant="light"
-                            showHeader={false}
-                          />
-                        </div>
-                      );
+                      return <CodeTracePanel card={card} highlight={highlight} />;
                     })()
                   ) : currentV2FocusVisual ? (
                     <div className="w-full rounded-2xl border border-[#E5DFF0] bg-white p-3 shadow-sm shadow-purple-100/40">
@@ -6720,6 +6702,69 @@ function renderLatexAtom(base: string, subscript: string | undefined, superscrip
         </sup>
       )}
     </span>
+  );
+}
+
+const LANG_LABELS: Record<string, string> = { python: "Python", cpp: "C++", java: "Java" };
+
+// The code-trace panel: an IDE-styled block whose header carries a python/cpp/java toggle when the card
+// supplies code_by_language (adapter coding topics ship the verified canonical solution in all three). The
+// per-bullet line highlights are computed against the default (python) trace, so they apply only while that
+// language is selected — switching language shows the same algorithm without the python-specific highlight.
+function CodeTracePanel({
+  card,
+  highlight,
+}: {
+  card: { code_snippet?: string; code_language?: string; code_by_language?: Record<string, string> };
+  highlight?: [number, number];
+}) {
+  const byLang = card.code_by_language;
+  const langs = byLang ? Object.keys(byLang).filter((l) => (byLang[l] || "").trim()) : [];
+  const defaultLang = String(card.code_language || "python");
+  const [selected, setSelected] = useState<string>(
+    langs.includes(defaultLang) ? defaultLang : langs[0] || defaultLang,
+  );
+  const hasToggle = langs.length > 1;
+  const activeLang = hasToggle ? selected : defaultLang;
+  const code = hasToggle ? byLang?.[activeLang] || card.code_snippet || "" : card.code_snippet || "";
+  const effectiveHighlight = activeLang === defaultLang ? highlight : undefined;
+  return (
+    <div className="w-full overflow-hidden rounded-2xl border border-[#E2DDEC] bg-white shadow-sm shadow-purple-100/40">
+      <div className="flex items-center gap-2 border-b border-[#E8E3EF] bg-[#F6F2FF] px-4 py-2.5">
+        <span className="flex gap-1.5">
+          <span className="h-3 w-3 rounded-full bg-[#FF5F57]" />
+          <span className="h-3 w-3 rounded-full bg-[#FEBC2E]" />
+          <span className="h-3 w-3 rounded-full bg-[#28C840]" />
+        </span>
+        {hasToggle ? (
+          <div className="ml-auto flex gap-1 rounded-full bg-white/70 p-0.5">
+            {langs.map((l) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => setSelected(l)}
+                className={`rounded-full px-2.5 py-1 text-xs font-black transition-colors ${
+                  activeLang === l
+                    ? "bg-primary text-white shadow-sm"
+                    : "text-[#6B6580] hover:text-foreground"
+                }`}
+              >
+                {LANG_LABELS[l] || l}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span className="ml-1 text-sm font-black text-foreground">{LANG_LABELS[defaultLang] || defaultLang}</span>
+        )}
+      </div>
+      <CodeWithHighlight
+        code={String(code)}
+        language={activeLang}
+        highlightLines={effectiveHighlight}
+        variant="light"
+        showHeader={false}
+      />
+    </div>
   );
 }
 
