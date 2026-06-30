@@ -1325,6 +1325,31 @@ def _replace_lesson_code_snippets(cards: list[Any], new_code: str) -> None:
             c["code_snippet"] = new_code
 
 
+def _apply_canonical_code(cards: list[Any], topic: dict[str, Any]) -> dict[str, str] | None:
+    """For an adapter-supported coding topic, replace the LLM's displayed implementation with the VERIFIED
+    canonical solution (simplest-idiomatic form, imports stripped) and stamp the per-language variants so the
+    frontend can offer a python/cpp/java toggle. Returns the {lang: code} display dict, or None when the topic
+    has no canonical solution (then the LLM code is left untouched)."""
+    try:
+        from app.services.examples.canonical_solutions import display_solutions
+        from app.services.examples.trace_pipeline import route_adapter
+
+        ad = route_adapter(topic)
+        slug = getattr(ad, "slug", "") if ad is not None else ""
+        by_lang = display_solutions(slug) if slug else None
+    except Exception:  # noqa: BLE001 — canonical code is an enhancement, never break the lesson
+        by_lang = None
+    if not by_lang or not by_lang.get("python"):
+        return None
+    py = by_lang["python"]
+    for c in cards:
+        if isinstance(c, dict) and str(c.get("code_snippet") or "").strip():
+            c["code_snippet"] = py                 # default / fallback for non-toggle renderers
+            c["code_language"] = "python"
+            c["code_by_language"] = dict(by_lang)  # python/cpp/java for the language toggle
+    return by_lang
+
+
 def _extract_lesson_code(cards: list[Any]) -> str:
     """The longest code_snippet the lesson already carries (the LLM's own implementation),
     shown verbatim in the IDE panel — we don't re-generate or trace it."""
@@ -1528,7 +1553,15 @@ def apply_llm_solved_worked_example(
         is_coding = str(topic.get("topic_type") or "").lower() == "coding_implementation"
         code = _validated_lesson_code(cards, topic) if is_coding else None
 
-        if code:                                           # A2: execute the displayed code; fix on failure
+        # Canonical displayed code: for adapter-supported coding topics the walkthrough shows the VERIFIED
+        # simplest-idiomatic solution (python/cpp/java, imports stripped) instead of the LLM's improvisation.
+        # It is pre-verified at build time (test_canonical_solutions), so A2 repair is skipped on it; the
+        # worked example still anchors to the LLM's own `code` — only the DISPLAYED implementation changes.
+        canon = _apply_canonical_code(cards, topic) if is_coding else None
+        if canon:
+            _gr.we(code_validation={"status": "canonical", "reason": "verified canonical solution"})
+
+        if code and not canon:                             # A2: execute the displayed LLM code; fix on failure
             try:
                 from app.services.examples.code_execution_check import check_graph_topic_code
                 from app.services.examples.trace_pipeline import route_adapter
