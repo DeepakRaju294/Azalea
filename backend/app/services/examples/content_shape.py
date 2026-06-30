@@ -12,6 +12,10 @@ import re
 from typing import Any
 
 _MAX_WORK_LINES = 2
+# Coding Work is VERBATIM code, so one structural step may legitimately run a whole small code block (e.g. a
+# merge loop = compare/copy/advance/tail-copy ~6-8 lines). Allow that; a true line-trace explosion is caught
+# by the STEP-COUNT cap, not the per-step work cap.
+_MAX_CODING_WORK_LINES = 8
 _MAX_CODING_STEP_CARDS = 12        # a coding worked example over the projection cap is a line-trace explosion
 _RAW_STAGE_GOAL = re.compile(r"^\s*goal:\s*[a-z_]+\s*$", re.I)     # "Goal: consider_edge"
 _RAW_DICT = re.compile(r"\{\s*['\"]")                              # a JSON/dict literal in the text
@@ -56,7 +60,7 @@ def worked_example_shape_violations(cards: list[dict[str, Any]], *,
     if coding and len(steps) > _MAX_CODING_STEP_CARDS:
         issues.append(f"{len(steps)} step cards (> {_MAX_CODING_STEP_CARDS}) — line-trace explosion, "
                       "not bounded structural steps")
-    cap = 4 if coding else _MAX_WORK_LINES          # coding Work = verbatim code lines, so a higher cap
+    cap = _MAX_CODING_WORK_LINES if coding else _MAX_WORK_LINES   # coding Work = verbatim code (block-sized)
     for c in steps:
         title = str(c.get("title") or "?")[:40]
         work = _work_lines(c)
