@@ -1577,7 +1577,21 @@ def apply_llm_solved_worked_example(
         canon = _apply_canonical_code(cards, topic) if is_coding else None
         if canon:
             code = canon                                   # the worked example anchors to the SAME canonical code
-            _gr.we(code_validation={"status": "canonical", "reason": "verified canonical solution"})
+            _req_lang = str(topic.get("language") or "python").lower()
+            _applied_lang = next((str(c.get("code_language")) for c in cards
+                                  if isinstance(c, dict) and str(c.get("code_snippet") or "").strip()), _req_lang)
+            _fellback = _applied_lang != _req_lang
+            _gr.we(
+                code_validation={
+                    "status": "canonical_fallback_python" if _fellback else "canonical",
+                    "reason": f"verified canonical solution ({_applied_lang})",
+                },
+                requested_language=_req_lang,
+                code_language=_applied_lang,
+            )
+            if _fellback:                                  # cpp/java translation was unavailable -> shipped python
+                _gr.error(f"language fallback: requested {_req_lang!r} but translation unavailable; "
+                          f"shipped verified {_applied_lang!r}")
 
         if code and not canon:                             # A2: execute the displayed LLM code; fix on failure
             try:

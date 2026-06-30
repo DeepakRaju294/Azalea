@@ -201,32 +201,37 @@ TranslatorFn = Callable[[str, str], Optional[str]]
 
 
 def _default_translator(python_code: str, lang: str) -> Optional[str]:
-    """Translate the verified Python to a COMPLETE, idiomatic implementation in `lang` via one focused LLM
-    call. Returns None offline / on failure (caller falls back to leaving the Python in place)."""
+    """Translate the verified Python to a COMPLETE, idiomatic implementation in `lang`. RETRIES a few times so
+    a transient LLM hiccup doesn't silently downgrade a whole path to Python; returns None only when offline or
+    after every attempt fails (caller then keeps the Python)."""
     key = os.getenv("OPENAI_API_KEY")
     if not key or key.strip().lower() == "dummy":
         return None
     name = _LANG_NAME.get(lang, lang)
-    try:
-        from app.services.llm_client import OPENAI_MODEL, client, llm_call
+    system = (
+        f"You translate a VERIFIED Python reference implementation into {name}. Produce a COMPLETE, "
+        f"CORRECT, idiomatic {name} implementation of the SAME algorithm: same function name and "
+        f"input/output shape, same logic. Include any imports/includes needed to compile. Do not add "
+        f'example calls or I/O. Return ONLY JSON: {{"code": "<the {name} implementation>"}}.'
+    )
+    attempts = max(1, int(os.getenv("AZALEA_CANONICAL_TRANSLATE_ATTEMPTS", "3")))
+    for _ in range(attempts):
+        try:
+            from app.services.llm_client import OPENAI_MODEL, client, llm_call
 
-        system = (
-            f"You translate a VERIFIED Python reference implementation into {name}. Produce a COMPLETE, "
-            f"CORRECT, idiomatic {name} implementation of the SAME algorithm: same function name and "
-            f"input/output shape, same logic. Include any imports/includes needed to compile. Do not add "
-            f'example calls or I/O. Return ONLY JSON: {{"code": "<the {name} implementation>"}}.'
-        )
-        with llm_call("canonical_translate"):
-            resp = client.with_options(timeout=60, max_retries=2).responses.create(
-                model=OPENAI_MODEL,
-                input=[{"role": "system", "content": system},
-                       {"role": "user", "content": f"Translate this Python to {name}:\n\n{python_code}"}],
-                text={"format": {"type": "json_object"}},
-            )
-        code = str((json.loads(resp.output_text) or {}).get("code") or "").strip()
-        return code or None
-    except Exception:  # noqa: BLE001
-        return None
+            with llm_call("canonical_translate"):
+                resp = client.with_options(timeout=60, max_retries=2).responses.create(
+                    model=OPENAI_MODEL,
+                    input=[{"role": "system", "content": system},
+                           {"role": "user", "content": f"Translate this Python to {name}:\n\n{python_code}"}],
+                    text={"format": {"type": "json_object"}},
+                )
+            code = str((json.loads(resp.output_text) or {}).get("code") or "").strip()
+            if code and len(code) > 20:        # a real translation, not an empty / truncated reply
+                return code
+        except Exception:  # noqa: BLE001 — retry transient failures before giving up
+            continue
+    return None
 
 
 _translator: TranslatorFn = _default_translator

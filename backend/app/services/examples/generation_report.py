@@ -32,6 +32,7 @@ class GenerationReport:
         self.topic_id = str(get("id", "") or "")
         self.topic_type = str(get("topic_type", None) or get("course_type", None) or "")
         self.title = str(get("title", "") or "")
+        self.language = str(get("language", None) or "python").lower()   # the path's requested code language
         self.worked_example: dict[str, Any] = {}
         self.errors: list[str] = []
 
@@ -43,6 +44,7 @@ class GenerationReport:
 
     def to_dict(self) -> dict[str, Any]:
         return {"topic_id": self.topic_id, "topic_type": self.topic_type, "title": self.title,
+                "language": self.language,
                 "worked_example": self.worked_example, "errors": self.errors}
 
 
