@@ -46,6 +46,8 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 | T8b | **Formal derivation** | one rule-justified derivation step | each transformation rule used · every step follows an ALLOWED rule · conclusion reached | either | *(planned)* |
 | T9 | **Repeated relaxation / iterative improvement** | one edge/cell relaxation within a numbered PASS | a relax-that-improves · a pass with no change · the sufficiency bound (why `V−1` passes) | coding | *(planned)* |
 | T10 | **Stateful transformation / invariant restoration** | one operation + the sift/restore that repairs the invariant | a restore that bubbles · a no-op restore · completion | coding | *(planned)* |
+| T11 | **Constraint search / backtracking** | choose a candidate → explore → **undo** on failure | a valid extension · a dead-end that backtracks · a solution found | coding | *(planned)* |
+| T12 | **Program execution / memory trace** | executing one statement, updating variable/stack/heap state | a state update · a branch/loop-condition eval · a call push/return | coding | *(planned)* |
 
 ### T1 — Iterative traversal
 - **Trace:** one Step per visit; `state = {visited/output so far, current}`; ascending/level/… order.
@@ -146,6 +148,24 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 - **Per-concept info:** the *invariant* (heap property), the *restore operation* (sift-down/up), required
   cases (a restore that bubbles multiple levels, a no-op restore).
 
+### T11 — Constraint search / backtracking
+- **Trace:** choose a candidate → explore → **undo** when it violates a constraint; `state = {partial
+  assignment, remaining choices, decision depth}`. The teaching core is the *undo* — a trace that only ever
+  succeeds hides the whole idea.
+- **Concepts:** N-Queens · Sudoku · permutations/combinations/subsets · graph coloring · maze solve.
+- **Per-concept info:** the *choice set*, the *constraint check*, the *undo*, required cases (a valid
+  extension, a dead-end that backtracks, a solution). **Cap the instance** (small board) — backtracking
+  explodes; the learner-facing projection prunes to representative branches.
+
+### T12 — Program execution / memory trace
+- **Trace:** one Step per executed statement; `state = {variables, call stack, heap/refs, output}`. This is the
+  substrate under "coding fundamentals" (loops, recursion, pointers, scope) — the reference is a small
+  interpreter, not a domain algorithm.
+- **Concepts:** variable/assignment · for/while loops · function calls + call stack · recursion frames ·
+  pointers/aliasing · array/string indexing.
+- **Per-concept info:** the *statement set*, the *state model* (env + stack + heap), required cases (a state
+  update, a branch/loop-condition eval, a call push/return). **Cap iterations** so the trace stays bounded.
+
 ---
 
 ## 2.1 Rollout matrix — a TYPE scales only after its pilots prove the grammar
@@ -170,7 +190,28 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 | **T10** Stateful transformation | heap sort, heapify | invariant restoration (sift-down) + no-op vs bubbling restore | heap ops, AVL rotations |
 
 **Current status:** T2/T3/T4/T7 have production pilots; T1/T6 are in **pilot** (templates shipped, gate not yet
-signed off across enough variation); T5/T8/T9/T10 are **not started**. Status per adapter lives in the manifest (§8).
+signed off across enough variation); T5/T8/T9/T10/T11/T12 are **not started**. Status per adapter lives in the manifest (§8).
+
+---
+
+## 2.2 Adapter boundaries & family packages
+
+**One catalog row = one adapter boundary.** A row is a *distinct trace*, not a topic label. Split into separate
+adapters (they may share a template, but each gets its own `slug`, routing aliases + negative guards, fixtures,
+required cases, and manifest entry) whenever the **trace rules differ**:
+
+- `preorder` / `inorder` / `postorder` — same template, **distinct adapters** (different ordering rule).
+- `directed cycle detection` / `undirected cycle detection` — **distinct** (different state/decision).
+- `BST insertion` / `BST deletion` — **distinct** (T8a vs T10 state model).
+- `KMP prefix-table` / `KMP matching` — **distinct traces**.
+
+> Shared template ≠ shared adapter. Reuse the type template + visual compiler + harness; never merge two
+> different trace grammars behind one slug.
+
+**Family packages, not one growing file.** A family is a *package* and splits by concern once it grows (~>8–12
+adapters or unrelated trace grammars): `graph/{traversal,shortest_paths,connectivity,mst}.py`,
+`sequence/{sorting,searching,windows}.py`, `math/{algebra,calculus,linear_algebra}.py`. (Today's families have
+1–2 adapters each, so they're single files; split when they grow — don't pre-split.)
 
 ---
 

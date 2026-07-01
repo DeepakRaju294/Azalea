@@ -17,6 +17,9 @@ ADAPTER_TYPES = {
     "T4": "search_narrowing", "T5": "dp_table_fill", "T6": "formula_application",
     "T7": "reduction_rewriting", "T8a": "incremental_construction", "T8b": "formal_derivation",
     "T9": "repeated_relaxation", "T10": "stateful_transformation",
+    # T11 backtracking (constraint search with choose/explore/undo); T12 program-execution / memory trace
+    # (variables, loops, call stack, pointers) — the substrate under many "coding fundamentals" concepts.
+    "T11": "constraint_search_backtracking", "T12": "program_execution_memory_trace",
 }
 
 # Raw-trace ceiling per type — the MAX learner-facing steps a bounded instance may produce (headroom above the
@@ -26,6 +29,7 @@ ADAPTER_TYPES = {
 TYPE_TRACE_BUDGET = {
     "T1": 12, "T2": 16, "T3": 12, "T4": 8, "T5": 16, "T6": 8,
     "T7": 12, "T8a": 16, "T8b": 16, "T9": 20, "T10": 16,
+    "T11": 18, "T12": 16,
 }
 
 # Per-failure behavior. A correct trace whose VISUAL compile or FRONTEND render fails must still ship the

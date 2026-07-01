@@ -1,236 +1,284 @@
-# Adapter Catalog — the full concept set we will build adapters for
+# Adapter Catalog — Verified-Trace Concept Coverage
 
-> **Purpose.** The complete list of concepts that will each get a **verified-trace adapter** (the executable
-> truth + teaching boundaries behind every worked example). Two classes:
+> **Purpose.** The complete catalog of concepts Azalea may support with deterministic, verified-trace
+> worked-example adapters.
 >
-> - **Coding concepts** — algorithms whose worked example is a *code walkthrough + execution trace* (the
->   adapter ships a canonical solution + the trace).
-> - **Non-coding concepts** — computations/derivations whose worked example is a *step-by-step calculation*
->   with **no code** (the adapter ships only the verified trace; the learner sees the working, not a program).
+> This is an **adapter coverage catalog**, not an instruction to implement every row immediately (see
+> `ADAPTER_DEVELOPMENT_SPEC.md` §scope guard). A concept becomes production-supported only after:
+> 1. Its adapter type has passed its pilot gate (`ADAPTER_DEVELOPMENT_SPEC.md` §2.1).
+> 2. Its deterministic reference trace exists.
+> 3. Its fixtures, visual contract, routing aliases, and negative guards exist.
+> 4. Its per-adapter, per-type, and adversarial tests pass.
+> 5. Its manifest entry is complete.
 >
-> Every adapter — coding or not — has the SAME contract (`ExampleSpec` · `reference()` verified trace ·
-> required cases · structured facts · stage grammar · label convention). The only difference is the coding
-> ones also declare a `canonical_solution`.
->
-> **Three template adapters** define the pattern every new one follows:
-> - **Coding** → `families/trees.py` `InorderTraversalAdapter` (ships a canonical solution)
-> - **Math** → `families/algebra.py` `QuadraticEquationAdapter` (no code; a calculation)
-> - **Science** → `families/physics.py` `KinematicsAdapter` (no code; quantities + units + governing equations)
->
-> **Status key:** ✅ shipped · 🟩 template (this batch) · ⬜ planned.
+> The catalog includes:
+> - **Coding adapters** — canonical code plus verified execution/teaching trace.
+> - **Non-coding adapters** — verified mathematical, scientific, logical, or system-state trace with no
+>   canonical program shown.
+> - **Eligibility-review topics** — topics that may need guided or answer-anchored instruction rather than a
+>   dedicated trace adapter.
 
 ---
 
-## PART A — CODING CONCEPTS (worked example = code walkthrough + trace)
+## 0. Catalog rules
 
-### A1. Graph algorithms — family `graph`
-| Concept | Status |
-|---|---|
-| Breadth-first search (graph) | ✅ |
-| Depth-first search (graph) | ✅ |
-| Dijkstra shortest path | ✅ |
-| Prim MST | ✅ |
-| Kruskal MST | ✅ |
-| Bellman-Ford | ⬜ |
-| Floyd-Warshall (all-pairs) | ⬜ |
-| Topological sort (Kahn / DFS) | ⬜ |
-| Union-Find / Disjoint Set | ⬜ |
-| Connected components | ⬜ |
-| Cycle detection (directed / undirected) | ⬜ |
-| Bipartite check (2-coloring) | ⬜ |
-| Tarjan / Kosaraju SCC | ⬜ |
-| A* search | ⬜ |
+### 0.1 One row = one adapter boundary
+A row represents ONE distinct trace: one algorithm · one operation with different state transitions · one
+recurrence/derivation/governing-equation family · one explicit mode whose trace invariant differs materially.
+`BST insertion` and `BST deletion` are separate adapters; `directed` and `undirected` cycle detection are
+separate; `preorder`/`inorder`/`postorder` share a template but get distinct adapter IDs; `KMP prefix-table`
+and `KMP matching` are separate; `regression prediction` and `gradient-descent fitting` are separate.
 
-### A2. Tree algorithms — family `trees`
-| Concept | Status |
-|---|---|
-| Inorder traversal (BST) | 🟩 **template** |
-| Preorder / postorder traversal | ⬜ |
-| Level-order / BFS traversal (tree) | ⬜ |
-| BST search | ⬜ |
-| BST insertion | ⬜ |
-| BST deletion | ⬜ |
-| AVL rotations / rebalancing | ⬜ |
-| Heap insert / extract-min (binary heap) | ⬜ |
-| Trie insert / search | ⬜ |
-| Lowest common ancestor | ⬜ |
-| Segment tree build / query | ⬜ |
-| Fenwick / Binary Indexed Tree | ⬜ |
+### 0.2 Shared template ≠ shared adapter
+Many adapters reuse the same type template, visual compiler, and harness. They still need independent `slug`,
+routing aliases + negative guards, fixtures, required cases, trace semantics, visual contract, canonical
+solution (coding), and manifest entry. Never merge two different trace grammars behind one slug.
 
-### A3. Sorting — family `sequence`
-| Concept | Status |
-|---|---|
-| Merge sort | ✅ |
-| Quick sort (partition) | ⬜ |
-| Heap sort | ⬜ |
-| Insertion / selection / bubble sort | ⬜ |
-| Counting / radix / bucket sort | ⬜ |
-
-### A4. Searching & arrays — family `sequence`
-| Concept | Status |
-|---|---|
-| Binary search | ✅ |
-| Two pointers (pair sum, dedupe) | ⬜ |
-| Sliding window (max/sum) | ⬜ |
-| Kadane (max subarray) | ⬜ |
-| Prefix sums | ⬜ |
-
-### A5. Dynamic programming — family `dp`
-| Concept | Status |
-|---|---|
-| 0/1 Knapsack | ⬜ |
-| Longest common subsequence | ⬜ |
-| Longest increasing subsequence | ⬜ |
-| Edit distance | ⬜ |
-| Coin change | ⬜ |
-| Matrix-chain multiplication | ⬜ |
-| Subset sum / partition | ⬜ |
-| Grid paths | ⬜ |
-
-### A6. Greedy — family `greedy`
-| Concept | Status |
-|---|---|
-| Activity / interval selection | ⬜ |
-| Huffman coding | ⬜ |
-| Fractional knapsack | ⬜ |
-
-### A7. Strings — family `strings`
-| Concept | Status |
-|---|---|
-| KMP matching | ⬜ |
-| Rabin-Karp | ⬜ |
-| Z-algorithm | ⬜ |
-| Longest palindromic substring | ⬜ |
-| Anagram / frequency counting | ⬜ |
-
-### A8. Backtracking / recursion — family `recursion`
-| Concept | Status |
-|---|---|
-| N-Queens | ⬜ |
-| Permutations / combinations / subsets | ⬜ |
-| Tower of Hanoi | ⬜ |
-| Factorial / Fibonacci (recursive) | ⬜ |
-| Sudoku solve | ⬜ |
-
-### A9. Math / number theory (algorithmic) — family `number_theory`
-| Concept | Status |
-|---|---|
-| Euclid GCD | ⬜ |
-| Sieve of Eratosthenes | ⬜ |
-| Modular exponentiation | ⬜ |
-| Prime factorization | ⬜ |
-| Extended Euclid | ⬜ |
+### 0.3 Family packages, not one growing file
+Use family **packages**, split by concern once a module grows (~>8–12 adapters or unrelated trace grammars):
+`graph/{traversal,shortest_paths,connectivity,mst}.py`, `sequence/{sorting,searching,windows}.py`,
+`math/{algebra,calculus,linear_algebra}.py`. Today's families have 1–2 adapters each (single files); split when
+they grow — don't pre-split.
 
 ---
 
-## PART B — NON-CODING CONCEPTS (worked example = calculation/derivation, NO code)
+## 1. Status and trace-type key
 
-### B1. Algebra — family `algebra`
-| Concept | Status |
-|---|---|
-| Solve a quadratic equation | 🟩 **template** |
-| Solve a linear equation | ⬜ |
-| System of linear equations (substitution / elimination) | ⬜ |
-| Factor a polynomial | ⬜ |
-| Complete the square | ⬜ |
-| Solve an inequality | ⬜ |
+**Status:** ✅ production · 🟨 pilot (implemented, gate not fully signed off) · 🟩 template · ⬜ planned ·
+◇ eligibility review (may become answer-anchored/guided instead of trace-verified).
 
-### B2. Calculus — family `calculus`
-| Concept | Status |
-|---|---|
-| Derivative (power / product / quotient / chain rule) | ⬜ |
-| Definite / indefinite integral | ⬜ |
-| Limit evaluation | ⬜ |
-| Related rates | ⬜ |
-| Optimization (max/min) | ⬜ |
+| Type | Name | Typical concepts |
+|---|---|---|
+| T1 | Iterative traversal | BFS, DFS, tree traversals, linked-list traversal |
+| T2 | Greedy frontier update | Kruskal, Prim, Dijkstra, A* |
+| T3 | Divide and conquer | Merge sort, quicksort |
+| T4 | Search and narrowing | Binary search, BST search, ternary search |
+| T5 | Table / DP fill | Knapsack, LCS, edit distance |
+| T6 | Formula application | Quadratic formula, kinematics, circuits |
+| T7 | Reduction / rewriting | Algebra simplification, Euclid GCD, Gaussian elimination |
+| T8a | Incremental construction | Matrix multiplication, truth tables, sieve |
+| T8b | Formal derivation | Induction, symbolic derivation, proofs |
+| T9 | Repeated relaxation / iterative refinement | Bellman–Ford, PageRank, value iteration |
+| T10 | Stateful invariant maintenance | Heap ops, cache simulation, memory allocation |
+| T11 | Constraint search / backtracking | N-Queens, Sudoku, subset construction |
+| T12 | Program execution / memory trace | Loops, recursion, pointers, stack frames |
 
-### B3. Linear algebra — family `linear_algebra`
-| Concept | Status |
-|---|---|
-| Matrix multiplication | ⬜ |
-| Determinant (2×2 / 3×3) | ⬜ |
-| Gaussian elimination | ⬜ |
-| Matrix inverse | ⬜ |
-| Dot / cross product | ⬜ |
-| Eigenvalues (2×2) | ⬜ |
-
-### B4. Probability & statistics — family `statistics`
-| Concept | Status |
-|---|---|
-| Mean / median / mode | ⬜ |
-| Variance / standard deviation | ⬜ |
-| Bayes' theorem | ⬜ |
-| Conditional probability | ⬜ |
-| Expected value | ⬜ |
-| Binomial probability | ⬜ |
-| Normal distribution / z-score | ⬜ |
-| Confidence interval | ⬜ |
-| Hypothesis test (t / z) | ⬜ |
-| Linear regression (least squares) | ⬜ |
-
-### B5. Physics — family `physics`
-| Concept | Status |
-|---|---|
-| Kinematics (constant acceleration) | 🟩 **template** |
-| Projectile motion | ⬜ |
-| Newton's second law (F = ma) | ⬜ |
-| Work–energy / conservation of energy | ⬜ |
-| Momentum / collisions | ⬜ |
-| Ohm's law + series/parallel circuits | ⬜ |
-| Waves (frequency / wavelength / speed) | ⬜ |
-
-### B6. Chemistry — family `chemistry`
-| Concept | Status |
-|---|---|
-| Balance a chemical equation | ⬜ |
-| Stoichiometry (mole ratios) | ⬜ |
-| Molarity / dilution | ⬜ |
-| Ideal gas law (PV = nRT) | ⬜ |
-| pH / pOH | ⬜ |
-| Limiting reagent | ⬜ |
-| Oxidation states | ⬜ |
-
-### B7. Finance & economics — family `finance`
-| Concept | Status |
-|---|---|
-| Compound interest | ⬜ |
-| Present / future value | ⬜ |
-| Net present value | ⬜ |
-| Supply–demand equilibrium | ⬜ |
-| Price elasticity | ⬜ |
-| Marginal cost / revenue | ⬜ |
-| Break-even analysis | ⬜ |
-
-### B8. Discrete math & CS theory — family `discrete`
-| Concept | Status |
-|---|---|
-| Truth table / boolean simplification | ⬜ |
-| Set operations (union/intersection/complement) | ⬜ |
-| Counting (permutations / combinations) | ⬜ |
-| Modular arithmetic | ⬜ |
-| Big-O of a code fragment | ⬜ |
-| Solve a recurrence (Master theorem) | ⬜ |
-| Proof by induction (structure) | ⬜ |
-
-### B9. Geometry & trigonometry — family `geometry`
-| Concept | Status |
-|---|---|
-| Area / perimeter / volume | ⬜ |
-| Pythagorean theorem | ⬜ |
-| Trig ratios (sin/cos/tan) | ⬜ |
-| Law of sines / cosines | ⬜ |
-| Coordinate geometry (distance / slope / midpoint) | ⬜ |
-
-### B10. Accounting — family `accounting`
-| Concept | Status |
-|---|---|
-| Journal entries (debit/credit) | ⬜ |
-| Income statement | ⬜ |
-| Balance sheet | ⬜ |
+> **Note.** This file adopts the expanded catalog. It reflects the content received through **Part B §B10
+> (Chemistry)** — the source transfer truncated mid-B10. Families after that point (rest of chemistry, and any
+> finance / economics / accounting / biology / other intended families) are **still to be appended**; the
+> structure and rules above apply to them unchanged. Machine-checkable status per SHIPPED adapter is in
+> `trace_adapters/manifest.py`; this catalog is the human planning surface.
 
 ---
 
-## Coverage note
-~110 concepts across 19 families (9 coding, 10 non-coding). Families share machinery; new concepts are added
-as compact classes to their family module, never as new files. The three 🟩 templates (coding / math /
-science) define the pattern every remaining ⬜ follows.
+# PART A — CODING CONCEPTS
+
+## A0. Programming fundamentals / code execution — family `program_trace`
+Variable assignment · expression evaluation & precedence (T7/T12) · boolean branching · `for` loop · `while`
+loop & termination · nested loops · function calls & returns · recursive call-stack execution · parameter
+passing & scope · mutable vs immutable · array indexing & bounds · string indexing/slicing · exception flow ◇ ·
+object construction & field mutation · method dispatch / inheritance ◇ · reference aliasing · pointer
+dereference/updates · dynamic allocation (T10/T12) · stack vs heap · copy vs reference semantics. **Type T12**
+(some T7/T10). Status ⬜ (a few ◇).
+
+## A1. Core data structures — family `data_structures`
+Static array access/update (T12) · dynamic array append/resize · insert/delete · singly-linked traversal (T1) ·
+insertion (T8a/T10) · deletion · doubly-linked ins/del · stack push/pop · queue enqueue/dequeue · circular
+queue · deque · hash table chaining · linear probing · resize/rehash · priority queue · binary heap insert ·
+extract-min/max · heapify/sift-down · trie insertion (T8a) · trie search/prefix (T4) · trie deletion ·
+skip-list search/insert ◇ · bloom filter ◇ · LRU cache. **Type T10** (traversal T1, trie-search T4, indexing
+T12). Status ⬜.
+
+## A2. Graph algorithms — family `graph`
+**Traversal/reachability (T1):** BFS ✅ · DFS ✅ · connected components · reachability · directed cycle detection
+(T1/T10) · undirected cycle detection (T1/T2) · bipartite/2-coloring · flood fill · multi-source BFS · grid BFS
+· topo sort Kahn (T1/T8a) · topo sort DFS-finish · SCC Kosaraju · SCC Tarjan (T10) ◇ · articulation points ◇ ·
+bridges ◇.
+**MST & shortest paths:** Kruskal ✅ (T2) · Prim ✅ (T2) · Dijkstra ✅ (T2) · A* (T2) · Bellman–Ford (T9) ·
+Floyd–Warshall (T5/T9) · Johnson ◇ · DAG shortest paths (T1/T9) · 0–1 BFS (T1/T10) · min-cost grid path (T2) ·
+network delay (T2) · negative-cycle detection (T9).
+**Flows/matching/advanced ◇ (unless noted):** Ford–Fulkerson (T2/T9) · Edmonds–Karp (T1/T9) · Dinic (T10) ·
+bipartite matching (T1/T9) · Hungarian (T5/T9) · Union-Find (T10) ⬜ · path compression (T10) ⬜ · union by
+rank/size (T10) ⬜.
+
+## A3. Trees & hierarchical structures — family `trees`
+Inorder BST 🟩 (T1) · preorder (T1) · postorder (T1) · level-order (T1) · height/depth (T3/T12) ·
+count nodes/leaves (T1) · tree equality (T3/T12) · mirror/invert (T3/T8a) · BST search (T4) · BST insertion
+(T8a) · BST deletion (T10) · BST validation (T1/T7) · LCA in BST (T4) · LCA in binary tree (T3/T12) · AVL single
+rotations (T10) · AVL double rotations (T10) · AVL insert+rebalance (T10) · red-black insertion ◇ (T10) ·
+segment tree build (T3/T8a) · seg range query (T4/T3) · seg point update (T10) · lazy propagation ◇ (T10) ·
+Fenwick update (T10) · Fenwick prefix query (T4/T10) · B-tree search ◇ (T4) · B-tree split/insert ◇ (T10). ⬜.
+
+## A4. Sorting, searching, sequences — family `sequence`
+**Sorting:** merge sort ✅ (T3) · merge op (T3) · quicksort partition Lomuto/Hoare (T3) · quicksort recursion
+(T3) · heap sort (T10) · insertion/selection/bubble (T10) · shell ◇ · counting (T8a) · radix (T8a/T10) · bucket
+(T8a) · stable-vs-unstable ◇ (T8b) · comparator behavior ◇ (T12).
+**Searching/array patterns:** binary search ✅ (T4) · first/last occurrence (T4) · binary search on answer (T4)
+· ternary (T4) · exponential (T4) · interpolation ◇ · two-pointers pair-sum (T4/T10) · dedupe (T10) · palindrome
+(T4) · sliding window fixed/variable (T10) · prefix sums (T8a) · difference arrays (T8a) · Kadane (T10) ·
+Boyer–Moore majority ◇ · Dutch flag (T10) · rotate array (T10) · merge sorted arrays (T10) · interval merge
+(T10) · sweep-line overlap ◇ · monotonic stack next-greater (T10) · monotonic queue window-max ◇.
+
+## A5. Dynamic programming — family `dp` (all **T5** unless noted)
+Fibonacci memo/tab · climbing stairs · house robber · 0/1 knapsack · unbounded knapsack · subset sum · equal
+partition · coin change min/ways · LCS · longest common substring · LIS (T5/T4) · edit distance · matrix-chain ·
+rod cutting · grid paths · min path sum · unique paths w/ obstacles · word break · palindrome partitioning ◇ ·
+interval DP ◇ · bitmask DP ◇ · TSP DP ◇ · tree DP ◇ (T5/T3) · digit DP ◇.
+
+## A6. Greedy — family `greedy` (all **T2** unless noted)
+Activity selection · interval scheduling · min meeting rooms (T2/T10) · fractional knapsack · Huffman (T2/T8a) ·
+job sequencing w/ deadlines · min platforms · gas-station ◇ (T10) · jump game · canonical coin greedy ·
+scheduling w/ deadlines.
+
+## A7. Strings & text — family `strings`
+Frequency/anagram (T8a) · reversal (T10) · palindrome (T4/T10) · run-length encoding (T8a) · KMP prefix-function
+(T10) · KMP matching (T4/T10) · Rabin–Karp (T10) · Z-algorithm (T10) · Manacher ◇ (T10) · trie prefix (T4) ·
+Aho–Corasick ◇ (T10) · suffix array ◇ (T10) · suffix-array search ◇ (T4) · longest palindromic substring
+(T5/T10) · edit-distance DP (T5) · LCS DP (T5) · regex-matching DP ◇ (T5).
+
+## A8. Backtracking / recursion / constraint solving — family `recursion`
+Factorial recursion (T12) · Fibonacci recursion (T12) · binary-tree recursion (T12) · Tower of Hanoi (T11) ·
+permutations (T11) · combinations (T11) · subsets (T11) · N-Queens (T11) · Sudoku (T11) · word search (T11) ·
+maze backtracking (T11) · parentheses generation (T11) · palindrome partition ◇ (T11) · graph coloring (T11) ·
+exact cover ◇ (T11) · SAT/DPLL ◇ (T11).
+
+## A9. Number theory / bitwise / algorithmic math — family `number_theory`
+Euclid GCD (T7) · extended Euclid (T7) · LCM (T6/T7) · sieve (T8a) · segmented sieve ◇ · prime factorization
+(T7/T8a) · modular add/mul (T7) · modular exponentiation (T7/T12) · modular inverse (T7) · CRT (T8b) · fast
+exponentiation (T3/T12) · binary representation (T7) · two's complement (T7) · bitwise AND/OR/XOR (T7) · bit
+masking (T10) · popcount (T7) · subset bitmask (T12) · Gray code ◇ (T8a) · RSA core (T7/T8b) · Diffie–Hellman
+(T6/T7).
+
+## A10. Computational geometry — family `geometry_algorithms`
+Orientation/cross product (T6) · segment intersection (T7/T8b) · convex hull Graham ◇ (T10) · monotonic chain ◇
+(T10) · closest pair ◇ (T3) · line sweep ◇ (T10) · point-in-polygon ◇ (T7) · Euclidean nearest neighbor (T6/T4)
+· rectangle overlap (T7) · coordinate compression ◇ (T8a).
+
+## A11. Databases & data systems — family `databases`
+Relational selection (T7) · projection (T7) · join (T8a) · SQL filter/group trace (T12) · SQL join execution
+(T8a/T10) · nested-loop join (T12) · hash join (T8a/T10) · sort-merge join (T10) · B+ tree lookup ◇ (T4) · B+
+tree ins/split ◇ (T10) · index vs table scan ◇ (T10) · query-plan pipeline ◇ (T12) · functional dependencies
+(T8b) · attribute closure (T8a) · normalization 3NF/BCNF ◇ (T8b) · transaction schedules (T10) · conflict
+serializability (T8b) · two-phase locking ◇ (T10) · write-ahead logging ◇ (T10).
+
+## A12. Operating systems / systems programming — family `systems`
+Process state transitions (T10) · FCFS/SJF/round-robin/priority scheduling (T10) · MLFQ ◇ · context switch ◇ ·
+deadlock detection ◇ (T8a/T10) · Banker's ◇ · mutex lock/unlock (T10) · semaphore ◇ · producer-consumer ◇ ·
+reader-writer ◇ · virtual-address translation (T10) · page-table lookup (T10) · TLB hit/miss (T10) · FIFO/LRU
+page replacement (T10) · optimal ◇ · buddy allocation ◇ · first-fit/best-fit (T10) · FS block allocation ◇ ·
+inode path resolution ◇ (T12).
+
+## A13. Computer architecture / digital systems — family `architecture`
+Base conversion (T7) · signed integer rep (T7) · IEEE 754 ◇ (T7) · binary addition (T7) · ALU op ◇ (T10) ·
+assembly execution (T12) · register-file updates (T12) · single-cycle datapath ◇ (T12) · 5-stage pipeline
+(T10) · data hazards/forwarding (T10) · branch hazards ◇ (T10) · direct-mapped cache (T10) · set-associative
+cache (T10) · cache LRU (T10) · write-through vs write-back ◇ (T10) · memory-hierarchy latency (T6) · ILP ◇
+(T10) · SIMD ◇ (T12).
+
+## A14. Computer networks — family `networks`
+IPv4 subnetting (T6/T7) · CIDR (T7) · MAC-learning switch (T10) · ARP (T10) · DNS flow (T10) · TCP handshake
+(T10) · TCP teardown (T10) · TCP seq/ack (T10) · retransmission ◇ (T10) · congestion window ◇ (T9/T10) · HTTP
+lifecycle ◇ (T12) · routing-table longest-prefix (T4) · distance-vector routing (T9) · link-state routing
+(T2/T9) · NAT (T10) · CSMA/collision ◇ (T10) · parity/checksum (T7) · CRC ◇ (T7).
+
+## A15. Programming languages / compilers / formal languages — family `languages`
+Lexical tokenization (T12) · regex→NFA ◇ (T8a) · NFA simulation (T10) · DFA simulation (T10) · NFA→DFA subset
+◇ (T8a) · DFA minimization ◇ (T8a/T10) · CFG derivation (T8b) · parse-tree construction (T8a) · recursive
+descent ◇ (T12) · shift-reduce ◇ (T10) · AST evaluation (T12) · scope/environment lookup (T12) · static type
+checking ◇ (T8b/T12) · Hindley–Milner inference ◇ (T10) · lambda-calculus beta reduction (T7) · closures ◇
+(T12) · mark-and-sweep GC ◇ (T10) · constant folding (T7) · CSE ◇ (T10) · CFG construction ◇ (T8a).
+
+## A16. AI / machine learning / optimization — family `ml`
+Linear-regression prediction (T6) · least-squares fit (T6/T7) · gradient descent (T9) · batch GD (T9) · SGD ◇
+(T9) · logistic prediction (T6) · logistic gradient ◇ (T9) · kNN (T4/T10) · k-means (T9) · naive Bayes (T6) ·
+decision-tree split ◇ (T2) · entropy/info gain (T6) · PCA ◇ (T6/T7) · perceptron update (T9) · NN forward pass
+(T12) · backprop ◇ (T9) · SVM margin ◇ (T6) · Markov-chain update ◇ (T9) · value iteration ◇ (T9) · Q-learning
+◇ (T9).
+
+---
+
+# PART B — NON-CODING MATH, EE, AND SCIENCE CONCEPTS
+
+## B0. Pre-algebra / arithmetic — family `arithmetic` (all **T7** unless noted)
+Integer arithmetic · fraction add/sub · fraction mul/div · decimal arithmetic · ratios/proportions (T6) ·
+percent change (T6) · unit conversion (T6) · scientific notation · order of operations · absolute-value
+equations · exponents/roots · logarithm eval & laws.
+
+## B1. Algebra & functions — family `algebra` (all **T7** unless noted)
+Linear equation · linear inequality · compound inequality · system by substitution · system by elimination ·
+quadratic equation 🟩 (T6/T7) · factor quadratic · factor higher-degree patterns · complete the square ·
+rational simplification · rational equations · radical equations · exponential equations · logarithmic
+equations · polynomial division · synthetic division · function composition · function inverse · domain/range
+(T8b) · piecewise eval (T6) · arithmetic sequences/series (T6) · geometric sequences/series (T6).
+
+## B2. Trigonometry & geometry — family `geometry`
+Coordinate distance (T6) · midpoint (T6) · slope & line equations (T6) · point-slope/slope-intercept (T7) ·
+circle equation (T7) · area/perimeter (T6) · surface area/volume (T6) · similar triangles (T8b) · Pythagorean
+(T6) · right-triangle trig ratios (T6) · unit-circle values (T8a/T7) · law of sines (T6) · law of cosines (T6)
+· congruence/similarity proofs ◇ (T8b) · coordinate transformations (T8a) · vector geometry (T6).
+
+## B3. Single-variable calculus — family `calculus`
+Limit by substitution (T6) · by factoring (T7) · by rationalization (T7) · one-sided limits (T8b) · continuity
+(T8b) · derivative power/product/quotient/chain (T7) · implicit diff (T7) · logarithmic diff (T7) · linear
+approximation (T6) · related rates (T6) · optimization (T8b/T6) · antiderivative (T7) · definite integral (T7)
+· u-substitution (T7) · by parts (T7) · partial fractions (T7) · improper integrals ◇ (T8b) · area between
+curves (T6) · volume disks/washers (T6) · volume shells (T6) · sequences/convergence (T8b) · series tests
+(T8b) · Taylor/Maclaurin ◇ (T8a/T7).
+
+## B4. Multivariable calculus & ODEs — family `advanced_calculus`
+Partial derivatives (T7) · gradient (T7) · directional derivative (T6) · tangent plane (T6) · multivariable
+optimization (T8b/T6) · Lagrange multipliers (T8b) · double/triple integrals (T7) · change of vars/Jacobian ◇
+(T7) · vector fields ◇ (T8a) · line integrals ◇ (T7) · Green's theorem ◇ (T8b) · separable ODEs (T7) ·
+first-order linear ODEs (T7) · second-order constant-coeff ODEs (T7) · Laplace-transform ODE ◇ (T7) · Euler
+method (T9) · Runge–Kutta ◇ (T9).
+
+## B5. Linear algebra — family `linear_algebra`
+Vector add/scalar mul (T7) · dot product (T6) · cross product (T6) · matrix add/scalar (T7) · matrix
+multiplication (T8a) · transpose (T8a) · determinant 2×2 (T6) · 3×3 (T7) · cofactor expansion (T7) · row
+reduction/Gaussian (T7) · Gauss–Jordan (T7) · inverse by row reduction (T7) · solve systems w/ matrices (T7) ·
+linear independence (T8b) · span/basis (T8b) · dimension/rank (T7/T8b) · column/null space (T7/T8b) ·
+orthogonality (T6) · Gram–Schmidt (T8a) · orthogonal projection (T6) · eigenvalues 2×2 (T7) · eigenvectors (T7)
+· diagonalization (T8b) · SVD ◇ (T8b) · Markov matrices ◇ (T9).
+
+## B6. Discrete math & CS theory — family `discrete`
+Propositional eval (T7) · truth tables (T8a) · boolean simplification (T7) · Karnaugh maps (T8a/T7) · predicate
+logic (T8b) · set ops (T8a) · Cartesian products (T8a) · relations & properties (T8b) · equivalence relations
+(T8b) · partial orders (T8b) · function properties (T8b) · direct/contrapositive/contradiction/cases proofs
+(T8b) · induction (T8b) · strong induction (T8b) · recursive definitions (T8b) · permutations (T6) ·
+combinations (T6) · pigeonhole (T8b) · inclusion-exclusion (T6/T8b) · recurrence expansion (T7) · master
+theorem (T8b) · Big-O/Θ/Ω for code (T8b) · asymptotic comparison (T8b) · degree/handshake lemma (T8b) · Euler
+path/circuit (T8b) · Hamiltonian ◇ (T8b) · planarity ◇ (T8b) · DFA/NFA acceptance (T10) · pumping lemma ◇ (T8b)
+· reductions/NP-completeness structure ◇ (T8b).
+
+## B7. Probability & statistics — family `statistics` (all **T6** unless noted)
+Mean/median/mode · weighted mean · variance · std dev · covariance · correlation · counting probability ·
+conditional probability · Bayes' theorem · law of total probability · expected value · variance of RV ·
+binomial · geometric · Poisson · normal/z-score · CLT interpretation ◇ (T8b) · CI mean · CI proportion · z-test
+· t-test · two-sample tests ◇ · chi-square ◇ · regression prediction · least-squares (T6/T7) · residual
+analysis ◇ (T8b).
+
+## B8. Numerical methods & optimization — family `numerical`
+Bisection (T4) · Newton's method (T9) · secant ◇ (T9) · fixed-point ◇ (T9) · Lagrange interpolation ◇ (T7) ·
+Newton interpolation ◇ (T7) · numerical differentiation ◇ (T6) · trapezoidal (T6) · Simpson's (T6) · gradient
+descent (T9) · Newton optimization ◇ (T9) · LP graphical (T8b) · simplex ◇ (T10) · duality ◇ (T8b).
+
+## B9. Physics & electrical engineering — family `physics`
+**Mechanics/energy/waves (T6 unless noted):** kinematics const-accel 🟩 · projectile · Newton's 2nd law ·
+free-body diagram (T8a) · friction/inclines · circular motion · work & energy · energy conservation · momentum
+& impulse · elastic collision (T6/T7) · inelastic collision (T6/T7) · torque/equilibrium · rotational
+kinematics · SHM ◇ · wave speed/freq/wavelength · standing waves ◇ · Doppler ◇.
+**Circuits/electronics/signals:** Ohm's law (T6) · series (T6/T8a) · parallel (T6/T8a) · KCL (T8b) · KVL (T8b)
+· nodal analysis (T7) · mesh analysis (T7) · Thevenin (T7) · Norton (T7) · RC charge/discharge (T6) · RL ◇ ·
+RLC resonance ◇ · AC phasors ◇ (T7) · RMS (T6) · AC power ◇ · op-amp ideal rules (T8b) · diode approx ◇ (T7) ·
+MOSFET states ◇ (T10) · boolean gate eval (T7) · combinational construction (T8a) · mux/decoder (T10) ·
+flip-flop transition (T10) · FSM trace (T10) · counter/register (T10) · discrete convolution ◇ (T8a/T7) ·
+Fourier-series coeffs ◇ (T6/T7) · Fourier-transform properties ◇ (T8b) · sampling/aliasing (T6) · z-transform ◇
+(T7).
+
+## B10. Chemistry — family `chemistry` (all **T6** unless noted)
+Balance a chemical equation (T8b) · mole conversion · stoichiometry · limiting reagent · percent yield ·
+molarity · *(— catalog transfer truncated here —)*
+
+> **── Remaining to append ──** the rest of B10 (dilution, ideal gas law, pH/pOH, oxidation states, …) and any
+> intended later families (finance/economics, accounting, biology, earth science, humanities-with-computation,
+> …). Same status/type keys and §0 rules apply. Re-share the tail and it will be added verbatim.
