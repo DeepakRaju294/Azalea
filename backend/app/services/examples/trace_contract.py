@@ -76,9 +76,52 @@ class ProseViolation:
     severity: str = "hard"   # "hard" | "missing" | "soft"
 
 
-def hard_prose_violations(violations: list[ProseViolation]) -> list[ProseViolation]:
-    """The blocking subset (§12b): contradictions only. Missing/soft are logged, not withheld, in Phase 1."""
-    return [v for v in violations if v.severity == "hard"]
+@dataclass(frozen=True)
+class TeachingValidationContract:
+    """CP4 / spec §4.0 — the DECLARED hard/soft boundary for teaching validation, in ONE place instead of a
+    severity hard-coded at each violation site. A HARD code is a truth contradiction that BLOCKS shipping (a
+    wrong selected edge/node/value, a wrong answer, an inverted decision, an invented/absent required step); a
+    SOFT/advisory code is imperfect-but-not-wrong (a paraphrased fact, bland wording) and never blocks alone."""
+    hard_codes: frozenset[str]
+    soft_codes: frozenset[str] = frozenset()
+
+    def is_hard(self, violation: "ProseViolation") -> bool:
+        if violation.code in self.hard_codes:
+            return True
+        if violation.code in self.soft_codes:
+            return False
+        return violation.severity == "hard"          # fallback for a code the contract doesn't name
+
+    def partition(self, violations: list["ProseViolation"]) -> tuple[list["ProseViolation"], list["ProseViolation"]]:
+        hard = [v for v in violations if self.is_hard(v)]
+        soft = [v for v in violations if not self.is_hard(v)]
+        return hard, soft
+
+
+# The default teaching-validation contract (CP4 boundary). HARD = contradicts the verified trace; SOFT = merely
+# imperfect. Adapters/pipelines can pass a stricter contract; this preserves prior behavior by default.
+DEFAULT_TEACHING_VALIDATION = TeachingValidationContract(
+    hard_codes=frozenset({
+        "value_not_allowed",        # a number not in the verified vocabulary (wrong edge/node/value)
+        "decision_contradiction",   # prose asserts the OPPOSITE of the verified decision (accept vs skip)
+        "forbidden_claim",          # a claim the adapter declared must never appear
+        "wrong_selected", "wrong_final_answer", "invented_transition", "missing_terminal",
+    }),
+    soft_codes=frozenset({
+        "missing_fact",             # a required fact paraphrased/omitted — advisory, not a contradiction
+        "bland", "repetitive", "value_in_harmless_context",
+    }),
+)
+
+
+def hard_prose_violations(
+    violations: list[ProseViolation],
+    contract: TeachingValidationContract = DEFAULT_TEACHING_VALIDATION,
+) -> list[ProseViolation]:
+    """The blocking subset (§12b / CP4): the codes the TeachingValidationContract declares HARD (truth
+    contradictions). Advisory codes (missing/soft) are logged, not withheld, in Phase 1. Backward-compatible —
+    the default contract maps the previous per-violation severities (value/decision hard, missing_fact soft)."""
+    return contract.partition(violations)[0]
 
 
 # --- §5 structural-invariant gate (pre-verification) --------------------------------------------

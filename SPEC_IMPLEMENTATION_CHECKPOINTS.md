@@ -13,7 +13,7 @@
 | 1 | No from-scratch fallback for supported topics | ✅ | P0a `545ae26` + single-path `40a34df` + invariant lock `8bd40c7` |
 | 2 | Trace-preserving fallback narration | ✅ | P0a `_deterministic_narration` `545ae26` |
 | 3 | Relax `count_mismatch` safely (coverage-based) | 🟡 | P0b `04f93ff` cuts the rate + P0a never-withholds; **coverage-based ACCEPT of a different count not yet built** |
-| 4 | Prose hard/soft boundary | 🟡 | `hard_prose_violations` + A3 soft `value_not_allowed`; not yet a declared `TeachingValidationContract` |
+| 4 | Prose hard/soft boundary | ✅ | declared `TeachingValidationContract` (`DEFAULT_TEACHING_VALIDATION`) + `hard_prose_violations(contract=)`; four boundary tests in `test_teaching_validation_contract.py` |
 | 5 | Regression fixtures (golden lessons) | ✅ | `test_golden_fixtures.py` — deterministic-narration golden net over all 8 adapters (CP5 historical bug classes) |
 | 6 | Generation-report invariants | ✅ | `invariant_violations` (§1.2 + `verification_level`) + `_coverage_fields` (`trace_ids_rendered`/`required_transition_ids`/`missing_required_transition_ids`/`terminal_rendered`); tests in `test_generation_report.py`. *(structured `prose_validation` object still flat)* |
 | 7 | Manual product QA | 🟡 | live audits clean on binary-search + graph BFS/DFS (keystone, de-hardcoding, continuity all confirmed); full 6-topic matrix not yet swept |
