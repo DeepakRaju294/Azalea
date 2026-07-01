@@ -328,6 +328,20 @@ def enrich_legacy_lesson_with_v2_visuals(
 ) -> dict:
     if not isinstance(lesson_json, dict):
         return lesson_json
+
+    # Implementation follow-up: a coding topic that follows a same-subject walkthrough must not re-teach the
+    # algorithm, so drop the redundant `background` card (the division tags it via the modifier). Keeps the
+    # topic a first-class coding_implementation (canonical code + worked example still fire) — only the intro
+    # card is removed. Applies on first generation and regeneration alike.
+    from app.core.course_blueprints import IMPLEMENTATION_FOLLOW_UP
+
+    if IMPLEMENTATION_FOLLOW_UP in (getattr(topic, "modifiers", None) or []):
+        _cards = lesson_json.get("lesson_cards")
+        if isinstance(_cards, list):
+            lesson_json["lesson_cards"] = [
+                c for c in _cards
+                if not (isinstance(c, dict) and str(c.get("blueprint_key") or "") == "background")
+            ]
     attach_v2_visuals_to_legacy_lesson(
         lesson_json,
         topic_id=str(topic.id),

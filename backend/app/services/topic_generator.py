@@ -398,6 +398,35 @@ def normalize_prerequisites(
     return ", ".join(cleaned_prerequisites)
 
 
+_FOLLOW_UP_STOPWORDS = {"implementing", "implement", "implementation", "the", "a", "an", "of", "for", "in",
+                        "algorithm", "algorithms", "and", "to", "with", "using", "code", "coding"}
+_WALKTHROUGH_TYPES = {"algorithm_walkthrough", "operation_walkthrough"}
+
+
+def _followup_subject_tokens(title: Any) -> set[str]:
+    return {w for w in _re.split(r"[^a-z0-9]+", str(title or "").lower())
+            if w and len(w) > 2 and w not in _FOLLOW_UP_STOPWORDS}
+
+
+def _mark_coding_follow_ups(topics: list[dict[str, Any]]) -> None:
+    """A coding_implementation topic that FOLLOWS a walkthrough on the SAME subject re-teaches nothing new
+    conceptually, so tag it with the implementation_follow_up modifier — generation then drops the redundant
+    `background` card (the walkthrough already framed the algorithm). Deterministic: the preceding topic is a
+    walkthrough AND they share a significant title token. Applied on first generation AND regeneration, so the
+    structure is stable across regen without re-typing the topic (coding detection stays intact)."""
+    from app.core.course_blueprints import IMPLEMENTATION_FOLLOW_UP
+
+    for i in range(1, len(topics)):
+        cur, prev = topics[i], topics[i - 1]
+        cur_type = str(cur.get("topic_type") or cur.get("course_type") or "").lower()
+        prev_type = str(prev.get("topic_type") or prev.get("course_type") or "").lower()
+        if (cur_type == "coding_implementation" and prev_type in _WALKTHROUGH_TYPES
+                and (_followup_subject_tokens(cur.get("title")) & _followup_subject_tokens(prev.get("title")))):
+            mods = cur.setdefault("modifiers", [])
+            if isinstance(mods, list) and IMPLEMENTATION_FOLLOW_UP not in mods:
+                mods.append(IMPLEMENTATION_FOLLOW_UP)
+
+
 def generate_topics_from_chunks(
     chunks: list[ContentChunk],
     goal: str | None = None,
@@ -441,6 +470,7 @@ Chunk index: {chunk.chunk_index}
             decomposed = generate_decomposed_topics(goal=goal, chunks_text=chunks_text, feedback=feedback)
             if decomposed:
                 _log.info("topic_generator: used capability-graph decomposition (%d topics)", len(decomposed))
+                _mark_coding_follow_ups(decomposed)
                 return decomposed
             _log.warning("topic_generator: decomposition produced nothing — falling back to legacy")
         except Exception as exc:  # noqa: BLE001 — never block generation; fall back to legacy
@@ -585,4 +615,5 @@ Chunk index: {chunk.chunk_index}
         topic["order_index"] = index
         topic["topic_type"] = topic.get("course_type")
 
+    _mark_coding_follow_ups(cleaned_topics)
     return cleaned_topics

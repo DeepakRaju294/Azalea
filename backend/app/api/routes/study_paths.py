@@ -1072,6 +1072,9 @@ def regenerate_study_path(
 
     db.flush()
 
+    # Topic type is re-derived DETERMINISTICALLY by the division (a coding topic following a same-subject
+    # walkthrough is marked truncated_coding_implementation → no redundant background card), so the structure
+    # stays stable across regeneration without hard-preserving a previously-wrong type.
     generated_topic_data = generate_topics_from_chunks(
         chunks=chunks,
         goal=study_path.goal,
