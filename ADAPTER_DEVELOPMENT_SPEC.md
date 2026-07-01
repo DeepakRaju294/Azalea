@@ -176,8 +176,11 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
   succeeds hides the whole idea.
 - **Concepts:** N-Queens · Sudoku · permutations/combinations/subsets · graph coloring · maze solve.
 - **Per-concept info:** the *choice set*, the *constraint check*, the *undo*, required cases (a valid
-  extension, a dead-end that backtracks, a solution). **Cap the instance** (small board) — backtracking
-  explodes; the learner-facing projection prunes to representative branches.
+  extension, a dead-end that backtracks, a solution). **The source-size cap is per-adapter, not type-wide** — a
+  single "6-cell board" fits nothing: N-Queens `n_max=4`, mini-Sudoku `4x4` with `empty_cells_max=5`,
+  permutations `item_count_max=4`, subsets `n_max=5`, maze `grid_max=4x4` + `branch_points_max=2`. Each T11
+  adapter DECLARES its cap; the type keeps only the shared event-ceiling + teaching target. Backtracking
+  explodes, so the learner-facing projection prunes to representative branches.
 
 ### T12 — Program execution / memory trace
 - **Trace:** one Step per executed statement; `state = {variables, call stack, heap/refs, output}`. This is the
@@ -260,8 +263,10 @@ Whatever the type, a concept's adapter declares exactly these (the varying parts
    `forbidden_claims`).
 6. **Hooks:** `states_equivalent` · `final_answer_entails` · `invariant_holds` · `validate_step_shape` ·
    `validate_prose_claims`.
-7. **Coding only:** a `canonical_solution` entry (`canonical_solutions.py`) — the simplest idiomatic Python;
-   C++/Java are translated on demand. **Non-coding concepts ship NO canonical solution.**
+7. **Coding only:** a **canonical executable artifact** (`canonical_solutions.py`) — *algorithm* adapters: the
+   simplest idiomatic Python solution; *T10 stateful-system* adapters: a canonical operation sequence /
+   simulator; *T12 program-trace* adapters: an executable teaching specimen. Other languages are translated
+   from the canonical artifact on demand. **Non-coding concepts ship NO canonical artifact.**
 8. **Routing:** a tight title alias in `trace_pipeline.route_adapter` (§5).
 9. **§E behavior test:** membership in `test_trace_prose_adversarial` (a lying formatter must be caught).
 
@@ -388,7 +393,10 @@ There is no single "raw ceiling" (that hid a contradiction: a projection can't s
 
 An adapter whose full trace runs long (e.g. a per-relaxation Dijkstra, a full Floyd-Warshall) keeps every
 semantic event in the trace (≤ ceiling) and uses **teaching-projection grouping** (§7.3) to land near the
-target — grouping support events, never dropping truth-bearing ones.
+target. Grouping may collapse SUPPORTING semantic events only when their aggregate transition stays explicitly
+represented by a verified checkpoint (e.g. Dijkstra folding three no-improvement edge checks into "the
+remaining out-edges do not improve any distance" — still derived from verified events). **Required-case
+events, branch evidence, and the terminal state are never omitted.**
 
 | Type | Instance-size cap (source) | Semantic-event ceiling (enforced) | Teaching-checkpoint target |
 |---|---|---|---|
@@ -403,7 +411,7 @@ target — grouping support events, never dropping truth-bearing ones.
 | T9a edge-pass (Bellman-Ford) | ≤ 5 nodes / 8 edges | 20 | 14 |
 | T9b layered (Floyd-Warshall) | ≤ 4 nodes | 18 | 10 |
 | T10 stateful operation | ≤ 8 operations | 16 | 12 |
-| T11 backtracking | ≤ 6-cell board | 18 | 12 |
+| T11 backtracking | per-adapter (see T11) | 18 | 12 |
 | T12 program execution | ≤ 12 lines executed | 16 | 12 |
 
 > **Example (T3 merge sort).** Instance cap 6–8 elements → the reference emits every split/merge event (≤ 12,
@@ -444,6 +452,30 @@ surfaced regardless of grouping. Split of ownership:
   required visible transitions.
 - **Generator owns:** wording for the already-selected checkpoints.
 
+**Every checkpoint carries provenance** (`TeachingCheckpoint`, `trace_adapters/artifacts.py`). A checkpoint may
+collapse several supporting events into one card, but only if it cites its **complete contiguous
+`source_step_ids` range** plus the `state_before`/`state_after` anchors bounding it:
+
+```python
+TeachingCheckpoint(
+    checkpoint_id="settle_B_relax_neighbours",
+    source_step_ids=["pop_B", "settle_B", "inspect_B_C", "relax_B_C", "inspect_B_D", "no_improvement_B_D"],
+    visible_transition="settle_and_relax",
+    state_before_step_id="pop_B", state_after_step_id="no_improvement_B_D",
+    required_cases_covered=["relax", "no_improvement"],
+)
+```
+
+This gives a full traceability chain — **card / visual frame → checkpoint id → source semantic steps → verified
+reference trace** — so a wrong prose line or a mismatched frame can always be traced to its verified origin.
+`test_type_contracts.test_teaching_checkpoints_cite_complete_source_provenance` enforces contiguous, ordered,
+fully-covering ranges.
+
+> **Hard boundary — no direct cards.** An adapter may return **only** a verified `ContractTrace` (+ its
+> checkpoints). It may NEVER return learner-facing cards or visual frames directly. All cards, checkpoints, and
+> frames are compiled through the shared pipeline, so nothing bypasses the manifest / replay / budget / prose
+> gates as a local one-off.
+
 ### 7.4 Per-instance vs per-suite branch coverage
 
 Some algorithms can't fit every branch into one small, natural example (Dijkstra: relax + no-improvement +
@@ -457,16 +489,45 @@ stale-entry + settle; AVL: LL/RR/LR/RL; binary search: left/right/found/absent).
 This is why `bst_search` declares `must_exercise=[descend, found_or_absent, completion]` but
 `must_cover=[go_left, go_right, found, absent]`.
 
+### 7.5 Independent oracle for high-risk adapters
+
+`reference(instance)` runs the real computation — but a validator must **not** re-use the same helper it is
+validating to check the exact property in question (a bug is then invisible to both). A production or high-risk
+adapter declares at least one **independent oracle**: a separately-implemented computation, a trusted library,
+or a replayable mathematical property that re-checks the answer/invariant by a different route.
+
+| Adapter | Independent oracle |
+|---|---|
+| Dijkstra / Bellman-Ford | final distances match an exhaustive shortest-path search on the (tiny) graph |
+| Kruskal / Prim | selected edges form a spanning tree; cost matches an independently computed MST |
+| Binary / BST search | the returned index holds the target, or the absence condition is proven |
+| Gaussian elimination | substitute the solution back into the original equations |
+| Quadratic / polynomial | substitute each root into the original polynomial (≈ 0) |
+| Matrix multiplication | independently recompute a sample of output cells |
+
+Not every adapter needs a full independent implementation on day one, but the oracle is **required** before a
+`high_risk` or `production` adapter ships (§8 status). It is separate from the replay gate (§7.3): replay proves
+the trace is *executable*; the oracle proves the *answer* is right by a second method.
+
 ---
 
 ## 8. The adapter manifest — the machine-readable source of truth
+
+**`status` is defined precisely** (so it can't drift into a subjective label):
+
+- **experimental** — adapter exists locally; may lack full fixture coverage; **never routes** for normal users.
+- **pilot** — contract + fixture tests pass; feature-flagged for selected/internal traffic; the type gate (§2.1)
+  may still be pending.
+- **production** — the type gate passed; acceptance + visual + **replay** + adversarial + regression suites
+  pass; routing + fallback behaviour tested; reviewed examples meet the quality bar; telemetry + a rollback
+  path are active.
 
 `trace_adapters/manifest.py` holds one entry per adapter: `type` (T1–T12) · `family` · `status`
 (production | pilot | experimental) · `verification_level` · `coding` · `canonical_solution` ·
 `routing_aliases` · `negative_guards` · `fixtures` · `visual_contract` · `feature_flag` · `telemetry_key` ·
 optional `failure_policy` override. (`telemetry_key`/`feature_flag`/`visual_contract` are auto-filled with
 defaults — slug / None / `<family>_state_v1` — until authored.) Module-level it also declares
-`TYPE_TRACE_BUDGET` (§7.1), `TYPE_VISUAL_BUDGET` (§7.2) and `DEFAULT_FAILURE_POLICY` (§4.1). The Markdown here
+`TYPE_TRACE_BUDGET`, `TYPE_TEACHING_TARGET` (§7.1), `TYPE_VISUAL_BUDGET` (§7.2) and `DEFAULT_FAILURE_POLICY` (§4.1). The Markdown here
 stays human-readable; the **manifest is what code enforces**: `manifest_gaps()` cross-checks it against the live
 registry + canonical solutions + type trace/visual budgets (`test_type_contracts` fails if they disagree), so an adapter
 can't ship without a complete entry and the manifest can't name a phantom. It is the operational backbone for
@@ -500,7 +561,11 @@ two rules coexist: *don't hardcode production examples* **and** *do save fixed r
   "reject if `lo` decreases when target > mid"). This turns a template into an implementation contract.
 - **Per-type invariant suite** (`test_type_contracts.py`): what EVERY adapter of a type must satisfy, so 20
   search adapters can't each invent their own correctness — e.g. T4 "domain never grows, net-shrinks", T2
-  "shows both a positive and a negative outcome (no oversimplified greedy)".
+  "shows both a positive and a negative outcome (no oversimplified greedy)". Plus a **trace-replay** invariant
+  (`test_trace_replay_is_executable_from_initial_state`): every adapter's trace must replay from
+  `initial_state` — each step's `prior_state` equals the previous `state_after` (no hidden mutation, skipped
+  transition, or discontinuity) and the terminal state entails the answer — so a chain of individually-plausible
+  states that is not actually executable is rejected.
 - **Shared conformance / artifact / adversarial** (all adapters): 0 contract violations, 0 C1 gaps, a lying
   formatter is caught.
 

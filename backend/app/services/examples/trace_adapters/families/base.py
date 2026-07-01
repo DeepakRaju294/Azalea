@@ -10,7 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-from ..artifacts import (AdapterDiagnostics, AdapterOutput, TeachingObjectives, TeachingProjection)
+from ..artifacts import (AdapterDiagnostics, AdapterOutput, TeachingCheckpoint, TeachingObjectives,
+                         TeachingProjection)
 
 
 @dataclass
@@ -89,6 +90,27 @@ class FamilyAdapterBase:
         whose raw trace runs long overrides this to group support steps, ALWAYS keeping every required-case
         step + the terminal."""
         return [s.id for s in (getattr(trace, "steps", []) or [])]
+
+    def teaching_checkpoints(self, trace: Any) -> list["TeachingCheckpoint"]:
+        """§7.3 — the ADAPTER-owned checkpoints WITH provenance. Default: one checkpoint per selected step
+        (identity provenance). An adapter that groups supporting events (e.g. Dijkstra folding several
+        no-improvement edge checks into one 'settle + relax neighbours' card) overrides this, and MUST cite the
+        complete contiguous `source_step_ids` range plus the state-before/state-after anchors bounding it, so
+        every card is traceable back to verified steps."""
+        steps = list(getattr(trace, "steps", []) or [])
+        evidence = getattr(trace, "case_evidence", {}) or {}
+        chosen = set(self.select_teaching_checkpoints(trace))
+        covered = {sid: [c for c, ids in evidence.items() if sid in ids] for sid in {s.id for s in steps}}
+        out: list[TeachingCheckpoint] = []
+        for s in steps:
+            if s.id not in chosen:
+                continue
+            out.append(TeachingCheckpoint(
+                checkpoint_id=s.id, source_step_ids=[s.id],
+                visible_transition=str(getattr(s, "operation", "") or ""),
+                state_before_step_id=s.id, state_after_step_id=s.id,
+                required_cases_covered=covered.get(s.id, [])))
+        return out
 
     def teaching_projection(self, trace: Any) -> TeachingProjection:
         """§2.5.2 — project the verified trace into the teaching interface (the adapter-selected checkpoints in

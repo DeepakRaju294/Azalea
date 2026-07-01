@@ -47,6 +47,39 @@ class ManifestConsistency(unittest.TestCase):
             with self.subTest(type=tid):
                 self.assertLessEqual(TYPE_TEACHING_TARGET[tid], TYPE_TRACE_BUDGET[tid])
 
+    def test_trace_replay_is_executable_from_initial_state(self):
+        # §7-review: a plausible-looking state SEQUENCE is not enough — the chain must actually REPLAY:
+        # step0.prior == initial, each step.prior == previous step_after (no hidden mutation / skipped
+        # transition / discontinuity), and the terminal state entails the answer. structural_invariants is the
+        # production replay gate; assert it stays clean across many seeds for every adapter.
+        from app.services.examples.trace_contract import structural_invariants
+        for slug, adapter in ADAPTERS.items():
+            for seed in range(1, 20):
+                tr = select_instance(adapter, seed=seed)
+                with self.subTest(slug=slug, seed=seed):
+                    self.assertEqual(structural_invariants(tr, adapter), [],
+                                     f"{slug}@{seed}: trace does not replay from initial state")
+
+    def test_teaching_checkpoints_cite_complete_source_provenance(self):
+        # §7.3: every checkpoint must name its contiguous source-step range + state anchors (card -> checkpoint
+        # -> source steps -> verified trace). No selected step may vanish; ranges must be contiguous & ordered.
+        for slug, adapter in ADAPTERS.items():
+            tr = select_instance(adapter, seed=7)
+            order = {s.id: i for i, s in enumerate(tr.steps)}
+            checkpoints = adapter.teaching_checkpoints(tr)
+            with self.subTest(slug=slug):
+                self.assertTrue(checkpoints, f"{slug}: no teaching checkpoints")
+                seen: list[int] = []
+                for cp in checkpoints:
+                    self.assertTrue(cp.source_step_ids, f"{slug}: checkpoint {cp.checkpoint_id} cites no steps")
+                    idxs = [order[sid] for sid in cp.source_step_ids]
+                    self.assertEqual(idxs, list(range(idxs[0], idxs[0] + len(idxs))),
+                                     f"{slug}: checkpoint {cp.checkpoint_id} range not contiguous")
+                    self.assertIn(cp.state_before_step_id, order)
+                    self.assertIn(cp.state_after_step_id, order)
+                    seen.extend(idxs)
+                self.assertEqual(seen, sorted(seen), f"{slug}: checkpoints out of trace order")
+
 
 class TypeInvariants(unittest.TestCase):
     def _traces(self, type_id):

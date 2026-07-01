@@ -53,6 +53,21 @@ class TeachingProjection:
 
 
 @dataclass(frozen=True)
+class TeachingCheckpoint:
+    """§7.3 — a learner-facing checkpoint + its PROVENANCE back to the verified trace. A checkpoint may collapse
+    several supporting semantic events into one card, but only if it names its complete `source_step_ids` range
+    and the `state_before`/`state_after` bounding that range — so every card/frame is traceable:
+    card/frame → checkpoint_id → source semantic steps → verified reference trace. Required-case + terminal
+    events are always their own (or an included) checkpoint; they are never silently absorbed."""
+    checkpoint_id: str
+    source_step_ids: list[str]                          # the complete contiguous range this checkpoint covers
+    visible_transition: str                             # the single transition the learner sees
+    state_before_step_id: str                           # first source step's prior_state anchor
+    state_after_step_id: str                            # last source step's state_after anchor
+    required_cases_covered: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class TeachingObjectives:
     """§2.7 — adapter-owned QUALITY (not just correctness): what a GOOD example of this concept teaches — the
     decisions worth surfacing, the classic misconception to preempt, the intended pacing."""
