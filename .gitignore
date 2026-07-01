@@ -34,3 +34,4 @@ frontend/dist/
 # Local tool settings
 .claude/settings.local.json
 backend/app/services/examples/canonical_translations.json
+backend/logs/adapter_demand.jsonl

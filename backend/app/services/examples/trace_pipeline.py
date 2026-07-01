@@ -31,16 +31,34 @@ def _enabled() -> bool:
 
 # --- routing (explicit, non-fuzzy, §17) ----------------------------------------------------------
 
+# Routing SAFETY: a topic whose title is ABOUT a concept (an intro/overview/comparison), rather than a solvable
+# INSTANCE of it, must not be handed a computational adapter even if it names the algorithm — it would ship a
+# worked example the topic never asked for. Such topics defer (None) and degrade honestly.
+_META_TITLE_MARKERS = ("introduction to", "history of", "applications of", "application of", "when to use",
+                       "advantages of", "disadvantages of", "real-world", "real world", "comparison of",
+                       "pros and cons", "why use", "why do we use", "big picture", "big-picture")
+_NON_ROUTING_TYPES = ("study_path_introduction", "conceptual_overview", "topic_overview")
+
+
 def route_adapter(topic: dict[str, Any]):
     """Explicit (non-fuzzy) routing: a topic enters the pipeline only when its slug/metadata or a tight
-    title alias names one of the supported algorithms. Anything else (e.g. a broad 'graph algorithms'
-    topic) returns None and defers to the existing systems.
+    title alias names one of the supported algorithms — AND it is a topic that actually wants a worked
+    INSTANCE (not an intro/overview). Anything else returns None and defers to the existing systems.
 
     C2 Part 1 (no canonical code): coding-implementation topics now ALSO route to the adapter — they get the
     same VERIFIED conceptual trace as the walkthrough (correct), without per-step code-line highlighting
     (canonical code is Part 2, deferred). The code-walkthrough card still shows the code separately."""
     slug = str(topic.get("slug") or topic.get("topic_family") or topic.get("family") or "").lower()
     text = (slug + " " + str(topic.get("title") or topic.get("name") or "")).lower()
+    # SAFETY: never route an intro/overview/meta topic to a computational adapter.
+    ttype = str(topic.get("topic_type") or topic.get("course_type") or "").lower()
+    if ttype in _NON_ROUTING_TYPES or any(m in text for m in _META_TITLE_MARKERS):
+        return None
+    return _match_adapter(text, slug)
+
+
+def _match_adapter(text: str, slug: str):
+    """The tight alias matcher (kept separate so the routing-safety guards wrap it cleanly)."""
     # Covered TREE + ALGEBRA concepts route explicitly (checked before the tree-defer guard below). Only
     # inorder BST traversal has a tree adapter today; other tree/BST topics still defer.
     if "inorder" in text:

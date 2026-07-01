@@ -366,6 +366,14 @@ def enrich_legacy_lesson_with_v2_visuals(
             # follow-up marker (implementation_follow_up) so downstream drops/doesn't-require the background card
             "modifiers": list(getattr(topic, "modifiers", None) or []),
         }
+        # Missing-adapter demand: if this is a computational topic with NO adapter, record it (best-effort) so
+        # the most-requested unsupported concepts surface as the priority queue for which adapter to build next.
+        try:
+            from app.services.examples.adapter_demand import record_unadapted_topic
+            from app.services.examples.trace_pipeline import route_adapter as _route_for_demand
+            record_unadapted_topic(_v2_topic, has_adapter=_route_for_demand(_v2_topic) is not None)
+        except Exception:  # noqa: BLE001 — demand tracking must never affect a lesson
+            pass
         # Worked-example authoring: a single focused LLM solve for EVERY topic. For a coding
         # topic the solve explains how the code EXECUTES on a concrete input — conceptually,
         # never by line number — and the code is shown in an IDE panel (not a frame-by-frame
