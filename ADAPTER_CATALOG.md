@@ -63,11 +63,9 @@ they grow — don't pre-split.
 | T11 | Constraint search / backtracking | N-Queens, Sudoku, subset construction |
 | T12 | Program execution / memory trace | Loops, recursion, pointers, stack frames |
 
-> **Note.** This file adopts the expanded catalog. It reflects the content received through **Part B §B10
-> (Chemistry)** — the source transfer truncated mid-B10. Families after that point (rest of chemistry, and any
-> finance / economics / accounting / biology / other intended families) are **still to be appended**; the
-> structure and rules above apply to them unchanged. Machine-checkable status per SHIPPED adapter is in
-> `trace_adapters/manifest.py`; this catalog is the human planning surface.
+> **Note.** Part A (coding, A0–A16) and Part B (non-coding math/EE/science/finance, B0–B11) are the concepts
+> that can be trace-verified; Part C is eligibility-review (guided/answer-anchored). Machine-checkable status
+> per SHIPPED adapter lives in `trace_adapters/manifest.py`; this catalog is the human planning surface.
 
 ---
 
@@ -277,8 +275,75 @@ Fourier-series coeffs ◇ (T6/T7) · Fourier-transform properties ◇ (T8b) · s
 
 ## B10. Chemistry — family `chemistry` (all **T6** unless noted)
 Balance a chemical equation (T8b) · mole conversion · stoichiometry · limiting reagent · percent yield ·
-molarity · *(— catalog transfer truncated here —)*
+molarity · dilution · ideal gas law · combined gas law · pH / pOH · acid-base neutralization ·
+oxidation-state assignment (T8a/T7) · redox balancing ◇ (T8b) · equilibrium expressions ◇ · thermochemistry ◇.
 
-> **── Remaining to append ──** the rest of B10 (dilution, ideal gas law, pH/pOH, oxidation states, …) and any
-> intended later families (finance/economics, accounting, biology, earth science, humanities-with-computation,
-> …). Same status/type keys and §0 rules apply. Re-share the tail and it will be added verbatim.
+## B11. Finance, economics & accounting — family `finance` (all **T6** unless noted)
+Simple interest · compound interest · present value · future value · annuity value · loan amortization (T8a) ·
+net present value · internal rate of return ◇ (T9) · break-even analysis · supply-demand equilibrium · price
+elasticity · marginal cost/revenue · consumer/producer surplus ◇ · GDP/inflation ◇ · journal entries (T8a) ·
+trial balance (T8a) · income statement (T8a) · balance sheet (T8a) · cash-flow statement ◇ (T8a) ·
+depreciation schedules (T8a).
+
+---
+
+# PART C — ELIGIBILITY-REVIEW TOPICS
+
+These stay cataloged but do **not** automatically get a dedicated verified-trace adapter. They usually need
+conceptual explanation, case comparison, simulation, source-grounded material, or design critique rather than a
+single deterministic worked-example trace — i.e. Tier 3/4 of the coverage ladder.
+
+| Family | Topics | Default treatment |
+|---|---|---|
+| Software engineering | requirements, architecture tradeoffs, design patterns, code review, SDLC, testing/deployment strategy | guided / scenario-based |
+| Distributed systems | CAP tradeoffs, replication design, consensus intuition, eventual consistency, microservices | guided / simulation / curated case study |
+| Cybersecurity | threat modeling, access-control policy, secure design, social engineering, incident response | guided / case-based |
+| Human-computer interaction | usability heuristics, user research, accessibility, interface critique | guided / example comparison |
+| Ethics & society | algorithmic bias, privacy tradeoffs, responsible AI, policy implications | guided / source-grounded |
+| Product & entrepreneurship | market sizing, product strategy, experimentation, pricing, retention | guided / calculation hybrids |
+| Research methods | literature review, study design, interpreting evidence, causal claims | guided / source-grounded |
+| Advanced theoretical CS | computability proofs, advanced complexity reductions, randomized-algorithm proofs | formal derivation (T8b) only after a stable proof grammar exists |
+
+---
+
+## 2. Required metadata for every catalog row
+
+Every adapter has a manifest entry (`trace_adapters/manifest.py`) with:
+`slug` · `family` · `type` · `status` · `verification_level` · `coding` · `canonical_solution` ·
+`routing_aliases` · `negative_guards` · `fixtures` · `visual_contract` · `feature_flag` · `telemetry_key` ·
+`failure_policy`. (`telemetry_key`/`feature_flag`/`visual_contract` are auto-filled with defaults until
+authored; `manifest_gaps()` enforces presence.)
+
+**Minimum `failure_policy`:**
+```yaml
+invalid_trace: retry_then_withhold
+prose_claim_violation: regenerate_prose_then_withhold
+visual_compile_failure: show_verified_text_trace_if_available
+frontend_render_failure: show_safe_text_fallback_and_log
+```
+
+---
+
+## 3. Catalog prioritization rules
+
+The catalog is intentionally broad. **Priority** is set by: current demand (`adapter_demand.jsonl`) · frequency
+in popular EECS/math curricula · whether the concept has a stable deterministic trace · whether it introduces a
+NEW trace type (proves a type gate) · whether it unlocks many related lessons · whether it has a clear visual
+model · whether failure would be especially harmful/misleading.
+
+**Initial expansion favors** (one type gate at a time): T1 graph+tree traversal · T2 MST + shortest-path
+frontier · T3 merge sort + quicksort · T4 binary search + BST search · T5 knapsack + LCS + edit distance ·
+T6 algebra + calculus + physics fundamentals · T7 arithmetic + algebraic rewriting + Gaussian elimination ·
+T8a matrix mult + truth tables + sieve · T8b induction + symbolic derivation · T9 Bellman–Ford + gradient
+descent · T10 heaps + hash tables + cache/OS state · T11 permutations + N-Queens + Sudoku · T12 loops +
+recursion + pointers + memory.
+
+---
+
+## 4. Coverage note
+
+This catalog intentionally exceeds the first 100-adapter target — the major undergraduate EECS, mathematics,
+engineering, science, finance, and technical-foundation concepts that can plausibly benefit from a verified
+worked-example trace. It is **not** a promise that every row gets an immediate custom adapter; it is a map of
+*what can eventually be trace-verified*, *what type of executable truth each topic requires*, *which concepts
+share infrastructure*, and *which should remain guided until a sound trace grammar exists* (Part C).

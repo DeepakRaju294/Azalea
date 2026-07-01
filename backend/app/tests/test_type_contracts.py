@@ -26,7 +26,7 @@ class ManifestConsistency(unittest.TestCase):
     def test_failure_policy_keeps_verified_text_on_render_failure(self):
         # a correct trace with a visual/frontend failure must NOT withhold the whole lesson
         p = failure_policy("binary_search")
-        self.assertEqual(p["invalid_trace"], "withhold")
+        self.assertIn("withhold", p["invalid_trace"])
         self.assertIn("text", p["visual_compile_failure"])
         self.assertIn("text", p["frontend_render_failure"])
 

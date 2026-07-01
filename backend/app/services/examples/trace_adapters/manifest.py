@@ -36,13 +36,14 @@ TYPE_TRACE_BUDGET = {
 # verified TEXT cards — losing a whole lesson over a rendering hiccup is worse than degrading gracefully. But
 # an INVALID trace ships nothing. Default for all adapters; a manifest entry may override `failure_policy`.
 DEFAULT_FAILURE_POLICY = {
-    "invalid_trace": "withhold",                          # nothing ships from a wrong trace
+    "invalid_trace": "retry_then_withhold",               # nothing ships from a wrong trace
     "prose_claim_violation": "regenerate_prose_then_withhold",
-    "visual_compile_failure": "ship_verified_text_cards",
-    "frontend_render_failure": "ship_verified_text_cards_with_error_telemetry",
+    "visual_compile_failure": "show_verified_text_trace_if_available",
+    "frontend_render_failure": "show_safe_text_fallback_and_log",
 }
 
-_REQUIRED_FIELDS = ("type", "family", "status", "verification_level", "coding", "routing_aliases")
+_REQUIRED_FIELDS = ("type", "family", "status", "verification_level", "coding", "routing_aliases",
+                    "telemetry_key", "visual_contract", "feature_flag")
 _STATUSES = {"production", "pilot", "experimental"}
 
 
@@ -104,6 +105,19 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "routing_aliases": ["kinematic", "constant acceleration", "uniform acceleration"],
         "negative_guards": [], "fixtures": ["zero_initial_velocity", "nonzero_initial_velocity"]},
 }
+
+
+def _fill_defaults() -> None:
+    """Fill the forward-looking metadata (§2 of the catalog) so every entry satisfies the schema without
+    hand-writing it 11×: telemetry_key defaults to the slug, feature_flag to None (production = always on),
+    visual_contract to a per-family placeholder until the real contract is authored."""
+    for slug, entry in MANIFEST.items():
+        entry.setdefault("telemetry_key", slug)
+        entry.setdefault("feature_flag", None)
+        entry.setdefault("visual_contract", f"{entry.get('family', 'generic')}_state_v1")
+
+
+_fill_defaults()
 
 
 def manifest_gaps() -> list[str]:

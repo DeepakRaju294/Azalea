@@ -350,10 +350,12 @@ learner-facing projection should aim for; an adapter whose raw trace runs long (
 
 ## 8. The adapter manifest — the machine-readable source of truth
 
-`trace_adapters/manifest.py` holds one entry per adapter: `type` (T1–T10) · `family` · `status`
+`trace_adapters/manifest.py` holds one entry per adapter: `type` (T1–T12) · `family` · `status`
 (production | pilot | experimental) · `verification_level` · `coding` · `canonical_solution` ·
-`routing_aliases` · `negative_guards` · `fixtures` · optional `failure_policy` override. Module-level it also
-declares `TYPE_TRACE_BUDGET` (§7.1) and `DEFAULT_FAILURE_POLICY` (§4.1). The Markdown here stays
+`routing_aliases` · `negative_guards` · `fixtures` · `visual_contract` · `feature_flag` · `telemetry_key` ·
+optional `failure_policy` override. (`telemetry_key`/`feature_flag`/`visual_contract` are auto-filled with
+defaults — slug / None / `<family>_state_v1` — until authored.) Module-level it also declares
+`TYPE_TRACE_BUDGET` (§7.1) and `DEFAULT_FAILURE_POLICY` (§4.1). The Markdown here stays
 human-readable; the **manifest is what code enforces**: `manifest_gaps()` cross-checks it against the live
 registry + canonical solutions + type budgets (`test_type_contracts` fails if they disagree), so an adapter
 can't ship without a complete entry and the manifest can't name a phantom. It is the operational backbone for
