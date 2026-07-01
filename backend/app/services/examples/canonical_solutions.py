@@ -134,6 +134,12 @@ def dijkstra(graph, start):
             hi = mid - 1
     return -1
 """,
+    # ---- inorder traversal of a binary tree (recursion: left, node, right) ----
+    "tree_inorder": """def inorder(node):
+    if node is None:
+        return []
+    return inorder(node.left) + [node.val] + inorder(node.right)
+""",
     "arithmetic_eval": """def evaluate(tokens):
     stack = [tokens[0]]
     i = 1

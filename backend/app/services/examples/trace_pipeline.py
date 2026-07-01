@@ -41,6 +41,14 @@ def route_adapter(topic: dict[str, Any]):
     (canonical code is Part 2, deferred). The code-walkthrough card still shows the code separately."""
     slug = str(topic.get("slug") or topic.get("topic_family") or topic.get("family") or "").lower()
     text = (slug + " " + str(topic.get("title") or topic.get("name") or "")).lower()
+    # Covered TREE + ALGEBRA concepts route explicitly (checked before the tree-defer guard below). Only
+    # inorder BST traversal has a tree adapter today; other tree/BST topics still defer.
+    if "inorder" in text:
+        return ADAPTERS["tree_inorder"]
+    if "quadratic" in text:
+        return ADAPTERS["quadratic"]
+    if "kinematic" in text or "constant acceleration" in text or "uniform acceleration" in text:
+        return ADAPTERS["kinematics"]
     # Tree traversal is a DIFFERENT algorithm from graph BFS/DFS (no visited-set / cycle handling; a
     # parent/child structure; pre/in/post/level order) — and a binary-search TREE is not array binary search.
     # These graph/array adapters do NOT cover trees, so a tree topic must NOT route here; it defers (None)
