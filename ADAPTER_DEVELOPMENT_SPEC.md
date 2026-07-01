@@ -22,20 +22,20 @@
 
 An adapter is the **executable truth** behind a worked example: it runs the real algorithm/computation (no
 LLM) and emits a **verified trace** of learner-facing steps. The generator only *words* those steps. Because
-every concept's trace has a **structural shape**, we don't design 100 adapters from scratch — we design **8
-types**, and each concept is an instance of one type. Building an adapter = *pick the type, copy its template,
+every concept's trace has a **structural shape**, we don't design 100 adapters from scratch — we design a small set of
+**types**, and each concept is an instance of one type. Building an adapter = *pick the type, copy its template,
 fill the concept-specific info.*
 
 ---
 
-## 2. The 8 adapter TYPES
+## 2. The adapter TYPES
 
 Each type fixes: what one **step** is, how **stages** sequence, the **required-case** pattern, the **state**
 shape, and whether it is **coding** (ships a `canonical_solution`) or **non-coding** (calculation only).
 
 | # | Type | One step is… | Required-case pattern | Coding? | Template |
 |---|---|---|---|---|---|
-| T1 | **Iterative traversal** | visiting the next element of a structure | first-visit · a representative visit · completion | coding | `tree_inorder` |
+| T1 | **Structured traversal** | visiting the next element via a frontier (queue / stack / recursion / parent-ptr) | first-visit · a representative visit · completion | coding | `tree_inorder` |
 | T2 | **Greedy frontier update** | pop a frontier candidate → accept / **relax** / reject | ≥1 accept/relax · ≥1 reject/skip/no-improvement · completion | coding | `kruskal`, `dijkstra` |
 | T3 | **Divide & conquer** | a split / base-case / combine | a split · a base case · a combine · completion | coding | `merge_sort` (shipped) |
 | T4 | **Search / narrowing** | one probe + the direction it eliminates | go-left · go-right · found/not-found · completion | coding | `binary_search` (shipped) |
@@ -44,17 +44,22 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 | T7 | **Reduction / rewriting** | one rewrite that shrinks the expression | each rewrite kind used · reaches normal form | either | `arithmetic_eval` (shipped) |
 | T8a | **Incremental construction** | adding one piece to a growing structure | each construction rule used · partial output stays VALID · target reached | either | *(planned)* |
 | T8b | **Formal derivation** | one rule-justified derivation step | each transformation rule used · every step follows an ALLOWED rule · conclusion reached | either | *(planned)* |
-| T9 | **Repeated relaxation / iterative improvement** | one edge/cell relaxation within a numbered PASS | a relax-that-improves · a pass with no change · the sufficiency bound (why `V−1` passes) | coding | *(planned)* |
-| T10 | **Stateful transformation / invariant restoration** | one operation + the sift/restore that repairs the invariant | a restore that bubbles · a no-op restore · completion | coding | *(planned)* |
+| T9a | **Edge-pass relaxation** | one edge relaxation within a numbered PASS | a relax-that-improves · a pass with no change · the `V−1` sufficiency bound | coding | *(planned)* |
+| T9b | **Layered state refinement** | process intermediate `k`, update all-pairs `dist[i][j]` | a path improved via `k` · a path unchanged · the last `k`-layer | coding | *(planned)* |
+| T10 | **Stateful operation / invariant maintenance** | one operation (mutate/probe/rotate/resize/evict/restore/compress/schedule) + any invariant repair | a repair that propagates · a no-op operation · completion | coding | *(planned)* |
 | T11 | **Constraint search / backtracking** | choose a candidate → explore → **undo** on failure | a valid extension · a dead-end that backtracks · a solution found | coding | *(planned)* |
 | T12 | **Program execution / memory trace** | executing one statement, updating variable/stack/heap state | a state update · a branch/loop-condition eval · a call push/return | coding | *(planned)* |
 
-### T1 — Iterative traversal
+### T1 — Structured traversal
+> **Not only "iterative".** T1 covers any frontier-driven visit, including RECURSIVE traversal — the gate
+> requires queue, stack, **and** recursion. The frontier `mode` is part of the per-concept info:
+> `queue_frontier` (BFS) · `stack_frontier` (iterative DFS) · `recursive_call_frontier` (recursive pre/in/post
+> order) · `implicit_parent_pointer`. Recursive preorder/postorder are valid T1 without masquerading as iterative.
 - **Trace:** one Step per visit; `state = {visited/output so far, current}`; ascending/level/… order.
 - **State effects:** one element moves from unvisited → output; the ordering invariant holds.
 - **Concepts:** graph BFS/DFS · tree in/pre/post/level-order · linked-list traversal · connected components.
-- **Per-concept info:** the *structure* (graph vs tree), the *order rule*, the *frontier* (queue/stack/recursion),
-  the *visited invariant*, `label_convention` (letters for graph nodes, ints for values).
+- **Per-concept info:** the *structure* (graph vs tree), the *order rule*, the *frontier `mode`*
+  (queue/stack/recursion/parent-ptr), the *visited invariant*, `label_convention`.
 
 ### T2 — Greedy frontier update
 > **Not "pick the shortest thing".** The dangerous oversimplification (esp. Dijkstra) is collapsing this to a
@@ -127,26 +132,35 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 > T8a and T8b differ in their **core invariant** — "partial output is valid" vs "each step follows an allowed
 > rule" — which is why they get separate templates rather than one generic "construction" template.
 
-### T9 — Repeated relaxation / iterative improvement
-> **Bellman-Ford is NOT T2.** It is not frontier-greedy — it relaxes edges over **repeated numbered passes**,
-> its invariant is *pass-based* (after pass k, all shortest paths using ≤ k edges are correct), and teaching it
-> means explaining **why `V−1` passes suffice** and the negative-cycle check. Forcing it into a Dijkstra-shaped
-> frontier trace teaches it wrong.
-- **Trace:** Steps grouped by PASS; each step is one edge relaxation (improves or not); `state = {distances,
-  pass number, changed-this-pass}`.
-- **Concepts:** Bellman-Ford · Floyd-Warshall (triple loop) · iterative policy/value updates.
-- **Per-concept info:** the *pass structure*, the *relaxation rule*, the *stopping/sufficiency condition*,
-  required cases (an improving relax, a no-change pass, the bound).
+### T9a — Edge-pass relaxation
+> **Bellman-Ford is NOT T2** (frontier-greedy). It relaxes edges over **repeated numbered passes**; its
+> invariant is *pass-based* (after pass k, all shortest paths using ≤ k edges are correct); teaching it means
+> **why `V−1` passes suffice** + the negative-cycle check.
+- **Trace:** Steps grouped by PASS; each is one edge relaxation (improves or not); `state = {distances, pass
+  number, changed-this-pass}`. **Concepts:** Bellman-Ford · value/policy iteration.
+- **Per-concept info:** the *pass structure*, the *relaxation rule*, the *sufficiency condition*, required
+  cases (an improving relax, a no-change pass, the bound).
 
-### T10 — Stateful transformation / invariant restoration
-> **Heap sort is NOT divide-and-conquer.** There is no split/combine — it maintains a **heap invariant**:
-> build-heap, then repeatedly swap root↔end and **sift-down to restore** the heap. Its teaching core is the
-> invariant restoration, not recursion.
-- **Trace:** each Step is one operation + the sift/heapify that repairs the invariant; `state = {array/heap,
-  sorted-suffix}`.
-- **Concepts:** heap sort · heapify / build-heap · heap insert / extract-min · AVL rotation restore.
-- **Per-concept info:** the *invariant* (heap property), the *restore operation* (sift-down/up), required
-  cases (a restore that bubbles multiple levels, a no-op restore).
+### T9b — Layered state refinement
+> **Floyd-Warshall is NOT the same as Bellman-Ford.** Its invariant is layered, not pass-count: *after
+> intermediate vertex `k` is processed, `dist[i][j]` is the shortest `i→j` path whose intermediate vertices all
+> lie in the processed set*. An implementer must not give it a Bellman-Ford-shaped trace.
+- **Trace:** Steps grouped by intermediate `k`; each updates one `dist[i][j] = min(old, dist[i][k]+dist[k][j])`;
+  `state = the matrix + current k`. **Concepts:** Floyd-Warshall · some DP-style all-pairs updates.
+- **Per-concept info:** the *k-layer structure*, the *update rule*, the *layer invariant*, required cases (a
+  path improved via `k`, a path unchanged, the last layer). **Cap V** — the raw trace is O(V³); project it.
+
+### T10 — Stateful operation / invariant maintenance
+> **Broader than heap-restore.** T10 is any stateful system where an operation may need to repair an
+> invariant — heaps YES, but also hash probing, LRU eviction, page replacement, scheduling, TCP state,
+> dynamic-array resize, union-find compression. Not everything is a sift-down; the operation has a `kind`:
+> `mutate · probe · rotate · resize · evict · restore · compress · schedule`.
+> (Heap sort is still NOT divide-and-conquer — no split/combine; it *maintains the heap invariant*.)
+- **Trace:** each Step is one operation of a declared `kind` + any invariant repair; `state` is the system
+  state (heap/table/cache/queue).
+- **Concepts:** heap ops · hash probing/rehash · LRU/page replacement · scheduling · AVL rotations · union-find.
+- **Per-concept info:** the *invariant*, the *operation kinds*, the *repair* (when triggered), required cases
+  (an operation that propagates a repair, a no-op operation, completion).
 
 ### T11 — Constraint search / backtracking
 - **Trace:** choose a candidate → explore → **undo** when it violates a constraint; `state = {partial
@@ -165,6 +179,8 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
   pointers/aliasing · array/string indexing.
 - **Per-concept info:** the *statement set*, the *state model* (env + stack + heap), required cases (a state
   update, a branch/loop-condition eval, a call push/return). **Cap iterations** so the trace stays bounded.
+> **`canonical_solution` for T12 is an executable SPECIMEN**, not a solution to an external problem — a small
+> program whose execution is the lesson (e.g. `def sum_until(n): total=0; for i in range(n): total+=i; return total`).
 
 ---
 
@@ -346,6 +362,41 @@ learner-facing projection should aim for; an adapter whose raw trace runs long (
 | T7 rewriting | 3–10 | 12 |
 | T8/T9/T10 | 4–12 | 16–20 |
 
+### 7.2 Visual-state budgets — few steps can still overload a frame
+
+A short trace can still produce a dense frame (a full Floyd-Warshall matrix, every Dijkstra distance +
+predecessor + heap item at once, a giant recursion tree). `manifest.TYPE_VISUAL_BUDGET` declares the **maximum
+active emphasis** per type (e.g. T4 = "current probe + eliminated region"; T12 = "current line + only the
+affected variables/frames").
+
+> **Rule.** A frame may preserve full semantic state in DATA, but must **visually emphasize only the minimum
+> state needed to understand the current transition.** The visual compiler enforces the per-type budget.
+
+### 7.3 Teaching-checkpoint selection is ADAPTER-owned & deterministic
+
+Which steps a long trace surfaces (and which support steps it groups) is decided by the **adapter**, via
+`select_teaching_checkpoints(full_trace) -> [step_id]` (default: every step; override to group). The
+**generator never decides omissions** — letting the LLM pick "representative" DP cells or Dijkstra relaxations
+would make it selectively drop truth-bearing transitions. Required-case steps + the terminal are **always**
+surfaced regardless of grouping. Split of ownership:
+
+- **Adapter owns:** the complete trace · the selected teaching checkpoints · the grouping rationale · the
+  required visible transitions.
+- **Generator owns:** wording for the already-selected checkpoints.
+
+### 7.4 Per-instance vs per-suite branch coverage
+
+Some algorithms can't fit every branch into one small, natural example (Dijkstra: relax + no-improvement +
+stale-entry + settle; AVL: LL/RR/LR/RL; binary search: left/right/found/absent). So:
+
+> A single generated trace must exercise the **core mechanism + at least one meaningful branch**
+> (`must_exercise`, per instance). **All** required branches are guaranteed across saved fixtures + generated
+> examples (`must_cover`, per suite). A lesson **may use multiple short examples** when one instance cannot
+> teach every branch without becoming contrived.
+
+This is why `bst_search` declares `must_exercise=[descend, found_or_absent, completion]` but
+`must_cover=[go_left, go_right, found, absent]`.
+
 ---
 
 ## 8. The adapter manifest — the machine-readable source of truth
@@ -355,9 +406,9 @@ learner-facing projection should aim for; an adapter whose raw trace runs long (
 `routing_aliases` · `negative_guards` · `fixtures` · `visual_contract` · `feature_flag` · `telemetry_key` ·
 optional `failure_policy` override. (`telemetry_key`/`feature_flag`/`visual_contract` are auto-filled with
 defaults — slug / None / `<family>_state_v1` — until authored.) Module-level it also declares
-`TYPE_TRACE_BUDGET` (§7.1) and `DEFAULT_FAILURE_POLICY` (§4.1). The Markdown here stays
-human-readable; the **manifest is what code enforces**: `manifest_gaps()` cross-checks it against the live
-registry + canonical solutions + type budgets (`test_type_contracts` fails if they disagree), so an adapter
+`TYPE_TRACE_BUDGET` (§7.1), `TYPE_VISUAL_BUDGET` (§7.2) and `DEFAULT_FAILURE_POLICY` (§4.1). The Markdown here
+stays human-readable; the **manifest is what code enforces**: `manifest_gaps()` cross-checks it against the live
+registry + canonical solutions + type trace/visual budgets (`test_type_contracts` fails if they disagree), so an adapter
 can't ship without a complete entry and the manifest can't name a phantom. It is the operational backbone for
 catalog status, routing, test discovery, rollout flags, trace budgets, failure behavior, telemetry, and
 coverage reporting.

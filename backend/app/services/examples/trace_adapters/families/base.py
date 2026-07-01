@@ -82,16 +82,29 @@ class FamilyAdapterBase:
         spec = getattr(self, "example_spec", None)
         return TeachingObjectives(surfaces=list(getattr(spec, "must_exercise", []) or []))
 
+    def select_teaching_checkpoints(self, trace: Any) -> list[str]:
+        """ADAPTER-OWNED, DETERMINISTIC selection of which trace steps the learner sees (spec §7.1 / review).
+        The ADAPTER decides which transitions are grouped/collapsed — NEVER the generator, which would be
+        selectively omitting truth-bearing transitions. Default surfaces EVERY step (identity); an adapter
+        whose raw trace runs long overrides this to group support steps, ALWAYS keeping every required-case
+        step + the terminal."""
+        return [s.id for s in (getattr(trace, "steps", []) or [])]
+
     def teaching_projection(self, trace: Any) -> TeachingProjection:
-        """§2.5.2 — project the verified trace into the teaching interface (surfaced transitions in order, the
-        required set, the terminal, each transition's step kind)."""
+        """§2.5.2 — project the verified trace into the teaching interface (the adapter-selected checkpoints in
+        order, the required set, the terminal, each transition's step kind)."""
         steps = list(getattr(trace, "steps", []) or [])
-        ids = [s.id for s in steps]
+        checkpoints = self.select_teaching_checkpoints(trace)
+        chosen = set(checkpoints)
+        by_id = {s.id: s for s in steps}
+        # required-case + terminal steps are ALWAYS surfaced, regardless of the checkpoint selection
+        required_ids = {sid for ids in (getattr(trace, "case_evidence", {}) or {}).values() for sid in ids}
+        ids = [s.id for s in steps if s.id in chosen or s.id in required_ids] or [s.id for s in steps]
         return TeachingProjection(
             transition_ids=ids,
             required_transition_ids=list(getattr(trace, "required_cases", []) or []),
-            terminal_transition_id=ids[-1] if ids else "",
-            step_kinds={s.id: str(getattr(s, "operation", "") or "") for s in steps},
+            terminal_transition_id=steps[-1].id if steps else "",
+            step_kinds={sid: str(getattr(by_id.get(sid), "operation", "") or "") for sid in ids},
             label_convention=self.label_convention)
 
     def build_adapter_output(self, trace: Any, *, seed: int = 0, candidate_id: str = "",

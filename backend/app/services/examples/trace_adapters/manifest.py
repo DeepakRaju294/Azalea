@@ -13,12 +13,15 @@ from typing import Any
 # is pass-based repeated relaxation (NOT a frontier greedy); heap sort is heap-invariant restoration (NOT
 # split/combine divide-and-conquer).
 ADAPTER_TYPES = {
-    "T1": "iterative_traversal", "T2": "greedy_frontier_update", "T3": "divide_and_conquer",
+    "T1": "structured_traversal",              # queue / stack / recursion / parent-pointer frontier (not only iterative)
+    "T2": "greedy_frontier_update", "T3": "divide_and_conquer",
     "T4": "search_narrowing", "T5": "dp_table_fill", "T6": "formula_application",
     "T7": "reduction_rewriting", "T8a": "incremental_construction", "T8b": "formal_derivation",
-    "T9": "repeated_relaxation", "T10": "stateful_transformation",
-    # T11 backtracking (constraint search with choose/explore/undo); T12 program-execution / memory trace
-    # (variables, loops, call stack, pointers) — the substrate under many "coding fundamentals" concepts.
+    # T9 splits: T9a edge-pass relaxation (Bellman-Ford; pass-based) vs T9b layered state refinement
+    # (Floyd-Warshall; "shortest path using only intermediates in the processed set") — different invariants.
+    "T9a": "edge_pass_relaxation", "T9b": "layered_state_refinement",
+    "T10": "stateful_operation_invariant_maintenance",   # mutate/probe/rotate/resize/evict/restore/compress/schedule
+    # T11 backtracking (choose/explore/undo); T12 program-execution / memory trace (variables/loops/stack/pointers).
     "T11": "constraint_search_backtracking", "T12": "program_execution_memory_trace",
 }
 
@@ -28,8 +31,28 @@ ADAPTER_TYPES = {
 # grouping (§2.5.2) rather than raising this.
 TYPE_TRACE_BUDGET = {
     "T1": 12, "T2": 16, "T3": 12, "T4": 8, "T5": 16, "T6": 8,
-    "T7": 12, "T8a": 16, "T8b": 16, "T9": 20, "T10": 16,
+    "T7": 12, "T8a": 16, "T8b": 16, "T9a": 20, "T9b": 18, "T10": 16,
     "T11": 18, "T12": 16,
+}
+
+# Per-type VISUAL budget — the maximum ACTIVE emphasis a single frame may show. A frame may hold complete
+# semantic state in DATA, but must visually emphasize only the minimum needed for the current transition
+# (guards against dense, text-heavy snapshots). Declared here; enforced by the visual compiler.
+TYPE_VISUAL_BUDGET = {
+    "T1": "current node + frontier + visited set",
+    "T2": "current candidate + the distances/edges that changed",
+    "T3": "the active split/merge frame + its two child runs",
+    "T4": "the current probe + the eliminated region",
+    "T5": "one active cell + its direct dependency cells",
+    "T6": "the current equation + the values just substituted",
+    "T7": "the reducible part being rewritten + its result",
+    "T8a": "the piece just added + the local validity region",
+    "T8b": "the current derivation step + the rule cited",
+    "T9a": "one active relax + its edge + the changed distance",
+    "T9b": "one active update + the relevant row/column/k-layer",
+    "T10": "one operation + the local invariant region it repairs",
+    "T11": "the current branch + one shown backtrack path",
+    "T12": "the current line + only the affected variables/frames",
 }
 
 # Per-failure behavior. A correct trace whose VISUAL compile or FRONTEND render fails must still ship the
@@ -157,6 +180,8 @@ def manifest_gaps() -> list[str]:
     for tid in ADAPTER_TYPES:
         if tid not in TYPE_TRACE_BUDGET:
             gaps.append(f"type {tid} has no TYPE_TRACE_BUDGET entry")
+        if tid not in TYPE_VISUAL_BUDGET:
+            gaps.append(f"type {tid} has no TYPE_VISUAL_BUDGET entry")
     return gaps
 
 
@@ -171,6 +196,11 @@ def by_type() -> dict[str, list[str]]:
 def trace_budget(slug: str) -> int:
     """The raw-trace step ceiling for an adapter's type (a bounded instance must not exceed it)."""
     return TYPE_TRACE_BUDGET.get(str(MANIFEST.get(slug, {}).get("type")), 20)
+
+
+def visual_budget(slug: str) -> str:
+    """The max active visual emphasis for an adapter's type (a frame shows no more than this)."""
+    return TYPE_VISUAL_BUDGET.get(str(MANIFEST.get(slug, {}).get("type")), "")
 
 
 def failure_policy(slug: str) -> dict[str, str]:
