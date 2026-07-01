@@ -53,11 +53,17 @@ class SeveritySplit(unittest.TestCase):
 
 
 class LyingFormatterIsCaught(unittest.TestCase):
-    DETERMINISTIC = ["binary_search", "bfs", "dfs_iter", "kruskal", "merge_sort", "dijkstra", "arithmetic_eval"]
+    DETERMINISTIC = ["binary_search", "bfs", "dfs_iter", "kruskal", "merge_sort", "dijkstra",
+                     "arithmetic_eval", "prim"]
 
     def _trace(self, slug):
         a = ADAPTERS[slug]
         return a, tp.select_instance(a, seed=3)
+
+    def test_every_adapter_has_adversarial_coverage(self):
+        # §E: adversarial/hallucination coverage is machine-REQUIRED — every registered adapter must be here,
+        # so a new adapter can't ship without a lying-formatter test.
+        self.assertEqual(set(ADAPTERS) - set(self.DETERMINISTIC), set())
 
     def test_faithful_cards_have_no_hard_violations(self):
         for slug in self.DETERMINISTIC:

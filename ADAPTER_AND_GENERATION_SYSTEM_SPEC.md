@@ -152,7 +152,7 @@ Adapter
 |---|---|---|---|
 | **Multi-stage grammars** | **all 8 adapters ship `stages={one}`** | the §0 stage table's real decompositions (Dijkstra `settle/relax/completion`; Kruskal `setup/consider/cycle_skip/completion`; merge-sort `init_runs/merge_select`; BST `descend/{remove_leaf,splice,replace_successor}`) | ❌ **biggest depth gap** |
 | **Per-suite coverage** | `must_cover = 0` on every adapter | declared `must_cover` + checked by §E behavior tests | ❌ |
-| **Behavior test suites (§E)** | documented, not machine-checked | each adapter ships negative/hallucination tests; conformance requires them | 🟡 |
+| **Behavior test suites (§E)** | `test_trace_prose_adversarial.LyingFormatterIsCaught` over all 8 adapters (faithful passes, lie/out-of-range is hard) + machine-required coverage assertion | ✅ |
 | **Versioned state schema** (item 6) | declared concept | enforced required/optional fields, no undeclared dynamic fields | 🟡 |
 | **Visual contract as a declared set** | ad-hoc per-step `kind` strings | `{primary_kind, allowed_kinds, operation_to_kind}` + every transition's kind ∈ allowed | 🟡 |
 | **Field consistency** | bfs/dfs have no `value_range`; `size_tier` uniformly "small"; `tie_break` field empty (lives in conventions dict) | every field populated + consistent | 🟡 |
