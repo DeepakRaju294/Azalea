@@ -304,3 +304,30 @@ def validate_prose(cards: list[dict[str, Any]], trace: ContractTrace, adapter,
         out += [ProseViolation(code, detail, i, step.id)
                 for code, detail in adapter.validate_prose_claims(card, step)]
     return out
+
+
+def coverage_complete(cards: list[dict[str, Any]], trace: ContractTrace, adapter: Any = None, *,
+                      contract: TeachingValidationContract = DEFAULT_TEACHING_VALIDATION) -> tuple[bool, str]:
+    """CP3 — is a card set (possibly a DIFFERENT count than the trace's step count) acceptable? True ONLY when
+    coverage is complete: every required transition rendered, the terminal transition rendered, no card cites
+    an unknown step id, and (when an adapter is given) no HARD prose contradiction. A count != #steps is fine
+    iff this holds; a missing required case, an unrendered terminal, a bogus id, or a wrong claim is not.
+    Returns (ok, reason). This is the acceptance predicate that lets `count_mismatch` be coverage-based."""
+    valid_ids = {s.id for s in trace.steps}
+    rendered: set[str] = set()
+    for c in cards:
+        for sid in (c.get("trace_step_ids") or []):
+            if sid not in valid_ids:
+                return False, f"unknown_trace_id:{sid}"
+            rendered.add(sid)
+    evidence = getattr(trace, "case_evidence", {}) or {}
+    for rc in getattr(trace, "required_cases", []) or []:
+        if not (set(evidence.get(rc, [])) & rendered):
+            return False, f"missing_required_transition:{rc}"
+    if trace.steps and trace.steps[-1].id not in rendered:
+        return False, "terminal_not_rendered"
+    if adapter is not None:
+        hard = hard_prose_violations(validate_prose(cards, trace, adapter), contract)
+        if hard:
+            return False, f"hard_prose:{hard[0].code}"
+    return True, ""
