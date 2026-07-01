@@ -14,7 +14,7 @@ import random
 import re
 from typing import Any, Iterable
 
-from ...trace_contract import ContractTrace, Step, fact
+from ...trace_contract import ContractTrace, Step, claim_ledger, fact
 from ..example_spec import ExampleSpec, InstanceShape, StageSpec
 from .base import FamilyAdapterBase
 
@@ -133,7 +133,11 @@ class QuadraticEquationAdapter(FamilyAdapterBase):
                  state_after=dict(st_disc), inputs={"discriminant": disc}, decision=d2, reason=r2,
                  visual_state={"kind": "equation", "discriminant": disc}, expected_visible_result=e2,
                  facts={"allowed_values": _ints(d2, r2, e2, *(x["text"] for x in f2)),
-                        "required_facts": f2, "forbidden_claims": []}),
+                        "required_facts": f2, "forbidden_claims": [],
+                        # TYPED claim ledger (§7): D is the DERIVED discriminant; 2 and 4 are only formula
+                        # constants — so a card that says "D = 4" is caught as a mislabel, not silently allowed.
+                        "claims": claim_ledger(inputs={"a": a, "b": b, "c": c},
+                                               constants={"square": 2, "four": 4}, derived={"D": disc})}),
             Step(id="s3", operation="state_roots", prior_state=dict(st_disc), state_after=dict(st_roots),
                  inputs={"roots": roots}, decision=d3, reason=r3,
                  visual_state={"kind": "equation", "roots": roots}, expected_visible_result=e3,

@@ -104,6 +104,7 @@ DEFAULT_TEACHING_VALIDATION = TeachingValidationContract(
     hard_codes=frozenset({
         "value_not_allowed",        # a number not in the verified vocabulary (wrong edge/node/value)
         "decision_contradiction",   # prose asserts the OPPOSITE of the verified decision (accept vs skip)
+        "mislabeled_value",         # a named quantity stated with the WRONG value (typed claim ledger, §7)
         "forbidden_claim",          # a claim the adapter declared must never appear
         "wrong_selected", "wrong_final_answer", "invented_transition", "missing_terminal",
     }),
@@ -300,9 +301,49 @@ def validate_prose(cards: list[dict[str, Any]], trace: ContractTrace, adapter,
             if _states(prose, c):
                 out.append(ProseViolation("forbidden_claim", str(c), i, step.id))   # hard (default)
         out += _decision_contradiction(card, step, i)                               # A1 (hard)
+        # TYPED claim ledger (§7): a named derived/output quantity must be stated with ITS value, not another
+        # category's number. Opt-in — only steps that declare `facts["claims"]` (computation adapters).
+        ledger = facts.get("claims")
+        if isinstance(ledger, dict):
+            out += validate_claim_ledger(prose, ledger, i, step.id)
         # adapter-specific claims are contradictions (wrong node / decision / membership) -> hard
         out += [ProseViolation(code, detail, i, step.id)
                 for code, detail in adapter.validate_prose_claims(card, step)]
+    return out
+
+
+def claim_ledger(*, inputs: dict[str, Any] | None = None, constants: dict[str, Any] | None = None,
+                 derived: dict[str, Any] | None = None, outputs: dict[str, Any] | None = None,
+                 units: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+    """A TYPED claim ledger (ADAPTER_DEVELOPMENT_SPEC §7) — the values a step may state, categorized by ROLE
+    (input · formula constant · derived intermediate · expected output · unit). Replaces a flat numeric
+    allowlist as the primary truth model for computation adapters: a number is not merely 'allowed', it is
+    allowed AS a specific quantity, so a formula constant can't be passed off as the answer."""
+    return {"inputs": dict(inputs or {}), "constants": dict(constants or {}),
+            "derived": dict(derived or {}), "outputs": dict(outputs or {}), "units": dict(units or {})}
+
+
+def _claim_value(v: Any) -> str:
+    m = re.search(r"-?\d+(?:\.\d+)?", str(v if not isinstance(v, (list, tuple)) else (v[0] if v else "")))
+    return m.group() if m else str(v).strip().lower()
+
+
+def validate_claim_ledger(prose: str, ledger: dict[str, dict[str, Any]], card_index: int,
+                          step_id: str) -> list[ProseViolation]:
+    """Category-aware guard: a claim that NAMES a derived/output quantity with a copula ('D = 4', 'the roots
+    are …') must state THAT quantity's value. Conservative — it only fires on an explicit `name <copula>
+    number`, so faithful prose is never flagged; it CATCHES the specific danger a flat allowlist misses
+    ('the discriminant is 4' when D is 1 and 4 is only the formula constant)."""
+    out: list[ProseViolation] = []
+    low = str(prose).lower()
+    checkable = {**(ledger.get("derived") or {}), **(ledger.get("outputs") or {})}
+    for name, val in checkable.items():
+        expected = _claim_value(val)
+        pat = re.compile(re.escape(str(name).lower()) + r"\s*(?:is|are|=|equals|:)\s*(-?\d+(?:\.\d+)?)")
+        m = pat.search(low)
+        if m and m.group(1) != expected:
+            out.append(ProseViolation("mislabeled_value",
+                                      f"{name} stated as {m.group(1)}, should be {val}", card_index, step_id))
     return out
 
 

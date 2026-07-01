@@ -31,13 +31,14 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 | # | Type | One step is… | Required-case pattern | Coding? | Template |
 |---|---|---|---|---|---|
 | T1 | **Iterative traversal** | visiting the next element of a structure | first-visit · a representative visit · completion | coding | `tree_inorder` |
-| T2 | **Greedy selection** | one accept/reject decision on a candidate | ≥1 accept · ≥1 reject/skip · completion | coding | `kruskal` (shipped) |
+| T2 | **Greedy frontier update** | pop a frontier candidate → accept / **relax** / reject | ≥1 accept/relax · ≥1 reject/skip/no-improvement · completion | coding | `kruskal`, `dijkstra` |
 | T3 | **Divide & conquer** | a split / base-case / combine | a split · a base case · a combine · completion | coding | `merge_sort` (shipped) |
 | T4 | **Search / narrowing** | one probe + the direction it eliminates | go-left · go-right · found/not-found · completion | coding | `binary_search` (shipped) |
 | T5 | **Table / DP fill** | computing one cell from the recurrence | a base cell · a recurrence cell · the answer cell | coding | *(planned)* |
 | T6 | **Formula application** | applying one governing equation | identify · apply each equation · completion (+ branch) | **non-coding** | `quadratic`, `kinematics` |
 | T7 | **Reduction / rewriting** | one rewrite that shrinks the expression | each rewrite kind used · reaches normal form | either | `arithmetic_eval` (shipped) |
-| T8 | **Construction / derivation** | adding one piece to a growing structure/proof | each construction rule used · target reached | either | *(planned)* |
+| T8a | **Incremental construction** | adding one piece to a growing structure | each construction rule used · partial output stays VALID · target reached | either | *(planned)* |
+| T8b | **Formal derivation** | one rule-justified derivation step | each transformation rule used · every step follows an ALLOWED rule · conclusion reached | either | *(planned)* |
 
 ### T1 — Iterative traversal
 - **Trace:** one Step per visit; `state = {visited/output so far, current}`; ascending/level/… order.
@@ -46,12 +47,24 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 - **Per-concept info:** the *structure* (graph vs tree), the *order rule*, the *frontier* (queue/stack/recursion),
   the *visited invariant*, `label_convention` (letters for graph nodes, ints for values).
 
-### T2 — Greedy selection
-- **Trace:** one Step per candidate considered; `decision ∈ accept|reject`; `state = {result so far, remaining}`.
-- **Concepts:** Kruskal · Prim · Dijkstra (relaxation) · activity selection · Huffman · fractional knapsack.
-- **Per-concept info:** the *candidate order* (e.g. edges sorted by weight), the *accept criterion* (no cycle /
-  improves distance), the *result* being built (MST edges / distances), the *`forbidden_claims`* that catch an
-  inverted decision (accept-vs-skip), required cases (an accept **and** a reject/skip).
+### T2 — Greedy frontier update
+> **Not "pick the shortest thing".** The dangerous oversimplification (esp. Dijkstra) is collapsing this to a
+> single "always choose smallest" step. A T2 trace is a **frontier update**: pop a candidate, inspect it
+> against the current state, and take one of *several* outcomes — the trace MUST show both a positive
+> (accept/relax/settle) **and** a negative (reject/skip/no-improvement) outcome. `test_type_contracts` enforces
+> ≥2 decision outcomes with evidence, so an implementer cannot ship the collapsed version.
+- **Trace:** one Step per candidate popped from the frontier; `decision ∈ accept | relax | reject/skip`;
+  `state = {result so far, frontier, tentative values (distances), predecessors}`.
+- **Concepts & their real semantics:**
+  - *Kruskal* — sorted edge → accept (no cycle) **or** reject (cycle).
+  - *Prim* — frontier = cut edges → settle the **lightest crossing edge**; skip edges to in-tree nodes.
+  - *Dijkstra* — pop min-tentative node → **relax** each out-edge (update dist/predecessor) **or** no-improvement;
+    handle a stale priority-queue entry (already-settled node); settle the node. (State: settled set, tentative
+    distances, predecessors.)
+- **Per-concept info:** the *candidate/frontier order*, the *comparison* driving accept/relax, the *result +
+  auxiliary state* (distances/predecessors), the *invariant* (e.g. "settled edge is the lightest crossing edge
+  considered"), the `forbidden_claims` catching an inverted decision, required cases (a positive **and** a
+  negative outcome).
 
 ### T3 — Divide & conquer
 - **Trace:** Steps of kind split / base_case / combine; `state = the recursion frontier / merged runs`.
@@ -89,11 +102,45 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 - **Per-concept info:** the *rewrite rule* + *which reducible part to pick next* (highest precedence / pivot),
   the *invariant* (value/solution-set preserved), the *normal form* terminal, required cases (each rule kind).
 
-### T8 — Construction / derivation
-- **Trace:** one Step per piece added; `state = the partial construction`; the target grows monotonically.
-- **Concepts:** balancing chemical equations · matrix multiplication · truth tables · sieve of Eratosthenes ·
-  journal entries · induction (structure).
-- **Per-concept info:** the *construction rule*, the *target*, required cases (each rule used, target reached).
+### T8a — Incremental construction
+- **Trace:** one Step per piece added; `state = the partial construction`; the target grows monotonically and
+  the **partial output stays structurally valid** at every step.
+- **Concepts:** matrix multiplication · sieve of Eratosthenes · truth tables · journal entries.
+- **Per-concept info:** the *construction rule*, the *validity invariant on the partial output*, the *target*.
+
+### T8b — Formal derivation
+- **Trace:** one Step per rule-justified transformation; `state = the current formal object`; **every step must
+  follow an ALLOWED transformation rule** (this is the invariant — you cannot validate an induction proof with a
+  sieve's state contract).
+- **Concepts:** proof by induction · balancing chemical equations · symbolic equation manipulation.
+- **Per-concept info:** the *set of allowed rules*, the *rule cited per step*, the *goal state*.
+
+> T8a and T8b differ in their **core invariant** — "partial output is valid" vs "each step follows an allowed
+> rule" — which is why they get separate templates rather than one generic "construction" template.
+
+---
+
+## 2.1 Rollout matrix — a TYPE scales only after its pilots prove the grammar
+
+> **The rule.** A type is *not* "ready to scale" because one adapter passes. It is ready only after its **pilot
+> adapters** prove the trace grammar survives **meaningful structural variation** — different state models,
+> branch cases, and edge cases. Binary search alone does not prove T4 (a BST search has a different state
+> model; exponential search adds an expansion phase before narrowing). Build the pilots, evaluate the worked
+> examples on real topics, pass the **type-level gate**, *then* expand.
+
+| Type | Pilot adapters | Type-level gate before scaling | Expansion target |
+|---|---|---|---|
+| **T1** Traversal | tree inorder, graph BFS, graph DFS | handles queue **and** stack **and** recursion frontiers + a disconnected/again-visited case | pre/post/level-order, list/graph traversals |
+| **T2** Greedy frontier | Kruskal, Prim, Dijkstra | correctly separates accept / reject / **relax / no-improvement** + auxiliary state (distances, predecessors, stale PQ entry) | Huffman, activity selection, fractional knapsack, Bellman-Ford |
+| **T3** Divide & conquer | merge sort, quicksort | recursion tree + base cases + combine frames (merge selection, tail copy) | heap sort, other recursive sorts |
+| **T4** Search / narrowing | binary search, **BST search** | found **and** absent + strictly-legal narrowing across **two different state models** (array bounds vs tree node) | ternary / exponential search |
+| **T5** DP fill | knapsack, LCS, edit distance | table order + recurrence dependency + the take/skip choice + a bounded table | coin change, LIS, matrix-chain |
+| **T6** Formula | quadratic, kinematics, Ohm's law | units + **sign/branch** handling + symbolic **and** numeric output | remaining formula/science/finance topics |
+| **T7** Rewrite | arithmetic, boolean simplification, Gaussian elimination | equivalence invariant + rewrite-priority + normal-form terminal | factoring, Euclid, modular arithmetic |
+| **T8a/T8b** Construct / derive | matrix mult + truth tables (T8a); induction + balancing (T8b) | partial-validity (T8a) **and** allowed-rule (T8b) invariants each proven | sieve, journal entries; symbolic proofs |
+
+**Current status:** T2/T3/T4/T7 have production pilots; T1/T6 are in **pilot** (templates shipped, gate not yet
+signed off across enough variation); T5/T8 are **not started**. Status per adapter lives in the manifest (§8).
 
 ---
 
@@ -165,29 +212,110 @@ adapter development from guesswork into demand-driven prioritization.
 
 ---
 
-## 7. Reusable patterns (learned building the templates)
+## 7. Truth model for computation adapters — the TYPED claim ledger
 
-- **`allowed_values` from prose (T6/T7).** For a computation, derive each step's numeric allowlist by scanning
-  that step's OWN verified prose (`_ints(decision, reason, evr, *fact_texts)`). A faithful card then passes
-  while an invented number is still caught — and formula constants (the `2` in b², the `4` in 4ac), units, and
-  signs don't false-flag. The **last step also includes the final-answer values** (the completion suffix
-  restates the whole answer).
-- **Structured facts.** `required_facts=[fact(predicate, text, value)]` — never bare strings.
-- **Bounded instances.** `candidates()` must keep the trace small (T5 especially — cap the table).
-- **No hardcoding.** Values come from a seeded generator; the algorithm is the adapter's `reference()`.
+The **primary** truth model for a computation step is a **typed claim ledger** (`claim_ledger(...)` in
+`trace_contract.py`), NOT a flat numeric allowlist. Each value is declared by its **role**, so a number is
+allowed only *as a specific quantity*:
+
+```python
+facts["claims"] = claim_ledger(
+    inputs={"a": 1, "b": -5, "c": 6},                 # given
+    constants={"square": 2, "discriminant_multiplier": 4},  # formula structure (NOT answers)
+    derived={"D": 1},                                  # intermediates
+    outputs={"roots": [2, 3]},                         # the answer
+    units={"velocity": "m/s"},
+)
+```
+
+`validate_claim_ledger` then checks a claim **against its category**: `"D = 1"` is valid; `"D = 4"` is a HARD
+`mislabeled_value` (4 is only a formula constant); `"the answer is 4"` is caught as a wrong output. This closes
+the gap a flat allowlist misses — a model repeating a *legal* number in an *illegal* claim. It is conservative
+(fires only on an explicit `name <copula> number`), so faithful prose is never flagged.
+
+**Supplemental guard only:** the prose-derived numeric allowlist (`_ints(decision, reason, evr, …)`, last step
+also covering the final-answer values) stays as a second net — it catches a number that appears *nowhere* in
+the verified step — but it is **not** the source of truth. New computation adapters declare `claims`; the
+allowlist is the backstop.
+
+**Other patterns:** structured `required_facts=[fact(predicate, text, value)]` (never bare strings) · bounded
+`candidates()` (T5 especially — cap the table) · no hardcoded example values in production (§9).
 
 ---
 
-## 8. Build a new adapter — the workflow
+## 8. The adapter manifest — the machine-readable source of truth
 
-1. Find the concept in `ADAPTER_CATALOG.md`; note its **type** (§2) and **family**.
+`trace_adapters/manifest.py` holds one entry per adapter: `type` (T1–T8b) · `family` · `status`
+(production | pilot | experimental) · `verification_level` · `coding` · `canonical_solution` ·
+`routing_aliases` · `negative_guards` · `fixtures`. The Markdown here stays human-readable; the **manifest is
+what code enforces**: `manifest_gaps()` cross-checks it against the live registry + canonical solutions
+(`test_type_contracts` fails if they disagree), so an adapter can't ship without a complete entry and the
+manifest can't name a phantom. It is the operational backbone for catalog status, routing, test discovery,
+rollout flags, telemetry, and coverage reporting.
+
+---
+
+## 9. Production instances vs. test fixtures — both, deliberately
+
+"No hardcoding" applies to **production**, not tests. These are complementary:
+
+| Use case | Instance source |
+|---|---|
+| Production generation | **seeded bounded generator** (`candidates(seed)`) — never a canned example |
+| Unit / contract tests | **fixed deterministic fixtures** (a known input + expected output) |
+| Golden visual tests | fixed fixture + expected frame snapshots |
+| Property / fuzz tests | many generated seeds |
+| Regression tests | **the exact historical bug input**, kept forever |
+
+So `binary_search_target_absent: [2,5,8,12,17], target 9 → -1`, `dfs_reverse_push_order: A→[B,C] pushes C before
+B`, and `merge_sort_tail_copy` are **permanent fixtures**, even though production never hardcodes examples. The
+two rules coexist: *don't hardcode production examples* **and** *do save fixed regression fixtures*.
+
+---
+
+## 10. Testing tiers — per-adapter AND per-type
+
+- **Per-adapter acceptance block** (declared alongside the adapter): its named `fixtures` (manifest) with
+  required *must-produce* cases and *must-reject* cases (e.g. binary search: "found after left narrowing",
+  "reject if `lo` decreases when target > mid"). This turns a template into an implementation contract.
+- **Per-type invariant suite** (`test_type_contracts.py`): what EVERY adapter of a type must satisfy, so 20
+  search adapters can't each invent their own correctness — e.g. T4 "domain never grows, net-shrinks", T2
+  "shows both a positive and a negative outcome (no oversimplified greedy)".
+- **Shared conformance / artifact / adversarial** (all adapters): 0 contract violations, 0 C1 gaps, a lying
+  formatter is caught.
+
+---
+
+## 11. Verification tiers are user-visible
+
+`verification_level` is not only internal — it must shape the UI so lower-guarantee content is never
+indistinguishable from a verified trace:
+
+| Tier | Internal | User-facing treatment |
+|---|---|---|
+| Trace verified | `trace_verified` | full worked example, confident step-by-step visuals |
+| Answer anchored | `answer_anchored` | "Verified answer; explanatory steps may vary" |
+| Guided | `guided_fallback` | "Guided walkthrough" |
+| Illustrative | `model_only` | "Conceptual illustration" |
+
+(No raw technical label shown, but the treatment differs — a user must not assume all examples carry the same
+reliability.) The level already flows in the generation report; the frontend badge is the remaining wire-up.
+
+---
+
+## 12. Build a new adapter — the workflow
+
+1. Find the concept in `ADAPTER_CATALOG.md`; note its **type** (§2) and **family**; confirm the type's
+   rollout gate (§2.1) is met or that this is a sanctioned pilot.
 2. Copy the type's template class into the family module (create the family module if new).
-3. Fill the **per-concept info** (§3) from the type's info list.
+3. Fill the **per-concept info** (§3); computation adapters declare a **typed claim ledger** (§7).
 4. Coding only: add the `canonical_solution` (simplest idiomatic Python).
-5. Register it (`trace_adapters/__init__.py`) + add the tight routing alias (§5).
-6. Add it to the adversarial coverage set; run `test_adapter_conformance`, `test_adapter_artifacts`,
-   `test_trace_prose_adversarial` — all must pass (0 contract violations, 0 C1 gaps).
-7. Flip its catalog row to ✅.
+5. Register it (`trace_adapters/__init__.py`) + add the tight routing alias + negative guards (§5).
+6. Add a **manifest entry** (§8) and named **fixtures** (§9–§10); add it to the adversarial coverage set.
+7. Run `test_adapter_conformance`, `test_adapter_artifacts`, `test_trace_prose_adversarial`, and its
+   **type-level suite** (§10) — all must pass (0 contract violations, 0 C1 gaps, type invariant holds).
+8. Flip its catalog row to ✅ and set the manifest `status`.
 
-> **Do not batch-build.** Ship the first few of a new type, evaluate the worked examples on real topics, then
-> scale — the template is refined by the *first* adapters of each type, not by writing 20 at once.
+> **Do not batch-build.** Ship the first few of a new type, evaluate the worked examples on real topics, pass
+> the type gate (§2.1), *then* scale — the template is refined by the *first* adapters of each type, not by
+> writing 20 at once.
