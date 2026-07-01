@@ -8,13 +8,36 @@ from __future__ import annotations
 
 from typing import Any
 
-# The 8 structural types (ADAPTER_DEVELOPMENT_SPEC §2). T2 = "greedy frontier update" (frontier/relaxation,
-# not merely accept/reject). T8 splits into T8a (incremental construction) / T8b (formal derivation).
+# The structural types (ADAPTER_DEVELOPMENT_SPEC §2). T2 = "greedy frontier update" (frontier/relaxation, not
+# merely accept/reject). T8 splits into T8a/T8b. T9/T10 keep distinct trace shapes out of T2/T3: Bellman-Ford
+# is pass-based repeated relaxation (NOT a frontier greedy); heap sort is heap-invariant restoration (NOT
+# split/combine divide-and-conquer).
 ADAPTER_TYPES = {
     "T1": "iterative_traversal", "T2": "greedy_frontier_update", "T3": "divide_and_conquer",
     "T4": "search_narrowing", "T5": "dp_table_fill", "T6": "formula_application",
     "T7": "reduction_rewriting", "T8a": "incremental_construction", "T8b": "formal_derivation",
+    "T9": "repeated_relaxation", "T10": "stateful_transformation",
 }
+
+# Raw-trace ceiling per type — the MAX learner-facing steps a bounded instance may produce (headroom above the
+# observed maxima). Guards against a new adapter of a type exploding into a 40-card lesson. The tighter
+# PEDAGOGICAL targets live in the spec (§ trace budgets); adapters near the ceiling use teaching-projection
+# grouping (§2.5.2) rather than raising this.
+TYPE_TRACE_BUDGET = {
+    "T1": 12, "T2": 16, "T3": 12, "T4": 8, "T5": 16, "T6": 8,
+    "T7": 12, "T8a": 16, "T8b": 16, "T9": 20, "T10": 16,
+}
+
+# Per-failure behavior. A correct trace whose VISUAL compile or FRONTEND render fails must still ship the
+# verified TEXT cards — losing a whole lesson over a rendering hiccup is worse than degrading gracefully. But
+# an INVALID trace ships nothing. Default for all adapters; a manifest entry may override `failure_policy`.
+DEFAULT_FAILURE_POLICY = {
+    "invalid_trace": "withhold",                          # nothing ships from a wrong trace
+    "prose_claim_violation": "regenerate_prose_then_withhold",
+    "visual_compile_failure": "ship_verified_text_cards",
+    "frontend_render_failure": "ship_verified_text_cards_with_error_telemetry",
+}
+
 _REQUIRED_FIELDS = ("type", "family", "status", "verification_level", "coding", "routing_aliases")
 _STATUSES = {"production", "pilot", "experimental"}
 
@@ -107,6 +130,9 @@ def manifest_gaps() -> list[str]:
                         f"not in CANONICAL_SOLUTIONS")
         if not entry.get("coding") and entry.get("canonical_solution") is not None:
             gaps.append(f"{slug}: non-coding adapter must not declare a canonical_solution")
+    for tid in ADAPTER_TYPES:
+        if tid not in TYPE_TRACE_BUDGET:
+            gaps.append(f"type {tid} has no TYPE_TRACE_BUDGET entry")
     return gaps
 
 
@@ -116,3 +142,16 @@ def by_type() -> dict[str, list[str]]:
     for slug, entry in MANIFEST.items():
         out.setdefault(str(entry.get("type")), []).append(slug)
     return out
+
+
+def trace_budget(slug: str) -> int:
+    """The raw-trace step ceiling for an adapter's type (a bounded instance must not exceed it)."""
+    return TYPE_TRACE_BUDGET.get(str(MANIFEST.get(slug, {}).get("type")), 20)
+
+
+def failure_policy(slug: str) -> dict[str, str]:
+    """The per-failure behavior for an adapter: its manifest override merged over the default. A correct trace
+    with a visual/render failure ships verified TEXT; an invalid trace ships nothing."""
+    policy = dict(DEFAULT_FAILURE_POLICY)
+    policy.update((MANIFEST.get(slug, {}) or {}).get("failure_policy") or {})
+    return policy

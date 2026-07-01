@@ -10,6 +10,11 @@
 > not, implements the same contract (`ExampleSpec` · verified `reference()` · required cases · structured
 > `fact()`s · equivalence/invariant hooks · `label_convention`). Templates: `families/trees.py` (coding),
 > `families/algebra.py` (math), `families/physics.py` (science).
+>
+> **Scope guard.** This document defines the SYSTEM capable of supporting 100+ adapters. It does **not**
+> authorize implementing every catalog row in one change set. The operating mode is: *build the platform,
+> ship the pilots per type, pass the type gate (§2.1), then scale — prioritized by demand (§6) and curriculum
+> value.* An implementer must not batch-generate adapters just because the catalog lists them.
 
 ---
 
@@ -39,6 +44,8 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 | T7 | **Reduction / rewriting** | one rewrite that shrinks the expression | each rewrite kind used · reaches normal form | either | `arithmetic_eval` (shipped) |
 | T8a | **Incremental construction** | adding one piece to a growing structure | each construction rule used · partial output stays VALID · target reached | either | *(planned)* |
 | T8b | **Formal derivation** | one rule-justified derivation step | each transformation rule used · every step follows an ALLOWED rule · conclusion reached | either | *(planned)* |
+| T9 | **Repeated relaxation / iterative improvement** | one edge/cell relaxation within a numbered PASS | a relax-that-improves · a pass with no change · the sufficiency bound (why `V−1` passes) | coding | *(planned)* |
+| T10 | **Stateful transformation / invariant restoration** | one operation + the sift/restore that repairs the invariant | a restore that bubbles · a no-op restore · completion | coding | *(planned)* |
 
 ### T1 — Iterative traversal
 - **Trace:** one Step per visit; `state = {visited/output so far, current}`; ascending/level/… order.
@@ -118,6 +125,27 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 > T8a and T8b differ in their **core invariant** — "partial output is valid" vs "each step follows an allowed
 > rule" — which is why they get separate templates rather than one generic "construction" template.
 
+### T9 — Repeated relaxation / iterative improvement
+> **Bellman-Ford is NOT T2.** It is not frontier-greedy — it relaxes edges over **repeated numbered passes**,
+> its invariant is *pass-based* (after pass k, all shortest paths using ≤ k edges are correct), and teaching it
+> means explaining **why `V−1` passes suffice** and the negative-cycle check. Forcing it into a Dijkstra-shaped
+> frontier trace teaches it wrong.
+- **Trace:** Steps grouped by PASS; each step is one edge relaxation (improves or not); `state = {distances,
+  pass number, changed-this-pass}`.
+- **Concepts:** Bellman-Ford · Floyd-Warshall (triple loop) · iterative policy/value updates.
+- **Per-concept info:** the *pass structure*, the *relaxation rule*, the *stopping/sufficiency condition*,
+  required cases (an improving relax, a no-change pass, the bound).
+
+### T10 — Stateful transformation / invariant restoration
+> **Heap sort is NOT divide-and-conquer.** There is no split/combine — it maintains a **heap invariant**:
+> build-heap, then repeatedly swap root↔end and **sift-down to restore** the heap. Its teaching core is the
+> invariant restoration, not recursion.
+- **Trace:** each Step is one operation + the sift/heapify that repairs the invariant; `state = {array/heap,
+  sorted-suffix}`.
+- **Concepts:** heap sort · heapify / build-heap · heap insert / extract-min · AVL rotation restore.
+- **Per-concept info:** the *invariant* (heap property), the *restore operation* (sift-down/up), required
+  cases (a restore that bubbles multiple levels, a no-op restore).
+
 ---
 
 ## 2.1 Rollout matrix — a TYPE scales only after its pilots prove the grammar
@@ -131,16 +159,18 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 | Type | Pilot adapters | Type-level gate before scaling | Expansion target |
 |---|---|---|---|
 | **T1** Traversal | tree inorder, graph BFS, graph DFS | handles queue **and** stack **and** recursion frontiers + a disconnected/again-visited case | pre/post/level-order, list/graph traversals |
-| **T2** Greedy frontier | Kruskal, Prim, Dijkstra | correctly separates accept / reject / **relax / no-improvement** + auxiliary state (distances, predecessors, stale PQ entry) | Huffman, activity selection, fractional knapsack, Bellman-Ford |
-| **T3** Divide & conquer | merge sort, quicksort | recursion tree + base cases + combine frames (merge selection, tail copy) | heap sort, other recursive sorts |
+| **T2** Greedy frontier | Kruskal, Prim, Dijkstra | correctly separates accept / reject / **relax / no-improvement** + auxiliary state (distances, predecessors, stale PQ entry) | Huffman, activity selection, fractional knapsack |
+| **T3** Divide & conquer | merge sort, quicksort | recursion tree + base cases + combine frames (merge selection, tail copy) | other recursive split/combine sorts |
 | **T4** Search / narrowing | binary search, **BST search** | found **and** absent + strictly-legal narrowing across **two different state models** (array bounds vs tree node) | ternary / exponential search |
 | **T5** DP fill | knapsack, LCS, edit distance | table order + recurrence dependency + the take/skip choice + a bounded table | coin change, LIS, matrix-chain |
 | **T6** Formula | quadratic, kinematics, Ohm's law | units + **sign/branch** handling + symbolic **and** numeric output | remaining formula/science/finance topics |
 | **T7** Rewrite | arithmetic, boolean simplification, Gaussian elimination | equivalence invariant + rewrite-priority + normal-form terminal | factoring, Euclid, modular arithmetic |
 | **T8a/T8b** Construct / derive | matrix mult + truth tables (T8a); induction + balancing (T8b) | partial-validity (T8a) **and** allowed-rule (T8b) invariants each proven | sieve, journal entries; symbolic proofs |
+| **T9** Repeated relaxation | Bellman-Ford, Floyd-Warshall | pass structure + sufficiency bound + negative-cycle case | iterative-improvement algorithms |
+| **T10** Stateful transformation | heap sort, heapify | invariant restoration (sift-down) + no-op vs bubbling restore | heap ops, AVL rotations |
 
 **Current status:** T2/T3/T4/T7 have production pilots; T1/T6 are in **pilot** (templates shipped, gate not yet
-signed off across enough variation); T5/T8 are **not started**. Status per adapter lives in the manifest (§8).
+signed off across enough variation); T5/T8/T9/T10 are **not started**. Status per adapter lives in the manifest (§8).
 
 ---
 
@@ -180,6 +210,19 @@ A topic with no adapter must degrade **honestly**, never fabricate. In descendin
 
 **Invariant (§1.2 of the system spec):** an adapter-supported topic may NEVER fall to a from-scratch
 generator. A non-adapter topic uses Tiers 2–4 — and is **recorded** for demand (§6).
+
+### 4.1 Failure policy — "withheld" is not always right
+
+Each adapter declares a `failure_policy` (default in `manifest.py`; overridable per entry). The key
+distinction: **a correct trace whose downstream fails must still ship the verified TEXT** — losing a whole
+lesson to a rendering hiccup is worse than degrading — but an **invalid trace ships nothing**.
+
+| Failure | Default behavior |
+|---|---|
+| `invalid_trace` (structural/fidelity gate fails) | **withhold** — nothing ships from a wrong trace |
+| `prose_claim_violation` (hard prose/ledger violation) | regenerate prose, then withhold |
+| `visual_compile_failure` (trace correct, visual compiler fails) | **ship the verified text cards** |
+| `frontend_render_failure` (trace correct, renderer errors) | ship verified text cards + error telemetry |
 
 ---
 
@@ -241,17 +284,40 @@ allowlist is the backstop.
 **Other patterns:** structured `required_facts=[fact(predicate, text, value)]` (never bare strings) · bounded
 `candidates()` (T5 especially — cap the table) · no hardcoded example values in production (§9).
 
+### 7.1 Trace-size budgets — correctness is not enough
+
+> **Rule.** The full trace may be complete; the **learner-facing projection must obey a trace-size budget**.
+> Correctness alone does not stop a 45-card merge sort or a 30-step DP walkthrough.
+
+`manifest.TYPE_TRACE_BUDGET` sets a raw-trace **ceiling** per type (enforced by `test_type_contracts` across
+many seeds — a bounded instance must never exceed it). The tighter **pedagogical target** below is what the
+learner-facing projection should aim for; an adapter whose raw trace runs long (e.g. Dijkstra ~15) uses
+**teaching-projection grouping** (§2.5.2 of the system spec) to stay within the target, not a bigger ceiling.
+
+| Type | Pedagogical target (learner-facing) | Raw ceiling (enforced) |
+|---|---|---|
+| T1 traversal | 5–10 | 12 |
+| T2 greedy frontier | 6–12 | 16 |
+| T3 divide & conquer | 8–16 (projected) | 12 |
+| T4 search | 3–7 | 8 |
+| T5 DP | 6–12 selected cells (not the whole table) | 16 |
+| T6 formula | 3–6 | 8 |
+| T7 rewriting | 3–10 | 12 |
+| T8/T9/T10 | 4–12 | 16–20 |
+
 ---
 
 ## 8. The adapter manifest — the machine-readable source of truth
 
-`trace_adapters/manifest.py` holds one entry per adapter: `type` (T1–T8b) · `family` · `status`
+`trace_adapters/manifest.py` holds one entry per adapter: `type` (T1–T10) · `family` · `status`
 (production | pilot | experimental) · `verification_level` · `coding` · `canonical_solution` ·
-`routing_aliases` · `negative_guards` · `fixtures`. The Markdown here stays human-readable; the **manifest is
-what code enforces**: `manifest_gaps()` cross-checks it against the live registry + canonical solutions
-(`test_type_contracts` fails if they disagree), so an adapter can't ship without a complete entry and the
-manifest can't name a phantom. It is the operational backbone for catalog status, routing, test discovery,
-rollout flags, telemetry, and coverage reporting.
+`routing_aliases` · `negative_guards` · `fixtures` · optional `failure_policy` override. Module-level it also
+declares `TYPE_TRACE_BUDGET` (§7.1) and `DEFAULT_FAILURE_POLICY` (§4.1). The Markdown here stays
+human-readable; the **manifest is what code enforces**: `manifest_gaps()` cross-checks it against the live
+registry + canonical solutions + type budgets (`test_type_contracts` fails if they disagree), so an adapter
+can't ship without a complete entry and the manifest can't name a phantom. It is the operational backbone for
+catalog status, routing, test discovery, rollout flags, trace budgets, failure behavior, telemetry, and
+coverage reporting.
 
 ---
 

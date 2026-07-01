@@ -4,7 +4,8 @@ their own notion of 'correct'. Also cross-checks the machine-readable manifest a
 import unittest
 
 from app.services.examples.trace_adapters import ADAPTERS
-from app.services.examples.trace_adapters.manifest import by_type, manifest_gaps
+from app.services.examples.trace_adapters.manifest import (by_type, failure_policy, manifest_gaps,
+                                                          trace_budget)
 from app.services.examples.trace_pipeline import select_instance
 
 
@@ -12,6 +13,22 @@ class ManifestConsistency(unittest.TestCase):
     def test_manifest_matches_registry(self):
         # every registered adapter has a complete entry; no phantom entries; coding<->canonical agree
         self.assertEqual(manifest_gaps(), [])
+
+    def test_every_adapter_stays_within_its_type_trace_budget(self):
+        # a bounded instance must not explode into a 40-card lesson — guards a drifting generator + a new
+        # adapter of the type. Checked across many seeds.
+        for slug, adapter in ADAPTERS.items():
+            budget = trace_budget(slug)
+            worst = max(len(select_instance(adapter, seed=s).steps) for s in range(1, 40))
+            with self.subTest(slug=slug):
+                self.assertLessEqual(worst, budget, f"{slug}: {worst} steps > type budget {budget}")
+
+    def test_failure_policy_keeps_verified_text_on_render_failure(self):
+        # a correct trace with a visual/frontend failure must NOT withhold the whole lesson
+        p = failure_policy("binary_search")
+        self.assertEqual(p["invalid_trace"], "withhold")
+        self.assertIn("text", p["visual_compile_failure"])
+        self.assertIn("text", p["frontend_render_failure"])
 
 
 class TypeInvariants(unittest.TestCase):
