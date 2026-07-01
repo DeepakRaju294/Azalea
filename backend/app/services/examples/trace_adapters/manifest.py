@@ -29,30 +29,45 @@ ADAPTER_TYPES = {
 # observed maxima). Guards against a new adapter of a type exploding into a 40-card lesson. The tighter
 # PEDAGOGICAL targets live in the spec (§ trace budgets); adapters near the ceiling use teaching-projection
 # grouping (§2.5.2) rather than raising this.
+# Three SEPARATE size limits (spec §7.1). The generator's `candidates()` owns the INSTANCE cap (InstanceShape).
+# TYPE_TRACE_BUDGET is the SEMANTIC-EVENT ceiling — the max full-trace steps a bounded instance may retain
+# (enforced on len(trace.steps) across seeds). TYPE_TEACHING_TARGET is the learner-facing checkpoint count the
+# adapter's teaching projection (base.select_teaching_checkpoints) should aim for — always <= the ceiling.
 TYPE_TRACE_BUDGET = {
     "T1": 12, "T2": 16, "T3": 12, "T4": 8, "T5": 16, "T6": 8,
     "T7": 12, "T8a": 16, "T8b": 16, "T9a": 20, "T9b": 18, "T10": 16,
     "T11": 18, "T12": 16,
 }
+TYPE_TEACHING_TARGET = {
+    "T1": 10, "T2": 12, "T3": 10, "T4": 7, "T5": 12, "T6": 6,
+    "T7": 10, "T8a": 12, "T8b": 12, "T9a": 14, "T9b": 10, "T10": 12,
+    "T11": 12, "T12": 12,
+}
 
-# Per-type VISUAL budget — the maximum ACTIVE emphasis a single frame may show. A frame may hold complete
-# semantic state in DATA, but must visually emphasize only the minimum needed for the current transition
-# (guards against dense, text-heavy snapshots). Declared here; enforced by the visual compiler.
+
+def _vb(focus_roles: list[str], emphasis: str) -> dict[str, Any]:
+    # A frame may hold COMPLETE semantic state in data, but must EMPHASIZE only these — numeric so a visual
+    # compiler / golden test can reject a frame that highlights 14 things at once.
+    return {"max_focus_entities": 3, "max_new_labels": 4, "max_changed_entities": 5,
+            "max_visible_state_groups": 4, "focus_roles": list(focus_roles), "emphasis": emphasis}
+
+
+# Per-type VISUAL budget (spec §7.2) — machine-testable numeric limits + the allowed focus roles.
 TYPE_VISUAL_BUDGET = {
-    "T1": "current node + frontier + visited set",
-    "T2": "current candidate + the distances/edges that changed",
-    "T3": "the active split/merge frame + its two child runs",
-    "T4": "the current probe + the eliminated region",
-    "T5": "one active cell + its direct dependency cells",
-    "T6": "the current equation + the values just substituted",
-    "T7": "the reducible part being rewritten + its result",
-    "T8a": "the piece just added + the local validity region",
-    "T8b": "the current derivation step + the rule cited",
-    "T9a": "one active relax + its edge + the changed distance",
-    "T9b": "one active update + the relevant row/column/k-layer",
-    "T10": "one operation + the local invariant region it repairs",
-    "T11": "the current branch + one shown backtrack path",
-    "T12": "the current line + only the affected variables/frames",
+    "T1": _vb(["current", "frontier", "visited"], "current node + frontier + visited set"),
+    "T2": _vb(["candidate", "changed", "result"], "current candidate + the distances/edges that changed"),
+    "T3": _vb(["active_frame", "child_runs"], "the active split/merge frame + its two child runs"),
+    "T4": _vb(["probe", "eliminated"], "the current probe + the eliminated region"),
+    "T5": _vb(["active_cell", "dependencies"], "one active cell + its direct dependency cells"),
+    "T6": _vb(["current_equation", "substituted"], "the current equation + the values just substituted"),
+    "T7": _vb(["reducible_part", "result"], "the reducible part being rewritten + its result"),
+    "T8a": _vb(["added_piece", "validity_region"], "the piece just added + the local validity region"),
+    "T8b": _vb(["derivation_step", "rule"], "the current derivation step + the rule cited"),
+    "T9a": _vb(["relax_edge", "changed_distance", "pass"], "one active relax + its edge + the changed distance"),
+    "T9b": _vb(["active_cell_k", "dependencies"], "current k + active dist[i][j] + its two dependency entries"),
+    "T10": _vb(["operation_target", "repaired_region"], "one operation + the local invariant region repaired"),
+    "T11": _vb(["current_choice", "violated_constraint", "undo_target"], "current branch + one backtrack path"),
+    "T12": _vb(["current_line", "affected_vars", "active_frame"], "current line + only affected variables/frame"),
 }
 
 # Per-failure behavior. A correct trace whose VISUAL compile or FRONTEND render fails must still ship the
@@ -182,6 +197,10 @@ def manifest_gaps() -> list[str]:
             gaps.append(f"type {tid} has no TYPE_TRACE_BUDGET entry")
         if tid not in TYPE_VISUAL_BUDGET:
             gaps.append(f"type {tid} has no TYPE_VISUAL_BUDGET entry")
+        if tid not in TYPE_TEACHING_TARGET:
+            gaps.append(f"type {tid} has no TYPE_TEACHING_TARGET entry")
+        elif TYPE_TEACHING_TARGET.get(tid, 0) > TYPE_TRACE_BUDGET.get(tid, 0):
+            gaps.append(f"type {tid}: teaching target > semantic ceiling")
     return gaps
 
 
@@ -198,9 +217,14 @@ def trace_budget(slug: str) -> int:
     return TYPE_TRACE_BUDGET.get(str(MANIFEST.get(slug, {}).get("type")), 20)
 
 
-def visual_budget(slug: str) -> str:
-    """The max active visual emphasis for an adapter's type (a frame shows no more than this)."""
-    return TYPE_VISUAL_BUDGET.get(str(MANIFEST.get(slug, {}).get("type")), "")
+def teaching_target(slug: str) -> int:
+    """The learner-facing checkpoint target for an adapter's type (the projection should aim for this)."""
+    return TYPE_TEACHING_TARGET.get(str(MANIFEST.get(slug, {}).get("type")), 12)
+
+
+def visual_budget(slug: str) -> dict[str, Any]:
+    """The machine-testable visual budget for an adapter's type (numeric focus limits + allowed roles)."""
+    return TYPE_VISUAL_BUDGET.get(str(MANIFEST.get(slug, {}).get("type")), _vb([], ""))
 
 
 def failure_policy(slug: str) -> dict[str, str]:

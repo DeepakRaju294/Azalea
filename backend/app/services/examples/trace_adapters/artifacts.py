@@ -17,7 +17,7 @@ These are declarative dataclasses; the adapter base assembles them from a verifi
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 
 @dataclass(frozen=True)
@@ -75,6 +75,19 @@ class AdapterDiagnostics:
     missing_required_cases: list[str] = field(default_factory=list)
     structural_ok: bool = True
     notes: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class WorkedExamplePayload:
+    """§4.1 — what the BACKEND ships to the frontend. The verified TEXT cards are ALWAYS present; the compiled
+    visual frames are optional. On a visual/render failure the backend deliberately sets `render_mode` to
+    `text_only_verified` and supplies the reason — the frontend RENDERS, it never has to recover semantics from
+    a crash. An invalid trace produces no payload at all (nothing ships)."""
+    verified_text_cards: list[dict[str, Any]]
+    compiled_visual_frames: Optional[list[dict[str, Any]]] = None
+    render_mode: str = "visual"                         # visual | text_only_verified
+    verification_level: str = "trace_verified"
+    degradation_reason: Optional[str] = None            # None | visual_compile_failure | frontend_render_failure
 
 
 @dataclass(frozen=True)

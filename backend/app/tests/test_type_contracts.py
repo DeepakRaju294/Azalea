@@ -30,6 +30,23 @@ class ManifestConsistency(unittest.TestCase):
         self.assertIn("text", p["visual_compile_failure"])
         self.assertIn("text", p["frontend_render_failure"])
 
+    def test_every_type_has_a_machine_testable_visual_budget(self):
+        from app.services.examples.trace_adapters.manifest import ADAPTER_TYPES, TYPE_VISUAL_BUDGET
+        for tid in ADAPTER_TYPES:
+            with self.subTest(type=tid):
+                vb = TYPE_VISUAL_BUDGET[tid]
+                for field in ("max_focus_entities", "max_new_labels", "max_changed_entities",
+                              "max_visible_state_groups"):
+                    self.assertIsInstance(vb[field], int)   # numeric -> a compiler/test can enforce it
+                self.assertTrue(vb["focus_roles"], f"{tid}: no allowed focus roles")
+
+    def test_teaching_target_within_semantic_ceiling(self):
+        from app.services.examples.trace_adapters.manifest import (ADAPTER_TYPES, TYPE_TEACHING_TARGET,
+                                                                  TYPE_TRACE_BUDGET)
+        for tid in ADAPTER_TYPES:
+            with self.subTest(type=tid):
+                self.assertLessEqual(TYPE_TEACHING_TARGET[tid], TYPE_TRACE_BUDGET[tid])
+
 
 class TypeInvariants(unittest.TestCase):
     def _traces(self, type_id):

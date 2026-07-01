@@ -60,6 +60,9 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 - **Concepts:** graph BFS/DFS · tree in/pre/post/level-order · linked-list traversal · connected components.
 - **Per-concept info:** the *structure* (graph vs tree), the *order rule*, the *frontier `mode`*
   (queue/stack/recursion/parent-ptr), the *visited invariant*, `label_convention`.
+> **T1 vs T12.** T1 verifies traversal ORDER + structural visitation. When the objective is recursive
+> EXECUTION mechanics (call-stack growth, return timing, base-case unwinding, frame locals), route to **T12**
+> instead — a T1 order-only trace cannot teach stack frames.
 
 ### T2 — Greedy frontier update
 > **Not "pick the shortest thing".** The dangerous oversimplification (esp. Dijkstra) is collapsing this to a
@@ -75,6 +78,11 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
   - *Dijkstra* — pop min-tentative node → **relax** each out-edge (update dist/predecessor) **or** no-improvement;
     handle a stale priority-queue entry (already-settled node); settle the node. (State: settled set, tentative
     distances, predecessors.)
+> **Dijkstra's NESTED grammar.** One frontier-pop expands into several out-edge events:
+> `pop_candidate · skip_stale_candidate · settle_node · inspect_out_edge · relax_edge · no_improvement · complete`.
+> Each edge-relaxation is independently truth-bearing and is grouped DETERMINISTICALLY by the teaching
+> projection (§7.3) — never one full card per relaxation (overwhelming), never "settle A" with no reason for the
+> distance change (opaque). Kruskal/Prim stay one-candidate-per-step; only Dijkstra needs this subgrammar.
 - **Per-concept info:** the *candidate/frontier order*, the *comparison* driving accept/relax, the *result +
   auxiliary state* (distances/predecessors), the *invariant* (e.g. "settled edge is the lightest crossing edge
   considered"), the `forbidden_claims` catching an inverted decision, required cases (a positive **and** a
@@ -106,8 +114,8 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 - **Concepts (finance):** compound interest · present/future value · elasticity · break-even.
 - **Per-concept info:** the *knowns/unknowns*, the *governing equation(s)*, **units** (science), the *branch
   cases* (e.g. discriminant sign; zero vs nonzero initial velocity), required cases (identify · apply each ·
-  completion). **`allowed_values` is derived from each step's own prose** (see §7 pattern) so formula
-  constants / units / signs never false-flag.
+  completion). **Truth model:** each step declares a **typed claim ledger** (§7) for inputs/constants/derived/outputs/units;
+  the prose-derived numeric allowlist is a SUPPLEMENTAL backstop only, never the source of truth.
 
 ### T7 — Reduction / rewriting
 - **Trace:** one Step per rewrite; `state = the current expression`; value/meaning preserved each step.
@@ -202,10 +210,15 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 | **T6** Formula | quadratic, kinematics, Ohm's law | units + **sign/branch** handling + symbolic **and** numeric output | remaining formula/science/finance topics |
 | **T7** Rewrite | arithmetic, boolean simplification, Gaussian elimination | equivalence invariant + rewrite-priority + normal-form terminal | factoring, Euclid, modular arithmetic |
 | **T8a/T8b** Construct / derive | matrix mult + truth tables (T8a); induction + balancing (T8b) | partial-validity (T8a) **and** allowed-rule (T8b) invariants each proven | sieve, journal entries; symbolic proofs |
-| **T9** Repeated relaxation | Bellman-Ford, Floyd-Warshall | pass structure + sufficiency bound + negative-cycle case | iterative-improvement algorithms |
+| **T9a** Edge-pass relaxation | Bellman-Ford | improving relax + no-change pass + `V−1`/early-stop bound + negative-cycle check | value/policy iteration |
+| **T9b** Layered state refinement | Floyd-Warshall | improvement via `k` + unchanged comparison + the layer invariant + final all-pairs state | DP-style all-pairs updates |
 | **T10** Stateful transformation | heap sort, heapify | invariant restoration (sift-down) + no-op vs bubbling restore | heap ops, AVL rotations |
 
-**Current status:** **T4 GATE PROVEN** (binary search + BST search — two state models, `test_bst_search_gate`). T2/T3/T7 have production pilots; T1/T6 are in **pilot** (templates shipped, gate not yet
+**Status is a TEST-BACKED claim, not a label.** A "gate proven" line must cite its evidence — tests + fixtures + reviewed examples:
+
+> **T4: PROVEN** — evidence: `test_bst_search_gate` (two-state-model + fixtures found-left/found-right/absent) · `test_type_contracts.test_t4_search_domain_never_grows_and_net_shrinks` · adapters `binary_search`, `bst_search`.
+
+T2/T3/T7 have production pilots; T1/T6 are in **pilot** (templates shipped, gate not yet
 signed off across enough variation); T5/T8/T9/T10/T11/T12 are **not started**. Status per adapter lives in the manifest (§8).
 
 ---
@@ -281,6 +294,22 @@ lesson to a rendering hiccup is worse than degrading — but an **invalid trace 
 | `visual_compile_failure` (trace correct, visual compiler fails) | **ship the verified text cards** |
 | `frontend_render_failure` (trace correct, renderer errors) | ship verified text cards + error telemetry |
 
+**The fallback is delivered by the BACKEND, not recovered by the frontend.** Degradation is a decision made
+where the truth lives. The backend emits a `WorkedExamplePayload` (`trace_adapters/artifacts.py`):
+
+```python
+WorkedExamplePayload(
+    verified_text_cards=[...],          # ALWAYS present when a valid trace exists
+    compiled_visual_frames=None,        # or the compiled frames
+    render_mode="text_only_verified",   # "visual" | "text_only_verified"
+    degradation_reason="visual_compile_failure",   # None on the happy path
+)
+```
+
+The frontend's only job is to render `render_mode`. It NEVER has to reconstruct meaning from a crashed visual
+compiler — on any downstream failure the backend has already chosen `text_only_verified` and attached the
+reason. An `invalid_trace` produces **no payload at all** (there is nothing safe to ship).
+
 ---
 
 ## 5. Routing — explicit + SAFE (no over-matching)
@@ -346,31 +375,62 @@ allowlist is the backstop.
 > **Rule.** The full trace may be complete; the **learner-facing projection must obey a trace-size budget**.
 > Correctness alone does not stop a 45-card merge sort or a 30-step DP walkthrough.
 
-`manifest.TYPE_TRACE_BUDGET` sets a raw-trace **ceiling** per type (enforced by `test_type_contracts` across
-many seeds — a bounded instance must never exceed it). The tighter **pedagogical target** below is what the
-learner-facing projection should aim for; an adapter whose raw trace runs long (e.g. Dijkstra ~15) uses
-**teaching-projection grouping** (§2.5.2 of the system spec) to stay within the target, not a bigger ceiling.
+There is no single "raw ceiling" (that hid a contradiction: a projection can't surface 16 checkpoints from a
+12-step trace). Size is governed by **three SEPARATE limits**, each owned by a different layer:
 
-| Type | Pedagogical target (learner-facing) | Raw ceiling (enforced) |
-|---|---|---|
-| T1 traversal | 5–10 | 12 |
-| T2 greedy frontier | 6–12 | 16 |
-| T3 divide & conquer | 8–16 (projected) | 12 |
-| T4 search | 3–7 | 8 |
-| T5 DP | 6–12 selected cells (not the whole table) | 16 |
-| T6 formula | 3–6 | 8 |
-| T7 rewriting | 3–10 | 12 |
-| T8/T9/T10 | 4–12 | 16–20 |
+1. **Instance-size cap** — how big the *problem* may be. Owned by the generator's `candidates()`
+   (`InstanceShape`, e.g. "6–8 array elements"). This is what stops a 45-card merge sort at the SOURCE.
+2. **Semantic-event ceiling** — the max *full-trace steps* a bounded instance may retain
+   (`manifest.TYPE_TRACE_BUDGET`). Enforced by `test_type_contracts` on `len(trace.steps)` across many seeds.
+3. **Teaching-checkpoint target** — the count the learner-facing **projection** aims for
+   (`manifest.TYPE_TEACHING_TARGET`, always ≤ the semantic ceiling; `manifest_gaps()` rejects an inversion).
+   An **absolute learner-facing max** = the semantic ceiling; a projection never exceeds its own source trace.
+
+An adapter whose full trace runs long (e.g. a per-relaxation Dijkstra, a full Floyd-Warshall) keeps every
+semantic event in the trace (≤ ceiling) and uses **teaching-projection grouping** (§7.3) to land near the
+target — grouping support events, never dropping truth-bearing ones.
+
+| Type | Instance-size cap (source) | Semantic-event ceiling (enforced) | Teaching-checkpoint target |
+|---|---|---|---|
+| T1 traversal | ≤ 8 nodes | 12 | 10 |
+| T2 greedy frontier | ≤ 6 nodes / 8 edges | 16 | 12 |
+| T3 divide & conquer | 6–8 elements | 12 | 10 |
+| T4 search | ≤ 15-element domain | 8 | 7 |
+| T5 DP | ≤ 5×5 table | 16 | 12 |
+| T6 formula | fixed equation set | 8 | 6 |
+| T7 rewriting | ≤ 8-token expression | 12 | 10 |
+| T8a/T8b construction/derivation | ≤ 8 pieces / rules | 16 | 12 |
+| T9a edge-pass (Bellman-Ford) | ≤ 5 nodes / 8 edges | 20 | 14 |
+| T9b layered (Floyd-Warshall) | ≤ 4 nodes | 18 | 10 |
+| T10 stateful operation | ≤ 8 operations | 16 | 12 |
+| T11 backtracking | ≤ 6-cell board | 18 | 12 |
+| T12 program execution | ≤ 12 lines executed | 16 | 12 |
+
+> **Example (T3 merge sort).** Instance cap 6–8 elements → the reference emits every split/merge event (≤ 12,
+> the semantic ceiling) → the teaching projection groups sibling merges to ~10 checkpoints. The absolute
+> learner-facing max is the 12-step trace itself; the projection is always a subset of it.
 
 ### 7.2 Visual-state budgets — few steps can still overload a frame
 
 A short trace can still produce a dense frame (a full Floyd-Warshall matrix, every Dijkstra distance +
-predecessor + heap item at once, a giant recursion tree). `manifest.TYPE_VISUAL_BUDGET` declares the **maximum
-active emphasis** per type (e.g. T4 = "current probe + eliminated region"; T12 = "current line + only the
-affected variables/frames").
+predecessor + heap item at once, a giant recursion tree). `manifest.TYPE_VISUAL_BUDGET` declares a
+**machine-testable** budget per type — numeric so a golden/compiler test can *reject* a frame that highlights
+too much, not just a prose reminder:
+
+```python
+{ "max_focus_entities": 3, "max_new_labels": 4, "max_changed_entities": 5,
+  "max_visible_state_groups": 4, "focus_roles": [...], "emphasis": "..." }
+```
+
+`focus_roles` is the closed set of roles a frame of that type may emphasize (e.g. T4 = `{probe, eliminated}`;
+T9a = `{relax_edge, changed_distance, pass}`; T12 = `{current_line, affected_vars, active_frame}`). A frame
+that highlights an entity outside its type's `focus_roles`, or exceeds any numeric cap, is rejected.
+`test_type_contracts.test_every_type_has_a_machine_testable_visual_budget` enforces the budget is present and
+numeric for every type.
 
 > **Rule.** A frame may preserve full semantic state in DATA, but must **visually emphasize only the minimum
-> state needed to understand the current transition.** The visual compiler enforces the per-type budget.
+> state needed to understand the current transition** — and that minimum is a *number*, checked in tests, not a
+> hope. The visual compiler enforces the per-type budget frame-by-frame.
 
 ### 7.3 Teaching-checkpoint selection is ADAPTER-owned & deterministic
 
