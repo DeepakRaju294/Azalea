@@ -47,6 +47,7 @@ _BFS_INV = [{"id": "order_subset_visited", "scope": "every_step", "statement": "
 
 class BFSAdapter(FamilyAdapterBase):
     slug = "bfs"
+    label_convention = "letters"          # §2.3 — graph nodes are labelled A–F
     example_spec = ExampleSpec(
         input=InstanceShape("letters", count=(5, 7), structure=["connected", "undirected", "has_cross_edge"]),
         stages={
@@ -187,6 +188,7 @@ _DFS_INV = [{"id": "order_subset_visited", "scope": "every_step", "statement": "
 
 class DFSIterativeAdapter(FamilyAdapterBase):
     slug = "dfs_iter"
+    label_convention = "letters"          # §2.3 — graph nodes are labelled A–F
     example_spec = ExampleSpec(
         input=InstanceShape("letters", count=(5, 7), structure=["connected", "undirected", "has_extra_edge"]),
         stages={
@@ -324,6 +326,7 @@ _DIJ_INV = [{"id": "dist_nonneg", "scope": "every_step", "statement": "all dista
 
 class DijkstraAdapter(FamilyAdapterBase):
     slug = "dijkstra"
+    label_convention = "letters"          # §2.3 — graph nodes are labelled A–F
     # Multi-stage grammar (§0): init -> settle_node -> relax_edge. Each relaxation is its own learner-visible
     # decision (improve vs no-change), not aggregated — the relaxation IS the Dijkstra decision.
     example_spec = ExampleSpec(
@@ -522,6 +525,7 @@ _KRU_INV = [{"id": "forest", "scope": "every_step", "statement": "selected edges
 
 class KruskalAdapter(FamilyAdapterBase):
     slug = "kruskal"
+    label_convention = "letters"          # §2.3 — graph nodes are labelled A–F
     example_spec = ExampleSpec(
         input=InstanceShape("weighted_graph", count=(5, 6), value_range=(1, 30),
                             structure=["connected", "distinct_edges", "has_cycle_edge"]),
@@ -705,6 +709,7 @@ def _canon_edge(u, v, w) -> tuple:
 
 class PrimAdapter(FamilyAdapterBase):
     slug = "prim"
+    label_convention = "letters"          # §2.3 — graph nodes are labelled A–F
     example_spec = ExampleSpec(
         input=InstanceShape("weighted_graph", count=(5, 6), value_range=(1, 30),
                             structure=["connected", "distinct_edges"]),

@@ -47,6 +47,7 @@ def _first_high_prec(tokens: list) -> int:
 
 class ArithmeticEvalAdapter(FamilyAdapterBase):
     slug = "arithmetic_eval"
+    label_convention = "ints"             # §2.3 — operands are integers
     example_spec = ExampleSpec(
         input=InstanceShape("integers", count=(3, 4), value_range=(2, 9),
                             structure=["operators_+-*", "mixed_precedence"]),

@@ -42,6 +42,15 @@ class EveryAdapterProducesAWellFormedOutput(unittest.TestCase):
                 self.assertTrue(d.instance_accepted)
                 self.assertEqual(d.missing_required_cases, [], f"{slug}: required case not covered")
 
+    def test_every_adapter_declares_a_label_convention(self):
+        # §2.3 — the labeling convention is DECLARED per adapter (no more implicit letters-vs-ints), and it
+        # flows into the projection.
+        for slug, adapter in sorted(ADAPTERS.items()):
+            with self.subTest(slug=slug):
+                self.assertIn(adapter.label_convention, ("letters", "ints"), slug)
+                proj = adapter.teaching_projection(select_instance(adapter, seed=7))
+                self.assertEqual(proj.label_convention, adapter.label_convention)
+
     def test_step_band_widens_with_trace_length(self):
         # a longer trace predicts a larger target — the band tracks the ACTUAL trace, not a constant
         prim = select_instance(ADAPTERS["prim"], seed=7)

@@ -158,7 +158,7 @@ Adapter
 | **Field consistency** | bfs/dfs have no `value_range`; `size_tier` uniformly "small"; `tie_break` field empty (lives in conventions dict) | every field populated + consistent | 🟡 |
 | **Adapter-owned step-band — `estimate_teaching_step_band(trace) -> {min, target, max}`** | on `FamilyAdapterBase` — every adapter predicts its step count from the actual trace | drives count gate + pacing | ✅ |
 | **One step-kind vocabulary** | adapter `StageSpec.contains` **and** legacy `_CODING_STEP_KINDS` (pass/split/visit/…) coexist | unify on the adapter grammar | ❌ |
-| **Label convention** | walkthroughs use letters (A–F), coding uses ints (0–3) — inconsistent within one path | a declared, consistent labeling convention per path | ❌ |
+| **Label convention** | **declared per adapter** (`label_convention` = letters/ints; flows into `TeachingProjection`; conformance-checked) | per-path RENDER consistency (letters vs ints across walkthrough/coding) remains | 🟡 |
 
 ### 2.4 What is explicitly NOT in the adapter (carried from `ADAPTER_CONTRACT.md` §G)
 No stored example values, no fixed learner prose, no LLM prompt/rules. The adapter is **executable truth +
@@ -334,7 +334,7 @@ gets a fabricated example; it degrades down a ladder of honesty.**
 |---|---|---|---|
 | Specific adapter (Kruskal) | Tier 1 | hard (verified trace) | ✅ for 8 algorithms |
 | Generic family adapter — one executor for a class, **only if the concept compiles into a declared generic spec** (arithmetic/expression eval; DP-table over a recurrence DSL) | Tier 1 | hard | 🟡 (arithmetic done; DP-DSL ❌) |
-| Independent answer anchor | Tier 2 | final answer verified, steps not | ❌ |
+| Independent answer anchor | Tier 2 | final answer verified, steps not | ✅ `answer_anchor.anchor_final_answer` (injectable oracle; agree→answer_anchored, disagree→guided, none→model_only; `test_answer_anchor`) |
 | Guided "Key process" | guided_fallback | no claim, no fake | 🟡 |
 | Illustrative | non-verified | factual checks only | 🟡 |
 

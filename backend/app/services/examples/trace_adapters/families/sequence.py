@@ -25,6 +25,7 @@ _BS_INV = [{"id": "window_valid", "scope": "every_step", "statement": "lo <= hi 
 
 class BinarySearchAdapter(FamilyAdapterBase):
     slug = "binary_search"
+    label_convention = "ints"             # §2.3 — array indices / values are integers
     example_spec = ExampleSpec(
         input=InstanceShape("integers", count=(6, 9), value_range=(1, 60),
                             structure=["sorted_ascending", "distinct"]),
@@ -202,6 +203,7 @@ def _merge(a: list[int], b: list[int]) -> list[int]:
 
 class MergeSortAdapter(FamilyAdapterBase):
     slug = "merge_sort"
+    label_convention = "ints"             # §2.3 — array values are integers
     # NOTE: current behavior merges a whole pair of runs in ONE step (`merge`). The contract's finer
     # merge_select-per-card grain is a planned iteration (keep instances small so a full merge stays safe).
     example_spec = ExampleSpec(
