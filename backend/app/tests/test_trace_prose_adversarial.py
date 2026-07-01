@@ -24,7 +24,8 @@ def _bare_card(step, work):
 
 
 def _faithful_card(step):
-    work = list(step.facts.get("required_facts", [])) + [step.expected_visible_result]
+    from app.services.examples.trace_contract import _fact_text
+    work = [_fact_text(f) for f in step.facts.get("required_facts", [])] + [step.expected_visible_result]
     return _card(step, work)
 
 

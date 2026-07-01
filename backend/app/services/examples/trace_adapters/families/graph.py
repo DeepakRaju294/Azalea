@@ -11,7 +11,7 @@ import random
 from typing import Any, Iterable
 
 from ...state_normalizers import canon_components, components_equal, states_equal
-from ...trace_contract import ContractTrace, Step
+from ...trace_contract import ContractTrace, Step, fact
 from ..example_spec import ExampleSpec, InstanceShape, StageSpec
 from .base import FamilyAdapterBase
 
@@ -122,7 +122,8 @@ class BFSAdapter(FamilyAdapterBase):
                 visual_delta={"dequeued": node, "enqueued": enq, "skipped": skip},
                 expected_visible_result=f"Visit {node}; queue {queue}; visited {sorted(visited)}",
                 facts={"allowed_values": sorted(graph),
-                       "required_facts": [f"visit {node}"] + [f"enqueue {x}" for x in enq],
+                       "required_facts": [fact("visit", f"visit {node}")]
+                       + [fact("enqueue", f"enqueue {x}") for x in enq],
                        "forbidden_claims": [f"visit {x}" for x in skip]}))
         if steps:
             evidence.setdefault("completion", []).append(steps[-1].id)
@@ -264,7 +265,7 @@ class DFSIterativeAdapter(FamilyAdapterBase):
                 visual_delta={"popped": node, "pushed": pushed},
                 expected_visible_result=f"Pop {node}; stack {stack}; visited {sorted(visited)}",
                 facts={"allowed_values": sorted(graph),
-                       "required_facts": [f"pop {node}"], "forbidden_claims": []}))
+                       "required_facts": [fact("pop", f"pop {node}")], "forbidden_claims": []}))
         if steps:
             evidence.setdefault("completion", []).append(steps[-1].id)
         return ContractTrace(
@@ -420,7 +421,8 @@ class DijkstraAdapter(FamilyAdapterBase):
                 visual_delta={"settled": u},
                 expected_visible_result=f"Settle {u}: its shortest distance is final at {dist[u]}.",
                 facts={"allowed_values": sorted({d for d in dist.values() if d < inf}),
-                       "required_facts": [f"settle {u}", str(dist[u])], "forbidden_claims": []}))
+                       "required_facts": [fact("settle", f"settle {u}"), fact("distance", dist[u])],
+                       "forbidden_claims": []}))
             # relax_edge stages — one learner-visible decision per outgoing edge
             for v, w in sorted(graph[u].items()):
                 if v in visited:
@@ -451,7 +453,7 @@ class DijkstraAdapter(FamilyAdapterBase):
                     visual_delta={"relaxed": [u, v], "improved": improved},
                     expected_visible_result=res,
                     facts={"allowed_values": sorted(set(all_w) | {d for d in dist.values() if d < inf} | {cand}),
-                           "required_facts": [str(u), str(v), str(w)], "forbidden_claims": []}))
+                           "required_facts": [fact("endpoint", u), fact("endpoint", v), fact("weight", w)], "forbidden_claims": []}))
         if steps:
             evidence.setdefault("completion", []).append(steps[-1].id)
         return ContractTrace(
@@ -621,7 +623,7 @@ class KruskalAdapter(FamilyAdapterBase):
                 visual_delta={"considered": [u, v, w], "decision": decision},
                 expected_visible_result=f"Edge ({u},{v},{w}) {decision}; MST so far {selected}",
                 facts={"allowed_values": sorted({e[2] for e in edges} | {total, len(nodes), len(selected)}),
-                       "required_facts": [str(u), str(v), str(w)],
+                       "required_facts": [fact("endpoint", u), fact("endpoint", v), fact("weight", w)],
                        "forbidden_claims": []}))   # decision correctness checked in validate_prose_claims
             if decision == "accept" and len(selected) == target:
                 if evidence.get("cycle_rejection"):
@@ -795,7 +797,7 @@ class PrimAdapter(FamilyAdapterBase):
                 visual_delta={"added_vertex": v, "selected_edge": [u, v, w]},
                 expected_visible_result=f"Select edge ({u},{v},{w}); tree now {sorted(in_tree)}",
                 facts={"allowed_values": sorted(set(all_weights) | {total}),
-                       "required_facts": [str(u), str(v), str(w)], "forbidden_claims": []}))
+                       "required_facts": [fact("endpoint", u), fact("endpoint", v), fact("weight", w)], "forbidden_claims": []}))
         if steps:
             evidence.setdefault("completion", []).append(steps[-1].id)
         return ContractTrace(

@@ -204,10 +204,26 @@ def _prose_of(card: dict[str, Any]) -> str:
     return re.sub(r"\s+", " ", " ".join(str(p) for p in parts).lower()).strip()
 
 
-def _states(prose: str, fact: str) -> bool:
+def fact(predicate: str, text: Any, value: Any = None) -> dict[str, Any]:
+    """A STRUCTURED required-fact (C1 item 12 / spec §2.2): a predicate + the surface `text` that must appear
+    in the prose, optionally the asserted `value`. A JSON-safe dict that replaces a bare string, so a fact is
+    checkable structure (predicate/value), not just a substring. `_fact_text` reads its surface form."""
+    f: dict[str, Any] = {"predicate": predicate, "text": str(text)}
+    if value is not None:
+        f["value"] = value
+    return f
+
+
+def _fact_text(f: Any) -> str:
+    """The surface phrase of a required-fact — the `text` field of a structured fact, else the value itself
+    (back-compatible with the bare-string facts the LLM path still emits)."""
+    return f["text"] if isinstance(f, dict) and "text" in f else str(f)
+
+
+def _states(prose: str, fact: Any) -> bool:
     """The fact phrase appears CONTIGUOUSLY in the (whitespace-normalized) prose — so 'visit' does not
     match 'visited' and tokens must actually be adjacent, not merely both present somewhere."""
-    return re.sub(r"\s+", " ", str(fact).lower()).strip() in prose
+    return re.sub(r"\s+", " ", _fact_text(fact).lower()).strip() in prose
 
 
 # A1 (STUDY_PATH_CONTENT_SPEC §A1) — decision-contradiction guard. Temporary keyword layer; the durable

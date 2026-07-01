@@ -136,16 +136,16 @@ Adapter
 | 11 | Declarative envelope | `ExampleSpec`: stages, structure (grammar), must_exercise, terminal, output_shape, **size_tier**, tie_break | ✅ |
 | 12 | **Estimated example size** | `InstanceShape.count` (input) + `coding_step_band()` (derived step count) | 🟡 (band lives in `solver.py`, not adapter) |
 
-### 2.2 What every adapter is MISSING — the 5 uniform `[C1]` gaps (machine-reported)
-| # | Gap | Today | Target |
-|---|---|---|---|
-| C1-a | **Raw→teaching split** | `reference()` fuses raw execution + curation | `run_reference()` (raw log) **then** `build_teaching_trace(raw_log)` (suppress internal, group support, keep required) |
-| C1-b | **Stable transition ids** | flat `required_cases` list | `required_transition_ids` with stable ids → every required id maps to a rendered transition |
-| C1-c | **`teaching_trace_policy`** | implicit in `is_teaching_trace` | first-class `TeachingTracePolicy` object (instance acceptance + min/max transition count + representative-branch) |
-| C1-d | **Structured prose facts** | string lists (`allowed_values`/`required_facts`/`forbidden_claims`) | predicate objects `{predicate, field, before, after, text}` (formatter gets `text`, validator uses fields) |
-| C1-e | (same item as C1-d, §C upgrade) | — | — |
+### 2.2 The 5 uniform `[C1]` gaps — ✅ CLOSED (machine-reported: `adapter_c1_gaps` returns `[]` for all 8)
+| # | Gap | Status |
+|---|---|---|
+| C1-a | **Raw→teaching split** — `run_reference()` (raw log) + `build_teaching_trace(raw)` | ✅ `FamilyAdapterBase` (identity split — these adapters emit only teaching transitions; overridable) |
+| C1-b | **Stable transition ids** — `required_transition_ids()` | ✅ base class (declarative `example_spec.must_exercise`) |
+| C1-c | **`teaching_trace_policy`** — first-class `TeachingTracePolicy` | ✅ base class (accepts/must_exercise/must_cover/must_avoid/structure, from §0 ExampleSpec) |
+| C1-d | **Structured prose facts** — predicate objects, not string lists | ✅ `fact(predicate, text, value)` dicts across graph/sequence/formula; `_fact_text` reads the surface form |
 
-> These 5 are **identical across all adapters** → fix once in a shared base class, not 8 times.
+> These 5 were **identical across all adapters** → fixed once in the shared base class (C1-a/b/c) + one `fact()`
+> helper (C1-d). `test_adapter_conformance.test_every_adapter_is_c1_complete` locks zero gaps.
 
 ### 2.3 What's MISSING beyond the checker (depth + enforcement gaps I measured)
 | Gap | Today | Target | Status |

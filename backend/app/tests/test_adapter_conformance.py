@@ -29,12 +29,13 @@ class AdapterConformance(unittest.TestCase):
                 self.assertTrue(set(spec.must_exercise) <= set(trace.required_cases),
                                 f"{slug}: must_exercise not aligned with required_cases")
 
-    def test_c1_gaps_are_tracked(self):
-        # Informational: the existing adapters are pre-C1, so gaps are expected; the tracker must run and
-        # return a list for every adapter (so progress toward C1 is observable, not a hard failure).
+    def test_every_adapter_is_c1_complete(self):
+        # Full L1 conformance: every adapter provides the raw->teaching layer (run_reference,
+        # build_teaching_trace, required_transition_ids), a TeachingTracePolicy, and STRUCTURED predicate
+        # facts (not string lists). No C1 gaps remain on any adapter.
         for slug, adapter in sorted(ADAPTERS.items()):
             with self.subTest(slug=slug):
-                self.assertIsInstance(adapter_c1_gaps(adapter), list)
+                self.assertEqual(adapter_c1_gaps(adapter), [], f"{slug} has open C1 gaps")
 
     def test_contract_catches_an_incomplete_adapter(self):
         # a deliberately broken adapter must be flagged (proves the check has teeth)

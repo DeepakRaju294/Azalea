@@ -7,7 +7,7 @@ from __future__ import annotations
 import random
 from typing import Any, Iterable
 
-from ...trace_contract import ContractTrace, Step
+from ...trace_contract import ContractTrace, Step, fact
 from ..example_spec import ExampleSpec, InstanceShape, StageSpec
 from .base import FamilyAdapterBase
 
@@ -100,7 +100,8 @@ class ArithmeticEvalAdapter(FamilyAdapterBase):
                 expected_visible_result=f"{a} {op} {b} = {res}; expression now {tokens}",
                 facts={"allowed_values": sorted({t for t in example_input["tokens"] if isinstance(t, int)}
                                                 | {res, a, b}),
-                       "required_facts": [f"{a} {op} {b}", str(res)], "forbidden_claims": []}))
+                       "required_facts": [fact("operation", f"{a} {op} {b}"), fact("result", res)],
+                       "forbidden_claims": []}))
         if steps:
             evidence.setdefault("completion", []).append(steps[-1].id)
         return ContractTrace(

@@ -7,7 +7,7 @@ from __future__ import annotations
 import random
 from typing import Any, Iterable
 
-from ...trace_contract import ContractTrace, Step
+from ...trace_contract import ContractTrace, Step, fact
 from ..example_spec import ExampleSpec, InstanceShape, StageSpec
 from .base import FamilyAdapterBase
 
@@ -145,7 +145,7 @@ class BinarySearchAdapter(FamilyAdapterBase):
 
     def _facts(self, nums, target, mid, val, lo, hi, after, decision):
         allowed = set(nums) | set(range(len(nums))) | {target, lo, hi, mid, after["lo"], after["hi"] or 0}
-        required = [f"mid {mid}", str(val)]
+        required = [fact("probe", f"mid {mid}"), fact("value", val)]
         forbidden = []
         if decision != "found":
             forbidden.append("target found")
@@ -272,7 +272,7 @@ class MergeSortAdapter(FamilyAdapterBase):
                 visual_delta={"left": list(r1), "right": list(r2), "result": list(merged)},
                 expected_visible_result=f"Merge {r1} and {r2} → {merged}; runs now {runs}",
                 facts={"allowed_values": sorted(set(arr)),
-                       "required_facts": [str(merged[0]), str(merged[-1])],
+                       "required_facts": [fact("first", merged[0]), fact("last", merged[-1])],
                        "forbidden_claims": []}))
         if steps:
             evidence.setdefault("completion", []).append(steps[-1].id)
