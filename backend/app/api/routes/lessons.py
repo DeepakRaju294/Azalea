@@ -311,6 +311,8 @@ def apply_deferred_worked_example(topic: Topic, lesson_json: dict) -> bool:
             "id": str(topic.id),
             "title": topic.title or "",
             "topic_type": str(getattr(topic, "course_type", None) or getattr(topic, "topic_type", "") or ""),
+            "language": str(getattr(getattr(topic, "study_path", None), "language", None) or "python").lower(),
+            "modifiers": list(getattr(topic, "modifiers", None) or []),
         }
         applied = apply_llm_solved_worked_example(lesson_json, v2_topic)
         _finalize_lesson_cards(lesson_json, v2_topic)
@@ -361,6 +363,8 @@ def enrich_legacy_lesson_with_v2_visuals(
             "topic_type": str(getattr(topic, "course_type", None) or getattr(topic, "topic_type", "") or ""),
             # the path's chosen programming language — drives canonical code + worked example language
             "language": str(getattr(getattr(topic, "study_path", None), "language", None) or "python").lower(),
+            # follow-up marker (implementation_follow_up) so downstream drops/doesn't-require the background card
+            "modifiers": list(getattr(topic, "modifiers", None) or []),
         }
         # Worked-example authoring: a single focused LLM solve for EVERY topic. For a coding
         # topic the solve explains how the code EXECUTES on a concrete input — conceptually,

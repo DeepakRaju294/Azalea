@@ -60,8 +60,13 @@ def backfill_missing_required_cards(
 ) -> list[str]:
     """Regenerate every missing/empty required card. Returns the keys still missing afterward."""
     try:
-        from app.core.course_blueprints import get_topic_blueprint
-        blueprint = get_topic_blueprint(topic.get("topic_type"))
+        from app.core.course_blueprints import IMPLEMENTATION_FOLLOW_UP, get_topic_blueprint
+        # An implementation-follow-up coding topic drops the background card, so it must not be REQUIRED here
+        # (otherwise backfill re-adds the very card the follow-up strip removed). Derive the relationship from
+        # the topic's modifiers so the required set matches the generated blueprint.
+        _rel = (IMPLEMENTATION_FOLLOW_UP if IMPLEMENTATION_FOLLOW_UP in (topic.get("modifiers") or [])
+                else None)
+        blueprint = get_topic_blueprint(topic.get("topic_type"), relationship_to_parent=_rel)
     except Exception:  # noqa: BLE001
         return []
     required = _required_cards(blueprint)

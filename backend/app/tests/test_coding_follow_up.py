@@ -55,5 +55,24 @@ class FollowUpBlueprintDropsBackground(unittest.TestCase):
         self.assertEqual(bp["topic_type"], "coding_implementation")   # still coding for detection
 
 
+class BackfillDoesNotReAddBackgroundForFollowUp(unittest.TestCase):
+    """Regression: background was re-added by backfill because it stayed a REQUIRED card. With the modifier
+    on the topic, backfill must not require (nor re-add) it."""
+    def test_follow_up_background_stays_removed(self):
+        from app.services.card_backfill import backfill_missing_required_cards
+        lesson = {"lesson_cards": [
+            {"blueprint_key": "code_walkthrough", "code_snippet": "x"},
+            {"blueprint_key": "worked_example", "points": ["p"]},
+            {"blueprint_key": "practice", "points": ["p"]},
+        ]}
+        topic = {"id": "t", "topic_type": "coding_implementation",
+                 "modifiers": [IMPLEMENTATION_FOLLOW_UP]}
+        still_missing = backfill_missing_required_cards(
+            lesson, topic, single_card_fn=lambda *a, **k: {"blueprint_key": "background"},
+            worked_example_fn=lambda *a, **k: True)
+        self.assertNotIn("background", still_missing)
+        self.assertFalse(any(c.get("blueprint_key") == "background" for c in lesson["lesson_cards"]))
+
+
 if __name__ == "__main__":
     unittest.main()
