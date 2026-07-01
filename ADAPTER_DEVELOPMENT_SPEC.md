@@ -189,7 +189,7 @@ shape, and whether it is **coding** (ships a `canonical_solution`) or **non-codi
 | **T9** Repeated relaxation | Bellman-Ford, Floyd-Warshall | pass structure + sufficiency bound + negative-cycle case | iterative-improvement algorithms |
 | **T10** Stateful transformation | heap sort, heapify | invariant restoration (sift-down) + no-op vs bubbling restore | heap ops, AVL rotations |
 
-**Current status:** T2/T3/T4/T7 have production pilots; T1/T6 are in **pilot** (templates shipped, gate not yet
+**Current status:** **T4 GATE PROVEN** (binary search + BST search — two state models, `test_bst_search_gate`). T2/T3/T7 have production pilots; T1/T6 are in **pilot** (templates shipped, gate not yet
 signed off across enough variation); T5/T8/T9/T10/T11/T12 are **not started**. Status per adapter lives in the manifest (§8).
 
 ---

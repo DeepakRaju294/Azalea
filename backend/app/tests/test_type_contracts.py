@@ -62,16 +62,26 @@ class TypeInvariants(unittest.TestCase):
                 ans = self._first_list(tr.final_answer)
                 self.assertEqual(ans, sorted(ans), f"{slug}: combine did not yield a sorted result")
 
+    @staticmethod
+    def _search_space(state):
+        # generalized across T4 state models: an integer window [lo,hi] (binary search) OR a `remaining`
+        # candidate count (BST search subtree). This generalization is exactly what proving the T4 gate forced.
+        if "lo" in state and "hi" in state:
+            return state["hi"] - state["lo"]
+        if "remaining" in state:
+            return state["remaining"]
+        return None
+
     def test_t4_search_domain_never_grows_and_net_shrinks(self):
         for slug, tr in self._traces("T4"):
             with self.subTest(slug=slug):
-                windows = [s.state_after["hi"] - s.state_after["lo"] for s in tr.steps
-                           if "lo" in s.state_after and "hi" in s.state_after]
-                self.assertTrue(windows, f"{slug}: no lo/hi search domain")
-                for a, b in zip(windows, windows[1:]):
-                    self.assertLessEqual(b, a, f"{slug}: search domain grew (re-expanded)")
-                if len(windows) > 1:
-                    self.assertLess(windows[-1], windows[0], f"{slug}: search domain did not narrow")
+                sizes = [self._search_space(s.state_after) for s in tr.steps]
+                sizes = [x for x in sizes if x is not None]
+                self.assertTrue(sizes, f"{slug}: no measurable search space")
+                for a, b in zip(sizes, sizes[1:]):
+                    self.assertLessEqual(b, a, f"{slug}: search space grew (re-expanded)")
+                if len(sizes) > 1:
+                    self.assertLess(sizes[-1], sizes[0], f"{slug}: search space did not narrow")
 
     def test_t6_formula_answer_is_entailed_by_the_final_state(self):
         for slug, tr in self._traces("T6"):

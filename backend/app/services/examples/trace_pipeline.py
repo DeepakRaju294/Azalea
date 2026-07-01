@@ -63,6 +63,11 @@ def _match_adapter(text: str, slug: str):
     # inorder BST traversal has a tree adapter today; other tree/BST topics still defer.
     if "inorder" in text:
         return ADAPTERS["tree_inorder"]
+    # A BST *search* is a tree probe (not array binary search); but "binary search tree" also names
+    # INSERTION/DELETION/TRAVERSAL topics — so strip the structure name, then require the search OPERATION.
+    _bst_op = text.replace("binary search tree", " ").replace("binary-search tree", " ")
+    if ("bst" in text or "binary search tree" in text) and "search" in _bst_op:
+        return ADAPTERS["bst_search"]
     if "quadratic" in text:
         return ADAPTERS["quadratic"]
     if "kinematic" in text or "constant acceleration" in text or "uniform acceleration" in text:

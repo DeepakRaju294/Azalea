@@ -140,6 +140,16 @@ def dijkstra(graph, start):
         return []
     return inorder(node.left) + [node.val] + inorder(node.right)
 """,
+    # ---- BST search (descend by comparison until found or a null child) ----
+    "bst_search": """def search(node, target):
+    if node is None:
+        return None
+    if target == node.val:
+        return node
+    if target < node.val:
+        return search(node.left, target)
+    return search(node.right, target)
+""",
     "arithmetic_eval": """def evaluate(tokens):
     stack = [tokens[0]]
     i = 1

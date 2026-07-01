@@ -54,7 +54,7 @@ class SeveritySplit(unittest.TestCase):
 
 class LyingFormatterIsCaught(unittest.TestCase):
     DETERMINISTIC = ["binary_search", "bfs", "dfs_iter", "kruskal", "merge_sort", "dijkstra",
-                     "arithmetic_eval", "prim", "tree_inorder", "quadratic", "kinematics"]
+                     "arithmetic_eval", "prim", "tree_inorder", "quadratic", "kinematics", "bst_search"]
 
     def _trace(self, slug):
         a = ADAPTERS[slug]

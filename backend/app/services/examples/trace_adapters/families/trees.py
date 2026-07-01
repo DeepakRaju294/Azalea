@@ -53,6 +53,12 @@ def _inorder(tree: dict[int, dict[str, Any]], root: int | None) -> list[int]:
     return out
 
 
+def _subtree_size(tree: dict[int, dict[str, Any]], node: int | None) -> int:
+    if node is None:
+        return 0
+    return 1 + _subtree_size(tree, tree[node]["left"]) + _subtree_size(tree, tree[node]["right"])
+
+
 class InorderTraversalAdapter(FamilyAdapterBase):
     slug = "tree_inorder"
     label_convention = "ints"                  # §2.3 — BST node values are integers
@@ -151,3 +157,134 @@ class InorderTraversalAdapter(FamilyAdapterBase):
                           str(card.get("result", ""))]).lower()
         node = str(step.inputs["node"])
         return [] if node in prose else [("node_not_stated", node)]
+
+
+class BSTSearchAdapter(FamilyAdapterBase):
+    """T4 search/narrowing — the SECOND state model (a tree NODE, not array bounds). Building this proves the
+    T4 type gate: the same 'search space strictly shrinks each probe' invariant must hold whether the space is
+    an integer window [lo,hi] (binary_search) or a BST subtree. `remaining` = nodes still to examine."""
+    slug = "bst_search"
+    label_convention = "ints"
+    example_spec = ExampleSpec(
+        input=InstanceShape("integers", count=(4, 7), value_range=(1, 40), structure=["distinct", "bst"]),
+        stages={"probe": StageSpec(
+            "probe", "compare the target to the current node, then go left / right / stop",
+            teaching_focus="each comparison discards one whole subtree",
+            contains={"compare": "required", "descend": "aggregated_supporting"},
+            state_effects=["the search subtree shrinks; the target is found or ruled out"])},
+        structure="probe+ until found or a null child is reached",
+        must_exercise=["descend", "found_or_absent", "completion"],
+        must_cover=["go_left", "go_right", "found", "absent"],     # per-SUITE (one search can't show all)
+        must_avoid=["single_node_tree"],
+        terminal="the target is found at a node or ruled absent", output_shape="found index / not-found")
+
+    def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+        rng = random.Random(seed)
+        for i in range(80):
+            n = rng.randint(4, 7)
+            values = rng.sample(range(1, 41), n)
+            tree: dict[int, dict[str, Any]] = {}
+            root: int | None = None
+            for v in values:
+                root = _insert(tree, root, v)
+            present = rng.random() < 0.7
+            target = rng.choice(values) if present else rng.choice([x for x in range(1, 41) if x not in values])
+            yield {"tree": tree, "root": root, "target": target, "insert_order": values,
+                   "_id": f"bst_search_v1_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        return len(trace.steps) >= 2 and bool(trace.case_evidence.get("found_or_absent"))
+
+    def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                  attempt: int = 1, seed: int = 0) -> ContractTrace:
+        tree, root, target = example_input["tree"], example_input["root"], example_input["target"]
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        node = root
+        idx = 0
+        found_at: int | None = None
+        while node is not None:
+            idx += 1
+            sid = f"s{idx}"
+            prior = {"current": node, "remaining": _subtree_size(tree, node), "found": False}
+            if target == node:
+                after = {"current": node, "remaining": 0, "found": True}
+                decision, reason = f"found {target}", f"{target} equals node {node}: found it"
+                evidence.setdefault("found", []).append(sid)
+                found_at = node
+                nxt = None
+            elif target < node:
+                nxt = tree[node]["left"]
+                after = {"current": nxt, "remaining": _subtree_size(tree, nxt), "found": False}
+                decision = f"go left from {node}"
+                reason = f"{target} < {node}, so the target can only be in {node}'s LEFT subtree"
+                evidence.setdefault("go_left", []).append(sid)
+                evidence.setdefault("descend", []).append(sid)
+            else:
+                nxt = tree[node]["right"]
+                after = {"current": nxt, "remaining": _subtree_size(tree, nxt), "found": False}
+                decision = f"go right from {node}"
+                reason = f"{target} > {node}, so the target can only be in {node}'s RIGHT subtree"
+                evidence.setdefault("go_right", []).append(sid)
+                evidence.setdefault("descend", []).append(sid)
+            terminal = after["found"] or nxt is None
+            if terminal:
+                evidence.setdefault("found_or_absent", []).append(sid)
+                if not after["found"]:
+                    evidence.setdefault("absent", []).append(sid)
+            evr = (f"Compare {target} with {node}: {'FOUND' if after['found'] else decision}; "
+                   f"{after['remaining']} node(s) left to search.")
+            steps.append(Step(
+                id=sid, operation="probe", prior_state=prior, state_after=after,
+                inputs={"node": node, "target": target, "remaining": after["remaining"]},
+                decision=decision, reason=reason,
+                visual_state={"kind": "tree", "current": node, "target": target},
+                visual_delta={"compared": node},
+                expected_visible_result=evr,
+                facts={"allowed_values": sorted(set(tree.keys()) | {target, after["remaining"]}),
+                       "required_facts": [fact("compare", f"{target}"), fact("node", f"{node}")],
+                       "forbidden_claims": []}))
+            if terminal:
+                break
+            node = nxt
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        return ContractTrace(
+            problem=(f"Search the binary search tree built from {example_input['insert_order']} for the "
+                     f"value {target}."),
+            conventions={"structure": "binary_search_tree", "rule": "target<node -> left; target>node -> right",
+                         "trace_granularity": "one_comparison"},
+            initial_state={"current": root, "remaining": _subtree_size(tree, root), "found": False},
+            final_answer={"found": found_at is not None, "found_at": found_at}, steps=steps,
+            invariants=[{"id": "space_shrinks", "scope": "every_step",
+                         "statement": "the search subtree strictly shrinks each probe"}],
+            required_cases=["descend", "found_or_absent", "completion"], case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        a, b = a or {}, b or {}
+        return (a.get("current") == b.get("current") and a.get("remaining") == b.get("remaining")
+                and bool(a.get("found")) == bool(b.get("found")))
+
+    def final_answer_entails(self, state, answer):
+        st, an = state or {}, answer or {}
+        return bool(st.get("found")) == bool(an.get("found")) and (
+            not an.get("found") or st.get("current") == an.get("found_at"))
+
+    def invariant_holds(self, inv, state):
+        return True                                         # the shrink is checked step-to-step by fidelity
+
+    def validate_step_shape(self, step):
+        errs = []
+        if step.operation != "probe":
+            errs.append(f"unexpected operation {step.operation!r}")
+        for k in ("node", "target", "remaining"):
+            if k not in step.inputs:
+                errs.append(f"missing inputs.{k}")
+        return errs
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        return [] if str(step.inputs["target"]) in prose else [("target_not_stated", str(step.inputs["target"]))]

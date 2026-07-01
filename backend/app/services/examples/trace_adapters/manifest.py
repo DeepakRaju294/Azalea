@@ -94,6 +94,12 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "coding": True, "canonical_solution": "tree_inorder",
         "routing_aliases": ["inorder"], "negative_guards": [],
         "fixtures": ["ascending_output", "leftmost_first"]},
+    "bst_search": {
+        "type": "T4", "family": "trees", "status": "pilot", "verification_level": "trace_verified",
+        "coding": True, "canonical_solution": "bst_search",
+        "routing_aliases": ["bst search", "binary search tree search"],
+        "negative_guards": ["binary search array"],
+        "fixtures": ["found_after_left", "found_after_right", "absent"]},
     "quadratic": {
         "type": "T6", "family": "algebra", "status": "pilot", "verification_level": "trace_verified",
         "coding": False, "canonical_solution": None,

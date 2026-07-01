@@ -101,7 +101,7 @@ rank/size (T10) ⬜.
 
 ## A3. Trees & hierarchical structures — family `trees`
 Inorder BST 🟩 (T1) · preorder (T1) · postorder (T1) · level-order (T1) · height/depth (T3/T12) ·
-count nodes/leaves (T1) · tree equality (T3/T12) · mirror/invert (T3/T8a) · BST search (T4) · BST insertion
+count nodes/leaves (T1) · tree equality (T3/T12) · mirror/invert (T3/T8a) · BST search 🟨 (T4) · BST insertion
 (T8a) · BST deletion (T10) · BST validation (T1/T7) · LCA in BST (T4) · LCA in binary tree (T3/T12) · AVL single
 rotations (T10) · AVL double rotations (T10) · AVL insert+rebalance (T10) · red-black insertion ◇ (T10) ·
 segment tree build (T3/T8a) · seg range query (T4/T3) · seg point update (T10) · lazy propagation ◇ (T10) ·
