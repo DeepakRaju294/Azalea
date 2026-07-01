@@ -156,7 +156,7 @@ Adapter
 | **Versioned state schema** (item 6) | declared concept | enforced required/optional fields, no undeclared dynamic fields | 🟡 |
 | **Visual contract as a declared set** | ad-hoc per-step `kind` strings | `{primary_kind, allowed_kinds, operation_to_kind}` + every transition's kind ∈ allowed | 🟡 |
 | **Field consistency** | bfs/dfs have no `value_range`; `size_tier` uniformly "small"; `tie_break` field empty (lives in conventions dict) | every field populated + consistent | 🟡 |
-| **Adapter-owned step-band — `estimate_teaching_step_band(trace) -> {min, target, max}`** | `coding_step_band` sampled in `solver.py`, **coding-only** | **required on EVERY adapter** (not just coding): predict the step count from the *actual* trace, owned by the adapter. Drives the count gate (§4.3.2) and pacing | ❌ |
+| **Adapter-owned step-band — `estimate_teaching_step_band(trace) -> {min, target, max}`** | on `FamilyAdapterBase` — every adapter predicts its step count from the actual trace | drives count gate + pacing | ✅ |
 | **One step-kind vocabulary** | adapter `StageSpec.contains` **and** legacy `_CODING_STEP_KINDS` (pass/split/visit/…) coexist | unify on the adapter grammar | ❌ |
 | **Label convention** | walkthroughs use letters (A–F), coding uses ints (0–3) — inconsistent within one path | a declared, consistent labeling convention per path | ❌ |
 
@@ -175,7 +175,7 @@ a contract**. `canonical_code` for displayed-code highlighting is a separate lat
 > the adapter.** Compression/merging lives in the adapter's `TeachingProjection` (§2.5), never in the
 > formatter — this is what stops someone adding a "smart merge" inside narration six months from now.
 
-### 2.5 The trace artifact chain — FIRST-CLASS artifacts (not just transformations) ❌
+### 2.5 The trace artifact chain — FIRST-CLASS artifacts (not just transformations) ✅ (`trace_adapters/artifacts.py`)
 The raw→teaching split (C1-a) is upgraded from a single function into a **chain of named artifacts**, each
 independently inspectable, validated, and cached. This makes compression / grouping / pacing reasoning local:
 
@@ -200,7 +200,7 @@ lives — never the formatter.
 > video, chatbot); all consume the same TeachingTrace. If a field is about layout or a card, it belongs in
 > the renderer, not the TeachingTrace.
 
-#### 2.5.1 `LessonIntent` — WHY the example exists (orchestration-owned, upstream of the adapter) ❌
+#### 2.5.1 `LessonIntent` — WHY the example exists (orchestration-owned, upstream of the adapter) ✅ (`artifacts.LessonIntent`, `from_topic`)
 The adapter produces a *correct, representative* example; **LessonIntent** says *for whom and to what end*,
 so the same adapter serves beginner / interview-prep / review / implementation-focus without change:
 ```
@@ -217,7 +217,7 @@ reads it, doesn't define it). Future audience variants change the LessonIntent, 
 > required cases satisfy it. Orchestration must never name algorithm-specific cases — that would put algorithm
 > semantics in the orchestration layer and violate the §2.4 boundary.
 
-#### 2.5.2 `TeachingProjection` — the interface (the most important artifact, made explicit) ❌
+#### 2.5.2 `TeachingProjection` — the interface (the most important artifact, made explicit) ✅ (`base.teaching_projection`)
 The whole architecture pivots on this one mapping, so it is specified as an interface, not just prose. It is
 **adapter-owned** (it's where compression/pacing decisions live, per the §2.4 mirror rule):
 ```
@@ -235,7 +235,7 @@ A `TeachingProjection` is **valid iff** its output TeachingTrace replays to the 
 ExecutionTrace (Truth, §4.0) and contains every required transition + the terminal. This is the single point
 where "what the learner sees" is decided — nowhere else (not the formatter, not the renderer).
 
-### 2.6 `AdapterOutput` — the single standardized return contract ❌
+### 2.6 `AdapterOutput` — the single standardized return contract ✅ (`base.build_adapter_output`; `test_adapter_artifacts`)
 Orchestration consumes **one object regardless of concept** (Kruskal, merge sort, DFS, binary search). It is
 two contracts so a new-adapter author answers two questions **in order** — *"what is the teaching
 semantics?"* then *"what infrastructure do I provide?"*:
@@ -259,7 +259,7 @@ AdapterOutput {
 The orchestrator never reaches inside an adapter; it reads `AdapterOutput`. New concept = produce this
 object; the pipeline is concept-agnostic.
 
-#### 2.6.1 `AdapterDiagnostics` — the why-this-output record (debugging, not user-facing) ❌
+#### 2.6.1 `AdapterDiagnostics` — the why-this-output record (debugging, not user-facing) ✅ (`artifacts.AdapterDiagnostics`)
 The one architectural addition that pays for itself: every `AdapterOutput` carries a structured record of the
 adapter's own choices, so a failure is read, not reverse-engineered from logs:
 ```
@@ -275,7 +275,7 @@ AdapterDiagnostics {
 Complements M7 (the *pipeline* decision record) with the *adapter's* internal reasoning — "why this graph,
 why two stages merged, why a card disappeared, why pacing changed" — without reading raw logs.
 
-### 2.7 Adapter-owned QUALITY (not just correctness) ❌
+### 2.7 Adapter-owned QUALITY (not just correctness) ✅ (`artifacts.TeachingObjectives`, `base.teaching_objectives`)
 The adapter defines what a *good* example for its concept is, not merely a valid one. Three new declarations:
 
 **`TeachingObjectives`** — the quality target, **MACHINE-CHECKABLE** (not guidelines — these become Teaching

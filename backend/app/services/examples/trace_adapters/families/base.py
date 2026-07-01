@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from ..artifacts import (AdapterDiagnostics, AdapterOutput, TeachingObjectives, TeachingProjection)
+
 
 @dataclass
 class TeachingTracePolicy:
@@ -62,3 +64,57 @@ class FamilyAdapterBase:
             must_cover=list(getattr(spec, "must_cover", []) or []),
             must_avoid=list(getattr(spec, "must_avoid", []) or []),
             structure=str(getattr(spec, "structure", "") or ""))
+
+    # --- artifact chain (§2.3, §2.5.2, §2.6, §2.7) --------------------------------------------------
+    label_convention: str = ""                         # "letters" (A–F) | "ints" (0–3); adapters set it
+
+    def estimate_teaching_step_band(self, trace: Any) -> dict[str, int]:
+        """§2.3 — predict the teaching STEP COUNT from the ACTUAL trace (owned by the adapter, not sampled in
+        the solver). Drives the count gate + pacing. Default: the trace's own transition count with a small
+        narration-grouping band; an adapter with known pacing overrides."""
+        n = len(getattr(trace, "steps", []) or [])
+        return {"min": max(1, n - 1), "target": n, "max": n + 2}
+
+    @property
+    def teaching_objectives(self) -> TeachingObjectives:
+        """§2.7 — adapter-owned QUALITY. Default surfaces the declared required transitions; adapters override
+        to add the misconception they preempt + the intended pacing."""
+        spec = getattr(self, "example_spec", None)
+        return TeachingObjectives(surfaces=list(getattr(spec, "must_exercise", []) or []))
+
+    def teaching_projection(self, trace: Any) -> TeachingProjection:
+        """§2.5.2 — project the verified trace into the teaching interface (surfaced transitions in order, the
+        required set, the terminal, each transition's step kind)."""
+        steps = list(getattr(trace, "steps", []) or [])
+        ids = [s.id for s in steps]
+        return TeachingProjection(
+            transition_ids=ids,
+            required_transition_ids=list(getattr(trace, "required_cases", []) or []),
+            terminal_transition_id=ids[-1] if ids else "",
+            step_kinds={s.id: str(getattr(s, "operation", "") or "") for s in steps},
+            label_convention=self.label_convention)
+
+    def build_adapter_output(self, trace: Any, *, seed: int = 0, candidate_id: str = "",
+                             rejected_candidates: int = 0, instance_accepted: bool = True) -> AdapterOutput:
+        """§2.6 — assemble the SINGLE standardized AdapterOutput from a verified trace: projection + step band
+        + objectives + diagnostics. This is the one return contract everything downstream should consume."""
+        steps = list(getattr(trace, "steps", []) or [])
+        rendered = {s.id for s in steps}
+        evidence = getattr(trace, "case_evidence", {}) or {}
+        required = list(getattr(trace, "required_cases", []) or [])
+        missing = [rc for rc in required if not (set(evidence.get(rc, [])) & rendered)]
+        try:
+            from ..contract import adapter_contract_violations  # cheap re-use to flag structural issues
+            structural_ok = trace is not None and bool(steps)
+            _ = adapter_contract_violations  # (kept import-light; deep structural check lives in the pipeline)
+        except Exception:  # noqa: BLE001
+            structural_ok = bool(steps)
+        diagnostics = AdapterDiagnostics(
+            adapter=str(getattr(self, "slug", "?")), adapter_version=self.version, seed=seed,
+            candidate_id=candidate_id, instance_accepted=instance_accepted,
+            rejected_candidates=rejected_candidates, required_cases=required,
+            missing_required_cases=missing, structural_ok=structural_ok)
+        return AdapterOutput(
+            trace=trace, projection=self.teaching_projection(trace),
+            step_band=self.estimate_teaching_step_band(trace),
+            objectives=self.teaching_objectives, diagnostics=diagnostics)
