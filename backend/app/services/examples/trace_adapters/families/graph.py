@@ -418,7 +418,7 @@ class DijkstraAdapter(FamilyAdapterBase):
             return {k: (None if d >= inf else d) for k, d in dist.items()}
 
         def _dstr():
-            return ", ".join(f"{k}:{'inf' if d >= inf else d}" for k, d in sorted(dist.items()))
+            return ", ".join(f"{k}={'∞' if d >= inf else d}" for k, d in sorted(dist.items()))
 
         all_w = sorted({w for nb in graph.values() for w in nb.values()})
         # init stage

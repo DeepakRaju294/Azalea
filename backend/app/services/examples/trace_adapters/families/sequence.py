@@ -12,6 +12,12 @@ from ..example_spec import ExampleSpec, InstanceShape, StageSpec
 from .base import FamilyAdapterBase
 
 
+def fmt_runs(runs: Any) -> str:
+    """Humanize a list of merge-sort runs for prose: [[48],[23],[3,5]] -> '[48], [23], [3, 5]' (each run
+    bracketed, but no confusing OUTER nesting `[[...],[...]]`)."""
+    return ", ".join(str(list(r)) for r in (runs or [])) or "(none)"
+
+
 # ===================================================================================================
 # Binary search (iterative; window {lo, hi, found}; one probe per step)
 # ===================================================================================================
@@ -252,7 +258,7 @@ class MergeSortAdapter(FamilyAdapterBase):
             reason="bottom-up merge sort begins by treating every element as its own sorted run.",
             visual_state={"kind": "run_list", "runs": [list(r) for r in runs], "merged": []},
             visual_delta={"runs": [list(r) for r in runs]},
-            expected_visible_result=f"Initial runs: each element is its own sorted run: {runs}.",
+            expected_visible_result=f"Initial runs: each element is its own sorted run: {fmt_runs(runs)}.",
             facts={"allowed_values": sorted(set(arr)), "required_facts": [], "forbidden_claims": []}))
         while len(runs) > 1:
             i += 1
@@ -272,7 +278,7 @@ class MergeSortAdapter(FamilyAdapterBase):
                 reason=f"compare front elements and emit the smaller: {r1} + {r2} → {merged}",
                 visual_state={"kind": "run_list", "runs": [list(r) for r in runs], "merged": list(merged)},
                 visual_delta={"left": list(r1), "right": list(r2), "result": list(merged)},
-                expected_visible_result=f"Merge {r1} and {r2} → {merged}; runs now {runs}",
+                expected_visible_result=f"Merge {r1} and {r2} → {merged}; runs now {fmt_runs(runs)}",
                 facts={"allowed_values": sorted(set(arr)),
                        "required_facts": [fact("first", merged[0]), fact("last", merged[-1])],
                        "forbidden_claims": []}))
