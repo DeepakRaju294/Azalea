@@ -68,6 +68,54 @@ class CoverageComplete(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("unknown_trace_id", reason)
 
+    # --- CP3 checkpoint-aware acceptance (the frozen checkpoint contract) ---------------------------
+    def _cp_cards(self):
+        cps = self.ad.teaching_checkpoints(self.trace)
+        by_step = {}
+        for cp in cps:
+            for sid in cp.source_step_ids:
+                by_step.setdefault(sid, cp)
+        cards = [{"trace_step_ids": [s.id], "checkpoint_id": by_step[s.id].checkpoint_id,
+                  "result": "", "work": [], "reasoning": ""} for s in self.trace.steps]
+        return cps, cards
+
+    def test_6_checkpoint_aware_accepts(self):
+        cps, cards = self._cp_cards()
+        ok, reason = coverage_complete(cards, self.trace, checkpoints=cps)
+        self.assertTrue(ok, reason)
+
+    def test_7_artifact_without_checkpoint_rejects(self):
+        cps, cards = self._cp_cards()
+        cards[0].pop("checkpoint_id")
+        ok, reason = coverage_complete(cards, self.trace, checkpoints=cps)
+        self.assertFalse(ok)
+        self.assertEqual(reason, "artifact_without_checkpoint")
+
+    def test_8_unknown_checkpoint_rejects(self):
+        cps, cards = self._cp_cards()
+        cards[0]["checkpoint_id"] = "bogus_checkpoint"
+        ok, reason = coverage_complete(cards, self.trace, checkpoints=cps)
+        self.assertFalse(ok)
+        self.assertIn("unknown_checkpoint", reason)
+
+    def test_9_missing_required_checkpoint_rejects(self):
+        # transitions ALL covered (one card spans every step) but only the terminal checkpoint is cited ->
+        # the non-terminal required checkpoints are unrendered: the checkpoint contract catches it.
+        cps = self.ad.teaching_checkpoints(self.trace)
+        terminal_id = self.trace.steps[-1].id
+        term_cp = next(cp for cp in cps if terminal_id in cp.source_step_ids)
+        non_terminal_required = [cp for cp in cps
+                                 if cp.checkpoint_id != term_cp.checkpoint_id
+                                 and set(cp.source_step_ids) & {sid for ids in self.trace.case_evidence.values()
+                                                                for sid in ids}]
+        if not non_terminal_required:
+            self.skipTest("no non-terminal required checkpoint")
+        cards = [{"trace_step_ids": list(self.ids), "checkpoint_id": term_cp.checkpoint_id,
+                  "result": "", "work": [], "reasoning": ""}]
+        ok, reason = coverage_complete(cards, self.trace, checkpoints=cps)
+        self.assertFalse(ok)
+        self.assertIn("missing_required_checkpoint", reason)
+
 
 if __name__ == "__main__":
     unittest.main()

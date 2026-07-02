@@ -368,12 +368,18 @@ def validate_claim_ledger(prose: str, ledger: dict[str, dict[str, Any]], card_in
 
 
 def coverage_complete(cards: list[dict[str, Any]], trace: ContractTrace, adapter: Any = None, *,
+                      checkpoints: Optional[list[Any]] = None,
                       contract: TeachingValidationContract = DEFAULT_TEACHING_VALIDATION) -> tuple[bool, str]:
     """CP3 — is a card set (possibly a DIFFERENT count than the trace's step count) acceptable? True ONLY when
     coverage is complete: every required transition rendered, the terminal transition rendered, no card cites
     an unknown step id, and (when an adapter is given) no HARD prose contradiction. A count != #steps is fine
     iff this holds; a missing required case, an unrendered terminal, a bogus id, or a wrong claim is not.
-    Returns (ok, reason). This is the acceptance predicate that lets `count_mismatch` be coverage-based."""
+    Returns (ok, reason). This is the acceptance predicate that lets `count_mismatch` be coverage-based.
+
+    When `checkpoints` is supplied (the adapter's `teaching_checkpoints`), it ALSO enforces the frozen
+    checkpoint contract (§CP3): every artifact cites exactly one EXISTING `checkpoint_id`, every REQUIRED
+    checkpoint (its source range holds a required transition) is rendered, and the terminal checkpoint is
+    rendered. Transition-level checks stay the underlying semantic proof; the checkpoint checks are additive."""
     valid_ids = {s.id for s in trace.steps}
     rendered: set[str] = set()
     for c in cards:
@@ -387,6 +393,26 @@ def coverage_complete(cards: list[dict[str, Any]], trace: ContractTrace, adapter
             return False, f"missing_required_transition:{rc}"
     if trace.steps and trace.steps[-1].id not in rendered:
         return False, "terminal_not_rendered"
+    if checkpoints is not None:
+        cp_ids = {cp.checkpoint_id for cp in checkpoints}
+        cited: set[str] = set()
+        for c in cards:
+            cid = c.get("checkpoint_id")
+            if not cid:
+                return False, "artifact_without_checkpoint"
+            if cid not in cp_ids:
+                return False, f"unknown_checkpoint:{cid}"
+            cited.add(cid)
+        required_steps = {sid for ids in evidence.values() for sid in ids}
+        for cp in checkpoints:
+            src = set(getattr(cp, "source_step_ids", []) or [])
+            if (src & required_steps) and cp.checkpoint_id not in cited:
+                return False, f"missing_required_checkpoint:{cp.checkpoint_id}"
+        terminal_id = trace.steps[-1].id if trace.steps else None
+        terminal_cps = {cp.checkpoint_id for cp in checkpoints
+                        if terminal_id in (getattr(cp, "source_step_ids", []) or [])}
+        if terminal_cps and not (terminal_cps & cited):
+            return False, "terminal_checkpoint_not_rendered"
     if adapter is not None:
         hard = hard_prose_violations(validate_prose(cards, trace, adapter), contract)
         if hard:

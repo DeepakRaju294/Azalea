@@ -20,7 +20,7 @@
 | 1 | No from-scratch fallback for supported topics | ✅ | P0a `545ae26` + single-path `40a34df` + invariant lock `8bd40c7` |
 | 2 | Trace-preserving fallback narration | ✅ | P0a `_deterministic_narration` `545ae26` |
 | 3a | Default checkpoint emission (per-transition, with provenance) | ✅ | `_attach_checkpoints` puts a `checkpoint_id` + `source_transition_start/end` on every card (both ship paths) + CP6b report fields; `test_cp3a_checkpoints.py` runs the 6-step contract × all 8 adapters |
-| 3 | Checkpoint/artifact alignment (was: relax `count_mismatch`) | 🟡 | never-withhold (P0a) + **`coverage_complete(cards, trace, adapter)` acceptance predicate built & the 5 CP3 boundary tests pass** (`test_coverage_complete.py`); the grouped-count ACCEPT wiring in `_normalize_and_attach` is deferred (needs per-artifact `checkpoint_id` + a contiguous source-transition range — a prompt change held back to protect 1:1 reliability) |
+| 3 | Checkpoint/artifact alignment (was: relax `count_mismatch`) | 🟡 | never-withhold (P0a) + **`coverage_complete` now CHECKPOINT-AWARE (`checkpoints=` param) — 9 boundary tests pass** (`test_coverage_complete.py`: artifact-without-checkpoint / unknown-checkpoint / missing-required-checkpoint); the grouped-count ACCEPT wiring in `_normalize_and_attach` is still deferred (needs the formatter to EMIT grouped cards with `checkpoint_id`s — a prompt change held back to protect 1:1 reliability) |
 | 4 | Prose hard/soft boundary | ✅ | declared `TeachingValidationContract` (`DEFAULT_TEACHING_VALIDATION`) + `hard_prose_violations(contract=)`; four boundary tests in `test_teaching_validation_contract.py` |
 | 5 | Regression fixtures (golden lessons) | ✅ | `test_golden_fixtures.py` — deterministic-narration golden net over all 8 adapters (CP5 historical bug classes) |
 | 5b | Normal-narration golden coverage (Prim/Kruskal) | 🟡 | deferred — fixtures cover the deterministic FALLBACK path; the normal prose-fill path is not yet asserted |
@@ -157,14 +157,16 @@ range is non-contiguous · an artifact's result contradicts the TeachingTrace st
 > source-transition range — transition-level checks are the semantic proof; `checkpoint_id`s are the
 > learner-facing + reporting proof. The existing `coverage_complete(cards, trace, adapter)` machinery stays.
 
-**When CP3 wiring lands, `coverage_complete` becomes checkpoint-aware** (upgrade the validator; do NOT loosen it):
+**`coverage_complete` is now checkpoint-aware (✅ landed, backward-compatible):**
 ```
-coverage_complete(artifacts, checkpoints, teaching_trace, adapter)
+coverage_complete(cards, trace, adapter=None, *, checkpoints=None)
 ```
-It verifies required-checkpoint coverage · terminal-checkpoint coverage · exactly one `checkpoint_id` per
-artifact · checkpoint source-range validity · decision visibility · state-anchor consistency · final-answer
-consistency. Transition-level coverage stays DERIVED through each checkpoint's source-transition range — no new
-abstraction, same predicate with a checkpoint-aware signature.
+With `checkpoints=` supplied it verifies **exactly one existing `checkpoint_id` per artifact · required-checkpoint
+coverage · terminal-checkpoint coverage**, on top of the transition-level required/terminal/unknown-id/hard-prose
+checks (transition coverage stays the underlying semantic proof — no new abstraction, same predicate). Existing
+callers pass no `checkpoints` and are unchanged; 9 boundary tests in `test_coverage_complete.py`. **Remaining CP3
+work is the runtime WIRING:** relax `_normalize_and_attach`'s strict 1:1 to ACCEPT a grouped card set via this
+predicate — held until the formatter emits grouped cards carrying `checkpoint_id`s (protects 1:1 reliability).
 
 ### Tests
 1. Artifact-count mismatch with complete required-checkpoint coverage → pass.
