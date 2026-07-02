@@ -26,7 +26,7 @@
 | 5b | Normal-narration golden coverage (Prim/Kruskal) | ✅ | `test_cp5b_normal_narration_preserves_provenance` — normal prose-fill mode for Prim + Kruskal preserves checkpoint provenance + required transitions + terminal + clean invariant |
 | 6 | Generation-report invariants | ✅ | `invariant_violations` (§1.2 + `verification_level`) + `_coverage_fields` (`trace_ids_rendered`/`required_transition_ids`/`missing_required_transition_ids`/`terminal_rendered`); tests in `test_generation_report.py` |
 | 6b | Checkpoint provenance + structured `prose_validation` in the report | ✅ | checkpoint fields (`checkpoint_ids_rendered`/`required_checkpoint_ids`/`missing_required_checkpoint_ids`) + nested `prose_validation{hard_failures,soft_warnings}` now recorded on both ship paths; invariants flag a missing required checkpoint AND a shipped hard prose failure (`test_generation_report.py`) |
-| 7 | Manual product QA | 🟡 | live audits clean on binary-search + graph BFS/DFS (keystone, de-hardcoding, continuity all confirmed); full 6-topic matrix not yet swept |
+| 7 | Manual product QA | 🟡 | **automated backstop ✅** (`test_cp7_end_to_end_net.py` drives all 6 topics end-to-end in BOTH normal + forced-fallback modes: adapter selected · trace_verified · no from-scratch source · checkpoint_id + source range per card · required transitions/checkpoints covered · terminal rendered · no raw-dict leak · invariants clean). The **human** sweep (visual match, "feels useful") remains |
 
 ---
 
