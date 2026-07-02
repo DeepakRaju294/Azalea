@@ -823,3 +823,186 @@ class QuickSortAdapter(FamilyAdapterBase):
                           str(card.get("result", ""))]).lower()
         pv = str(step.inputs["pivot"])
         return [] if pv in prose else [("pivot_not_stated", pv)]
+
+
+# --- heap sort (T8a — heap-ASSISTED selection: like selection sort it grows a sorted suffix by repeatedly
+#     taking the current maximum, but a max-heap finds that maximum in log time instead of a linear scan.
+#     Two phases (build the heap, then extract-max repeatedly); one card per sift-down. Both invariants are
+#     verifiable from state alone: the sorted-suffix one, and a build-frontier heap-property one that holds
+#     through the partial-build phase (nodes from the frontier onward already dominate their children)) ------
+_HS_CONV = {"algorithm_variant": "in_place_heap_sort", "order": "ascending", "heap_type": "max_heap",
+            "invariant": "the sorted suffix holds the largest values; the heap region is a max-heap",
+            "trace_granularity": "one_sift"}
+_HS_REQ = ["build_sift", "extract_max", "completion"]
+_HS_INV = [{"id": "suffix_is_sorted_maximums", "scope": "every_step",
+            "statement": "the sorted suffix holds the largest values in ascending order"},
+           {"id": "heap_property_from_frontier", "scope": "every_step",
+            "statement": "every node from the build frontier onward dominates its children in the heap region"}]
+
+
+class HeapSortAdapter(FamilyAdapterBase):
+    slug = "heap_sort"
+    label_convention = "ints"
+    example_spec = ExampleSpec(
+        input=InstanceShape("integers", count=(5, 6), value_range=(1, 60), structure=["distinct", "unsorted"]),
+        stages={
+            "build_heap": StageSpec(
+                "build_heap", "sift each internal node down (last parent first) to build a max-heap",
+                teaching_focus="after the build phase the largest value sits at the root",
+                contains={"compare_children": "internal", "sift_swap": "aggregated_supporting"},
+                state_effects=["each subtree, from the frontier down, becomes a max-heap"]),
+            "extract_max": StageSpec(
+                "extract_max", "move the root (the max) to its final spot, shrink the heap, and re-sift the root",
+                teaching_focus="each extract fixes one more of the largest values in its final sorted position",
+                contains={"compare_children": "internal", "sift_swap": "aggregated_supporting",
+                          "place_max": "required"},
+                state_effects=["the sorted suffix grows by one max; the shrunken heap region stays a max-heap"])},
+        structure="build-heap sifts, then extract-max+sift until the heap is empty",
+        must_exercise=["build_sift", "extract_max", "completion"], must_cover=["sift_swap"],
+        must_avoid=["already_sorted"],
+        terminal="every maximum has been extracted to its final position, so the whole array is sorted",
+        output_shape="the sorted array")
+
+    def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+        rng = random.Random(seed)
+        for i in range(80):
+            n = rng.randint(5, 6)
+            arr = rng.sample(range(1, 60), n)
+            yield {"array": arr, "_id": f"heap_v1_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        ev = trace.case_evidence
+        return (len(trace.steps) >= 5 and bool(ev.get("build_sift")) and bool(ev.get("extract_max"))
+                and bool(ev.get("sift_swap")))
+
+    def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                  attempt: int = 1, seed: int = 0) -> ContractTrace:
+        arr = list(example_input["array"])
+        a = list(arr)
+        n = len(a)
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        counter = {"i": 0}
+
+        def state(heap_size: int, frontier: int) -> dict[str, Any]:
+            return {"array": list(a), "heap_size": heap_size, "frontier": frontier,
+                    "sorted_len": n - heap_size}
+
+        def sift(i: int, size: int):
+            """Sift a[i] down within a[0:size]; returns (resting_index, swaps, start_value, first_larger_child)."""
+            start_val = a[i]
+            first_child = None
+            swaps = 0
+            while True:
+                largest = i
+                for c in (2 * i + 1, 2 * i + 2):
+                    if c < size and a[c] > a[largest]:
+                        largest = c
+                if largest == i:
+                    break
+                if first_child is None:
+                    first_child = a[largest]
+                a[i], a[largest] = a[largest], a[i]
+                swaps += 1
+                i = largest
+            return i, swaps, start_val, first_child
+
+        def add(op: str, prior, after, inputs, decision, reason, evr, req, active) -> str:
+            counter["i"] += 1
+            sid = f"s{counter['i']}"
+            allowed = sorted(set(arr) | {int(x) for x in re.findall(r"\d+", reason + " " + evr)})
+            steps.append(Step(
+                id=sid, operation=op, prior_state=prior, state_after=after, inputs=inputs,
+                decision=decision, reason=reason,
+                visual_state={"kind": "array", "array": list(a), "heap_size": after["heap_size"],
+                              "sorted_len": after["sorted_len"], "active": active},
+                visual_delta=dict(inputs), expected_visible_result=evr,
+                facts={"allowed_values": allowed, "required_facts": req, "forbidden_claims": []}))
+            return sid
+
+        # phase 1 — build a max-heap: sift each internal node down, last parent first
+        for i in range(n // 2 - 1, -1, -1):
+            prior = state(n, i + 1)                        # nodes above i are already heap-ordered
+            rest, swaps, val, child = sift(i, n)
+            after = state(n, i)
+            if swaps > 0:
+                reason = (f"sift value {val} down from index {i}: it is smaller than its larger child {child}, "
+                          f"so it keeps trading places with the larger child until both children are smaller, "
+                          f"coming to rest at index {rest}. The subtree rooted at index {i} is now a max-heap.")
+                evr = f"Heapify index {i}: {val} sifts down to index {rest}; array now {a}."
+            else:
+                reason = (f"value {val} at index {i} is already at least as large as both its children, so the "
+                          f"subtree rooted at index {i} is already a max-heap.")
+                evr = f"Heapify index {i}: {val} already dominates its children; array unchanged {a}."
+            sid = add("build_heap", prior, after, {"value": val, "index": i, "resting": rest, "swaps": swaps},
+                      f"heapify index {i}", reason, evr, [fact("value", val)], i)
+            evidence.setdefault("build_sift", []).append(sid)
+            if swaps > 0:
+                evidence.setdefault("sift_swap", []).append(sid)
+
+        # phase 2 — repeatedly extract the max (root) to its final position, then re-sift the new root
+        for end in range(n - 1, 0, -1):
+            prior = state(end + 1, 0)
+            maxval = a[0]
+            a[0], a[end] = a[end], a[0]                    # the max goes to its final sorted spot
+            rest, swaps, newroot, child = sift(0, end)     # newroot is the value promoted from position `end`
+            after = state(end, 0)
+            tail = (f"The new root {newroot} then sifts down to index {rest} to restore the max-heap."
+                    if swaps > 0 else
+                    f"The new root {newroot} already dominates its children, so the max-heap still holds.")
+            reason = (f"the root {maxval} is the largest value in the heap, so swap it to position {end} — its "
+                      f"final sorted position — and shrink the heap to size {end}. {tail}")
+            evr = f"Extract max {maxval} to position {end}; array now {a}."
+            sid = add("extract_max", prior, after,
+                      {"max": maxval, "position": end, "new_root": newroot, "swaps": swaps},
+                      f"extract max {maxval} to position {end}", reason, evr, [fact("max", maxval)], end)
+            evidence.setdefault("extract_max", []).append(sid)
+            if swaps > 0:
+                evidence.setdefault("sift_swap", []).append(sid)
+
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        return ContractTrace(
+            problem=(f"Sort the array {arr} in ascending order using heap sort "
+                     f"(build a max-heap, then repeatedly extract the maximum)."),
+            conventions=dict(_HS_CONV),
+            initial_state={"array": list(arr), "heap_size": n, "frontier": n // 2, "sorted_len": 0},
+            final_answer={"sorted": sorted(arr)}, steps=steps,
+            invariants=[dict(x) for x in _HS_INV], required_cases=list(_HS_REQ), case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        a, b = a or {}, b or {}
+        return (list(a.get("array") or []) == list(b.get("array") or [])
+                and a.get("heap_size") == b.get("heap_size") and a.get("frontier") == b.get("frontier"))
+
+    def final_answer_entails(self, state, answer):
+        return list((state or {}).get("array") or []) == list((answer or {}).get("sorted") or [])
+
+    def invariant_holds(self, inv, state):
+        state = state or {}
+        arr = state.get("array") or []
+        if inv.get("id") == "suffix_is_sorted_maximums":
+            k = state.get("sorted_len") or 0
+            suffix, prefix = arr[len(arr) - k:], arr[:len(arr) - k]
+            return suffix == sorted(suffix) and (not suffix or not prefix or min(suffix) >= max(prefix))
+        if inv.get("id") == "heap_property_from_frontier":
+            size = state.get("heap_size") or 0
+            frontier = state.get("frontier") or 0
+            for j in range(frontier, size):
+                for c in (2 * j + 1, 2 * j + 2):
+                    if c < size and arr[j] < arr[c]:
+                        return False
+            return True
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation in ("build_heap", "extract_max") else [
+            f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        v = str(step.inputs.get("max", step.inputs.get("value")))
+        return [] if v in prose else [("value_not_stated", v)]

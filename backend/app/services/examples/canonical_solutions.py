@@ -240,6 +240,26 @@ def level_order(root):
     larger = [x for x in arr[:-1] if x >= pivot]
     return quick_sort(smaller) + [pivot] + quick_sort(larger)
 """,
+    "heap_sort": """def heap_sort(arr):
+    n = len(arr)
+
+    def sift_down(root, size):
+        while 2 * root + 1 < size:
+            child = 2 * root + 1
+            if child + 1 < size and arr[child + 1] > arr[child]:
+                child += 1
+            if arr[root] >= arr[child]:
+                break
+            arr[root], arr[child] = arr[child], arr[root]
+            root = child
+
+    for i in range(n // 2 - 1, -1, -1):
+        sift_down(i, n)
+    for end in range(n - 1, 0, -1):
+        arr[0], arr[end] = arr[end], arr[0]
+        sift_down(0, end)
+    return arr
+""",
     "arithmetic_eval": """def evaluate(tokens):
     stack = [tokens[0]]
     i = 1

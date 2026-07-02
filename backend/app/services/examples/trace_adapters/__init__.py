@@ -8,15 +8,16 @@ from .families.algebra import QuadraticEquationAdapter
 from .families.formula import ArithmeticEvalAdapter
 from .families.graph import (BFSAdapter, DFSIterativeAdapter, DijkstraAdapter, KruskalAdapter, PrimAdapter)
 from .families.physics import KinematicsAdapter
-from .families.sequence import (BinarySearchAdapter, BubbleSortAdapter, InsertionSortAdapter,
-                                MergeSortAdapter, QuickSortAdapter, SelectionSortAdapter)
+from .families.sequence import (BinarySearchAdapter, BubbleSortAdapter, HeapSortAdapter,
+                                InsertionSortAdapter, MergeSortAdapter, QuickSortAdapter,
+                                SelectionSortAdapter)
 from .families.trees import (BSTSearchAdapter, InorderTraversalAdapter, LevelOrderTraversalAdapter,
                              PostorderTraversalAdapter, PreorderTraversalAdapter)
 
 # Explicit slug -> adapter registry (no fuzzy keyword matching; routing is in trace_pipeline, §17).
 ADAPTERS = {a.slug: a for a in (
     BinarySearchAdapter(), BFSAdapter(), DFSIterativeAdapter(), KruskalAdapter(), MergeSortAdapter(),
-    InsertionSortAdapter(), SelectionSortAdapter(), BubbleSortAdapter(),  # T8a pilots — grow a sorted region a pass at a time
+    InsertionSortAdapter(), SelectionSortAdapter(), BubbleSortAdapter(), HeapSortAdapter(),  # T8a pilots — grow a sorted region a pass at a time
     QuickSortAdapter(),                # T3 — 2nd divide-and-conquer pilot (partition-in-place) after merge sort
     ArithmeticEvalAdapter(), DijkstraAdapter(), PrimAdapter(),
     InorderTraversalAdapter(),         # TEMPLATE — coding concept (tree family)
@@ -27,7 +28,7 @@ ADAPTERS = {a.slug: a for a in (
 )}
 
 __all__ = ["BinarySearchAdapter", "BFSAdapter", "DFSIterativeAdapter", "KruskalAdapter",
-           "MergeSortAdapter", "QuickSortAdapter", "InsertionSortAdapter", "SelectionSortAdapter", "BubbleSortAdapter", "ArithmeticEvalAdapter", "DijkstraAdapter", "PrimAdapter",
+           "MergeSortAdapter", "QuickSortAdapter", "InsertionSortAdapter", "SelectionSortAdapter", "BubbleSortAdapter", "HeapSortAdapter", "ArithmeticEvalAdapter", "DijkstraAdapter", "PrimAdapter",
            "InorderTraversalAdapter", "PreorderTraversalAdapter", "PostorderTraversalAdapter",
            "LevelOrderTraversalAdapter", "QuadraticEquationAdapter", "KinematicsAdapter",
            "BSTSearchAdapter", "ADAPTERS"]

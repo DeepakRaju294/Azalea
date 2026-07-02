@@ -100,6 +100,8 @@ def _match_adapter(text: str, slug: str):
         return ADAPTERS["selection_sort"]
     if "bubble sort" in text or "bubble_sort" in text:
         return ADAPTERS["bubble_sort"]
+    if "heapsort" in text or "heap sort" in text or "heap_sort" in text:
+        return ADAPTERS["heap_sort"]
     if not is_tree and ("breadth-first" in text or "breadth first" in text or " bfs" in f" {text}"):
         return ADAPTERS["bfs"]
     if not is_tree and ("depth-first" in text or "depth first" in text or " dfs" in f" {text}"):

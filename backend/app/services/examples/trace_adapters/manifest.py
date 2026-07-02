@@ -142,6 +142,11 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "coding": True, "canonical_solution": "quick_sort",
         "routing_aliases": ["quicksort", "quick sort", "quick_sort"], "negative_guards": [],
         "fixtures": ["multi_element_partition", "completion"]},
+    "heap_sort": {
+        "type": "T8a", "family": "sequence", "status": "pilot", "verification_level": "trace_verified",
+        "coding": True, "canonical_solution": "heap_sort",
+        "routing_aliases": ["heapsort", "heap sort", "heap_sort"], "negative_guards": [],
+        "fixtures": ["build_sift", "extract_max", "sift_swap"]},
     "arithmetic_eval": {
         "type": "T7", "family": "formula", "status": "production", "verification_level": "trace_verified",
         "coding": True, "canonical_solution": "arithmetic_eval",
