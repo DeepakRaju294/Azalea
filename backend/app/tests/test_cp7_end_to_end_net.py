@@ -22,9 +22,10 @@ _TOPICS = [
     ("Binary Search", "binary_search"),
 ]
 
-# The C7/B5 bug is a raw STATE DICT leaking into prose — `{'in_tree': [...], 'selected_edges': [...]}` — i.e. a
-# brace followed by an identifier key + colon. Legitimate list/index/window notation ([0,3], [[1],[2]]) is fine.
-_RAW_STATE = re.compile(r"\{\s*['\"]?\w+['\"]?\s*:")
+# Raw backend state leaking into learner-facing prose (C7/B5): a state DICT (`{'in_tree': [...]}`) OR a nested
+# list of quoted tuples (`[['C', 'E', 5], ['A', 'D', 6]]` — Python repr, unreadable for a beginner). Plain
+# index/window notation (`[0, 3]`, `arr[4]`) is fine and must NOT trip this.
+_RAW_STATE = re.compile(r"\{\s*['\"]?\w+['\"]?\s*:|\[\s*\[\s*['\"]")
 
 
 def _faithful(payload):
@@ -49,6 +50,14 @@ class CP7EndToEndNet(unittest.TestCase):
             self.assertTrue(c.get("source_transition_start"), f"{slug}: card without source range")
             result = str(c.get("result", ""))
             self.assertFalse(_RAW_STATE.search(result), f"{slug}: raw state leaked into result: {result!r}")
+            self.assertFalse(_RAW_STATE.search(str(c.get("reasoning", ""))),
+                             f"{slug}: raw state leaked into reasoning: {c.get('reasoning')!r}")
+        # C1/E4: a multi-step lesson must NOT ship one generic reasoning repeated on every card — the
+        # per-step "why" (esp. an accept vs a cycle-skip) must be distinct.
+        reasonings = [str(c.get("reasoning", "")).strip() for c in cards if str(c.get("reasoning", "")).strip()]
+        if len(cards) >= 3:
+            self.assertGreater(len(set(reasonings)), 1,
+                               f"{slug}: every card shares identical reasoning (C1/E4): {reasonings[0]!r}")
         we = gr.current().worked_example
         self.assertEqual(we.get("adapter"), slug, f"{slug}: wrong adapter")
         self.assertFalse(gr.is_from_scratch_source(we.get("final_source")), f"{slug}: from-scratch source")

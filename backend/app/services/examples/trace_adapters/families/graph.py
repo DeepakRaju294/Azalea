@@ -16,6 +16,19 @@ from ..example_spec import ExampleSpec, InstanceShape, StageSpec
 from .base import FamilyAdapterBase
 
 
+def fmt_edges(edges: Any) -> str:
+    """Humanize an edge list for learner-facing prose: [['C','E',5],['A','D',6]] -> 'C–E (5), A–D (6)'.
+    A raw nested list (`[['C', 'E', 5], ...]`) reads as noise to a first-time learner (C7/B5)."""
+    out = []
+    for e in (edges or []):
+        e = list(e)
+        if len(e) >= 3:
+            out.append(f"{e[0]}–{e[1]} ({e[2]})")
+        elif len(e) == 2:
+            out.append(f"{e[0]}–{e[1]}")
+    return ", ".join(out) if out else "none yet"
+
+
 def random_unweighted_graph(rng: random.Random, *, extra_lo: int, extra_hi: int,
                             n_lo: int = 5, n_hi: int = 7) -> dict[str, Any]:
     """A connected undirected graph (spanning tree + cross edges) labelled A.. with `start` = A."""
@@ -625,7 +638,7 @@ class KruskalAdapter(FamilyAdapterBase):
                 visual_state={"kind": "weighted_graph", "selected": [list(e) for e in selected],
                               "components": comps(), "active_edge": [u, v, w]},
                 visual_delta={"considered": [u, v, w], "decision": decision},
-                expected_visible_result=f"Edge ({u},{v},{w}) {decision}; MST so far {selected}",
+                expected_visible_result=(f"Edge ({u},{v},{w}) {decision}; MST so far: {fmt_edges(selected)}"),
                 facts={"allowed_values": sorted({e[2] for e in edges} | {total, len(nodes), len(selected)}),
                        "required_facts": [fact("endpoint", u), fact("endpoint", v), fact("weight", w)],
                        "forbidden_claims": []}))   # decision correctness checked in validate_prose_claims

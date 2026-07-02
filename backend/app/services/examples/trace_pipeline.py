@@ -172,7 +172,11 @@ def _retry_feedback(reason: str, detail: list[str], n_steps: int) -> str:
 # §1a (STUDY_PATH_CONTENT_SPEC) — the instructional grammar the formatter was flying blind without.
 _STAGE_GRAMMAR_RULE = (
     "\nINSTRUCTIONAL GRAMMAR — use STAGE_GUIDANCE below (keyed by each step's `operation`):\n"
-    "- Lead the `reasoning` with the stage's `teaching_focus` (the ONE thing the step teaches).\n"
+    "- Lead the `reasoning` with THIS step's SPECIFIC decision — take the step's own `reason`/`decision` and "
+    "say WHY this exact entity got this exact outcome (e.g. 'D and E are already connected, so adding this edge "
+    "would form a cycle — skip it'). The stage's `teaching_focus` is the theme, NOT the sentence: NEVER repeat "
+    "the teaching_focus verbatim across cards — each card's reasoning must differ by naming this step's entity "
+    "and outcome. A card whose reasoning is generic (identical to a sibling card) is INVALID.\n"
     "- In `work`: surface the `required` operation as the step's single DECISION line; combine ALL "
     "`aggregated_supporting` operations into ONE summary line; OMIT `internal` operations unless the "
     "teaching_focus needs them. Aim for ~1-2 work lines — surface the decision, do not narrate machinery."
@@ -203,6 +207,7 @@ def build_format_payload(trace: ContractTrace, code: Optional[str] = None,
     steps = [{
         "id": s.id, "operation": s.operation, "inputs": s.inputs,
         "prior_state": s.prior_state, "state_after": s.state_after,
+        "decision": s.decision, "reason": s.reason,        # the VERIFIED, step-specific "why" (C1/E4)
         "expected_visible_result": s.expected_visible_result, "facts": s.facts,
     } for s in trace.steps]
     fb = f"\n\nFIX FROM THE PREVIOUS ATTEMPT (address ALL of this):\n{feedback}" if feedback else ""
@@ -235,10 +240,18 @@ def build_format_payload(trace: ContractTrace, code: Optional[str] = None,
     return {"system": system, "user": user}
 
 
-def _normalize_and_attach(raw: Any, trace: ContractTrace) -> Optional[list[dict[str, Any]]]:
+def _norm_txt(s: str) -> str:
+    """Loose text key for 'is this reasoning just the generic stage line?' — lowercase, collapse whitespace,
+    drop trailing punctuation."""
+    return re.sub(r"\s+", " ", str(s or "").strip().lower()).rstrip(".!;: ")
+
+
+def _normalize_and_attach(raw: Any, trace: ContractTrace,
+                          adapter: Any = None) -> Optional[list[dict[str, Any]]]:
     cards = raw.get("cards") if isinstance(raw, dict) else raw
     if not isinstance(cards, list) or len(cards) != len(trace.steps):   # v1: one card per step
         return None
+    guidance = _stage_guidance(adapter) if adapter is not None else {}
     out: list[dict[str, Any]] = []
     for card, step in zip(cards, trace.steps):
         if not isinstance(card, dict):
@@ -250,10 +263,19 @@ def _normalize_and_attach(raw: Any, trace: ContractTrace) -> Optional[list[dict[
         # writes reasoning/work. Falls back to the LLM result only if the adapter gives no EVR for this step.
         evr = str(getattr(step, "expected_visible_result", "") or "").strip()
         result = evr or str(card.get("result", "")).strip()
+        # C1/E4 backstop: if the model left reasoning empty OR just echoed the stage's generic teaching_focus
+        # (the #1 observed coding bug — 7 identical "add an edge only when..." cards, incl. on the SKIP card),
+        # fall back to THIS step's VERIFIED reason, which names the exact entity + decision (e.g. "D and E are
+        # already connected — skip (would form a cycle)"). The verified reason beats a generic repeated line.
+        reasoning = str(card.get("reasoning", "")).strip()
+        focus = str((guidance.get(step.operation) or {}).get("teaching_focus", "")).strip()
+        step_reason = str(getattr(step, "reason", "") or "").strip()
+        if step_reason and (not reasoning or _norm_txt(reasoning) == _norm_txt(focus)):
+            reasoning = step_reason
         c: dict[str, Any] = {
             "title": str(card.get("title", "")).strip(),
             "goal": str(card.get("goal", "")).strip(),
-            "reasoning": str(card.get("reasoning", "")).strip(),
+            "reasoning": reasoning,
             "work": [str(w) for w in (card.get("work") or [])],
             "result": result,
         }
@@ -281,7 +303,8 @@ def _final_answer_text(trace: ContractTrace) -> str:
         if "visit_order" in fa:
             return "visit order: " + ", ".join(map(str, fa["visit_order"]))
         if "mst_edges" in fa:
-            return f"MST edges {fa['mst_edges']} (total weight {fa.get('total_weight')})"
+            from .trace_adapters.families.graph import fmt_edges
+            return f"MST edges: {fmt_edges(fa['mst_edges'])} (total weight {fa.get('total_weight')})"
         if "sorted" in fa:
             return f"sorted: {fa['sorted']}"
         if "value" in fa:
@@ -477,7 +500,7 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
     for _ in range(_MAX_FORMAT_ATTEMPTS):
         attempts += 1
         raw = fmt(build_format_payload(trace, code=code, feedback=feedback, adapter=adapter))   # §1a + M7 retry
-        cards = _normalize_and_attach(raw, trace)
+        cards = _normalize_and_attach(raw, trace, adapter)
         last_raw, last_cards = raw, cards
         if cards is None:                                          # formatter produced nothing usable -> retry
             n_raw = len(raw["cards"]) if isinstance(raw, dict) and isinstance(raw.get("cards"), list) else None
