@@ -252,6 +252,7 @@ def _normalize_and_attach(raw: Any, trace: ContractTrace,
     if not isinstance(cards, list) or len(cards) != len(trace.steps):   # v1: one card per step
         return None
     guidance = _stage_guidance(adapter) if adapter is not None else {}
+    terminal = str(getattr(getattr(adapter, "example_spec", None), "terminal", "") or "")
     out: list[dict[str, Any]] = []
     for card, step in zip(cards, trace.steps):
         if not isinstance(card, dict):
@@ -290,7 +291,7 @@ def _normalize_and_attach(raw: Any, trace: ContractTrace,
         if not c["work"] or not c["result"]:
             return None
         out.append(c)
-    _ensure_completion(out, trace)                              # C4: the last card states completion
+    _ensure_completion(out, trace, terminal)                    # C4: completion + stopping criterion
     return out
 
 
@@ -322,17 +323,22 @@ def _final_answer_text(trace: ContractTrace) -> str:
 _COMPLETE_RE = re.compile(r"complete|all (?:nodes|vertices|elements)|finished|\bdone\b|\bfinal\b", re.I)
 
 
-def _ensure_completion(cards: list[dict[str, Any]], trace: ContractTrace) -> None:
+def _ensure_completion(cards: list[dict[str, Any]], trace: ContractTrace, terminal: str = "") -> None:
     """C4/C7: the trace ran to its terminal, so the LAST card must state completion. If its result doesn't
-    already say so, append a deterministic, verified completion clause (the trace's final answer). Works for
-    every adapter and both the LLM and trace-preserving paths."""
+    already say so, append a deterministic, verified completion clause that states BOTH the stopping CRITERION
+    (why the algorithm is done — e.g. 'V−1 edges accepted (a spanning tree)') and the final answer. The
+    criterion is the adapter's declared `terminal`; a learner who is uncertain needs to know WHY it stopped, not
+    just the result. Works for every adapter and both the LLM and trace-preserving paths."""
     if not cards:
         return
     last = cards[-1]
     res = str(last.get("result") or "").rstrip()
     if _COMPLETE_RE.search(res):
         return
-    last["result"] = (res.rstrip(".") + ". Complete — final result: " + _final_answer_text(trace) + ".").lstrip(". ")
+    ans = _final_answer_text(trace)
+    crit = str(terminal or "").strip().rstrip(".")
+    tail = f"Complete: {crit}. Final result: {ans}." if crit else f"Complete — final result: {ans}."
+    last["result"] = (res.rstrip(".") + ". " + tail).lstrip(". ")
 
 
 def _coverage_fields(trace: ContractTrace, cards: list[dict[str, Any]]) -> dict[str, Any]:
@@ -427,11 +433,12 @@ def _det_step_title(step: Step, i: int) -> str:
     return f"Step {i + 1}: {head}" if head else f"Step {i + 1}"
 
 
-def _deterministic_narration(trace: ContractTrace) -> list[dict[str, Any]]:
+def _deterministic_narration(trace: ContractTrace, adapter: Any = None) -> list[dict[str, Any]]:
     """ADAPTER_AND_GENERATION_SYSTEM_SPEC §4.3.1 step 2 — build cards DIRECTLY from the verified trace (no
     LLM), trace-preserving by construction. Used when the LLM narration fails its gate: per §1.2 we never
     discard the verified trace to a from-scratch fallback, so we ship a terse-but-correct narration of the
     SAME trace. Each card's truth-bearing fields are the step's own (prior/after state, decision, result)."""
+    terminal = str(getattr(getattr(adapter, "example_spec", None), "terminal", "") or "")
     out: list[dict[str, Any]] = []
     for i, step in enumerate(trace.steps):
         evr = str(getattr(step, "expected_visible_result", "") or "").strip()
@@ -449,7 +456,7 @@ def _deterministic_narration(trace: ContractTrace) -> list[dict[str, Any]]:
             "visual_state": step.visual_state,
             "visual_delta": step.visual_delta,
         })
-    _ensure_completion(out, trace)                              # C4: the last card states completion
+    _ensure_completion(out, trace, terminal)                    # C4: completion + stopping criterion
     return out
 
 
@@ -552,7 +559,7 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
     # TRUTH. We never discard it to a from-scratch fallback: ship a trace-preserving deterministic narration
     # of the SAME verified trace. (A fidelity failure already returned None above — that's a trace defect,
     # not a narration one.) `narration_failed_reason` records WHY the LLM path was abandoned, for M7.
-    det_cards = _deterministic_narration(trace)
+    det_cards = _deterministic_narration(trace, adapter)
     checkpoints = _attach_checkpoints(det_cards, trace, adapter)   # CP3a: one checkpoint_id per card
     det_prose = validate_prose(det_cards, trace, adapter, code_anchored=bool(code))   # what actually shipped
     _retain_debug(topic, trace, last_raw, last_cards, None, last_prose, shipped=True)

@@ -43,7 +43,8 @@ class BinarySearchAdapter(FamilyAdapterBase):
         structure="probe+ until lo>hi (absent) or found",
         must_exercise=["lower_bound_move", "upper_bound_move", "found_or_absent"],
         must_avoid=["found_on_first_probe"],
-        terminal="lo>hi (absent) or arr[mid]==target (found)", output_shape="the index, or -1")
+        terminal="the target is found, or the search window becomes empty (target absent)",
+        output_shape="the index, or -1")
 
     def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
         rng = random.Random(seed)

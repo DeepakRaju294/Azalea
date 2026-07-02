@@ -569,7 +569,7 @@ class KruskalAdapter(FamilyAdapterBase):
         structure="setup_sorted_edges, then consider_edge+ until V-1 edges accepted",
         must_exercise=["edge_acceptance", "cycle_rejection", "completion"],
         must_avoid=["tree_only_no_cycle_edge"],
-        terminal="V-1 edges accepted (a spanning tree)", output_shape="MST edge set + total weight")
+        terminal="a spanning tree — every vertex connected with no cycles", output_shape="MST edge set + total weight")
 
     def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
         rng = random.Random(seed)
@@ -753,7 +753,7 @@ class PrimAdapter(FamilyAdapterBase):
         structure="setup_start, then select_edge+ until all vertices in the tree",
         must_exercise=["edge_selection", "competing_candidates", "completion"],
         must_avoid=["no_competing_crossing_edges"],
-        terminal="all vertices in the tree (V-1 edges)", output_shape="MST edge set + total weight")
+        terminal="every vertex added to the growing tree", output_shape="MST edge set + total weight")
 
     def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
         rng = random.Random(seed)
