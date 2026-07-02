@@ -574,3 +574,129 @@ class SelectionSortAdapter(FamilyAdapterBase):
                           str(card.get("result", ""))]).lower()
         mv = str(step.inputs["min_value"])
         return [] if mv in prose else [("min_not_stated", mv)]
+
+
+# --- bubble sort (T8a — the 3rd incremental-sort pilot; adjacent compare-swaps grow a sorted SUFFIX of the
+#     largest values, and a zero-swap pass exits early. Same "grow a sorted region one pass at a time" shape
+#     as selection sort, exercised through a different mechanic + an early-termination case) ----------------
+_BUB_CONV = {"algorithm_variant": "bubble_sort", "order": "ascending",
+             "invariant": "the sorted suffix a[n-k:] holds the k largest values, sorted",
+             "trace_granularity": "one_pass"}
+_BUB_REQ = ["swap_needed", "completion"]
+_BUB_INV = [{"id": "suffix_is_sorted_maximums", "scope": "every_step",
+             "statement": "the sorted suffix holds the largest values in ascending order"}]
+
+
+class BubbleSortAdapter(FamilyAdapterBase):
+    slug = "bubble_sort"
+    label_convention = "ints"
+    example_spec = ExampleSpec(
+        input=InstanceShape("integers", count=(5, 8), value_range=(1, 60), structure=["distinct", "unsorted"]),
+        stages={"pass": StageSpec(
+            "pass", "sweep the unsorted part left to right, swapping each adjacent out-of-order pair",
+            teaching_focus="each pass floats the largest remaining value to the end; a swap-free pass means done",
+            contains={"compare_adjacent": "internal", "swap_adjacent": "aggregated_supporting",
+                      "float_max": "required"},
+            state_effects=["the sorted suffix grows by one; it always holds the largest values in order"])},
+        structure="pass+ until a sweep makes no swaps (or the array is sorted)",
+        must_exercise=["swap_needed", "completion"], must_cover=["swap_needed"],
+        must_avoid=["already_sorted"],
+        terminal="a full pass makes no swaps, so every value is in its final sorted position",
+        output_shape="the sorted array")
+
+    def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+        rng = random.Random(seed)
+        for i in range(80):
+            n = rng.randint(5, 8)
+            arr = rng.sample(range(1, 60), n)
+            yield {"array": arr, "_id": f"bubble_v1_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        return len(trace.steps) >= 3 and bool(trace.case_evidence.get("swap_needed"))
+
+    def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                  attempt: int = 1, seed: int = 0) -> ContractTrace:
+        arr = list(example_input["array"])
+        a = list(arr)
+        n = len(a)
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        sorted_suffix = 0
+        p = 0
+        while sorted_suffix < n - 1:
+            p += 1
+            sid = f"s{p}"
+            prior_arr = list(a)
+            window = list(a[:n - sorted_suffix])           # the unsorted region this pass sweeps
+            swaps = 0
+            for j in range(0, n - sorted_suffix - 1):
+                if a[j] > a[j + 1]:
+                    a[j], a[j + 1] = a[j + 1], a[j]
+                    swaps += 1
+            settled_pos = n - sorted_suffix - 1             # where this pass parks the largest value
+            bubbled = a[settled_pos]
+            prior = {"array": prior_arr, "sorted_len": sorted_suffix}
+            if swaps > 0:
+                sorted_suffix += 1
+                after = {"array": list(a), "sorted_len": sorted_suffix}
+                reason = (f"sweep {window} from left to right, swapping the {swaps} adjacent out-of-order "
+                          f"pair(s); the largest value {bubbled} bubbles to position {settled_pos}")
+                evr = f"Bubble {bubbled} to position {settled_pos}; array now {a}."
+                evidence.setdefault("swap_needed", []).append(sid)
+                req = [fact("max", bubbled)]
+                inputs = {"bubbled": bubbled, "position": settled_pos, "swaps": swaps}
+            else:                                           # a swap-free sweep proves the array is sorted -> stop
+                after = {"array": list(a), "sorted_len": n}
+                reason = (f"sweep {window} from left to right and find no adjacent pair out of order, so the "
+                          f"array is already fully sorted and bubble sort stops early")
+                evr = f"No swaps needed; the array {a} is already sorted."
+                evidence.setdefault("no_swap_early_exit", []).append(sid)
+                req = []
+                inputs = {"bubbled": None, "position": settled_pos, "swaps": 0}
+            allowed = sorted(set(arr) | {int(x) for x in re.findall(r"\d+", reason + " " + evr)})
+            steps.append(Step(
+                id=sid, operation="pass", prior_state=prior, state_after=after, inputs=inputs,
+                decision=(f"bubble {bubbled} to position {settled_pos}" if swaps else "no swaps — already sorted"),
+                reason=reason,
+                visual_state={"kind": "array", "array": list(a), "sorted_len": after["sorted_len"],
+                              "active": settled_pos},
+                visual_delta={"bubbled": bubbled, "position": settled_pos, "swaps": swaps},
+                expected_visible_result=evr,
+                facts={"allowed_values": allowed, "required_facts": req, "forbidden_claims": []}))
+            if swaps == 0:
+                break
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        return ContractTrace(
+            problem=f"Sort the array {arr} in ascending order using bubble sort.",
+            conventions=dict(_BUB_CONV), initial_state={"array": list(arr), "sorted_len": 0},
+            final_answer={"sorted": sorted(arr)}, steps=steps,
+            invariants=[dict(x) for x in _BUB_INV], required_cases=list(_BUB_REQ), case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        return (list((a or {}).get("array") or []) == list((b or {}).get("array") or [])
+                and (a or {}).get("sorted_len") == (b or {}).get("sorted_len"))
+
+    def final_answer_entails(self, state, answer):
+        return list((state or {}).get("array") or []) == list((answer or {}).get("sorted") or [])
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "suffix_is_sorted_maximums":
+            arr = (state or {}).get("array") or []
+            k = (state or {}).get("sorted_len") or 0
+            suffix, prefix = arr[len(arr) - k:], arr[:len(arr) - k]
+            return suffix == sorted(suffix) and (not suffix or not prefix or min(suffix) >= max(prefix))
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation == "pass" else [f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        if not step.inputs.get("swaps"):                   # early-exit pass states no bubbled value — nothing to check
+            return []
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        bv = str(step.inputs["bubbled"])
+        return [] if bv in prose else [("bubbled_max_not_stated", bv)]

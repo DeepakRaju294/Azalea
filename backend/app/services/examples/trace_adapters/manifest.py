@@ -132,6 +132,11 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "coding": True, "canonical_solution": "selection_sort",
         "routing_aliases": ["selection sort", "selection_sort"], "negative_guards": [],
         "fixtures": ["swap_needed", "already_min"]},
+    "bubble_sort": {
+        "type": "T8a", "family": "sequence", "status": "pilot", "verification_level": "trace_verified",
+        "coding": True, "canonical_solution": "bubble_sort",
+        "routing_aliases": ["bubble sort", "bubble_sort"], "negative_guards": [],
+        "fixtures": ["swap_needed", "no_swap_early_exit"]},
     "arithmetic_eval": {
         "type": "T7", "family": "formula", "status": "production", "verification_level": "trace_verified",
         "coding": True, "canonical_solution": "arithmetic_eval",

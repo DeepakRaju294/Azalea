@@ -96,6 +96,8 @@ def _match_adapter(text: str, slug: str):
         return ADAPTERS["insertion_sort"]
     if "selection sort" in text or "selection_sort" in text:
         return ADAPTERS["selection_sort"]
+    if "bubble sort" in text or "bubble_sort" in text:
+        return ADAPTERS["bubble_sort"]
     if not is_tree and ("breadth-first" in text or "breadth first" in text or " bfs" in f" {text}"):
         return ADAPTERS["bfs"]
     if not is_tree and ("depth-first" in text or "depth first" in text or " dfs" in f" {text}"):
