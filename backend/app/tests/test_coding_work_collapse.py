@@ -50,6 +50,17 @@ class CodingWorkCollapse(unittest.TestCase):
         _collapse_repeated_coding_work(cards)
         self.assertEqual(len(cards[0]["work"]), 4)
 
+    def test_repeated_single_line_is_collapsed(self):
+        # a recursive traversal's one return line, shown per visit, must NOT be reprinted every card
+        cards = [{"code_lines": [[4]], "work": ["return f(node)  // recurse, output 23"]},
+                 {"code_lines": [[4]], "work": ["return f(node)  // recurse, output 40"]},
+                 {"code_lines": [[4]], "work": ["return f(node)  // recurse, output 25"]}]
+        _collapse_repeated_coding_work(cards)
+        self.assertIn("return f(node)", cards[0]["work"][0])         # first occurrence shows the line
+        for c in cards[1:]:
+            self.assertEqual(len(c["work"]), 1)
+            self.assertIn("same code runs", c["work"][0])            # repeats abbreviated, not reprinted
+
 
 if __name__ == "__main__":
     unittest.main()

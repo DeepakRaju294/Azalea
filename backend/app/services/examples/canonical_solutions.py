@@ -135,21 +135,44 @@ def dijkstra(graph, start):
     return -1
 """,
     # ---- inorder traversal of a binary tree (recursion: left, node, right) ----
-    "tree_inorder": """def inorder(node):
-    if node is None:
-        return []
-    return inorder(node.left) + [node.val] + inorder(node.right)
+    # ---- tree traversals (ITERATIVE stack/queue forms — a step-by-step trace maps to the pop/visit/push loop,
+    #      and the base case is visible, unlike a one-line recursion that repeats confusingly per visit) ----
+    "tree_inorder": """def inorder(root):
+    result = []
+    stack = []
+    node = root
+    while stack or node:
+        while node:
+            stack.append(node)
+            node = node.left
+        node = stack.pop()
+        result.append(node.val)
+        node = node.right
+    return result
 """,
-    # ---- tree preorder / postorder / level-order (siblings of inorder) ----
-    "tree_preorder": """def preorder(node):
-    if node is None:
-        return []
-    return [node.val] + preorder(node.left) + preorder(node.right)
+    "tree_preorder": """def preorder(root):
+    result = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if node is None:
+            continue
+        result.append(node.val)
+        stack.append(node.right)
+        stack.append(node.left)
+    return result
 """,
-    "tree_postorder": """def postorder(node):
-    if node is None:
-        return []
-    return postorder(node.left) + postorder(node.right) + [node.val]
+    "tree_postorder": """def postorder(root):
+    result = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if node is None:
+            continue
+        result.append(node.val)
+        stack.append(node.left)
+        stack.append(node.right)
+    return result[::-1]
 """,
     "tree_levelorder": """from collections import deque
 

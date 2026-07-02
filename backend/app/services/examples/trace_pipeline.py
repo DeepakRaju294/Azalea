@@ -265,11 +265,15 @@ def _collapse_repeated_coding_work(cards: list[dict[str, Any]]) -> list[dict[str
         work = c.get("work") or []
         codeparts = [str(w).split("//", 1)[0].strip() for w in work]
         new = [cp for cp in codeparts if cp and cp not in shown]
-        if not new and len(work) > 2:                          # nothing new here — a repeated loop body
-            c["work"] = work[:2] + ["…the rest of the loop body runs exactly as shown above."]
-            cl = c.get("code_lines") or []
-            if cl:
-                c["code_lines"] = cl[:2] + [[]]
+        if not new and work:                                   # nothing new here — a repeated body (loop OR recursion)
+            if len(work) > 2:                                  # a multi-line loop body: keep the decision, elide the rest
+                c["work"] = work[:2] + ["…the rest of the loop body runs exactly as shown above."]
+                cl = c.get("code_lines") or []
+                if cl:
+                    c["code_lines"] = cl[:2] + [[]]
+            else:                                              # a repeated 1-2 line body (e.g. a recursion's return
+                c["work"] = ["…the same code runs, producing this step's value (see the result)."]  # line): don't reprint
+                c["code_lines"] = [[]]
         else:
             shown.update(cp for cp in codeparts if cp)
     return cards
