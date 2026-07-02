@@ -96,7 +96,7 @@ concepts. `TeachingProjection` is the only artifact in both — *declared* at au
 
 **Adapter (authoring) lifecycle — runs ONCE when writing an adapter (builds infrastructure):**
 ```
-Author → ExampleSpec → ReferenceExecutor → TeachingProjection → TeachingObjectives → §E behavior tests → Conformance (L0/L1/L2)
+Author → ExampleSpec → ReferenceExecutor → build_teaching_trace (semantic) → TeachingProjection → TeachingObjectives → §E behavior tests → Conformance (L0/L1/L2)
 ```
 **Runtime lifecycle — runs for EVERY lesson (serves users):**
 ```
@@ -166,9 +166,11 @@ Adapter
 | **Label convention** | walkthroughs use letters (A–F), coding uses ints (0–3) — inconsistent within one path | a declared, consistent labeling convention per path | ❌ |
 
 ### 2.4 What is explicitly NOT in the adapter (carried from `ADAPTER_CONTRACT.md` §G)
-No stored example values, no fixed learner prose, no LLM prompt/rules. The adapter is **executable truth +
-a contract**. The **canonical executable artifact** (algorithm solution · T10 simulator · T12 specimen;
-`canonical_code` for displayed-code highlighting) is a separate later concern.
+No stored example values, no fixed learner prose, no LLM prompt/rules, no presentation artifacts. The adapter
+is **executable truth + a contract**. For CODING adapters the **canonical executable artifact** (algorithm:
+idiomatic implementation · T10: operation simulator/sequence · T12: executable teaching specimen) is
+adapter-owned INFRASTRUCTURE — required, but neither a teaching-semantic nor a phrasing field; the separate
+`canonical_code` for displayed-code highlighting is a later rendering concern.
 
 > **The boundary (the rule that stops adapters from over-growing):** **Adapters define WHAT should be taught,
 > never HOW it is written.** Wording style, card titles, hooks, narration tone, emphasis, and teaching voice
@@ -183,19 +185,20 @@ a contract**. The **canonical executable artifact** (algorithm solution · T10 s
 > formatter — this is what stops someone adding a "smart merge" inside narration six months from now.
 
 ### 2.5 The trace artifact chain — FIRST-CLASS artifacts (not just transformations) ✅ (`trace_adapters/artifacts.py`)
-The raw→teaching split (C1-a) is upgraded from a single function into a **chain of named artifacts**, each
-independently inspectable, validated, and cached. This makes compression / grouping / pacing reasoning local:
+The raw-execution → semantic-trace → checkpoint pipeline is a **chain of named artifacts**, each independently
+inspectable, validated, and cached, so truth / pacing / grouping / provenance stay local:
 
 ```
 LessonIntent       WHY this example exists (see §2.5.1) — chosen by orchestration BEFORE the adapter runs
    ↓  (parameterizes instance + difficulty selection)
-ExecutionTrace     literally every operation the executor performs (raw, internal events included)
-   ↓  TeachingProjection   the adapter's policy that decides what is learner-VISIBLE (suppress internal,
-                            group aggregated_supporting, keep required) — a declared, testable mapping
-TeachingTrace      the final PEDAGOGICAL sequence — a first-class SEMANTIC artifact (transition · decision ·
-                   facts · before · after · operation · terminal). This is what completeness + the count gate read.
-   ↓  Narration           the LLM's prose for ONE verified teaching transition (wording only)
-Renderer           cards · timeline · animation · video · chatbot (presentation — many from one TeachingTrace)
+ExecutionTrace     the complete RAW execution log for the bounded instance (every low-level event)
+   ↓  build_teaching_trace()   the adapter folds contiguous raw events into verified semantic transitions
+TeachingTrace      the verified SEMANTIC-transition sequence — first-class (transition · decision · facts ·
+                   before · after · operation · terminal · raw_event range). Truth + coverage read THIS.
+   ↓  TeachingProjection   adapter-owned policy selecting/grouping transitions into learner checkpoints
+TeachingCheckpoint[]  provenance-bearing narration/render units (one card per checkpoint)
+   ↓  Narration           the LLM's prose (or deterministic template) for ONE checkpoint (wording only)
+Renderer           cards · timeline · animation · video · chatbot (presentation — many from one checkpoint set)
 ```
 > **Alignment with the four-layer model (`ADAPTER_DEVELOPMENT_SPEC` §7.0).** The chain above is the SAME four
 > layers, named precisely: **ExecutionTrace** = the complete raw log for the bounded instance; **TeachingTrace**
@@ -266,8 +269,10 @@ AdapterOutput {
   teaching_checkpoints: list[TeachingCheckpoint] # narration/render units (adapter-owned projection §2.5.2)
   teaching_objectives: TeachingObjectives        # what a GOOD example shows/avoids (§2.7)
   teaching_profile:    TeachingProfile           # easy/normal/hard → objectives (§2.7)
-  validation_contract: { truth: [...], teaching: TeachingValidationContract }   # two phases; teaching adapter-owned (§4.0)
-  visual_state:        VisualContract + per-step visual_state/delta (§2.3)
+  validation_contract: { truth: [...], teaching: TeachingValidationContract }   # three layers; teaching adapter-owned (§4.0)
+  visual_contract:     adapter-declared semantic visual state + allowed transition kinds (§2.3)
+  # per-transition visual_state/delta lives on TeachingTrace; compiled_visual_frames are COMPILER output,
+  # NOT adapter output — adapters never return presentation-ready frames (no-direct-frames boundary)
 
   # ── IMPLEMENTATION CONTRACT (the infrastructure — what services + debug info it provides) ──
   supported_services:  {ExecutionService, TeachingTraceService, VisualService, ...}  # what it implements (§2.7)
@@ -433,7 +438,7 @@ mislabeled Teaching failures (`count_mismatch`) being treated as Truth failures 
 |---|---|---|---|
 | **Fallback policy (keystone)** | adapter withhold → from-scratch `gen_foundation`/`legacy` → wrong example | adapter withhold → **trace-preserving narration of the same verified trace**; if unavailable → withhold/flag (no fabrication) | **P0** |
 | **Single path for supported topics** | 3 competing paths; gen_foundation can win on adapter-supported topics | adapter-supported → `trace_pipeline` only; gen_foundation = Tier-2/unsupported orchestrator | **P0** |
-| **`count_mismatch` gate (the #1 measured cause)** | formatter emits ≠ trace-step count → withhold → fallback; the retry isn't enough (31 of the measured withholds) | **relax**: accept the formatter's grouping when **stage coverage holds** (every surfaced stage rendered, no decision dropped), OR hard-constrain the formatter to 1:1 and forbid merging. Count alone must never withhold a coverage-complete narration | **P0** |
+| **`count_mismatch` gate (the #1 measured cause)** | formatter emits ≠ trace-step count → withhold → fallback; the retry isn't enough (31 of the measured withholds) | **checkpoint alignment**: validate cards against the adapter-produced `TeachingCheckpoint` set (one card per checkpoint, or a declared renderer split of ONE checkpoint; never a semantic merge across checkpoints). Count alone never withholds a checkpoint-aligned narration; formatter grouping is FORBIDDEN (§4.3.2) | **P0** |
 | **`prose_fail` gate strictness** | over-strict `edge_not_discussed`/`decision_mismatch` reject correct narrations (10 measured) | hard/soft boundary (carry from accuracy-spec): only a true contradiction withholds; soft phrasing notes never block | P1 |
 | **Executor input-shape + signature (the `unverifiable=61` cause, #2/#5)** | A2/trace-first can't run code with a `start` param, nested `{"graph":{…}}`, or custom signatures | normalize the example input to the entry's signature (graph relabel, start-vertex, adjacency variants); broaden `_arg_candidates`; only `unverifiable` when truly unrunnable | P1 |
 | **Routing-miss robustness (#1, distinct from the tail)** | empty `topic_family`/vague title/wrong `topic_type` → adapter not picked even when one exists | derive family from title before routing (already partial in `prepass`); a topic that *should* map but doesn't is a **routing bug**, not a no-adapter case — log them separately | P1 |
@@ -460,6 +465,12 @@ Steps 2–4 are the guaranteed last mile: the trace is ground truth, so a narrat
 > that, not the requirement. (A terse template is the simplest trace-preserving narrator; an LLM constrained
 > to the verified TeachingTrace is also valid.)
 
+> **Backend owns semantic degradation; the frontend only re-renders.** The BACKEND always includes verified
+> text cards when Truth succeeds, emits visual frames when compilation succeeds, and may set
+> `render_mode=text_only_verified` before delivery (step 4). If the FRONTEND's own rendering then throws, it
+> falls back to the already-supplied verified text cards — it never reconstructs semantics, groups checkpoints,
+> or invents fallback teaching content (a browser crash can't be predicted by the backend in advance).
+
 #### 4.3.2 `count_mismatch` acceptance criteria (when a ≠ count is OK)
 Grouping is decided by the **adapter's TeachingProjection BEFORE narration** (§2.5.2) — never by the formatter.
 The formatter receives one normalized **TeachingCheckpoint** at a time; each card + visual frame cites exactly
@@ -477,8 +488,9 @@ If all hold, ship; otherwise retry, then fall to §4.3.1 step 3. **Count alone i
 the count that matters is the ADAPTER's checkpoint count, not a formatter free-for-all.**
 
 #### 4.3.3 Prose hard/soft boundary (the measured drivers) — protect the A3 exemption
-Hard (withhold-worthy) prose codes, from the logs: `edge_not_discussed` (19), `decision_mismatch` (13),
-`decision_contradiction` (12), `missing_fact` (4). **`value_not_allowed` (44 — the largest raw count) MUST
+**Hard-narration** prose codes (force RETRY → deterministic checkpoint narration, NOT an immediate withhold —
+only a Truth failure withholds a supported topic, §4.3.1), from the logs: `edge_not_discussed` (19),
+`decision_mismatch` (13), `decision_contradiction` (12), `missing_fact` (4). **`value_not_allowed` (44 — the largest raw count) MUST
 remain SOFT for code-anchored cards (A3).** If it ever regresses to hard it becomes the #1 false-withhold —
 this is an invariant to protect, not just a setting.
 
@@ -512,14 +524,14 @@ Consolidated here so nothing is lost; each tagged with its source spec.
 
 ### 5.1 From `WORKED_EXAMPLE_ACCURACY_SPEC` (v6 — design only, **not implemented**)
 - ❌ The full **Tier 1/2/3 honesty ladder** (only Tier 1 partially live via trace_pipeline).
-- ✅ **`raw_log → teaching_trace → cards`** explicit interfaces with stable transition ids (= adapter C1-a/b — CLOSED §2.2).
+- ✅ **`raw execution log → verified semantic TeachingTrace → adapter-owned TeachingCheckpoint[] → cards/frames`** explicit interfaces with stable transition ids (= adapter C1-a/b — CLOSED §2.2).
 - ✅ **`TeachingTracePolicy`** as a first-class adapter property (= adapter C1-c — CLOSED §2.2).
 - ❌ **Terminal-vs-endpoint split**, **prose-validator hard/soft boundary** as declared structure.
 - 🟡 **Phase-A1 self-floor-replacement invariant** (the "withhold, never silently degrade" guarantee) — partially via M7, not enforced as an invariant.
 
 ### 5.2 From `WORKED_EXAMPLE_REASONING_SPEC` (Phase 1 implemented, flag-gated)
 - ✅ 7 deterministic adapters + `trace_pipeline` (flag `AZALEA_WORKED_EXAMPLE_TRACE_PIPELINE`).
-- ❌ **Phase 2+ stage merging** (adjacent stages → one card via a declared rule) — needed once multi-stage grammars (§2.3) land.
+- ❌ **Checkpoint grouping** (contiguous SUPPORTING semantic transitions → one adapter-declared `TeachingCheckpoint`; never across a decision boundary) — needed once multi-stage grammars (§2.3) land.
 - ✅ Per-step **structured fact predicates** (objects = C1-d — CLOSED §2.2).
 
 ### 5.3 From `CODING_WORKED_EXAMPLE_SPEC` (v1 implemented)
@@ -587,7 +599,8 @@ Carried from `ADAPTER_CONTRACT.md` §A, extended:
      **This is P1, not later: it's the main reason adapter-backed examples still feel shallow** (single-stage
      today), and the completion stage it adds also fixes C4 (§5.4).
    - `prose_fail` hard/soft boundary, **executor input-shape + signature** (`unverifiable=61`),
-     **routing-miss** vs no-adapter split, gen_foundation delegates to the adapter.
+     **routing-miss** vs no-adapter split, and routing legacy/gen_foundation entrypoints to `trace_pipeline`
+     BEFORE generation whenever an adapter applies (gen_foundation stays Tier-2, never re-derives a supported topic).
 3. **WIRE the existing C1/L2 interfaces into the RUNTIME path + enforce them (§2.2, §2.5–§2.8):** the C1
    contracts, `AdapterOutput`, `TeachingObjectives`/`TeachingProfile`, and diagnostics already EXIST — the work
    is runtime enforcement, not building abstractions: semantic `TeachingTrace` construction (non-identity where
@@ -598,6 +611,7 @@ Carried from `ADAPTER_CONTRACT.md` §A, extended:
 5. **Enforcement (§6 L1/L2):** wire §E behavior suites + `must_cover` + `visual_contract` + Teaching
    validation into the conformance checker so "passes checker" = "teaching-complete."
 6. **Retire gen_foundation as a WE generator (§1.1):** Tier-2 unsupported-topic prose/scaffold only; one path.
+   (Its supported-topic AUTHORITY is removed during P0; this step is the later code deletion/cleanup.)
 7. **Then scale to 100+** — the template is enforced; new adapters are mechanical.
 
 ---
