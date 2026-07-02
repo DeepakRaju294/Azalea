@@ -84,6 +84,9 @@ def invariant_violations(report: dict[str, Any]) -> list[str]:
                        f"{we.get('missing_required_transition_ids')}")
         if we.get("terminal_rendered") is False:
             out.append(f"CP6: adapter '{adapter}' shipped without a rendered terminal/completion step")
+        if we.get("missing_required_checkpoint_ids"):          # CP6b — checkpoint-level coverage
+            out.append(f"CP6b: adapter '{adapter}' shipped missing required checkpoints "
+                       f"{we.get('missing_required_checkpoint_ids')}")
     return out
 
 

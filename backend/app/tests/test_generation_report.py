@@ -60,6 +60,10 @@ class Cp1InvariantStanding(unittest.TestCase):
         self.assertTrue(gr.invariant_violations({"worked_example": {**base, "terminal_rendered": False}}))
         self.assertTrue(gr.invariant_violations(
             {"worked_example": {**base, "terminal_rendered": True, "missing_required_transition_ids": ["cycle_skip"]}}))
+        # CP6b — a missing required CHECKPOINT is a violation too
+        self.assertTrue(gr.invariant_violations(
+            {"worked_example": {**base, "terminal_rendered": True,
+                                "missing_required_checkpoint_ids": ["settle_B"]}}))
 
     def test_live_supported_failure_keeps_invariant(self):
         # a supported topic whose formatter fails ships trace-preserving narration → no §1.2 violation

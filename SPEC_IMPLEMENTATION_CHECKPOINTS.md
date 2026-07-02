@@ -5,10 +5,11 @@
 > coverage until all preceding BLOCKING checkpoints pass.** Independent safety, observability, and regression
 > work may proceed in parallel — but must not be treated as proof that an earlier blocking checkpoint is done.
 >
-> **Current rollout blocker: CP3a — default checkpoint emission into runtime payloads — then CP3
-> checkpoint/artifact acceptance wiring** (CP1/CP2/CP4/CP5/CP6 already reduce risk materially, but identity
-> checkpoints aren't in the payload yet and grouped LLM artifacts aren't yet accepted under the checkpoint
-> contract). The next code change is CP3a wiring across the eight adapters, NOT grouped-card acceptance.
+> **Current rollout blocker: CP3 — grouped checkpoint/artifact acceptance wiring.** CP3a (default checkpoint
+> emission) has LANDED: `_attach_checkpoints` puts a `checkpoint_id` + contiguous source-transition provenance on
+> every card in both ship paths, tested across all 8 adapters. CP1/CP2/CP4/CP5/CP6 already reduce risk; the
+> remaining P0-tier work is accepting GROUPED LLM artifacts under the checkpoint contract (relax the strict 1:1
+> in `_normalize_and_attach` behind the checkpoint-aware `coverage_complete`).
 >
 > **Status legend:** ✅ done & tested · 🟡 partial · ❌ not started.
 
@@ -18,13 +19,13 @@
 | 0 | Baseline safety / observability | ✅ | M7 `generation_report`, full suite (18 pre-existing fails, steady) |
 | 1 | No from-scratch fallback for supported topics | ✅ | P0a `545ae26` + single-path `40a34df` + invariant lock `8bd40c7` |
 | 2 | Trace-preserving fallback narration | ✅ | P0a `_deterministic_narration` `545ae26` |
-| 3a | Default checkpoint emission (per-transition, with provenance) | 🟡 | `base.teaching_checkpoints` builds the identity form; runtime-payload + report wiring pending (prereq for CP3) |
+| 3a | Default checkpoint emission (per-transition, with provenance) | ✅ | `_attach_checkpoints` puts a `checkpoint_id` + `source_transition_start/end` on every card (both ship paths) + CP6b report fields; `test_cp3a_checkpoints.py` runs the 6-step contract × all 8 adapters |
 | 3 | Checkpoint/artifact alignment (was: relax `count_mismatch`) | 🟡 | never-withhold (P0a) + **`coverage_complete(cards, trace, adapter)` acceptance predicate built & the 5 CP3 boundary tests pass** (`test_coverage_complete.py`); the grouped-count ACCEPT wiring in `_normalize_and_attach` is deferred (needs per-artifact `checkpoint_id` + a contiguous source-transition range — a prompt change held back to protect 1:1 reliability) |
 | 4 | Prose hard/soft boundary | ✅ | declared `TeachingValidationContract` (`DEFAULT_TEACHING_VALIDATION`) + `hard_prose_violations(contract=)`; four boundary tests in `test_teaching_validation_contract.py` |
 | 5 | Regression fixtures (golden lessons) | ✅ | `test_golden_fixtures.py` — deterministic-narration golden net over all 8 adapters (CP5 historical bug classes) |
 | 5b | Normal-narration golden coverage (Prim/Kruskal) | 🟡 | deferred — fixtures cover the deterministic FALLBACK path; the normal prose-fill path is not yet asserted |
 | 6 | Generation-report invariants | ✅ | `invariant_violations` (§1.2 + `verification_level`) + `_coverage_fields` (`trace_ids_rendered`/`required_transition_ids`/`missing_required_transition_ids`/`terminal_rendered`); tests in `test_generation_report.py` |
-| 6b | Checkpoint provenance + structured `prose_validation` in the report | 🟡 | lands with CP3 wiring — `checkpoint_ids_rendered`/`required_checkpoint_ids`/`missing_required_checkpoint_ids` + nested `prose_validation{hard_failures,soft_warnings}` |
+| 6b | Checkpoint provenance + structured `prose_validation` in the report | 🟡 | checkpoint fields NOW recorded (`checkpoint_ids_rendered`/`required_checkpoint_ids`/`missing_required_checkpoint_ids`) + a `missing_required_checkpoint_ids` invariant (`test_generation_report.py`); the nested `prose_validation{hard_failures,soft_warnings}` object is still flat |
 | 7 | Manual product QA | 🟡 | live audits clean on binary-search + graph BFS/DFS (keystone, de-hardcoding, continuity all confirmed); full 6-topic matrix not yet swept |
 
 ---
@@ -110,6 +111,11 @@ terminal marker. **Pass condition:** every adapter-backed payload can attach a `
 learner-facing artifact — even before GROUPED checkpoints exist. (`base.teaching_checkpoints` already builds the
 identity-projection form; CP3a is wiring it into the runtime payload + report.) Only then does CP3 progress from
 *one transition → one checkpoint → one+ artifacts* to grouped checkpoints.
+
+**CP3a status: ✅** — `_attach_checkpoints` (`trace_pipeline`) wires the identity projection onto every card in
+BOTH ship paths (LLM + deterministic narration); `test_cp3a_checkpoints.py` runs the 6-step contract across all
+8 adapters; the CP6b checkpoint report fields + a `missing_required_checkpoint_ids` invariant are locked in
+`test_generation_report.py`.
 
 **CP3a tests — for each currently supported adapter:**
 1. build the default `TeachingCheckpoint[]` identity projection;

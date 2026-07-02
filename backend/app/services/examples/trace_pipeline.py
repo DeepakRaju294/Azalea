@@ -323,6 +323,45 @@ def _coverage_fields(trace: ContractTrace, cards: list[dict[str, Any]]) -> dict[
             "missing_required_transition_ids": missing, "terminal_rendered": terminal_rendered}
 
 
+def _attach_checkpoints(cards: list[dict[str, Any]], trace: ContractTrace, adapter: Any) -> list[Any]:
+    """CP3a — attach the adapter's default (identity) TeachingCheckpoint provenance to each shipped card so every
+    learner-facing artifact cites exactly one `checkpoint_id` (spec §2.5.2 / §7.3). Identity projection: one
+    checkpoint per trace transition, so a card for step X cites the checkpoint whose source range covers X.
+    Returns the checkpoint list for report coverage. ADDITIVE — provenance never blocks a verified ship."""
+    try:
+        checkpoints = list(adapter.teaching_checkpoints(trace) or [])
+    except Exception:  # noqa: BLE001 — provenance is best-effort; a verified trace still ships without it
+        return []
+    by_step: dict[str, Any] = {}
+    for cp in checkpoints:
+        for sid in getattr(cp, "source_step_ids", []) or []:
+            by_step.setdefault(sid, cp)
+    for c in cards:
+        cp = next((by_step[s] for s in (c.get("trace_step_ids") or []) if s in by_step), None)
+        if cp is None:
+            continue
+        ids = list(getattr(cp, "source_step_ids", []) or [])
+        c["checkpoint_id"] = cp.checkpoint_id
+        c["source_transition_start"] = cp.source_step_start or (ids[0] if ids else "")
+        c["source_transition_end"] = cp.source_step_end or (ids[-1] if ids else "")
+    return checkpoints
+
+
+def _checkpoint_coverage_fields(trace: ContractTrace, cards: list[dict[str, Any]],
+                                checkpoints: list[Any]) -> dict[str, Any]:
+    """CP6b — checkpoint-level audit provenance: which checkpoints the cards rendered, which are REQUIRED (their
+    source range holds a required transition, spec §CP3a derivation), and which required ones are missing."""
+    rendered = [c.get("checkpoint_id") for c in cards if c.get("checkpoint_id")]
+    rendered_set = set(rendered)
+    evidence = getattr(trace, "case_evidence", {}) or {}
+    required_steps = {sid for ids in evidence.values() for sid in ids}
+    required_cp = [cp.checkpoint_id for cp in checkpoints
+                   if set(getattr(cp, "source_step_ids", []) or []) & required_steps]
+    missing = [cid for cid in required_cp if cid not in rendered_set]
+    return {"checkpoint_ids_rendered": rendered, "required_checkpoint_ids": required_cp,
+            "missing_required_checkpoint_ids": missing}
+
+
 def _to_solve_result(trace: ContractTrace, cards: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "problem": trace.problem,
@@ -453,10 +492,12 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
                 detail = [f"{over} step(s) have > {_MAX_WORK_LINES} work lines"]
                 feedback = _retry_feedback(reason, detail, n_steps)
                 continue
+            checkpoints = _attach_checkpoints(cards, trace, adapter)   # CP3a: one checkpoint_id per card
             _retain_debug(topic, trace, raw, cards, fid, prose, shipped=True)
             _gr.we(tp_shipped=True, tp_reason="shipped", verified_steps=n_steps,
                    formatter_cards=len(cards), tp_attempts=attempts, work_over_cap=over or None)
             _gr.we(**_coverage_fields(trace, cards))           # CP6 coverage/terminal instrumentation
+            _gr.we(**_checkpoint_coverage_fields(trace, cards, checkpoints))   # CP6b checkpoint provenance
             return _to_solve_result(trace, cards)
         reason = "prose_fail"                                      # a hard contradiction -> re-format
         detail = [f"{v.code} {v.detail} ({v.trace_step_id})" for v in hard][:6]
@@ -466,11 +507,13 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
     # of the SAME verified trace. (A fidelity failure already returned None above — that's a trace defect,
     # not a narration one.) `narration_failed_reason` records WHY the LLM path was abandoned, for M7.
     det_cards = _deterministic_narration(trace)
+    checkpoints = _attach_checkpoints(det_cards, trace, adapter)   # CP3a: one checkpoint_id per card
     _retain_debug(topic, trace, last_raw, last_cards, None, last_prose, shipped=True)
     _gr.we(tp_shipped=True, tp_reason="trace_preserving_narration", narration="deterministic",
            narration_failed_reason=reason, tp_detail=detail, verified_steps=n_steps,
            formatter_cards=len(det_cards), tp_attempts=attempts)
     _gr.we(**_coverage_fields(trace, det_cards))               # CP6 coverage/terminal instrumentation
+    _gr.we(**_checkpoint_coverage_fields(trace, det_cards, checkpoints))   # CP6b checkpoint provenance
     return _to_solve_result(trace, det_cards)
 
 
