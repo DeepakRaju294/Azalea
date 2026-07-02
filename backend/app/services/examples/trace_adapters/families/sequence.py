@@ -89,15 +89,21 @@ class BinarySearchAdapter(FamilyAdapterBase):
                 after = {"lo": lo, "hi": mid - 1, "found": None}
                 decision, vis_delta = "go_left", {"checked": mid, "hi": mid - 1}
                 evidence.setdefault("upper_bound_move", []).append(sid)
+            if decision == "found":
+                reason = f"nums[{mid}] = {val} equals the target {target} — found it"
+            elif decision == "go_right":
+                reason = (f"nums[{mid}] = {val} is less than the target {target}, so discard the left half "
+                          f"and search right")
+            else:
+                reason = (f"nums[{mid}] = {val} is greater than the target {target}, so discard the right half "
+                          f"and search left")
+            if decision != "found" and after["lo"] > after["hi"]:   # the move empties the window → absent
+                reason += " — but that leaves no window to search, so the target is absent"
             steps.append(Step(
                 id=sid, operation="probe", prior_state=prior, state_after=after,
                 inputs={"mid": mid, "value": val, "target": target},
                 decision=decision,
-                reason=(f"nums[{mid}] = {val} equals the target {target} — found it" if decision == "found"
-                        else f"nums[{mid}] = {val} is less than the target {target}, so discard the left half "
-                             f"and search right" if decision == "go_right"
-                        else f"nums[{mid}] = {val} is greater than the target {target}, so discard the right half "
-                             f"and search left"),
+                reason=reason,
                 visual_state=self._visual(nums, after, mid),
                 visual_delta=vis_delta,
                 expected_visible_result=self._visible(mid, val, target, decision, after),
@@ -186,8 +192,12 @@ class BinarySearchAdapter(FamilyAdapterBase):
         if decision == "found":
             return f"nums[{mid}] = {val} = target → found at index {mid}"
         side = "right" if decision == "go_right" else "left"
-        return (f"nums[{mid}] = {val} {'<' if decision == 'go_right' else '>'} {target} → search {side}; "
-                f"window [{after['lo']}, {after['hi']}]")
+        cmp = "<" if decision == "go_right" else ">"
+        lo, hi = after["lo"], after["hi"]
+        if lo > hi:      # the window just collapsed — nowhere left to look, so the target is absent
+            return (f"nums[{mid}] = {val} {cmp} {target} → search {side}, but the window is now empty "
+                    f"(low {lo} is past high {hi}) — the target is absent")
+        return f"nums[{mid}] = {val} {cmp} {target} → search {side}; window [{lo}, {hi}]"
 
 
 # ===================================================================================================
