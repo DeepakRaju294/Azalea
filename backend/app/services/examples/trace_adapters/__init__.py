@@ -9,7 +9,7 @@ from .families.formula import ArithmeticEvalAdapter
 from .families.graph import (BFSAdapter, DFSIterativeAdapter, DijkstraAdapter, KruskalAdapter, PrimAdapter)
 from .families.physics import KinematicsAdapter
 from .families.sequence import (BinarySearchAdapter, BubbleSortAdapter, InsertionSortAdapter,
-                                MergeSortAdapter, SelectionSortAdapter)
+                                MergeSortAdapter, QuickSortAdapter, SelectionSortAdapter)
 from .families.trees import (BSTSearchAdapter, InorderTraversalAdapter, LevelOrderTraversalAdapter,
                              PostorderTraversalAdapter, PreorderTraversalAdapter)
 
@@ -17,6 +17,7 @@ from .families.trees import (BSTSearchAdapter, InorderTraversalAdapter, LevelOrd
 ADAPTERS = {a.slug: a for a in (
     BinarySearchAdapter(), BFSAdapter(), DFSIterativeAdapter(), KruskalAdapter(), MergeSortAdapter(),
     InsertionSortAdapter(), SelectionSortAdapter(), BubbleSortAdapter(),  # T8a pilots — grow a sorted region a pass at a time
+    QuickSortAdapter(),                # T3 — 2nd divide-and-conquer pilot (partition-in-place) after merge sort
     ArithmeticEvalAdapter(), DijkstraAdapter(), PrimAdapter(),
     InorderTraversalAdapter(),         # TEMPLATE — coding concept (tree family)
     PreorderTraversalAdapter(), PostorderTraversalAdapter(), LevelOrderTraversalAdapter(),  # verified traversal siblings
@@ -26,7 +27,7 @@ ADAPTERS = {a.slug: a for a in (
 )}
 
 __all__ = ["BinarySearchAdapter", "BFSAdapter", "DFSIterativeAdapter", "KruskalAdapter",
-           "MergeSortAdapter", "InsertionSortAdapter", "SelectionSortAdapter", "BubbleSortAdapter", "ArithmeticEvalAdapter", "DijkstraAdapter", "PrimAdapter",
+           "MergeSortAdapter", "QuickSortAdapter", "InsertionSortAdapter", "SelectionSortAdapter", "BubbleSortAdapter", "ArithmeticEvalAdapter", "DijkstraAdapter", "PrimAdapter",
            "InorderTraversalAdapter", "PreorderTraversalAdapter", "PostorderTraversalAdapter",
            "LevelOrderTraversalAdapter", "QuadraticEquationAdapter", "KinematicsAdapter",
            "BSTSearchAdapter", "ADAPTERS"]

@@ -700,3 +700,126 @@ class BubbleSortAdapter(FamilyAdapterBase):
                           str(card.get("result", ""))]).lower()
         bv = str(step.inputs["bubbled"])
         return [] if bv in prose else [("bubbled_max_not_stated", bv)]
+
+
+# --- quicksort (T3 — the 2nd divide-and-conquer pilot after merge sort; a DIFFERENT D&C shape: partition
+#     in place around a pivot that lands at its FINAL position, then recurse on the two sides. One card per
+#     partition; the placed-pivot invariant is globally verifiable from the array + the set of placed indices) -
+_QS_CONV = {"algorithm_variant": "lomuto_quicksort", "order": "ascending", "pivot_rule": "last_element",
+            "invariant": "a placed pivot sits at its final sorted index", "trace_granularity": "one_partition"}
+_QS_REQ = ["multi_element_partition", "completion"]
+_QS_INV = [{"id": "pivots_in_final_position", "scope": "every_step",
+            "statement": "every placed pivot is at its final sorted position"}]
+
+
+class QuickSortAdapter(FamilyAdapterBase):
+    slug = "quick_sort"
+    label_convention = "ints"
+    example_spec = ExampleSpec(
+        input=InstanceShape("integers", count=(6, 8), value_range=(1, 60), structure=["distinct", "unsorted"]),
+        stages={"partition": StageSpec(
+            "partition", "partition a subarray around its pivot so the pivot reaches its final sorted spot",
+            teaching_focus="one partition fixes the pivot forever; recursion then sorts the smaller/larger sides",
+            contains={"choose_pivot": "internal", "shift_smaller_left": "aggregated_supporting",
+                      "place_pivot": "required"},
+            state_effects=["the pivot lands at its final index; everything left is smaller, right is larger"])},
+        structure="partition, then recurse on the left and right subarrays",
+        must_exercise=["multi_element_partition", "completion"], must_cover=["multi_element_partition"],
+        must_avoid=["already_sorted"],
+        terminal="every pivot has been placed, so the whole array is sorted", output_shape="the sorted array")
+
+    def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+        rng = random.Random(seed)
+        for i in range(80):
+            n = rng.randint(6, 8)
+            arr = rng.sample(range(1, 60), n)
+            yield {"array": arr, "_id": f"quick_v1_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        return len(trace.steps) >= 3 and bool(trace.case_evidence.get("multi_element_partition"))
+
+    def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                  attempt: int = 1, seed: int = 0) -> ContractTrace:
+        arr = list(example_input["array"])
+        a = list(arr)
+        n = len(a)
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        placed: list[int] = []
+        counter = {"i": 0}
+
+        def do(lo: int, hi: int) -> None:
+            if lo >= hi:                                    # 0- or 1-element subarray is already in place
+                return
+            prior_arr = list(a)
+            prior_placed = sorted(placed)
+            window = list(a[lo:hi + 1])
+            pivot = a[hi]                                   # Lomuto: last element is the pivot
+            i = lo
+            for j in range(lo, hi):
+                if a[j] < pivot:
+                    a[i], a[j] = a[j], a[i]
+                    i += 1
+            a[i], a[hi] = a[hi], a[i]                       # pivot swaps into its final resting index
+            placed.append(i)
+            counter["i"] += 1
+            sid = f"s{counter['i']}"
+            reason = (f"partition the subarray {window} around pivot {pivot} (its last element): every value "
+                      f"smaller than {pivot} shifts to the left, so {pivot} settles at position {i} — "
+                      f"everything left of it is now smaller and everything right is larger")
+            evr = f"Pivot {pivot} locked into position {i}; array now {a}."
+            if hi - lo >= 2:
+                evidence.setdefault("multi_element_partition", []).append(sid)
+            allowed = sorted(set(arr) | {int(x) for x in re.findall(r"\d+", reason + " " + evr)})
+            steps.append(Step(
+                id=sid, operation="partition",
+                prior_state={"array": prior_arr, "placed": prior_placed},
+                state_after={"array": list(a), "placed": sorted(placed)},
+                inputs={"pivot": pivot, "position": i, "lo": lo, "hi": hi},
+                decision=f"place pivot {pivot} at position {i}", reason=reason,
+                visual_state={"kind": "array", "array": list(a), "placed": sorted(placed), "active": i},
+                visual_delta={"pivot": pivot, "position": i},
+                expected_visible_result=evr,
+                facts={"allowed_values": allowed, "required_facts": [fact("pivot", pivot)],
+                       "forbidden_claims": []}))
+            do(lo, i - 1)                                   # recurse: smaller side, then larger side
+            do(i + 1, hi)
+
+        do(0, n - 1)
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        return ContractTrace(
+            problem=(f"Sort the array {arr} in ascending order using quicksort "
+                     f"(Lomuto partition, last element as the pivot)."),
+            conventions=dict(_QS_CONV), initial_state={"array": list(arr), "placed": []},
+            final_answer={"sorted": sorted(arr)}, steps=steps,
+            invariants=[dict(x) for x in _QS_INV], required_cases=list(_QS_REQ), case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        return (list((a or {}).get("array") or []) == list((b or {}).get("array") or [])
+                and sorted((a or {}).get("placed") or []) == sorted((b or {}).get("placed") or []))
+
+    def final_answer_entails(self, state, answer):
+        return list((state or {}).get("array") or []) == list((answer or {}).get("sorted") or [])
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "pivots_in_final_position":
+            arr = (state or {}).get("array") or []
+            for k in (state or {}).get("placed") or []:
+                left, right = arr[:k], arr[k + 1:]
+                if left and max(left) > arr[k]:
+                    return False
+                if right and arr[k] > min(right):
+                    return False
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation == "partition" else [f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        pv = str(step.inputs["pivot"])
+        return [] if pv in prose else [("pivot_not_stated", pv)]

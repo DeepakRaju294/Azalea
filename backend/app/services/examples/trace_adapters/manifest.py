@@ -137,6 +137,11 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "coding": True, "canonical_solution": "bubble_sort",
         "routing_aliases": ["bubble sort", "bubble_sort"], "negative_guards": [],
         "fixtures": ["swap_needed", "no_swap_early_exit"]},
+    "quick_sort": {
+        "type": "T3", "family": "sequence", "status": "pilot", "verification_level": "trace_verified",
+        "coding": True, "canonical_solution": "quick_sort",
+        "routing_aliases": ["quicksort", "quick sort", "quick_sort"], "negative_guards": [],
+        "fixtures": ["multi_element_partition", "completion"]},
     "arithmetic_eval": {
         "type": "T7", "family": "formula", "status": "production", "verification_level": "trace_verified",
         "coding": True, "canonical_solution": "arithmetic_eval",

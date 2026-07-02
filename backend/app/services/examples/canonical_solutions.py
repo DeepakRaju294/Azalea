@@ -232,6 +232,14 @@ def level_order(root):
             break
     return arr
 """,
+    "quick_sort": """def quick_sort(arr):
+    if len(arr) <= 1:
+        return arr
+    pivot = arr[-1]
+    smaller = [x for x in arr[:-1] if x < pivot]
+    larger = [x for x in arr[:-1] if x >= pivot]
+    return quick_sort(smaller) + [pivot] + quick_sort(larger)
+""",
     "arithmetic_eval": """def evaluate(tokens):
     stack = [tokens[0]]
     i = 1

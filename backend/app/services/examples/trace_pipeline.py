@@ -92,6 +92,8 @@ def _match_adapter(text: str, slug: str):
         return ADAPTERS["prim"]
     if "merge sort" in text or "merge_sort" in text:
         return ADAPTERS["merge_sort"]
+    if "quicksort" in text or "quick sort" in text or "quick_sort" in text:
+        return ADAPTERS["quick_sort"]
     if "insertion sort" in text or "insertion_sort" in text:
         return ADAPTERS["insertion_sort"]
     if "selection sort" in text or "selection_sort" in text:
