@@ -14,7 +14,9 @@ class Cp1InvariantStanding(unittest.TestCase):
     `invariant_violations` is the machine check that locks it in (and runs over the JSONL log in audits)."""
 
     def test_supported_from_scratch_source_is_a_violation(self):
-        for src in ("gen_foundation", "legacy_coding", "legacy_outline"):
+        # known-today sources + FUTURE variants the prefix guard must also catch (no source slips the invariant)
+        for src in ("gen_foundation", "legacy_coding", "legacy_outline",
+                    "legacy", "legacy_v2", "legacy_fallback", "gen_scratch"):
             rep = {"title": "t", "worked_example": {"adapter": "kruskal", "final_source": src}}
             self.assertTrue(gr.invariant_violations(rep), f"{src} must be flagged")
 

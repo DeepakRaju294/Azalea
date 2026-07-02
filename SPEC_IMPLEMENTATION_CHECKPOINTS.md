@@ -12,10 +12,12 @@
 | 0 | Baseline safety / observability | ✅ | M7 `generation_report`, full suite (18 pre-existing fails, steady) |
 | 1 | No from-scratch fallback for supported topics | ✅ | P0a `545ae26` + single-path `40a34df` + invariant lock `8bd40c7` |
 | 2 | Trace-preserving fallback narration | ✅ | P0a `_deterministic_narration` `545ae26` |
-| 3 | Relax `count_mismatch` safely (coverage-based) | 🟡 | never-withhold (P0a) + **`coverage_complete(cards, trace, adapter)` acceptance predicate built & the 5 CP3 boundary tests pass** (`test_coverage_complete.py`); the grouped-count ACCEPT wiring in `_normalize_and_attach` is deferred (needs per-artifact `checkpoint_id` + a contiguous source-transition range — a prompt change held back to protect 1:1 reliability) |
+| 3 | Checkpoint/artifact alignment (was: relax `count_mismatch`) | 🟡 | never-withhold (P0a) + **`coverage_complete(cards, trace, adapter)` acceptance predicate built & the 5 CP3 boundary tests pass** (`test_coverage_complete.py`); the grouped-count ACCEPT wiring in `_normalize_and_attach` is deferred (needs per-artifact `checkpoint_id` + a contiguous source-transition range — a prompt change held back to protect 1:1 reliability) |
 | 4 | Prose hard/soft boundary | ✅ | declared `TeachingValidationContract` (`DEFAULT_TEACHING_VALIDATION`) + `hard_prose_violations(contract=)`; four boundary tests in `test_teaching_validation_contract.py` |
 | 5 | Regression fixtures (golden lessons) | ✅ | `test_golden_fixtures.py` — deterministic-narration golden net over all 8 adapters (CP5 historical bug classes) |
-| 6 | Generation-report invariants | ✅ | `invariant_violations` (§1.2 + `verification_level`) + `_coverage_fields` (`trace_ids_rendered`/`required_transition_ids`/`missing_required_transition_ids`/`terminal_rendered`); tests in `test_generation_report.py`. *(structured `prose_validation` object still flat)* |
+| 5b | Normal-narration golden coverage (Prim/Kruskal) | 🟡 | deferred — fixtures cover the deterministic FALLBACK path; the normal prose-fill path is not yet asserted |
+| 6 | Generation-report invariants | ✅ | `invariant_violations` (§1.2 + `verification_level`) + `_coverage_fields` (`trace_ids_rendered`/`required_transition_ids`/`missing_required_transition_ids`/`terminal_rendered`); tests in `test_generation_report.py` |
+| 6b | Checkpoint provenance + structured `prose_validation` in the report | 🟡 | lands with CP3 wiring — `checkpoint_ids_rendered`/`required_checkpoint_ids`/`missing_required_checkpoint_ids` + nested `prose_validation{hard_failures,soft_warnings}` |
 | 7 | Manual product QA | 🟡 | live audits clean on binary-search + graph BFS/DFS (keystone, de-hardcoding, continuity all confirmed); full 6-topic matrix not yet swept |
 
 ---
@@ -46,7 +48,9 @@ If a topic routes to an adapter, final worked-example cards must descend from th
 come from `gen_foundation`, `legacy`, or any from-scratch LLM derivation.
 
 ### Required implementation checks
-- Add a hard invariant: `if adapter_slug is not None: final_source not in {"gen_foundation", "legacy", "legacy_*"}`.
+- Add a hard invariant: for an adapter-supported topic, `not is_from_scratch_source(final_source)` — an
+  OPERATIONAL predicate (`gen_foundation` · `gen_*` · `legacy` · `legacy_*`), not a literal set, so a future
+  source variant can't slip through (`generation_report.is_from_scratch_source`; tested on `legacy_v2`/`legacy_fallback`).
 - If narration fails, the system must (1) retry prose-fill, (2) use trace-preserving fallback narration, or
   (3) withhold. It must never re-derive the example.
 
@@ -87,10 +91,13 @@ absent. *(Today it's 1:1 with steps; the "count may differ if coverage complete"
 
 ---
 
-## Checkpoint 3 — Relax `count_mismatch` Safely
+## Checkpoint 3 — Checkpoint / Artifact Alignment (was: relax `count_mismatch`)
 
 ### Rule
-A card count different from trace-step count is acceptable only when coverage is complete.
+Learner-facing artifact COUNT is not itself a correctness gate. An artifact is accepted only when it cites
+exactly one adapter-produced `checkpoint_id`, and the complete artifact set preserves all required checkpoints,
+terminal coverage, decision visibility, state provenance, and final-answer correctness. (Card count vs
+trace-step count is no longer the reference — checkpoints are.)
 
 ### Accept only if ALL are true
 every required transition ID rendered · terminal/completion rendered · no surfaced learner decision omitted ·
@@ -157,9 +164,10 @@ Create permanent golden fixtures covering every historical bug class:
 **Pass condition:** all historical bug classes are covered by tests.
 **Status:** ✅ — `test_golden_fixtures.py` runs a deterministic-narration golden net over all 8 adapters covering
 the CP5 historical bug classes (raw-dict Result, repeated titles, step-card explosion, missing completion,
-mis-sorted/invalid MST, traversal-rendered-as-tree). **Next (deferred):** also assert the NORMAL prose-fill mode
-(not only the deterministic fallback) preserves checkpoint provenance + required transitions + terminal for at
-least Prim/Kruskal, so a "safe in theory, broken in practice" fallback regression is caught.
+mis-sorted/invalid MST, traversal-rendered-as-tree). **CP5b (🟡 deferred):** also assert the NORMAL prose-fill mode (not only the deterministic fallback) preserves
+checkpoint provenance + required transitions + terminal for at least Prim/Kruskal, so a "safe in theory, broken
+in practice" narration regression is caught — the two golden modes are (1) normal prose-fill, (2) forced prose
+failure → deterministic checkpoint narration.
 
 ---
 
@@ -188,8 +196,10 @@ Every generated worked example must record:
 **Status:** ✅ (one caveat) — `invariant_violations` enforces §1.2 + `verification_level`, and `_coverage_fields`
 adds `trace_ids_rendered` / `required_transition_ids` / `missing_required_transition_ids` / `terminal_rendered`;
 the four hard-violation assertions are standing tests in `test_generation_report.py` (incl. the CP1 shared
-invariant, `8bd40c7`). **Caveat:** `prose_validation` is still flat, not the nested `{hard_failures,
-soft_warnings}` object above.
+invariant, `8bd40c7`). **CP6b (🟡, lands with CP3):** `prose_validation` is still flat (not the nested `{hard_failures, soft_warnings}`
+object above), and the report keys are transition-based. Once checkpoint wiring lands, ADD the checkpoint
+provenance fields — `checkpoint_ids_rendered`, `required_checkpoint_ids`, `missing_required_checkpoint_ids` —
+and promote them to the principal audit unit; keep `trace_ids_rendered` for semantic provenance.
 
 ---
 

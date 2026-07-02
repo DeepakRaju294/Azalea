@@ -49,7 +49,16 @@ class GenerationReport:
 
 
 # ADAPTER_AND_GENERATION_SYSTEM_SPEC §1.2 — sources that mean "from-scratch LLM derivation".
+# The three enumerated below are the ones solver.py emits today; the prefix guard in is_from_scratch_source
+# also catches any FUTURE `legacy_*`/`gen_*` variant, so a new source can't silently slip the invariant.
 _FROM_SCRATCH_SOURCES = {"gen_foundation", "legacy_coding", "legacy_outline"}
+
+
+def is_from_scratch_source(source: Optional[str]) -> bool:
+    """True iff `source` is a from-scratch LLM derivation (§1.2). Operational, not a literal set membership:
+    any `legacy_*` / `legacy` / `gen_foundation` / `gen_*` value counts, so an added variant is caught."""
+    s = source or ""
+    return s in _FROM_SCRATCH_SOURCES or s == "legacy" or s.startswith("legacy_") or s.startswith("gen_")
 
 
 def invariant_violations(report: dict[str, Any]) -> list[str]:
@@ -59,7 +68,7 @@ def invariant_violations(report: dict[str, Any]) -> list[str]:
     we = (report or {}).get("worked_example") or {}
     adapter, src = we.get("adapter"), we.get("final_source")
     out: list[str] = []
-    if adapter and src in _FROM_SCRATCH_SOURCES:
+    if adapter and is_from_scratch_source(src):
         out.append(f"§1.2: adapter-supported topic '{adapter}' shipped from from-scratch source '{src}' "
                    f"(title={(report or {}).get('title')!r})")
     if adapter and we.get("tp_shipped") and we.get("verification_level") not in (None, "trace_verified"):
