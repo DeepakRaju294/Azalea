@@ -147,6 +147,13 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "coding": True, "canonical_solution": "heap_sort",
         "routing_aliases": ["heapsort", "heap sort", "heap_sort"], "negative_guards": [],
         "fixtures": ["build_sift", "extract_max", "sift_swap"]},
+    "longest_increasing_subsequence": {
+        "type": "T5", "family": "dynamic_programming", "status": "pilot",
+        "verification_level": "trace_verified", "coding": True,
+        "canonical_solution": "longest_increasing_subsequence",
+        "routing_aliases": ["longest increasing subsequence", "increasing subsequence",
+                            "longest_increasing_subsequence"],
+        "negative_guards": [], "fixtures": ["fresh_start", "extend_from_predecessor"]},
     "arithmetic_eval": {
         "type": "T7", "family": "formula", "status": "production", "verification_level": "trace_verified",
         "coding": True, "canonical_solution": "arithmetic_eval",
