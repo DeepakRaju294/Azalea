@@ -7,7 +7,7 @@ import re
 import unittest
 
 from app.services.examples.trace_adapters import ADAPTERS
-from app.services.examples.trace_pipeline import _deterministic_narration, select_instance
+from app.services.examples.trace_pipeline import _deterministic_narration, _final_answer_text, select_instance
 
 # raw-state signatures in learner prose:
 #   [,\[]\s*['\"]  a quote right after `[` or `,`  -> ['A', 'B']  or  [6, '-', 64]
@@ -35,6 +35,21 @@ class NoRawStateInLearnerStrings(unittest.TestCase):
                     self._scan(slug, seed, "reasoning", c.get("reasoning"))
                     for w in (c.get("work") or []):
                         self._scan(slug, seed, "work", w)
+
+    def test_final_answer_render_is_pure_prose(self):
+        # The FINAL-ANSWER render (shown in every last card's completion clause) must be comma-joined prose,
+        # never a bracketed list or dict. Regression lock for the inorder bug, which shipped
+        # "inorder = [7, 21, 23, 27, 40]" while its siblings rendered "visit order: 7, 21, 23" — an
+        # inconsistency the raw-state scan above missed because a bare list of integers has no quotes.
+        for slug, adapter in sorted(ADAPTERS.items()):
+            for seed in range(1, 12):
+                tr = select_instance(adapter, seed=seed)
+                if tr is None:
+                    continue
+                rendered = _final_answer_text(tr)
+                with self.subTest(slug=slug, seed=seed):
+                    self.assertNotRegex(rendered, r"[\[\]{}]",
+                                        f"{slug}: final-answer render leaked a bracket/brace: {rendered!r}")
 
 
 if __name__ == "__main__":

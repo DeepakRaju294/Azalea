@@ -69,7 +69,8 @@ class InorderTraversalAdapter(FamilyAdapterBase):
         stages={"visit": StageSpec(
             "visit", "visit the next node in inorder position",
             teaching_focus="a node is output only after its entire left subtree",
-            contains={"emit_node": "required", "advance_to_right_subtree": "aggregated_supporting"},
+            contains={"append this node's value to the output": "required",
+                      "move on to the right subtree": "aggregated_supporting"},
             state_effects=["one node moves from unvisited to the output; the output stays ascending"])},
         structure="visit+ until every node is output",
         must_exercise=["visit_leftmost_first", "ascending_output", "completion"],
@@ -126,7 +127,7 @@ class InorderTraversalAdapter(FamilyAdapterBase):
             problem=(f"Perform an inorder traversal of the binary search tree built by inserting "
                      f"{example_input['insert_order']} (root {root})."),
             conventions=dict(_CONV), initial_state={"output": [], "current": None},
-            final_answer={"inorder": order}, steps=steps,
+            final_answer={"visit_order": order}, steps=steps,
             invariants=[dict(x) for x in _INV], required_cases=list(_REQUIRED), case_evidence=evidence,
             provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
                                         attempt=attempt))
@@ -135,7 +136,7 @@ class InorderTraversalAdapter(FamilyAdapterBase):
         return list((a or {}).get("output") or []) == list((b or {}).get("output") or [])
 
     def final_answer_entails(self, state, answer):
-        return list((state or {}).get("output") or []) == list((answer or {}).get("inorder") or [])
+        return list((state or {}).get("output") or []) == list((answer or {}).get("visit_order") or [])
 
     def invariant_holds(self, inv, state):
         out = (state or {}).get("output") or []
@@ -312,7 +313,7 @@ def _trav_spec(order_desc: str, focus: str, must: list[str], out_shape: str) -> 
     return ExampleSpec(
         input=InstanceShape("integers", count=(4, 7), value_range=(1, 40), structure=["distinct", "bst"]),
         stages={"visit": StageSpec("visit", f"visit the next node in {order_desc} position", teaching_focus=focus,
-                                   contains={"emit_node": "required"})},
+                                   contains={"append this node's value to the output": "required"})},
         structure="visit+ until every node is output",
         must_exercise=must, must_avoid=["single_node_tree"],
         terminal="every node visited exactly once", output_shape=out_shape)

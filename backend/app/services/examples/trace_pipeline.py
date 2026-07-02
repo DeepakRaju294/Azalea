@@ -369,8 +369,11 @@ def _final_answer_text(trace: ContractTrace) -> str:
             return f"= {fa['value']}"
         if "dist" in fa:
             return "shortest distances: " + ", ".join(f"{k} = {v}" for k, v in fa["dist"].items())
-        # generic clean fallback — NEVER a raw dict repr (kinematics {v,s}, etc.): "v = 2, s = 1.5"
-        return ", ".join(f"{k} = {v}" for k, v in fa.items())
+        # generic clean fallback — NEVER a raw dict/list repr (kinematics {v,s}, a stray sequence key, etc.):
+        # scalars render "v = 2"; a list renders comma-joined ("7, 21, 23") so brackets never leak to a learner.
+        def _fmt(v: Any) -> str:
+            return ", ".join(map(str, v)) if isinstance(v, (list, tuple)) else str(v)
+        return ", ".join(f"{k} = {_fmt(v)}" for k, v in fa.items())
     return str(fa)
 
 

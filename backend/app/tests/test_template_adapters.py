@@ -19,7 +19,7 @@ class TemplateAdaptersProduceCorrectTraces(unittest.TestCase):
 
     def test_coding_inorder_outputs_sorted_values(self):
         adapter, trace = self._verified("tree_inorder")
-        order = trace.final_answer["inorder"]
+        order = trace.final_answer["visit_order"]              # unified traversal answer key (renders "visit order: ...")
         self.assertEqual(order, sorted(order))                 # inorder of a BST is ascending
         self.assertEqual(len(trace.steps), len(order))         # one visit per node
 
