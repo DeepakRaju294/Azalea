@@ -142,7 +142,11 @@ _CODING_FORMAT_SYSTEM = (
     "VERBATIM with its variable names, THEN — REQUIRED on every line — ` // <plain-English of what this line "
     "does NOW, naming the concrete value(s) from this step>` (e.g. `lo = mid + 1  // move the lower bound "
     "past index 4`). Do NOT substitute the values into the code itself — put them in the // part. A line "
-    "with no ` // ` is INVALID. List the lines this step executes, in source order.\n"
+    "with no ` // ` is INVALID. Follow STAGE_GUIDANCE: show the `required` operation's code line as the "
+    "DECISION, COMBINE `aggregated_supporting` lines into ONE summary line, and OMIT `internal` lines — aim for "
+    "2–3 work lines, NOT every executed line. When a step RE-RUNS a loop body already shown in an earlier card, "
+    "list ONLY the decision line + one `// the rest of the loop runs as shown above`; never re-list the "
+    "unchanged machinery.\n"
     "- result: leave it BRIEF — it is REPLACED downstream by the step's verified state description, so it is "
     "only a fallback; focus your effort on reasoning + work. Never output a raw dict/JSON.\n"
     "- code_lines: for EACH work action, the 1-based line number(s) in the CODE it maps to, as a list of "
@@ -240,6 +244,29 @@ def build_format_payload(trace: ContractTrace, code: Optional[str] = None,
     return {"system": system, "user": user}
 
 
+def _collapse_repeated_coding_work(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """§5.4 / study-path review — an iterative algorithm's coding cards re-run the SAME loop body every step, so
+    re-listing all its lines on cards 2..N is a wall of near-identical code (Prim: 6 lines × 4 selects). Once a
+    step's code lines were ALL taught in an earlier card, keep this card's decision line(s) and elide the
+    already-shown machinery — the learner saw the full loop on its first appearance. Truth is untouched (the
+    result is the verified EVR; the decision + entity stay in the kept lines and the result)."""
+    shown: set[str] = set()
+    for c in cards:
+        if "code_lines" not in c:                              # coding cards only
+            continue
+        work = c.get("work") or []
+        codeparts = [str(w).split("//", 1)[0].strip() for w in work]
+        new = [cp for cp in codeparts if cp and cp not in shown]
+        if not new and len(work) > 2:                          # nothing new here — a repeated loop body
+            c["work"] = work[:2] + ["…the rest of the loop body runs exactly as shown above."]
+            cl = c.get("code_lines") or []
+            if cl:
+                c["code_lines"] = cl[:2] + [[]]
+        else:
+            shown.update(cp for cp in codeparts if cp)
+    return cards
+
+
 def _norm_txt(s: str) -> str:
     """Loose text key for 'is this reasoning just the generic stage line?' — lowercase, collapse whitespace,
     drop trailing punctuation."""
@@ -291,6 +318,7 @@ def _normalize_and_attach(raw: Any, trace: ContractTrace,
         if not c["work"] or not c["result"]:
             return None
         out.append(c)
+    _collapse_repeated_coding_work(out)                         # §5.4: elide a re-run loop body on later cards
     _ensure_completion(out, trace, terminal)                    # C4: completion + stopping criterion
     return out
 
