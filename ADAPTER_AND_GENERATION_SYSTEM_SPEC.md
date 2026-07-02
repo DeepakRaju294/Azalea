@@ -196,7 +196,7 @@ ExecutionTrace     the complete RAW execution log for the bounded instance (ever
 TeachingTrace      the verified SEMANTIC-transition sequence — first-class (transition · decision · facts ·
                    before · after · operation · terminal · raw_event range). Truth + coverage read THIS.
    ↓  TeachingProjection   adapter-owned policy selecting/grouping transitions into learner checkpoints
-TeachingCheckpoint[]  provenance-bearing narration/render units (one card per checkpoint)
+TeachingCheckpoint[]  provenance-bearing units consumed by narration + renderers (0+ artifacts per checkpoint)
    ↓  Narration           the LLM's prose (or deterministic template) for ONE checkpoint (wording only)
 Renderer           cards · timeline · animation · video · chatbot (presentation — many from one checkpoint set)
 ```
@@ -297,8 +297,9 @@ adapter's own choices, so a failure is read, not reverse-engineered from logs:
 AdapterDiagnostics {
   selected_instance_reason   # why THIS graph/array was chosen
   difficulty_selected        # which TeachingProfile + why
-  projection_summary         # ExecutionTrace -> TeachingTrace: what was suppressed/kept
-  compression_summary        # which stages were grouped and why
+  semantic_trace_summary     # raw execution events -> verified semantic transitions (what folded + provenance)
+  projection_summary         # semantic transitions -> checkpoints (what was selected/grouped and why)
+  checkpoint_grouping_summary # which contiguous supporting transitions formed each checkpoint
   validation_summary         # truth + teaching results
   warnings                   # soft issues that didn't block
 }
@@ -320,7 +321,8 @@ reason_class_sequence:            [...]       # declared reason classes (compari
 # PRESENTATION rules (max_identical_reasoning_cards, max_work_lines, no_raw_state_rendering, card layout) are
 # ORCHESTRATOR-owned narration/presentation validators (§4.0) — NOT adapter objectives (§2.4 boundary).
 ```
-Each line is a predicate the Teaching-validation phase evaluates against the TeachingTrace — pass/fail, not
+Each line is a predicate the Teaching-validation phase evaluates against the verified semantic artifacts
+(TeachingTrace and, where pacing or learner visibility is involved, `TeachingCheckpoint[]`) — pass/fail, not
 a hint to the LLM. **These predicates ARE the adapter's `TeachingValidationContract`** (§4.0): the adapter
 declares its quality rules, the orchestrator merely *executes* them — so M6 never accumulates
 algorithm-specific exceptions.
@@ -398,7 +400,7 @@ Validation today is treated as one pass; it is really **three**, with different 
 | Layer | Authority | Checks | Failure → |
 |---|---|---|---|
 | **Truth** | the **ExecutionTrace** + independent oracle (DEV §7.5) | replay · legal transitions · answer/invariant correct · facts no-contradiction | **withhold** (never ship wrong truth) |
-| **Semantic teaching** | the adapter's **`TeachingValidationContract`** (§2.7) | required transitions · terminal · decision visibility · checkpoint order · pacing / support streaks | **pick another instance or projection** |
+| **Semantic teaching** | the adapter's **`TeachingValidationContract`** over TeachingTrace + `TeachingCheckpoint[]` (§2.7) | required transitions · terminal · decision visibility · checkpoint order · pacing / support streaks | **pick another instance or projection** |
 | **Narration / presentation** | orchestrator generic validators | prose contradiction · duplicate wording · raw-state leakage · ≤2 work lines · card layout | **retry narration, then deterministic fallback** (§4.3.1) |
 
 **Teaching validation is adapter-owned, orchestrator-executed.** The adapter *declares* its quality rules
@@ -446,7 +448,7 @@ mislabeled Teaching failures (`count_mismatch`) being treated as Truth failures 
 | **Fallback policy (keystone)** | adapter withhold → from-scratch `gen_foundation`/`legacy` → wrong example | adapter withhold → **trace-preserving narration of the same verified trace**; if unavailable → withhold/flag (no fabrication) | **P0** |
 | **Single path for supported topics** | 3 competing paths; gen_foundation can win on adapter-supported topics | adapter-supported → `trace_pipeline` only; gen_foundation = Tier-2/unsupported orchestrator | **P0** |
 | **`count_mismatch` gate (the #1 measured cause)** | formatter emits ≠ trace-step count → withhold → fallback; the retry isn't enough (31 of the measured withholds) | **checkpoint alignment**: validate cards against the adapter-produced `TeachingCheckpoint` set (one card per checkpoint, or a declared renderer split of ONE checkpoint; never a semantic merge across checkpoints). Count alone never withholds a checkpoint-aligned narration; formatter grouping is FORBIDDEN (§4.3.2) | **P0** |
-| **`prose_fail` gate strictness** | over-strict `edge_not_discussed`/`decision_mismatch` reject correct narrations (10 measured) | hard/soft boundary (carry from accuracy-spec): only a true contradiction withholds; soft phrasing notes never block | P1 |
+| **`prose_fail` gate strictness** | over-strict `edge_not_discussed`/`decision_mismatch` reject correct narrations (10 measured) | hard/soft narration boundary: a hard contradiction blocks THAT narration → retry → deterministic checkpoint narration; a soft phrasing note never blocks delivery; only a Truth failure withholds an adapter-supported example | P1 |
 | **Executor input-shape + signature (the `unverifiable=61` cause, #2/#5)** | A2/trace-first can't run code with a `start` param, nested `{"graph":{…}}`, or custom signatures | normalize the example input to the entry's signature (graph relabel, start-vertex, adjacency variants); broaden `_arg_candidates`; only `unverifiable` when truly unrunnable | P1 |
 | **Routing-miss robustness (#1, distinct from the tail)** | empty `topic_family`/vague title/wrong `topic_type` → adapter not picked even when one exists | derive family from title before routing (already partial in `prepass`); a topic that *should* map but doesn't is a **routing bug**, not a no-adapter case — log them separately | P1 |
 | **Supported topics route BEFORE generation** | a legacy/gen_foundation caller can begin generating a supported topic | any caller hitting an adapter-supported topic routes to `trace_pipeline` FIRST; gen_foundation never re-derives a supported topic nor owns adapter execution | P1 |
@@ -597,10 +599,11 @@ Carried from `ADAPTER_CONTRACT.md` §A, extended:
 ## 7. Sequencing (build order — evidence-ranked, §4.4)
 1. **P0 — the two changes that remove most wrong content (do together):**
    (a) **fallback keystone** — adapter withhold → trace-preserving narration; supported topics →
-   `trace_pipeline` only (kills #9); (b) **checkpoint/card alignment gate** — validate narration against the
-   precomputed `TeachingCheckpoint` set (one card per checkpoint, or a declared renderer-level split of ONE
-   checkpoint; never a semantic merge across checkpoints; never withhold on count alone) — kills the #1 measured
-   cause (#7). *Both small; together they convert fluent-but-wrong fallbacks into correct examples.*
+   `trace_pipeline` only (kills #9); (b) **checkpoint/artifact alignment gate** — validate narration against the
+   precomputed `TeachingCheckpoint` set (every learner-facing artifact cites exactly one `checkpoint_id`; a
+   renderer may emit 0+ artifacts per checkpoint but none spanning checkpoints unless the adapter declares a
+   composite checkpoint; never a semantic merge across checkpoints; never withhold on count alone) — kills the
+   #1 measured cause (#7). *Both small; together they convert fluent-but-wrong fallbacks into correct examples.*
 2. **P1 — multi-stage grammars (PROMOTED) + the next tier of measured causes.**
    - **Multi-stage grammars (§2.3)** — populate the §0 stage table per family (Dijkstra `settle/relax`,
      merge-sort `init_runs/merge_select`, Kruskal `setup/consider/cycle_skip/completion`, BST…).
