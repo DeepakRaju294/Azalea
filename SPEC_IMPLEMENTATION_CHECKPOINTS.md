@@ -12,7 +12,7 @@
 | 0 | Baseline safety / observability | ✅ | M7 `generation_report`, full suite (18 pre-existing fails, steady) |
 | 1 | No from-scratch fallback for supported topics | ✅ | P0a `545ae26` + single-path `40a34df` + invariant lock `8bd40c7` |
 | 2 | Trace-preserving fallback narration | ✅ | P0a `_deterministic_narration` `545ae26` |
-| 3 | Relax `count_mismatch` safely (coverage-based) | 🟡 | never-withhold (P0a) + **`coverage_complete(cards, trace, adapter)` acceptance predicate built & the 5 CP3 boundary tests pass** (`test_coverage_complete.py`); the grouped-count ACCEPT wiring in `_normalize_and_attach` is deferred (needs the formatter to emit per-card `trace_step_ids` — a prompt change held back to protect 1:1 reliability) |
+| 3 | Relax `count_mismatch` safely (coverage-based) | 🟡 | never-withhold (P0a) + **`coverage_complete(cards, trace, adapter)` acceptance predicate built & the 5 CP3 boundary tests pass** (`test_coverage_complete.py`); the grouped-count ACCEPT wiring in `_normalize_and_attach` is deferred (needs per-artifact `checkpoint_id` + a contiguous source-transition range — a prompt change held back to protect 1:1 reliability) |
 | 4 | Prose hard/soft boundary | ✅ | declared `TeachingValidationContract` (`DEFAULT_TEACHING_VALIDATION`) + `hard_prose_violations(contract=)`; four boundary tests in `test_teaching_validation_contract.py` |
 | 5 | Regression fixtures (golden lessons) | ✅ | `test_golden_fixtures.py` — deterministic-narration golden net over all 8 adapters (CP5 historical bug classes) |
 | 6 | Generation-report invariants | ✅ | `invariant_violations` (§1.2 + `verification_level`) + `_coverage_fields` (`trace_ids_rendered`/`required_transition_ids`/`missing_required_transition_ids`/`terminal_rendered`); tests in `test_generation_report.py`. *(structured `prose_validation` object still flat)* |
@@ -59,8 +59,8 @@ come from `gen_foundation`, `legacy`, or any from-scratch LLM derivation.
 **Status (this session):** ✅ — P0a ships a trace-preserving narration on narration failure (`545ae26`);
 single-path enforcement withholds (lean base) instead of gen_foundation/legacy when no trace exists (`40a34df`).
 Tests: `test_narration_failure_ships_trace_preserving_narration_not_none`,
-`test_supported_topic_withholds_instead_of_fabricating`. **TODO (CP6):** add the machine-checked report assertion
-`adapter_slug != None ⇒ final_source ∉ {gen_foundation, legacy_*}` as a standing invariant test.
+`test_supported_topic_withholds_instead_of_fabricating`. ✅ **Done (CP6, `8bd40c7`):** the standing invariant `adapter_slug != None ⇒ final_source ∉ {gen_foundation,
+legacy_*}` (+ `verification_level == trace_verified` unless withheld) is asserted in `test_generation_report.py`.
 
 ---
 
@@ -110,17 +110,23 @@ adapter-approved rule · card references nonexistent trace IDs · card result co
 **Pass condition:** count alone never withholds, but coverage/semantics still control correctness.
 **Status (this session):** 🟡 — "count alone never withholds" is satisfied (P0a ships a trace-preserving narration
 instead of withholding), and P0b states the exact count in the prompt to cut the mismatch rate (`04f93ff`).
-**NOT yet built:** the **coverage-based ACCEPT** of the LLM's *grouped* cards (a different count that still covers
-every required transition + terminal). That needs a `coverage_complete(cards, trace)` predicate + relaxing
-`_normalize_and_attach`'s strict 1:1 (`len(cards)==len(steps)`). The 5 tests above are the gate for that work.
+**NOT yet built:** the **coverage-based ACCEPT** of the LLM's *grouped* cards. Per the frozen model this is
+**checkpoint** alignment, not a loose trace-id list: each learner-facing artifact must cite exactly one
+`checkpoint_id` exposing a contiguous `source_transition_start..source_transition_end` range + state-before/after
+anchors + required-case/terminal coverage — and the formatter may NOT create or merge checkpoints.
+`coverage_complete(...)` + relaxing `_normalize_and_attach`'s strict 1:1 (`len(cards)==len(steps)`) are the
+remaining wiring; the 5 tests above are the gate for that work.
 
 ---
 
 ## Checkpoint 4 — Prose Hard/Soft Boundary
 
-### Hard failures (block shipping)
-contradiction of trace state · wrong selected edge/node/value · wrong final answer · wrong decision outcome ·
-missing required fact · invented transition not in trace.
+### Hard TRUTH failures (withhold — never ship wrong truth)
+invalid replay · wrong state · illegal transition · wrong final answer · failed independent oracle.
+
+### Hard NARRATION failures (retry → deterministic checkpoint narration; do NOT withhold a correct trace)
+contradiction of checkpoint state · wrong selected edge/node/value · wrong decision outcome · missing required
+fact · invented transition not in trace.
 
 ### Soft failures (must not block alone)
 bland wording · slightly repetitive · value mentioned in a harmless context · non-ideal style · could be clearer.
@@ -132,10 +138,11 @@ bland wording · slightly repetitive · value mentioned in a harmless context ·
 - Missing terminal statement → fail if terminal transition required.
 
 **Pass condition:** validators block wrong content, not merely imperfect phrasing.
-**Status (this session):** 🟡 — `hard_prose_violations` already splits hard (blocks) from advisory; A3 keeps
-`value_not_allowed` SOFT for code-anchored cards (spec §4.3.3). **TODO:** make the hard set a *declared*
-`TeachingValidationContract` (spec §2.7/§4.0) and add the four boundary tests above; ensure "missing terminal"
-is a hard failure when the adapter marks a terminal transition required (ties to CP3 completion + C4).
+**Status:** ✅ — the hard set is a *declared* `TeachingValidationContract` (`DEFAULT_TEACHING_VALIDATION`) and
+`hard_prose_violations(contract=)` splits hard (blocks) from advisory; A3 keeps `value_not_allowed` SOFT for
+code-anchored cards (spec §4.3.3). The four boundary tests pass in `test_teaching_validation_contract.py`. A hard
+NARRATION failure triggers retry → deterministic checkpoint narration (§4.3.1), NOT a withhold — only a Truth
+failure withholds a supported topic.
 
 ---
 
@@ -148,8 +155,11 @@ Create permanent golden fixtures covering every historical bug class:
 - **Coding implementation:** code walkthrough and worked example must not duplicate each other · Result fields must not render raw dicts · repeated identical reasoning cards fail teaching validation.
 
 **Pass condition:** all historical bug classes are covered by tests.
-**Status (this session):** ❌ — M6 content-shape *linter* exists (catches raw-dict Result, repeated titles, step-card
-explosion), but the **golden-lesson fixture set** is not built (carried from `STUDY_PATH_CONTENT_SPEC` §H / spec §5.4).
+**Status:** ✅ — `test_golden_fixtures.py` runs a deterministic-narration golden net over all 8 adapters covering
+the CP5 historical bug classes (raw-dict Result, repeated titles, step-card explosion, missing completion,
+mis-sorted/invalid MST, traversal-rendered-as-tree). **Next (deferred):** also assert the NORMAL prose-fill mode
+(not only the deterministic fallback) preserves checkpoint provenance + required transitions + terminal for at
+least Prim/Kruskal, so a "safe in theory, broken in practice" fallback regression is caught.
 
 ---
 
@@ -175,21 +185,26 @@ Every generated worked example must record:
 - Missing required transition → fail.
 
 **Pass condition:** reports make every routing/fallback decision auditable.
-**Status (this session):** 🟡 — M7 records `adapter`, `final_source`, `tp_reason`, `narration`,
-`narration_failed_reason`, `code_validation`, `we_card_count`. **TODO:** add `verification_level`,
-`trace_ids_rendered`, `required_transition_ids`, `missing_required_transition_ids`, `terminal_rendered`, and the
-structured `prose_validation`; then add the four hard-violation assertions as standing tests.
+**Status:** ✅ (one caveat) — `invariant_violations` enforces §1.2 + `verification_level`, and `_coverage_fields`
+adds `trace_ids_rendered` / `required_transition_ids` / `missing_required_transition_ids` / `terminal_rendered`;
+the four hard-violation assertions are standing tests in `test_generation_report.py` (incl. the CP1 shared
+invariant, `8bd40c7`). **Caveat:** `prose_validation` is still flat, not the nested `{hard_failures,
+soft_warnings}` object above.
 
 ---
 
 ## Checkpoint 7 — Manual Product QA
 After tests pass, manually generate: Prim MST walkthrough · Kruskal MST walkthrough · DFS traversal · BFS
-traversal · merge sort coding · binary search coding. For each verify: example is correct · steps reconstructable ·
-visuals match state · no raw backend state leaks · no fallback-produced wrong example · completion/final answer
-explicit · content feels useful, not just technically valid.
+traversal · merge sort coding · binary search coding.
+
+**Per-topic exit checklist (all must hold):**
+adapter selected · `trace_verified` · no from-scratch `final_source` · required checkpoints visible · terminal
+visible · final answer correct · visual artifact matches checkpoint state · no raw state object leaks · content
+feels useful (not merely technically valid) · **fallback mode exercised for at least Prim and Kruskal**.
 
 **Pass condition:** user-facing experience is correct and understandable.
-**Status (this session):** ❌ — pending a regenerate after pushing the branch.
+**Status:** 🟡 — live audits clean on binary-search + graph BFS/DFS (keystone, de-hardcoding, continuity
+confirmed); the full 6-topic matrix above is not yet swept.
 
 ---
 
@@ -201,3 +216,4 @@ passes for core algorithm topics. **Do not scale to more adapters until these pa
 
 This matches the main spec invariant (§1.2): *adapter-supported topics must use the adapter trace as the only
 executable truth, never a from-scratch fallback.*
+
