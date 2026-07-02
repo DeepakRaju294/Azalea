@@ -362,6 +362,23 @@ def _checkpoint_coverage_fields(trace: ContractTrace, cards: list[dict[str, Any]
             "missing_required_checkpoint_ids": missing}
 
 
+def _prose_validation_field(prose: Any) -> dict[str, Any]:
+    """CP6b — the structured `prose_validation` report object: the contract-partitioned prose result split into
+    `hard_failures` (would block) + `soft_warnings` (advisory, never block). Replaces the flat prose recording so
+    an audit can see exactly what fired. A shipped adapter example should carry NO hard failures (§4.0 Truth is
+    the only withhold; a hard NARRATION failure retries → deterministic narration)."""
+    items = list(prose or [])
+    hard = hard_prose_violations(items)
+    hard_ids = {id(v) for v in hard}
+
+    def _v(x: Any) -> dict[str, Any]:
+        return {"code": getattr(x, "code", ""), "detail": getattr(x, "detail", ""),
+                "trace_step_id": getattr(x, "trace_step_id", "")}
+    return {"prose_validation": {
+        "hard_failures": [_v(v) for v in hard],
+        "soft_warnings": [_v(v) for v in items if id(v) not in hard_ids]}}
+
+
 def _to_solve_result(trace: ContractTrace, cards: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "problem": trace.problem,
@@ -498,6 +515,7 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
                    formatter_cards=len(cards), tp_attempts=attempts, work_over_cap=over or None)
             _gr.we(**_coverage_fields(trace, cards))           # CP6 coverage/terminal instrumentation
             _gr.we(**_checkpoint_coverage_fields(trace, cards, checkpoints))   # CP6b checkpoint provenance
+            _gr.we(**_prose_validation_field(prose))           # CP6b structured prose_validation
             return _to_solve_result(trace, cards)
         reason = "prose_fail"                                      # a hard contradiction -> re-format
         detail = [f"{v.code} {v.detail} ({v.trace_step_id})" for v in hard][:6]
@@ -508,12 +526,14 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
     # not a narration one.) `narration_failed_reason` records WHY the LLM path was abandoned, for M7.
     det_cards = _deterministic_narration(trace)
     checkpoints = _attach_checkpoints(det_cards, trace, adapter)   # CP3a: one checkpoint_id per card
+    det_prose = validate_prose(det_cards, trace, adapter, code_anchored=bool(code))   # what actually shipped
     _retain_debug(topic, trace, last_raw, last_cards, None, last_prose, shipped=True)
     _gr.we(tp_shipped=True, tp_reason="trace_preserving_narration", narration="deterministic",
            narration_failed_reason=reason, tp_detail=detail, verified_steps=n_steps,
            formatter_cards=len(det_cards), tp_attempts=attempts)
     _gr.we(**_coverage_fields(trace, det_cards))               # CP6 coverage/terminal instrumentation
     _gr.we(**_checkpoint_coverage_fields(trace, det_cards, checkpoints))   # CP6b checkpoint provenance
+    _gr.we(**_prose_validation_field(det_prose))               # CP6b structured prose_validation
     return _to_solve_result(trace, det_cards)
 
 

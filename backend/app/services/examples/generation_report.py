@@ -87,6 +87,12 @@ def invariant_violations(report: dict[str, Any]) -> list[str]:
         if we.get("missing_required_checkpoint_ids"):          # CP6b — checkpoint-level coverage
             out.append(f"CP6b: adapter '{adapter}' shipped missing required checkpoints "
                        f"{we.get('missing_required_checkpoint_ids')}")
+        # CP6b — the GATED (LLM) ship must carry no hard prose; the deterministic trace-preserving path is
+        # ungated on prose by design (§4.3.1 step 3 — the guaranteed last mile), so it is exempt here.
+        hard = ((we.get("prose_validation") or {}).get("hard_failures")) or []
+        if hard and we.get("narration") != "deterministic":
+            out.append(f"CP6b: adapter '{adapter}' shipped (gated) with hard prose failures "
+                       f"{[h.get('code') for h in hard]}")
     return out
 
 

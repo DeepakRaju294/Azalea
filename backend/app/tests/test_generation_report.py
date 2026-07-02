@@ -64,6 +64,11 @@ class Cp1InvariantStanding(unittest.TestCase):
         self.assertTrue(gr.invariant_violations(
             {"worked_example": {**base, "terminal_rendered": True,
                                 "missing_required_checkpoint_ids": ["settle_B"]}}))
+        # CP6b — a shipped example with a HARD prose failure is a violation
+        self.assertTrue(gr.invariant_violations(
+            {"worked_example": {**base, "terminal_rendered": True,
+                                "prose_validation": {"hard_failures": [{"code": "decision_mismatch"}],
+                                                     "soft_warnings": []}}}))
 
     def test_live_supported_failure_keeps_invariant(self):
         # a supported topic whose formatter fails ships trace-preserving narration → no §1.2 violation
@@ -179,6 +184,43 @@ class TracePipelineRecordsOutcome(unittest.TestCase):
         self.assertEqual(we.get("tp_reason"), "shipped")
         self.assertEqual(we.get("formatter_cards"), we.get("verified_steps"))
         gr.finish_and_persist()
+
+    def test_cp6b_prose_validation_is_structured(self):
+        # CP6b: a shipped example records prose_validation as a nested {hard_failures, soft_warnings} object,
+        # and (since we only ship when no hard) hard_failures is empty + the invariant is clean.
+        gr.start({"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"})
+        tp.solve_trace_pipeline({"title": "Kruskal's Algorithm Walkthrough",
+                                 "topic_type": "algorithm_walkthrough"}, format_fn=self._faithful)
+        we = gr.current().worked_example
+        pv = we.get("prose_validation")
+        self.assertIsInstance(pv, dict)
+        self.assertIn("hard_failures", pv)
+        self.assertIn("soft_warnings", pv)
+        self.assertEqual(pv["hard_failures"], [])          # a shipped example carries no hard prose
+        self.assertEqual(gr.invariant_violations(gr.current().to_dict()), [])
+        gr.finish_and_persist()
+
+    def test_cp5b_normal_narration_preserves_provenance(self):
+        # CP5b: the NORMAL prose-fill mode (not only the deterministic fallback) must preserve checkpoint
+        # provenance + required transitions + terminal — for Prim and Kruskal.
+        for title, slug in (("Prim's Minimum Spanning Tree", "prim"),
+                            ("Kruskal's Minimum Spanning Tree", "kruskal")):
+            with self.subTest(slug=slug):
+                topic = {"title": title, "topic_type": "algorithm_walkthrough"}
+                gr.start(topic)
+                res = tp.solve_trace_pipeline(topic, format_fn=self._faithful)
+                self.assertIsNotNone(res, f"{slug}: normal narration withheld")
+                for c in res["cards"]:
+                    self.assertTrue(c.get("checkpoint_id"), f"{slug}: card without checkpoint_id")
+                    self.assertTrue(c.get("source_transition_start"), f"{slug}: no source range start")
+                    self.assertTrue(c.get("source_transition_end"), f"{slug}: no source range end")
+                we = gr.current().worked_example
+                self.assertEqual(we.get("adapter"), slug)
+                self.assertEqual(we.get("missing_required_transition_ids"), [])
+                self.assertEqual(we.get("missing_required_checkpoint_ids"), [])
+                self.assertTrue(we.get("terminal_rendered"))
+                self.assertEqual(gr.invariant_violations(gr.current().to_dict()), [])
+                gr.finish_and_persist()
 
     def test_count_mismatch_ships_trace_preserving_and_records_cause(self):
         # SPEC §1.2/§4.3.1: count_mismatch no longer withholds-to-None; it ships a trace-preserving
