@@ -132,6 +132,21 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "coding": True, "canonical_solution": "tree_inorder",
         "routing_aliases": ["inorder"], "negative_guards": [],
         "fixtures": ["ascending_output", "leftmost_first"]},
+    "tree_preorder": {
+        "type": "T1", "family": "trees", "status": "pilot", "verification_level": "trace_verified",
+        "coding": True, "canonical_solution": "tree_preorder",
+        "routing_aliases": ["preorder", "pre-order"], "negative_guards": [],
+        "fixtures": ["root_first", "right_branch"]},
+    "tree_postorder": {
+        "type": "T1", "family": "trees", "status": "pilot", "verification_level": "trace_verified",
+        "coding": True, "canonical_solution": "tree_postorder",
+        "routing_aliases": ["postorder", "post-order"], "negative_guards": [],
+        "fixtures": ["leaf", "root_last"]},
+    "tree_levelorder": {
+        "type": "T1", "family": "trees", "status": "pilot", "verification_level": "trace_verified",
+        "coding": True, "canonical_solution": "tree_levelorder",
+        "routing_aliases": ["level order", "level-order", "levelorder"], "negative_guards": [],
+        "fixtures": ["root_level", "deeper_level"]},
     "bst_search": {
         "type": "T4", "family": "trees", "status": "pilot", "verification_level": "trace_verified",
         "coding": True, "canonical_solution": "bst_search",

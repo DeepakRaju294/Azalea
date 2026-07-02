@@ -9,13 +9,15 @@ from .families.formula import ArithmeticEvalAdapter
 from .families.graph import (BFSAdapter, DFSIterativeAdapter, DijkstraAdapter, KruskalAdapter, PrimAdapter)
 from .families.physics import KinematicsAdapter
 from .families.sequence import BinarySearchAdapter, MergeSortAdapter
-from .families.trees import BSTSearchAdapter, InorderTraversalAdapter
+from .families.trees import (BSTSearchAdapter, InorderTraversalAdapter, LevelOrderTraversalAdapter,
+                             PostorderTraversalAdapter, PreorderTraversalAdapter)
 
 # Explicit slug -> adapter registry (no fuzzy keyword matching; routing is in trace_pipeline, §17).
 ADAPTERS = {a.slug: a for a in (
     BinarySearchAdapter(), BFSAdapter(), DFSIterativeAdapter(), KruskalAdapter(), MergeSortAdapter(),
     ArithmeticEvalAdapter(), DijkstraAdapter(), PrimAdapter(),
     InorderTraversalAdapter(),         # TEMPLATE — coding concept (tree family)
+    PreorderTraversalAdapter(), PostorderTraversalAdapter(), LevelOrderTraversalAdapter(),  # verified traversal siblings
     QuadraticEquationAdapter(),        # TEMPLATE — math concept (algebra family, no code)
     KinematicsAdapter(),               # TEMPLATE — science concept (physics family, no code)
     BSTSearchAdapter(),                # T4 GATE — second search state model (tree node, not array bounds)
@@ -23,5 +25,6 @@ ADAPTERS = {a.slug: a for a in (
 
 __all__ = ["BinarySearchAdapter", "BFSAdapter", "DFSIterativeAdapter", "KruskalAdapter",
            "MergeSortAdapter", "ArithmeticEvalAdapter", "DijkstraAdapter", "PrimAdapter",
-           "InorderTraversalAdapter", "QuadraticEquationAdapter", "KinematicsAdapter",
+           "InorderTraversalAdapter", "PreorderTraversalAdapter", "PostorderTraversalAdapter",
+           "LevelOrderTraversalAdapter", "QuadraticEquationAdapter", "KinematicsAdapter",
            "BSTSearchAdapter", "ADAPTERS"]

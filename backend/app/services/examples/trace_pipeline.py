@@ -61,8 +61,14 @@ def _match_adapter(text: str, slug: str):
     """The tight alias matcher (kept separate so the routing-safety guards wrap it cleanly)."""
     # Covered TREE + ALGEBRA concepts route explicitly (checked before the tree-defer guard below). Only
     # inorder BST traversal has a tree adapter today; other tree/BST topics still defer.
-    if "inorder" in text:
+    if "inorder" in text or "in-order" in text:
         return ADAPTERS["tree_inorder"]
+    if "preorder" in text or "pre-order" in text:
+        return ADAPTERS["tree_preorder"]
+    if "postorder" in text or "post-order" in text:
+        return ADAPTERS["tree_postorder"]
+    if "level order" in text or "level-order" in text or "levelorder" in text:
+        return ADAPTERS["tree_levelorder"]
     # A BST *search* is a tree probe (not array binary search); but "binary search tree" also names
     # INSERTION/DELETION/TRAVERSAL topics — so strip the structure name, then require the search OPERATION.
     _bst_op = text.replace("binary search tree", " ").replace("binary-search tree", " ")

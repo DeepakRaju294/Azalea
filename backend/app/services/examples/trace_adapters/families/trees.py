@@ -1,6 +1,6 @@
 """Tree family (ADAPTER_CATALOG A2) — a parent/child binary-tree structure (NO visited-set / cycle handling,
-unlike the graph family). Members here: inorder BST traversal. Future: pre/post/level order, BST search /
-insert / delete, heap ops, trie, LCA.
+unlike the graph family). Members here: inorder / preorder / postorder / level-order traversal, BST search.
+Future: BST insert / delete, heap ops, trie, LCA.
 
 TEMPLATE — this is the reference *coding* adapter every new coding concept follows. It shows the full
 contract: an `ExampleSpec` (input shape + stage grammar + required cases + terminal), a `candidates()`
@@ -10,6 +10,8 @@ A coding adapter additionally ships a canonical solution (see `canonical_solutio
 from __future__ import annotations
 
 import random
+import re
+from collections import deque
 from typing import Any, Iterable
 
 from ...trace_contract import ContractTrace, Step, fact
@@ -157,6 +159,196 @@ class InorderTraversalAdapter(FamilyAdapterBase):
                           str(card.get("result", ""))]).lower()
         node = str(step.inputs["node"])
         return [] if node in prose else [("node_not_stated", node)]
+
+
+# --- pre/post/level order traversals — verified siblings of inorder (were falling to unverified legacy) -------
+
+def _preorder_walk(tree, root):
+    """Preorder (node, left, right): output a node BEFORE its subtrees. Returns [(node, reason, [evidence])]."""
+    out: list[tuple[int, str, list[str]]] = []
+
+    def rec(n, parent, side):
+        if n is None:
+            return
+        if parent is None:
+            why, keys = f"the root {n} is output first — preorder outputs a node before its subtrees", ["root_first"]
+        elif side == "left":
+            why, keys = f"after {parent}, move left and output {n} before its own children", []
+        else:
+            why, keys = f"{parent}'s left subtree is finished, so move right and output {n}", ["right_branch"]
+        out.append((n, why, keys))
+        rec(tree[n]["left"], n, "left")
+        rec(tree[n]["right"], n, "right")
+    rec(root, None, None)
+    return out
+
+
+def _postorder_walk(tree, root):
+    """Postorder (left, right, node): output a node only AFTER both its subtrees."""
+    out: list[tuple[int, str, list[str]]] = []
+
+    def rec(n):
+        if n is None:
+            return
+        rec(tree[n]["left"])
+        rec(tree[n]["right"])
+        leaf = tree[n]["left"] is None and tree[n]["right"] is None
+        why = (f"{n} is a leaf, so output it now" if leaf else
+               f"both of {n}'s subtrees are fully output, so {n} comes last (postorder = subtrees, then node)")
+        keys = (["leaf"] if leaf else []) + (["root_last"] if n == root else [])
+        out.append((n, why, keys))
+    rec(root)
+    return out
+
+
+def _levelorder_walk(tree, root):
+    """Level-order (breadth-first): output every node on one level, left to right, before the next level."""
+    out: list[tuple[int, str, list[str]]] = []
+    q = deque([(root, 0)])
+    while q:
+        n, d = q.popleft()
+        if n is None:
+            continue
+        why = (f"start at the root {n} — level-order begins at the top (level 0)" if d == 0 else
+               f"{n} is on level {d}; level-order finishes each level left to right before going deeper")
+        out.append((n, why, ["root_level"] if d == 0 else ["deeper_level"]))
+        q.append((tree[n]["left"], d + 1))
+        q.append((tree[n]["right"], d + 1))
+    return out
+
+
+_TRAV_INV = [{"id": "all_visited", "scope": "final_only", "statement": "every node visited exactly once"}]
+
+
+class _TreeTraversalBase(FamilyAdapterBase):
+    """Shared machinery for the order traversals (pre/post/level). A subclass declares its slug, conventions,
+    required cases, order word, and a `_walk(tree, root) -> [(node, reason, [evidence_keys])]`; the candidate
+    generator, reference, Stage-0 gate, and hooks are shared with inorder's template."""
+    label_convention = "ints"
+    _walk = staticmethod(lambda tree, root: [])
+    _conv: dict[str, Any] = {}
+    _required: list[str] = []
+    _order_word = "traversal"
+
+    def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+        rng = random.Random(seed)
+        for i in range(80):
+            n = rng.randint(4, 7)
+            values = rng.sample(range(1, 41), n)          # distinct
+            tree: dict[int, dict[str, Any]] = {}
+            root: int | None = None
+            for v in values:
+                root = _insert(tree, root, v)
+            yield {"tree": tree, "root": root, "insert_order": values, "_id": f"{self.slug}_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        ev = trace.case_evidence
+        return len(trace.steps) >= 3 and all(ev.get(c) for c in self._required if c != "completion")
+
+    def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                  attempt: int = 1, seed: int = 0) -> ContractTrace:
+        tree = example_input["tree"]
+        root = example_input["root"]
+        walk = self._walk(tree, root)
+        order = [n for n, _, _ in walk]
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        output: list[int] = []
+        for idx, (node, why, keys) in enumerate(walk, start=1):
+            sid = f"s{idx}"
+            prior = {"output": list(output), "current": node}
+            output = output + [node]
+            after = {"output": list(output), "current": node}
+            for k in keys:
+                evidence.setdefault(k, []).append(sid)
+            steps.append(Step(
+                id=sid, operation="visit", prior_state=prior, state_after=after,
+                inputs={"node": node, "position": idx, "output_after": list(output)},
+                decision=f"visit {node}", reason=why,
+                visual_state={"kind": "tree", "visited": list(output), "current": node},
+                visual_delta={"emitted": node},
+                expected_visible_result=f"Visit {node}; output so far {output}.",
+                # allow the node values + any integer that appears in the VERIFIED reason (e.g. level-order's
+                # "level 2") — those are adapter-generated truth, not a model claim.
+                facts={"allowed_values": sorted(set(tree.keys()) | {int(x) for x in re.findall(r"\d+", why)}),
+                       "required_facts": [fact("visit", f"visit {node}")], "forbidden_claims": []}))
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        return ContractTrace(
+            problem=(f"Perform a {self._order_word} traversal of the binary search tree built by inserting "
+                     f"{example_input['insert_order']} (root {root})."),
+            conventions=dict(self._conv), initial_state={"output": [], "current": None},
+            final_answer={"visit_order": order}, steps=steps,
+            invariants=[dict(x) for x in _TRAV_INV], required_cases=list(self._required), case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        return list((a or {}).get("output") or []) == list((b or {}).get("output") or [])
+
+    def final_answer_entails(self, state, answer):
+        return list((state or {}).get("output") or []) == list((answer or {}).get("visit_order") or [])
+
+    def invariant_holds(self, inv, state):
+        return True                                        # cardinality is checked by fidelity, not per-state
+
+    def validate_step_shape(self, step):
+        errs = []
+        if step.operation != "visit":
+            errs.append(f"unexpected operation {step.operation!r}")
+        for k in ("node", "position", "output_after"):
+            if k not in step.inputs:
+                errs.append(f"missing inputs.{k}")
+        return errs
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        node = str(step.inputs["node"])
+        return [] if node in prose else [("node_not_stated", node)]
+
+
+def _trav_spec(order_desc: str, focus: str, must: list[str], out_shape: str) -> ExampleSpec:
+    return ExampleSpec(
+        input=InstanceShape("integers", count=(4, 7), value_range=(1, 40), structure=["distinct", "bst"]),
+        stages={"visit": StageSpec("visit", f"visit the next node in {order_desc} position", teaching_focus=focus,
+                                   contains={"emit_node": "required"})},
+        structure="visit+ until every node is output",
+        must_exercise=must, must_avoid=["single_node_tree"],
+        terminal="every node visited exactly once", output_shape=out_shape)
+
+
+class PreorderTraversalAdapter(_TreeTraversalBase):
+    slug = "tree_preorder"
+    _walk = staticmethod(_preorder_walk)
+    _conv = {"structure": "binary_search_tree", "order": "preorder (node, left, right)",
+             "trace_granularity": "one_node_visit"}
+    _required = ["root_first", "right_branch", "completion"]
+    _order_word = "preorder"
+    example_spec = _trav_spec("preorder", "a node is output BEFORE its subtrees (root first)",
+                              ["root_first", "right_branch", "completion"], "the preorder node sequence")
+
+
+class PostorderTraversalAdapter(_TreeTraversalBase):
+    slug = "tree_postorder"
+    _walk = staticmethod(_postorder_walk)
+    _conv = {"structure": "binary_search_tree", "order": "postorder (left, right, node)",
+             "trace_granularity": "one_node_visit"}
+    _required = ["leaf", "root_last", "completion"]
+    _order_word = "postorder"
+    example_spec = _trav_spec("postorder", "a node is output AFTER both its subtrees (root last)",
+                              ["leaf", "root_last", "completion"], "the postorder node sequence")
+
+
+class LevelOrderTraversalAdapter(_TreeTraversalBase):
+    slug = "tree_levelorder"
+    _walk = staticmethod(_levelorder_walk)
+    _conv = {"structure": "binary_tree", "order": "level-order (breadth-first, top to bottom)",
+             "trace_granularity": "one_node_visit"}
+    _required = ["root_level", "deeper_level", "completion"]
+    _order_word = "level-order"
+    example_spec = _trav_spec("level-order", "process the tree one level at a time, left to right (a queue)",
+                              ["root_level", "deeper_level", "completion"], "the level-order node sequence")
 
 
 class BSTSearchAdapter(FamilyAdapterBase):

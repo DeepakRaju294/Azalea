@@ -94,10 +94,11 @@ class OrchestrationTests(unittest.TestCase):
         # graph BFS/DFS (visited-set, cycles) route to the graph adapters...
         self.assertEqual(tp.route_adapter({"title": "Breadth-First Search on a graph"}).slug, "bfs")
         self.assertEqual(tp.route_adapter({"title": "Depth-First Search traversal"}).slug, "dfs_iter")
-        # ...but TREE traversal is a different algorithm and must NOT route to the graph adapter (defers)
-        self.assertIsNone(tp.route_adapter({"title": "Level-order traversal of a binary tree"}))
-        self.assertIsNone(tp.route_adapter({"title": "BFS of a binary tree"}))
-        self.assertIsNone(tp.route_adapter({"title": "DFS preorder traversal of a tree"}))
+        # ...and TREE traversal is a DIFFERENT algorithm — it routes to its own tree adapter, NEVER the graph one
+        self.assertEqual(tp.route_adapter({"title": "Level-order traversal of a binary tree"}).slug, "tree_levelorder")
+        self.assertEqual(tp.route_adapter({"title": "Preorder traversal of a BST"}).slug, "tree_preorder")
+        self.assertEqual(tp.route_adapter({"title": "Postorder traversal of a tree"}).slug, "tree_postorder")
+        self.assertEqual(tp.route_adapter({"title": "DFS preorder traversal of a tree"}).slug, "tree_preorder")
         # a binary-search TREE is not array binary search
         self.assertIsNone(tp.route_adapter({"title": "Binary Search Tree insertion"}))
         self.assertEqual(tp.route_adapter({"title": "Binary Search in a sorted array"}).slug, "binary_search")

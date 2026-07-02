@@ -140,6 +140,33 @@ def dijkstra(graph, start):
         return []
     return inorder(node.left) + [node.val] + inorder(node.right)
 """,
+    # ---- tree preorder / postorder / level-order (siblings of inorder) ----
+    "tree_preorder": """def preorder(node):
+    if node is None:
+        return []
+    return [node.val] + preorder(node.left) + preorder(node.right)
+""",
+    "tree_postorder": """def postorder(node):
+    if node is None:
+        return []
+    return postorder(node.left) + postorder(node.right) + [node.val]
+""",
+    "tree_levelorder": """from collections import deque
+
+def level_order(root):
+    if root is None:
+        return []
+    out = []
+    queue = deque([root])
+    while queue:
+        node = queue.popleft()
+        out.append(node.val)
+        if node.left:
+            queue.append(node.left)
+        if node.right:
+            queue.append(node.right)
+    return out
+""",
     # ---- BST search (descend by comparison until found or a null child) ----
     "bst_search": """def search(node, target):
     if node is None:
