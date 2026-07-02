@@ -210,6 +210,16 @@ def level_order(root):
         arr[j + 1] = key
     return arr
 """,
+    "selection_sort": """def selection_sort(arr):
+    n = len(arr)
+    for i in range(n - 1):
+        min_idx = i
+        for j in range(i + 1, n):
+            if arr[j] < arr[min_idx]:
+                min_idx = j
+        arr[i], arr[min_idx] = arr[min_idx], arr[i]
+    return arr
+""",
     "arithmetic_eval": """def evaluate(tokens):
     stack = [tokens[0]]
     i = 1

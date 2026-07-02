@@ -466,3 +466,111 @@ class InsertionSortAdapter(FamilyAdapterBase):
                           str(card.get("result", ""))]).lower()
         key = str(step.inputs["key"])
         return [] if key in prose else [("key_not_stated", key)]
+
+
+# ===================================================================================================
+# Selection sort (repeatedly select the min of the unsorted part and place it) — T8a (2nd pilot => gate)
+# ===================================================================================================
+_SEL_CONV = {"algorithm_variant": "selection_sort", "order": "ascending",
+             "invariant": "a[0..i] holds the i smallest values, sorted", "trace_granularity": "one_selection"}
+_SEL_REQ = ["swap_needed", "completion"]
+_SEL_INV = [{"id": "prefix_is_sorted_minimums", "scope": "every_step",
+             "statement": "the sorted prefix holds the smallest values in ascending order"}]
+
+
+class SelectionSortAdapter(FamilyAdapterBase):
+    slug = "selection_sort"
+    label_convention = "ints"
+    example_spec = ExampleSpec(
+        input=InstanceShape("integers", count=(5, 8), value_range=(1, 60), structure=["distinct", "unsorted"]),
+        stages={"select": StageSpec(
+            "select", "select the smallest remaining element and lock it into the front of the unsorted part",
+            teaching_focus="each pass finds the minimum of what's left and fixes it in its final position",
+            contains={"scan_for_min": "internal", "place_min": "required", "swap": "aggregated_supporting"},
+            state_effects=["the sorted prefix grows by one; it always holds the smallest values in order"])},
+        structure="select+ until the whole array is sorted",
+        must_exercise=["swap_needed", "completion"], must_cover=["swap_needed", "already_min"],
+        must_avoid=["already_sorted"],
+        terminal="every position holds its final sorted value", output_shape="the sorted array")
+
+    def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+        rng = random.Random(seed)
+        for i in range(80):
+            n = rng.randint(5, 8)
+            arr = rng.sample(range(1, 60), n)
+            yield {"array": arr, "_id": f"selection_v1_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        return len(trace.steps) >= 4 and bool(trace.case_evidence.get("swap_needed"))
+
+    def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                  attempt: int = 1, seed: int = 0) -> ContractTrace:
+        arr = list(example_input["array"])
+        a = list(arr)
+        n = len(a)
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        for i in range(n - 1):                             # last element is left in place automatically
+            sid = f"s{i + 1}"
+            suffix = list(a[i:])
+            min_idx = i
+            for j in range(i + 1, n):
+                if a[j] < a[min_idx]:
+                    min_idx = j
+            min_val = a[min_idx]
+            prior = {"array": list(a), "sorted_len": i}
+            swapped = min_idx != i
+            a[i], a[min_idx] = a[min_idx], a[i]
+            after = {"array": list(a), "sorted_len": i + 1}
+            if swapped:
+                reason = (f"the smallest value in the unsorted part {suffix} is {min_val}, so swap it into "
+                          f"position {i}")
+                evidence.setdefault("swap_needed", []).append(sid)
+            else:
+                reason = (f"{min_val} is already the smallest of the unsorted part {suffix}, so it stays in "
+                          f"position {i}")
+                evidence.setdefault("already_min", []).append(sid)
+            evr = f"Select {min_val} (the smallest remaining) into position {i}; array now {a}."
+            allowed = sorted(set(arr) | {int(x) for x in re.findall(r"\d+", reason + " " + evr)})
+            steps.append(Step(
+                id=sid, operation="select", prior_state=prior, state_after=after,
+                inputs={"min_value": min_val, "position": i, "swapped": swapped},
+                decision=f"select {min_val} into position {i}", reason=reason,
+                visual_state={"kind": "array", "array": list(a), "sorted_len": i + 1, "active": i},
+                visual_delta={"selected": min_val, "position": i},
+                expected_visible_result=evr,
+                facts={"allowed_values": allowed,
+                       "required_facts": [fact("min", min_val)], "forbidden_claims": []}))
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        return ContractTrace(
+            problem=f"Sort the array {arr} in ascending order using selection sort.",
+            conventions=dict(_SEL_CONV), initial_state={"array": list(arr), "sorted_len": 0},
+            final_answer={"sorted": sorted(arr)}, steps=steps,
+            invariants=[dict(x) for x in _SEL_INV], required_cases=list(_SEL_REQ), case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        return (list((a or {}).get("array") or []) == list((b or {}).get("array") or [])
+                and (a or {}).get("sorted_len") == (b or {}).get("sorted_len"))
+
+    def final_answer_entails(self, state, answer):
+        return list((state or {}).get("array") or []) == list((answer or {}).get("sorted") or [])
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "prefix_is_sorted_minimums":
+            arr = (state or {}).get("array") or []
+            k = (state or {}).get("sorted_len") or 0
+            pref, rest = arr[:k], arr[k:]
+            return pref == sorted(pref) and (not pref or not rest or max(pref) <= min(rest))
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation == "select" else [f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        mv = str(step.inputs["min_value"])
+        return [] if mv in prose else [("min_not_stated", mv)]

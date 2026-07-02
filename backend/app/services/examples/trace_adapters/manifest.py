@@ -127,6 +127,11 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "coding": True, "canonical_solution": "insertion_sort",
         "routing_aliases": ["insertion sort", "insertion_sort"], "negative_guards": [],
         "fixtures": ["shift_insert", "stay_in_place"]},
+    "selection_sort": {
+        "type": "T8a", "family": "sequence", "status": "pilot", "verification_level": "trace_verified",
+        "coding": True, "canonical_solution": "selection_sort",
+        "routing_aliases": ["selection sort", "selection_sort"], "negative_guards": [],
+        "fixtures": ["swap_needed", "already_min"]},
     "arithmetic_eval": {
         "type": "T7", "family": "formula", "status": "production", "verification_level": "trace_verified",
         "coding": True, "canonical_solution": "arithmetic_eval",
