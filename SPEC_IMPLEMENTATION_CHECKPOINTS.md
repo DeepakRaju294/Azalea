@@ -5,8 +5,10 @@
 > coverage until all preceding BLOCKING checkpoints pass.** Independent safety, observability, and regression
 > work may proceed in parallel — but must not be treated as proof that an earlier blocking checkpoint is done.
 >
-> **Current rollout blocker: CP3 checkpoint/artifact acceptance wiring** (CP1/CP2/CP4/CP5/CP6 already reduce
-> risk materially, but grouped LLM artifacts are not yet accepted under the checkpoint contract).
+> **Current rollout blocker: CP3a — default checkpoint emission into runtime payloads — then CP3
+> checkpoint/artifact acceptance wiring** (CP1/CP2/CP4/CP5/CP6 already reduce risk materially, but identity
+> checkpoints aren't in the payload yet and grouped LLM artifacts aren't yet accepted under the checkpoint
+> contract). The next code change is CP3a wiring across the eight adapters, NOT grouped-card acceptance.
 >
 > **Status legend:** ✅ done & tested · 🟡 partial · ❌ not started.
 
@@ -149,12 +151,21 @@ range is non-contiguous · an artifact's result contradicts the TeachingTrace st
 > source-transition range — transition-level checks are the semantic proof; `checkpoint_id`s are the
 > learner-facing + reporting proof. The existing `coverage_complete(cards, trace, adapter)` machinery stays.
 
+**When CP3 wiring lands, `coverage_complete` becomes checkpoint-aware** (upgrade the validator; do NOT loosen it):
+```
+coverage_complete(artifacts, checkpoints, teaching_trace, adapter)
+```
+It verifies required-checkpoint coverage · terminal-checkpoint coverage · exactly one `checkpoint_id` per
+artifact · checkpoint source-range validity · decision visibility · state-anchor consistency · final-answer
+consistency. Transition-level coverage stays DERIVED through each checkpoint's source-transition range — no new
+abstraction, same predicate with a checkpoint-aware signature.
+
 ### Tests
-1. Count mismatch but complete coverage → pass.
-2. Count mismatch missing completion → fail.
-3. Count mismatch missing cycle-skip transition → fail.
-4. Count mismatch with prose contradiction → fail.
-5. Exact count with wrong state → fail.
+1. Artifact-count mismatch with complete required-checkpoint coverage → pass.
+2. Terminal checkpoint has no artifact → fail.
+3. Required cycle-skip checkpoint has no artifact → fail.
+4. Artifact cites a valid checkpoint but has a hard narration contradiction → fail.
+5. Exact artifact count but a checkpoint state-anchor contradiction → fail.
 
 **Pass condition:** count alone never withholds, but coverage/semantics still control correctness.
 **Status (this session):** 🟡 — "count alone never withholds" is satisfied (P0a ships a trace-preserving narration
