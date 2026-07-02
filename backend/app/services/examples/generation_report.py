@@ -55,10 +55,13 @@ _FROM_SCRATCH_SOURCES = {"gen_foundation", "legacy_coding", "legacy_outline"}
 
 
 def is_from_scratch_source(source: Optional[str]) -> bool:
-    """True iff `source` is a from-scratch LLM derivation (§1.2). Operational, not a literal set membership:
-    any `legacy_*` / `legacy` / `gen_foundation` / `gen_*` value counts, so an added variant is caught."""
+    """True iff `source` is a from-scratch LLM derivation (§1.2). Operational, not a literal set membership: the
+    enumerated set + any `legacy` / `legacy_*` variant (that prefix reliably means the old re-derivation path).
+    Deliberately NOT a `gen_*` prefix — that would misclassify a legitimate future adapter-backed source like
+    `gen_trace_pipeline`; `gen_foundation` is already enumerated. (Eventual hardening: a full source trust-class
+    map with fail-closed on unknown adapter-supported sources — see CP6b.)"""
     s = source or ""
-    return s in _FROM_SCRATCH_SOURCES or s == "legacy" or s.startswith("legacy_") or s.startswith("gen_")
+    return s in _FROM_SCRATCH_SOURCES or s == "legacy" or s.startswith("legacy_")
 
 
 def invariant_violations(report: dict[str, Any]) -> list[str]:

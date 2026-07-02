@@ -14,11 +14,17 @@ class Cp1InvariantStanding(unittest.TestCase):
     `invariant_violations` is the machine check that locks it in (and runs over the JSONL log in audits)."""
 
     def test_supported_from_scratch_source_is_a_violation(self):
-        # known-today sources + FUTURE variants the prefix guard must also catch (no source slips the invariant)
+        # known-today sources + FUTURE legacy_* variants the prefix guard must also catch (no source slips)
         for src in ("gen_foundation", "legacy_coding", "legacy_outline",
-                    "legacy", "legacy_v2", "legacy_fallback", "gen_scratch"):
+                    "legacy", "legacy_v2", "legacy_fallback"):
             rep = {"title": "t", "worked_example": {"adapter": "kruskal", "final_source": src}}
             self.assertTrue(gr.invariant_violations(rep), f"{src} must be flagged")
+
+    def test_gen_prefix_is_not_blanket_flagged(self):
+        # a legitimate future adapter-backed source (e.g. gen_trace_pipeline) must NOT be classed from-scratch
+        rep = {"title": "t", "worked_example": {"adapter": "kruskal", "final_source": "gen_trace_pipeline",
+                                                "tp_shipped": True, "verification_level": "trace_verified"}}
+        self.assertEqual(gr.invariant_violations(rep), [])
 
     def test_supported_trace_pipeline_ship_is_clean(self):
         rep = {"title": "t", "worked_example": {"adapter": "kruskal", "final_source": "trace_pipeline",

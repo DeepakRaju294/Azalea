@@ -1,8 +1,12 @@
 # Implementation Checkpoints & Explicit Checks
 
 > Companion to `ADAPTER_AND_GENERATION_SYSTEM_SPEC.md`. Every checkpoint must be independently testable.
-> **Do not continue to the next checkpoint until the current one passes.** Do not scale to more adapters
-> until all pass.
+> **Do not enable a checkpoint's dependent production behavior, mark the rollout complete, or scale adapter
+> coverage until all preceding BLOCKING checkpoints pass.** Independent safety, observability, and regression
+> work may proceed in parallel — but must not be treated as proof that an earlier blocking checkpoint is done.
+>
+> **Current rollout blocker: CP3 checkpoint/artifact acceptance wiring** (CP1/CP2/CP4/CP5/CP6 already reduce
+> risk materially, but grouped LLM artifacts are not yet accepted under the checkpoint contract).
 >
 > **Status legend:** ✅ done & tested · 🟡 partial · ❌ not started.
 
@@ -12,6 +16,7 @@
 | 0 | Baseline safety / observability | ✅ | M7 `generation_report`, full suite (18 pre-existing fails, steady) |
 | 1 | No from-scratch fallback for supported topics | ✅ | P0a `545ae26` + single-path `40a34df` + invariant lock `8bd40c7` |
 | 2 | Trace-preserving fallback narration | ✅ | P0a `_deterministic_narration` `545ae26` |
+| 3a | Default checkpoint emission (per-transition, with provenance) | 🟡 | `base.teaching_checkpoints` builds the identity form; runtime-payload + report wiring pending (prereq for CP3) |
 | 3 | Checkpoint/artifact alignment (was: relax `count_mismatch`) | 🟡 | never-withhold (P0a) + **`coverage_complete(cards, trace, adapter)` acceptance predicate built & the 5 CP3 boundary tests pass** (`test_coverage_complete.py`); the grouped-count ACCEPT wiring in `_normalize_and_attach` is deferred (needs per-artifact `checkpoint_id` + a contiguous source-transition range — a prompt change held back to protect 1:1 reliability) |
 | 4 | Prose hard/soft boundary | ✅ | declared `TeachingValidationContract` (`DEFAULT_TEACHING_VALIDATION`) + `hard_prose_violations(contract=)`; four boundary tests in `test_teaching_validation_contract.py` |
 | 5 | Regression fixtures (golden lessons) | ✅ | `test_golden_fixtures.py` — deterministic-narration golden net over all 8 adapters (CP5 historical bug classes) |
@@ -49,8 +54,10 @@ come from `gen_foundation`, `legacy`, or any from-scratch LLM derivation.
 
 ### Required implementation checks
 - Add a hard invariant: for an adapter-supported topic, `not is_from_scratch_source(final_source)` — an
-  OPERATIONAL predicate (`gen_foundation` · `gen_*` · `legacy` · `legacy_*`), not a literal set, so a future
-  source variant can't slip through (`generation_report.is_from_scratch_source`; tested on `legacy_v2`/`legacy_fallback`).
+  OPERATIONAL predicate (the enumerated set + any `legacy`/`legacy_*` variant), not a literal set, so a future
+  `legacy_*` variant can't slip through. Deliberately NOT a blanket `gen_*` prefix (that would misclassify a
+  legitimate future adapter-backed source like `gen_trace_pipeline`); `gen_foundation` is enumerated explicitly
+  (`generation_report.is_from_scratch_source`; tested on `legacy_v2`/`legacy_fallback` + a `gen_*` non-violation).
 - If narration fails, the system must (1) retry prose-fill, (2) use trace-preserving fallback narration, or
   (3) withhold. It must never re-derive the example.
 
@@ -63,8 +70,8 @@ come from `gen_foundation`, `legacy`, or any from-scratch LLM derivation.
 **Status (this session):** ✅ — P0a ships a trace-preserving narration on narration failure (`545ae26`);
 single-path enforcement withholds (lean base) instead of gen_foundation/legacy when no trace exists (`40a34df`).
 Tests: `test_narration_failure_ships_trace_preserving_narration_not_none`,
-`test_supported_topic_withholds_instead_of_fabricating`. ✅ **Done (CP6, `8bd40c7`):** the standing invariant `adapter_slug != None ⇒ final_source ∉ {gen_foundation,
-legacy_*}` (+ `verification_level == trace_verified` unless withheld) is asserted in `test_generation_report.py`.
+`test_supported_topic_withholds_instead_of_fabricating`. ✅ **Done (CP6, `8bd40c7`):** the standing invariant `adapter_slug != None ⇒ not is_from_scratch_source(final_source)`
+(+ `verification_level == trace_verified` unless withheld) is asserted in `test_generation_report.py`.
 
 ---
 
@@ -92,6 +99,15 @@ absent. *(Today it's 1:1 with steps; the "count may differ if coverage complete"
 ---
 
 ## Checkpoint 3 — Checkpoint / Artifact Alignment (was: relax `count_mismatch`)
+
+### CP3a — Default checkpoint emission (PREREQUISITE, must land first)
+Grouped-artifact acceptance cannot begin until every current adapter emits a default `TeachingCheckpoint[]`:
+one checkpoint per `TeachingTrace` transition, each carrying `checkpoint_id`,
+`source_transition_start`/`source_transition_end`, state-before/after anchors, required-case coverage, and the
+terminal marker. **Pass condition:** every adapter-backed payload can attach a `checkpoint_id` to every
+learner-facing artifact — even before GROUPED checkpoints exist. (`base.teaching_checkpoints` already builds the
+identity-projection form; CP3a is wiring it into the runtime payload + report.) Only then does CP3 progress from
+*one transition → one checkpoint → one+ artifacts* to grouped checkpoints.
 
 ### Rule
 Learner-facing artifact COUNT is not itself a correctness gate. An artifact is accepted only when it cites
