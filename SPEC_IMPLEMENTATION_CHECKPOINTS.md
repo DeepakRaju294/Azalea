@@ -109,6 +109,14 @@ learner-facing artifact — even before GROUPED checkpoints exist. (`base.teachi
 identity-projection form; CP3a is wiring it into the runtime payload + report.) Only then does CP3 progress from
 *one transition → one checkpoint → one+ artifacts* to grouped checkpoints.
 
+**CP3a tests — for each currently supported adapter:**
+1. build the default `TeachingCheckpoint[]` identity projection;
+2. run deterministic narration;
+3. assert every emitted artifact has exactly one `checkpoint_id`;
+4. assert that checkpoint exists in `AdapterOutput.teaching_checkpoints`;
+5. assert `source_transition_start`/`end` resolve to valid contiguous `TeachingTrace` transitions;
+6. assert the terminal checkpoint mapping when the adapter has a terminal transition.
+
 ### Rule
 Learner-facing artifact COUNT is not itself a correctness gate. An artifact is accepted only when it cites
 exactly one adapter-produced `checkpoint_id`, and the complete artifact set preserves all required checkpoints,
@@ -116,12 +124,19 @@ terminal coverage, decision visibility, state provenance, and final-answer corre
 trace-step count is no longer the reference — checkpoints are.)
 
 ### Accept only if ALL are true
-every required transition ID rendered · terminal/completion rendered · no surfaced learner decision omitted ·
-no forbidden stage combination · final answer preserved · no hard prose contradiction.
+every required CHECKPOINT is represented by ≥1 learner-facing artifact · the terminal checkpoint is represented ·
+every artifact cites exactly one EXISTING `checkpoint_id` · every cited checkpoint has valid contiguous
+source-transition provenance · no surfaced learner decision omitted · no forbidden checkpoint/stage combination ·
+final-answer + state anchors stay consistent with the TeachingTrace · no hard narration contradiction.
 
 ### Reject if ANY are true
-required transition missing · terminal/completion missing · two independent learner decisions merged without an
-adapter-approved rule · card references nonexistent trace IDs · card result contradicts trace state.
+a required checkpoint has no artifact · terminal checkpoint missing · two independent learner decisions merged
+without an adapter-approved rule · an artifact cites a nonexistent `checkpoint_id` · a checkpoint's source-transition
+range is non-contiguous · an artifact's result contradicts the TeachingTrace state.
+
+> **Transition IDs remain the underlying proof.** Checkpoint coverage is validated THROUGH each checkpoint's
+> source-transition range — transition-level checks are the semantic proof; `checkpoint_id`s are the
+> learner-facing + reporting proof. The existing `coverage_complete(cards, trace, adapter)` machinery stays.
 
 ### Tests
 1. Count mismatch but complete coverage → pass.
@@ -202,6 +217,13 @@ Every generated worked example must record:
   "prose_validation": { "hard_failures": [], "soft_warnings": [] }
 }
 ```
+> **Schema split (resolves the ✅/flat contradiction).** The flat fields — `adapter_slug`, `verification_level`,
+> `final_source`, `trace_ids_rendered`, `required_transition_ids`, `missing_required_transition_ids`,
+> `terminal_rendered`, `fallback_reason` — are **CP6, required NOW (✅)**. The nested
+> `prose_validation{hard_failures,soft_warnings}` + the checkpoint fields (`checkpoint_ids_rendered`,
+> `required_checkpoint_ids`, `missing_required_checkpoint_ids`) are **CP6b, required WITH checkpoint wiring (🟡)**.
+> So CP6 is honestly ✅ and CP6b owns the remaining report-shape work.
+
 ### Required checks
 - Adapter-supported + `final_source=gen_foundation` → hard violation.
 - Adapter-supported + `verification_level != trace_verified` unless withheld → hard violation.
