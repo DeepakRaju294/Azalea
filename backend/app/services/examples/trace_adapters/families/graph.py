@@ -35,6 +35,19 @@ def fmt_nodes(seq: Any) -> str:
     return ", ".join(items) if items else "(none)"
 
 
+def fmt_adjacency(graph: dict, *, weighted: bool = False) -> str:
+    """Humanize an adjacency map for the PROBLEM statement — the first thing a learner reads — instead of a raw
+    Python dict `{'A': ['B','C'], ...}`. Unweighted: 'A → B, C; B → A, D'. Weighted: 'A → B (1), E (3)'."""
+    parts = []
+    for u, nbrs in (graph or {}).items():
+        if weighted:
+            inner = ", ".join(f"{v} ({w})" for v, w in dict(nbrs).items())
+        else:
+            inner = ", ".join(str(v) for v in nbrs)
+        parts.append(f"{u} → {inner}")
+    return "; ".join(parts)
+
+
 def random_unweighted_graph(rng: random.Random, *, extra_lo: int, extra_hi: int,
                             n_lo: int = 5, n_hi: int = 7) -> dict[str, Any]:
     """A connected undirected graph (spanning tree + cross edges) labelled A.. with `start` = A."""
@@ -150,7 +163,7 @@ class BFSAdapter(FamilyAdapterBase):
         if steps:
             evidence.setdefault("completion", []).append(steps[-1].id)
         return ContractTrace(
-            problem=f"Run breadth-first search from {start} on the graph {graph}. Give the visit order.",
+            problem=f"Run breadth-first search from {start} on the graph where {fmt_adjacency(graph)}. Give the visit order.",
             conventions=dict(_BFS_CONV), initial_state={"queue": [start], "visited": [start], "order": []},
             final_answer={"visit_order": list(order)}, steps=steps,
             invariants=[dict(x) for x in _BFS_INV], required_cases=list(_BFS_REQ), case_evidence=evidence,
@@ -294,7 +307,7 @@ class DFSIterativeAdapter(FamilyAdapterBase):
         if steps:
             evidence.setdefault("completion", []).append(steps[-1].id)
         return ContractTrace(
-            problem=f"Run iterative depth-first search from {start} on the graph {graph}. Give the visit order.",
+            problem=f"Run iterative depth-first search from {start} on the graph where {fmt_adjacency(graph)}. Give the visit order.",
             conventions=dict(_DFS_CONV), initial_state={"stack": [start], "visited": [], "order": []},
             final_answer={"visit_order": list(order)}, steps=steps,
             invariants=[dict(x) for x in _DFS_INV], required_cases=list(_DFS_REQ), case_evidence=evidence,
@@ -483,7 +496,8 @@ class DijkstraAdapter(FamilyAdapterBase):
         if steps:
             evidence.setdefault("completion", []).append(steps[-1].id)
         return ContractTrace(
-            problem=f"Run Dijkstra's algorithm from {source} on the weighted graph {graph}. Give shortest distances.",
+            problem=(f"Run Dijkstra's algorithm from {source} on the weighted graph where "
+                     f"{fmt_adjacency(graph, weighted=True)}. Give shortest distances."),
             conventions=dict(_DIJ_CONV),
             initial_state={"dist": {x: (0 if x == source else inf) for x in graph}, "visited": []},
             final_answer={"dist": {k: (d if d < inf else None) for k, d in dist.items()}}, steps=steps,
@@ -658,8 +672,8 @@ class KruskalAdapter(FamilyAdapterBase):
         if steps:
             evidence.setdefault("completion", []).append(steps[-1].id)
         return ContractTrace(
-            problem=(f"Find a minimum spanning tree of the weighted graph with nodes {nodes} and edges "
-                     f"{example_input['graph']['edges']} using Kruskal's algorithm."),
+            problem=(f"Find a minimum spanning tree of the weighted graph with vertices {fmt_nodes(nodes)} and "
+                     f"edges {fmt_edges(example_input['graph']['edges'])} using Kruskal's algorithm."),
             conventions=dict(_KRU_CONV),
             initial_state={"selected_edges": [], "components": canon_components([[x] for x in nodes])},
             final_answer={"mst_edges": [list(e) for e in selected], "total_weight": total}, steps=steps,
@@ -829,8 +843,8 @@ class PrimAdapter(FamilyAdapterBase):
         if steps:
             evidence.setdefault("completion", []).append(steps[-1].id)
         return ContractTrace(
-            problem=(f"Find a minimum spanning tree of the weighted graph with nodes {nodes} and edges "
-                     f"{example_input['graph']['edges']} using Prim's algorithm, starting from {start}."),
+            problem=(f"Find a minimum spanning tree of the weighted graph with vertices {fmt_nodes(nodes)} and "
+                     f"edges {fmt_edges(example_input['graph']['edges'])} using Prim's algorithm, starting from {start}."),
             conventions=dict(_PRIM_CONV),
             initial_state={"in_tree": [start], "selected_edges": []},
             final_answer={"mst_edges": [list(e) for e in selected], "total_weight": total}, steps=steps,

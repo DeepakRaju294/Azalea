@@ -29,6 +29,7 @@ class NoRawStateInLearnerStrings(unittest.TestCase):
                 tr = select_instance(adapter, seed=seed)
                 if tr is None:
                     continue
+                self._scan(slug, seed, "problem", tr.problem)  # the FIRST thing a learner reads
                 for c in _deterministic_narration(tr):        # the ACTUAL learner-facing cards
                     self._scan(slug, seed, "result", c.get("result"))
                     self._scan(slug, seed, "reasoning", c.get("reasoning"))
