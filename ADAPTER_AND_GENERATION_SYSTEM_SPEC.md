@@ -155,7 +155,7 @@ Adapter
 ### 2.3 What's MISSING beyond the checker (depth + enforcement gaps I measured)
 | Gap | Today | Target | Status |
 |---|---|---|---|
-| **Multi-stage grammars** | **all 8 adapters ship `stages={one}`** | the §0 stage table's real decompositions (Dijkstra `settle/relax/completion`; Kruskal `setup/consider/cycle_skip/completion`; merge-sort `init_runs/merge_select`; BST `descend/{remove_leaf,splice,replace_successor}`) | ❌ **biggest depth gap** |
+| **Multi-stage grammars** | **8 of 12 adapters already ship 2–3 stages** — dijkstra `init/settle_node/relax_edge` (per-edge improve/no-improve), bfs/dfs/kruskal/prim/merge_sort 2-stage, quadratic/kinematics 3-stage. The 4 single-stage (binary_search/bst_search/tree_inorder/arithmetic) are correctly single — one decision-bearing op per step | keep ONE learner decision per stage; add a stage only for a NEW decision, never a second OUTCOME of one (e.g. Kruskal's accept-vs-cycle-skip is ONE `consider_edge` decision, not two stages) | 🟡 **largely closed** (was mis-tracked as ❌; verified via live `example_spec.stages`) |
 | **Per-suite coverage** | `must_cover = 0` on every adapter | declared `must_cover` + checked by §E behavior tests | ❌ |
 | **Behavior test suites (§E)** | `test_trace_prose_adversarial.LyingFormatterIsCaught` over all 8 adapters (faithful passes, lie/out-of-range is hard) + machine-required coverage assertion | ✅ |
 | **Versioned state schema** (item 6) | declared concept | enforced required/optional fields, no undeclared dynamic fields | 🟡 |
@@ -604,11 +604,11 @@ Carried from `ADAPTER_CONTRACT.md` §A, extended:
    renderer may emit 0+ artifacts per checkpoint but none spanning checkpoints unless the adapter declares a
    composite checkpoint; never a semantic merge across checkpoints; never withhold on count alone) — kills the
    #1 measured cause (#7). *Both small; together they convert fluent-but-wrong fallbacks into correct examples.*
-2. **P1 — multi-stage grammars (PROMOTED) + the next tier of measured causes.**
-   - **Multi-stage grammars (§2.3)** — populate the §0 stage table per family (Dijkstra `settle/relax`,
-     merge-sort `init_runs/merge_select`, Kruskal `setup/consider/cycle_skip/completion`, BST…).
-     **This is P1, not later: it's the main reason adapter-backed examples still feel shallow** (single-stage
-     today), and the completion stage it adds also fixes C4 (§5.4).
+2. **P1 — the next tier of measured causes.**
+   - **Multi-stage grammars (§2.3) — LARGELY DONE.** 8 of 12 adapters already ship 2–3 stages (Dijkstra
+     `init/settle_node/relax_edge`, merge-sort `init_runs/merge`, Kruskal `setup_sorted_edges/consider_edge`, …);
+     the 4 single-stage adapters are correctly single (one decision-bearing op). Remaining: finer splits ONLY
+     where a genuinely new learner decision exists — not a priority.
    - `prose_fail` hard/soft boundary, **executor input-shape + signature** (`unverifiable=61`),
      **routing-miss** vs no-adapter split, and routing legacy/gen_foundation entrypoints to `trace_pipeline`
      BEFORE generation whenever an adapter applies (gen_foundation stays Tier-2, never re-derives a supported topic).
