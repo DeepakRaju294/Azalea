@@ -29,6 +29,12 @@ class Step:
     visual_delta: dict[str, Any] = field(default_factory=dict)
     expected_visible_result: str = ""
     facts: dict[str, Any] = field(default_factory=dict)  # allowed_values / required_facts / forbidden_claims
+    # §7.0 four-layer model: a VERIFIED SEMANTIC transition may summarize a CONTIGUOUS range of RAW execution
+    # events (e.g. a Floyd-Warshall k-layer folds ~V² cell comparisons). When it does, it names that raw range
+    # so the chain card -> checkpoint -> semantic step -> raw execution stays fully traceable. None = the step
+    # IS one raw event (no summarization).
+    raw_event_start: Optional[int] = None
+    raw_event_end: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -154,6 +160,20 @@ def structural_invariants(trace: ContractTrace, adapter) -> list[str]:
             errs.append(f"required case {case!r} cites an unknown step id")
     for s in steps:
         errs += [f"{s.id}: {e}" for e in adapter.validate_step_shape(s)]
+    # §7.0 raw-provenance: a step that summarizes raw events must name a well-formed range, and the ranges of
+    # summarizing steps must be contiguous + ordered (a semantic transition may summarize only a CONTIGUOUS,
+    # replayable raw range — never non-contiguous or unrelated behaviour).
+    prev_end: Optional[int] = None
+    for s in steps:
+        rs, re_ = s.raw_event_start, s.raw_event_end
+        if (rs is None) != (re_ is None):
+            errs.append(f"{s.id}: raw_event range half-declared (need both start and end)")
+        elif rs is not None:
+            if re_ < rs:
+                errs.append(f"{s.id}: raw_event_end < raw_event_start")
+            elif prev_end is not None and rs != prev_end + 1:
+                errs.append(f"{s.id}: raw_event range not contiguous with previous step")
+            prev_end = re_
     return errs
 
 

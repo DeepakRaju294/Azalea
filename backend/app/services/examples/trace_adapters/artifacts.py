@@ -106,6 +106,17 @@ class WorkedExamplePayload:
 
 
 @dataclass(frozen=True)
+class WorkedExampleFailure:
+    """§4.1 — the STRUCTURED result an invalid trace returns (never a bare `null`). The caller gets a reason it
+    can branch on + telemetry, instead of having to guess why nothing shipped."""
+    reason: str                                         # invalid_trace | prose_claim_violation | ...
+    adapter_slug: str = ""
+    retryable: bool = True
+    telemetry_id: str = ""
+    detail: str = ""
+
+
+@dataclass(frozen=True)
 class AdapterOutput:
     """§2.6 — the SINGLE standardized return of an adapter. Everything downstream consumes THIS (the verified
     trace + its projection + step band + objectives + diagnostics), instead of reaching into ad-hoc fields."""

@@ -313,7 +313,9 @@ WorkedExamplePayload(
 
 The frontend's only job is to render `render_mode`. It NEVER has to reconstruct meaning from a crashed visual
 compiler — on any downstream failure the backend has already chosen `text_only_verified` and attached the
-reason. An `invalid_trace` produces **no payload at all** (there is nothing safe to ship).
+reason. An `invalid_trace` produces **no payload** — but the caller receives a structured
+`WorkedExampleFailure(reason, adapter_slug, retryable, telemetry_id)` (never a bare `null`), so upstream
+handling and observability stay clean.
 
 ---
 
@@ -375,6 +377,28 @@ allowlist is the backstop.
 **Other patterns:** structured `required_facts=[fact(predicate, text, value)]` (never bare strings) · bounded
 `candidates()` (T5 especially — cap the table) · no hardcoded example values in production (§9).
 
+### 7.0 Four layers — raw execution vs. verified semantic transitions
+
+The word "trace" was overloaded (every execution event **and** a bounded learner-meaningful sequence). Those
+are DIFFERENT layers. Algorithms whose full execution has far more events than a small ceiling (Floyd-Warshall
+~`V³` cell checks, a DP table's every cell, merge sort's every comparison) cannot be "complete AND capped" at
+one layer — so we separate four:
+
+| Layer | Large? | Fully retained? | May group events? |
+|---|---|---|---|
+| **1. Raw execution log** — every low-level event the real algorithm/simulator emits | yes | yes (for the bounded instance) | no |
+| **2. Verified semantic trace** — the deterministic adapter-defined educational transitions; the `ContractTrace` that replay / oracle / invariant checks validate | bounded | yes | yes, but only via verified adapter rules |
+| **3. Teaching checkpoints** — a selected/grouped subset that controls pacing + preserves required cases | small | no | yes |
+| **4. Cards & visual frames** — compiled from checkpoints only | small | no | yes |
+
+Chain: **raw execution → verified semantic trace → teaching checkpoint → card / visual frame.**
+
+> **The summarization rule.** A verified semantic transition MAY summarize a **contiguous, replayable range of
+> raw execution events** (Step `raw_event_start`/`raw_event_end`), but it must expose its `prior_state`,
+> `state_after`, invariant, and that raw-event range. It may **never** summarize non-contiguous or semantically
+> unrelated behaviour. So Floyd-Warshall's `k = B` layer is ONE semantic transition ("2 distances improve, 14
+> unchanged; layer verified") folding its `V²` raw cell checks — truth preserved, pacing sane.
+
 ### 7.1 Trace-size budgets — correctness is not enough
 
 > **Rule.** The full trace may be complete; the **learner-facing projection must obey a trace-size budget**.
@@ -385,20 +409,21 @@ There is no single "raw ceiling" (that hid a contradiction: a projection can't s
 
 1. **Instance-size cap** — how big the *problem* may be. Owned by the generator's `candidates()`
    (`InstanceShape`, e.g. "6–8 array elements"). This is what stops a 45-card merge sort at the SOURCE.
-2. **Semantic-event ceiling** — the max *full-trace steps* a bounded instance may retain
-   (`manifest.TYPE_TRACE_BUDGET`). Enforced by `test_type_contracts` on `len(trace.steps)` across many seeds.
+2. **Verified semantic-transition ceiling** — the max *semantic-trace transitions* (§7.0 layer 2, each of which
+   may summarize a contiguous raw-event range) a bounded instance may retain (`manifest.TYPE_TRACE_BUDGET`).
+   Enforced by `test_type_contracts` on `len(trace.steps)` across many seeds.
 3. **Teaching-checkpoint target** — the count the learner-facing **projection** aims for
    (`manifest.TYPE_TEACHING_TARGET`, always ≤ the semantic ceiling; `manifest_gaps()` rejects an inversion).
    An **absolute learner-facing max** = the semantic ceiling; a projection never exceeds its own source trace.
 
-An adapter whose full trace runs long (e.g. a per-relaxation Dijkstra, a full Floyd-Warshall) keeps every
-semantic event in the trace (≤ ceiling) and uses **teaching-projection grouping** (§7.3) to land near the
-target. Grouping may collapse SUPPORTING semantic events only when their aggregate transition stays explicitly
+An adapter whose raw execution runs long (Floyd-Warshall, a full DP table, per-relaxation Dijkstra) keeps every
+verified semantic TRANSITION in the trace (≤ ceiling) — each summarizing its contiguous raw range per §7.0 —
+and uses **teaching-projection grouping** (§7.3) to land near the target. Grouping may collapse SUPPORTING semantic events only when their aggregate transition stays explicitly
 represented by a verified checkpoint (e.g. Dijkstra folding three no-improvement edge checks into "the
 remaining out-edges do not improve any distance" — still derived from verified events). **Required-case
 events, branch evidence, and the terminal state are never omitted.**
 
-| Type | Instance-size cap (source) | Semantic-event ceiling (enforced) | Teaching-checkpoint target |
+| Type | Instance-size cap (source) | Verified semantic-transition ceiling (enforced) | Teaching-checkpoint target |
 |---|---|---|---|
 | T1 traversal | ≤ 8 nodes | 12 | 10 |
 | T2 greedy frontier | ≤ 6 nodes / 8 edges | 16 | 12 |
@@ -466,8 +491,10 @@ TeachingCheckpoint(
 )
 ```
 
-This gives a full traceability chain — **card / visual frame → checkpoint id → source semantic steps → verified
-reference trace** — so a wrong prose line or a mismatched frame can always be traced to its verified origin.
+This gives a full traceability chain — **card / visual frame → checkpoint id → source semantic steps → raw
+execution range (§7.0) → verified reference trace** — so a wrong prose line or a mismatched frame is always
+traceable to its origin. Every compiled card and `VisualFrame` therefore **carries `checkpoint_id` +
+`source_step_ids`**; a frame that cites no checkpoint is rejected.
 `test_type_contracts.test_teaching_checkpoints_cite_complete_source_provenance` enforces contiguous, ordered,
 fully-covering ranges.
 
@@ -505,9 +532,9 @@ or a replayable mathematical property that re-checks the answer/invariant by a d
 | Quadratic / polynomial | substitute each root into the original polynomial (≈ 0) |
 | Matrix multiplication | independently recompute a sample of output cells |
 
-Not every adapter needs a full independent implementation on day one, but the oracle is **required** before a
-`high_risk` or `production` adapter ships (§8 status). It is separate from the replay gate (§7.3): replay proves
-the trace is *executable*; the oracle proves the *answer* is right by a second method.
+The oracle is **recommended for `pilot`** and **required for `production`** (§8 status) — so no one has to
+debate whether Prim or AVL rotations count as "high risk". It is separate from the replay gate (§7.3): replay
+proves the trace is *executable*; the oracle proves the *answer* is right by a second, independent method.
 
 ---
 
@@ -519,8 +546,8 @@ the trace is *executable*; the oracle proves the *answer* is right by a second m
 - **pilot** — contract + fixture tests pass; feature-flagged for selected/internal traffic; the type gate (§2.1)
   may still be pending.
 - **production** — the type gate passed; acceptance + visual + **replay** + adversarial + regression suites
-  pass; routing + fallback behaviour tested; reviewed examples meet the quality bar; telemetry + a rollback
-  path are active.
+  pass; an **independent oracle** (§7.5) checks the answer by a second method; routing + fallback behaviour
+  tested; reviewed examples meet the quality bar; telemetry + a rollback path are active.
 
 `trace_adapters/manifest.py` holds one entry per adapter: `type` (T1–T12) · `family` · `status`
 (production | pilot | experimental) · `verification_level` · `coding` · `canonical_solution` ·
