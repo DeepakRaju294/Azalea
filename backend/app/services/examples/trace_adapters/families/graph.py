@@ -16,17 +16,23 @@ from ..example_spec import ExampleSpec, InstanceShape, StageSpec
 from .base import FamilyAdapterBase
 
 
+# ONE learner-facing notation for a weighted edge, used everywhere (reason · work · result · final answer) so a
+# first-timer never has to reconcile `A-B`, `(A,B,2)` and `A–B (2)` as the same thing (C7/B5 + consistency).
+def fmt_edge(u: Any, v: Any, w: Any = None) -> str:
+    return f"{u}–{v} ({w})" if w is not None else f"{u}–{v}"
+
+
 def fmt_edges(edges: Any) -> str:
     """Humanize an edge list for learner-facing prose: [['C','E',5],['A','D',6]] -> 'C–E (5), A–D (6)'.
     A raw nested list (`[['C', 'E', 5], ...]`) reads as noise to a first-time learner (C7/B5)."""
-    out = []
-    for e in (edges or []):
-        e = list(e)
-        if len(e) >= 3:
-            out.append(f"{e[0]}–{e[1]} ({e[2]})")
-        elif len(e) == 2:
-            out.append(f"{e[0]}–{e[1]}")
+    out = [fmt_edge(*(list(e)[:3])) for e in (edges or []) if len(list(e)) >= 2]
     return ", ".join(out) if out else "none yet"
+
+
+def fmt_nodes(seq: Any) -> str:
+    """Humanize a node list/set for prose: ['A','B','C'] -> 'A, B, C' (no Python brackets/quotes)."""
+    items = [str(x) for x in (seq or [])]
+    return ", ".join(items) if items else "(none)"
 
 
 def random_unweighted_graph(rng: random.Random, *, extra_lo: int, extra_hi: int,
@@ -129,12 +135,14 @@ class BFSAdapter(FamilyAdapterBase):
             steps.append(Step(
                 id=sid, operation="dequeue_enqueue", prior_state=prior, state_after=after,
                 inputs={"node": node, "enqueued": enq, "skipped": skip},
-                decision=f"visit {node}; enqueue {enq or 'nothing'}" + (f"; skip already-visited {skip}" if skip else ""),
-                reason=f"dequeue {node}; its unvisited neighbours {enq} join the queue",
+                decision=f"visit {node}; enqueue {fmt_nodes(enq) if enq else 'nothing'}"
+                         + (f"; skip already-visited {fmt_nodes(skip)}" if skip else ""),
+                reason=(f"dequeue {node}; its unvisited neighbours {fmt_nodes(enq)} join the queue" if enq
+                        else f"dequeue {node}; all its neighbours are already visited, so nothing is enqueued"),
                 visual_state={"kind": "queue_graph", "queue": list(queue), "visited": sorted(visited),
                               "active": node},
                 visual_delta={"dequeued": node, "enqueued": enq, "skipped": skip},
-                expected_visible_result=f"Visit {node}; queue {queue}; visited {sorted(visited)}",
+                expected_visible_result=f"Visit {node}; queue: {fmt_nodes(queue)}; visited: {fmt_nodes(sorted(visited))}",
                 facts={"allowed_values": sorted(graph),
                        "required_facts": [fact("visit", f"visit {node}")]
                        + [fact("enqueue", f"enqueue {x}") for x in enq],
@@ -266,19 +274,21 @@ class DFSIterativeAdapter(FamilyAdapterBase):
                     if nb not in visited:
                         stack.append(nb); pushed.append(nb)
                 after = {"stack": list(stack), "visited": sorted(visited), "order": list(order)}
-                decision = f"visit {node}; push {list(reversed(pushed)) or 'nothing'}"
+                decision = f"visit {node}; push {fmt_nodes(list(reversed(pushed))) if pushed else 'nothing'}"
                 if pushed:
                     evidence.setdefault("push_neighbors", []).append(sid)
             steps.append(Step(
                 id=sid, operation="pop", prior_state=prior, state_after=after,
                 inputs={"node": node, "pushed": pushed, "skipped": node in visited and not pushed},
                 decision=decision,
-                reason=(f"pop {node}; already visited" if node in visited and sid in
-                        evidence.get("revisit_prevention", []) else f"pop and visit {node}"),
+                reason=(f"pop {node} — already visited, so skip it (revisit prevention)"
+                        if node in visited and sid in evidence.get("revisit_prevention", []) else
+                        f"pop and visit {node}" + (f"; push its unvisited neighbours {fmt_nodes(list(reversed(pushed)))}"
+                                                   if pushed else "")),
                 visual_state={"kind": "stack_graph", "stack": list(stack), "stack_top": "right",
                               "visited": sorted(visited), "active": node},
                 visual_delta={"popped": node, "pushed": pushed},
-                expected_visible_result=f"Pop {node}; stack {stack}; visited {sorted(visited)}",
+                expected_visible_result=f"Pop {node}; stack: {fmt_nodes(stack)}; visited: {fmt_nodes(sorted(visited))}",
                 facts={"allowed_values": sorted(graph),
                        "required_facts": [fact("pop", f"pop {node}")], "forbidden_claims": []}))
         if steps:
@@ -614,7 +624,7 @@ class KruskalAdapter(FamilyAdapterBase):
             visual_state={"kind": "weighted_graph", "selected": [], "components": comps(), "active_edge": None},
             visual_delta={"sorted": [list(e) for e in edges]},
             expected_visible_result=("Edges sorted by weight: "
-                                     + ", ".join(f"({u},{v},{w})" for u, v, w in edges) + ". MST starts empty."),
+                                     + fmt_edges(edges) + ". MST starts empty."),
             facts={"allowed_values": sorted({e[2] for e in edges}), "required_facts": [], "forbidden_claims": []}))
         for i, (u, v, w) in enumerate(edges, start=1):
             sid = f"s{i}"
@@ -632,13 +642,13 @@ class KruskalAdapter(FamilyAdapterBase):
             steps.append(Step(
                 id=sid, operation="consider_edge", prior_state=prior, state_after=after,
                 inputs={"edge": [u, v, w], "weight": w}, decision=decision,
-                reason=(f"({u},{v},{w}): {u} and {v} are in different components — add it (no cycle)"
+                reason=(f"{fmt_edge(u, v, w)}: {u} and {v} are in different components — add it (no cycle)"
                         if decision == "accept" else
-                        f"({u},{v},{w}): {u} and {v} are already connected — skip (would form a cycle)"),
+                        f"{fmt_edge(u, v, w)}: {u} and {v} are already connected — skip (would form a cycle)"),
                 visual_state={"kind": "weighted_graph", "selected": [list(e) for e in selected],
                               "components": comps(), "active_edge": [u, v, w]},
                 visual_delta={"considered": [u, v, w], "decision": decision},
-                expected_visible_result=(f"Edge ({u},{v},{w}) {decision}; MST so far: {fmt_edges(selected)}"),
+                expected_visible_result=(f"Edge {fmt_edge(u, v, w)} {decision}; MST so far: {fmt_edges(selected)}"),
                 facts={"allowed_values": sorted({e[2] for e in edges} | {total, len(nodes), len(selected)}),
                        "required_facts": [fact("endpoint", u), fact("endpoint", v), fact("weight", w)],
                        "forbidden_claims": []}))   # decision correctness checked in validate_prose_claims
@@ -787,7 +797,7 @@ class PrimAdapter(FamilyAdapterBase):
             reason="Prim grows one tree from a chosen start vertex, repeatedly adding the cheapest edge to a new vertex.",
             visual_state={"kind": "weighted_graph", "in_tree": [start], "selected": [], "active_edge": None},
             visual_delta={"start": start},
-            expected_visible_result=f"Start Prim from {start}. Tree begins as {{{start}}}; no edges selected yet.",
+            expected_visible_result=f"Start Prim from {start}. Tree begins with just {start}; no edges selected yet.",
             facts={"allowed_values": sorted(set(all_weights) | {0}), "required_facts": [], "forbidden_claims": []}))
         while len(in_tree) < len(nodes):
             crossing = sorted((w, u, v) for u in in_tree for v, w in adj[u].items() if v not in in_tree)
@@ -802,18 +812,18 @@ class PrimAdapter(FamilyAdapterBase):
             evidence.setdefault("edge_selection", []).append(sid)
             if len(crossing) >= 2:                         # a real choice was made (competing crossing edges)
                 evidence.setdefault("competing_candidates", []).append(sid)
-            cand_str = ", ".join(f"{cu}-{cv}({cw})" for cw, cu, cv in crossing[:4])
+            cand_str = ", ".join(fmt_edge(cu, cv, cw) for cw, cu, cv in crossing[:4])
             steps.append(Step(
                 id=sid, operation="select_edge", prior_state=prior, state_after=after,
                 inputs={"edge": [u, v, w], "weight": w,
                         "candidates": [[cu, cv, cw] for cw, cu, cv in crossing]},
                 decision="select",
-                reason=(f"the minimum-weight edge crossing out of the tree is {u}-{v} (weight {w}); "
+                reason=(f"the minimum-weight edge crossing out of the tree is {fmt_edge(u, v, w)}; "
                         f"among candidates {cand_str} it is the cheapest, so add {v}"),
                 visual_state={"kind": "weighted_graph", "in_tree": sorted(in_tree),
                               "selected": [list(e) for e in selected], "active_edge": [u, v, w]},
                 visual_delta={"added_vertex": v, "selected_edge": [u, v, w]},
-                expected_visible_result=f"Select edge ({u},{v},{w}); tree now {sorted(in_tree)}",
+                expected_visible_result=f"Select edge {fmt_edge(u, v, w)}; tree now: {fmt_nodes(sorted(in_tree))}",
                 facts={"allowed_values": sorted(set(all_weights) | {total}),
                        "required_facts": [fact("endpoint", u), fact("endpoint", v), fact("weight", w)], "forbidden_claims": []}))
         if steps:
