@@ -117,6 +117,17 @@ identity-projection form; CP3a is wiring it into the runtime payload + report.) 
 5. assert `source_transition_start`/`end` resolve to valid contiguous `TeachingTrace` transitions;
 6. assert the terminal checkpoint mapping when the adapter has a terminal transition.
 
+**CP3a provenance semantics.** `source_transition_start`/`source_transition_end` are **stable `TeachingTrace`
+transition IDs** (inclusive, in TeachingTrace order) — NOT array indexes (indexes break if the trace is filtered
+or re-represented). A range is **contiguous** only when it covers every transition between those two IDs in the
+emitted TeachingTrace order; the CP3a test validates both IDs ∈ `teaching_trace.transition_ids` and that the
+range is ordered + contiguous.
+
+**Required-checkpoint derivation (stated once).** For the default identity projection, every REQUIRED transition
+maps to exactly one required checkpoint with the same single-transition source range. For grouped projections, a
+checkpoint is REQUIRED whenever its source range contains ≥1 required transition — a required transition may
+never be covered only by an optional/support checkpoint (which would hide a must-show transition).
+
 ### Rule
 Learner-facing artifact COUNT is not itself a correctness gate. An artifact is accepted only when it cites
 exactly one adapter-produced `checkpoint_id`, and the complete artifact set preserves all required checkpoints,
