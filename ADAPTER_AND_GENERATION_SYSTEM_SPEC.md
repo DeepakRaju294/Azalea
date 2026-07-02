@@ -218,7 +218,9 @@ lives — never the formatter.
 > **TeachingTrace stays SEMANTIC, never presentation.** It is `transition/decision/facts/before/after/
 > operation` — **not** `Card 1, Card 2, …`. Cards are one *renderer* among several (timeline, animation,
 > video, chatbot); all consume the same TeachingTrace. If a field is about layout or a card, it belongs in
-> the renderer, not the TeachingTrace.
+> the renderer, not the TeachingTrace. It is the canonical **semantic** trace, NOT the final learner-visible
+> sequence — learner-visible pacing is defined ONLY by `TeachingCheckpoint[]`, so not every semantic transition
+> receives its own card or narration call.
 
 #### 2.5.1 `LessonIntent` — WHY the example exists (orchestration-owned, upstream of the adapter) ✅ (`artifacts.LessonIntent`, `from_topic`)
 The adapter produces a *correct, representative* example; **LessonIntent** says *for whom and to what end*,
@@ -255,6 +257,11 @@ A `TeachingProjection` is **valid iff** every checkpoint carries contiguous sour
 covers every required transition + the terminal, and the underlying TeachingTrace replays to the same states as
 the ExecutionTrace (Truth, §4.0). This is the single point
 where "what the learner sees" is decided — nowhere else (not the formatter, not the renderer).
+
+> **Covers, never replaces.** A `TeachingCheckpoint` may COVER a contiguous range of supporting semantic
+> transitions, but it does NOT replace them with a new semantic transition: the source transitions stay
+> individually retained, replayable, and traceable, and the checkpoint exposes the range's verified
+> state-before / state-after anchors. Grouping is a VIEW over the TeachingTrace, never a rewrite of it.
 
 ### 2.6 `AdapterOutput` — the single standardized return contract ✅ (`base.build_adapter_output`; `test_adapter_artifacts`)
 Orchestration consumes **one object regardless of concept** (Kruskal, merge sort, DFS, binary search). It is
@@ -478,8 +485,9 @@ one `checkpoint_id`. A count mismatch is therefore NOT fixed by accepting arbitr
 would smuggle compression back into narration, violating §2.4). It is resolved by validating cards against the
 **precomputed checkpoint set**:
 ```
-- one card per checkpoint, OR an explicitly declared renderer-level split of ONE checkpoint
-- no semantic merge ACROSS checkpoints (a card never spans two checkpoints)
+- every learner-facing artifact (card / frame / animation phase / timeline event / chatbot turn) cites exactly ONE `checkpoint_id`
+- a renderer may emit ZERO OR MORE artifacts per checkpoint, but none may span multiple checkpoints unless the adapter declares a COMPOSITE checkpoint
+- no semantic merge ACROSS checkpoints (grouping is a view, never a rewrite — §2.5.2)
 - every required transition + the terminal checkpoint is rendered (fixes C4, §5.4)
 - no surfaced learner decision is omitted           (decisions are never merged away)
 - prose has no HARD contradiction                   (soft phrasing notes never block)
