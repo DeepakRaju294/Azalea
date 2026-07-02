@@ -106,6 +106,8 @@ def _match_adapter(text: str, slug: str):
         return ADAPTERS["bfs"]
     if not is_tree and ("depth-first" in text or "depth first" in text or " dfs" in f" {text}"):
         return ADAPTERS["dfs_iter"]
+    if "n-queens" in text or "n queens" in text or "nqueens" in text or "eight queens" in text or "queens problem" in text:
+        return ADAPTERS["n_queens"]
     if "increasing subsequence" in text or "longest_increasing_subsequence" in text:
         return ADAPTERS["longest_increasing_subsequence"]
     if "order of operations" in text or "evaluate expression" in text or "arithmetic expression" in text:
@@ -374,6 +376,9 @@ def _final_answer_text(trace: ContractTrace) -> str:
             return f"found at node {fa['found_at']}" if fa.get("found") else "the target is absent"
         if "lis_length" in fa:                                     # longest increasing subsequence (DP)
             return f"longest increasing subsequence length = {fa['lis_length']}"
+        if "queen_rows" in fa:                                     # N-Queens (backtracking)
+            rows = fa["queen_rows"]
+            return "queens on rows " + ", ".join(map(str, rows)) + " (one per column, left to right)"
         if "value" in fa:
             return f"= {fa['value']}"
         if "dist" in fa:

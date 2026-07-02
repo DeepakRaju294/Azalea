@@ -5,6 +5,7 @@ each family owns shared machinery (generators, normalizers, visuals) and hosts m
 classes. New algorithms are added to their family module, not as new files. Routing is in trace_pipeline.
 """
 from .families.algebra import QuadraticEquationAdapter
+from .families.backtracking import NQueensAdapter
 from .families.dp import LongestIncreasingSubsequenceAdapter
 from .families.formula import ArithmeticEvalAdapter
 from .families.graph import (BFSAdapter, DFSIterativeAdapter, DijkstraAdapter, KruskalAdapter, PrimAdapter)
@@ -27,10 +28,11 @@ ADAPTERS = {a.slug: a for a in (
     KinematicsAdapter(),               # TEMPLATE — science concept (physics family, no code)
     BSTSearchAdapter(),                # T4 GATE — second search state model (tree node, not array bounds)
     LongestIncreasingSubsequenceAdapter(),   # T5 PILOT — first dynamic-programming adapter (1-D table fill)
+    NQueensAdapter(),                  # T11 PILOT — backtracking (place / conflict / BACKTRACK; non-monotonic search)
 )}
 
 __all__ = ["BinarySearchAdapter", "BFSAdapter", "DFSIterativeAdapter", "KruskalAdapter",
            "MergeSortAdapter", "QuickSortAdapter", "InsertionSortAdapter", "SelectionSortAdapter", "BubbleSortAdapter", "HeapSortAdapter", "ArithmeticEvalAdapter", "DijkstraAdapter", "PrimAdapter",
            "InorderTraversalAdapter", "PreorderTraversalAdapter", "PostorderTraversalAdapter",
            "LevelOrderTraversalAdapter", "QuadraticEquationAdapter", "KinematicsAdapter",
-           "BSTSearchAdapter", "LongestIncreasingSubsequenceAdapter", "ADAPTERS"]
+           "BSTSearchAdapter", "LongestIncreasingSubsequenceAdapter", "NQueensAdapter", "ADAPTERS"]

@@ -270,6 +270,29 @@ def level_order(root):
                 dp[i] = max(dp[i], dp[j] + 1)
     return max(dp)
 """,
+    "n_queens": """def solve_n_queens(n):
+    queens = []
+
+    def safe(row, col):
+        for c, r in enumerate(queens):
+            if r == row or abs(r - row) == abs(c - col):
+                return False
+        return True
+
+    def place(col):
+        if col == n:
+            return True
+        for row in range(n):
+            if safe(row, col):
+                queens.append(row)
+                if place(col + 1):
+                    return True
+                queens.pop()
+        return False
+
+    place(0)
+    return queens
+""",
     "arithmetic_eval": """def evaluate(tokens):
     stack = [tokens[0]]
     i = 1

@@ -154,6 +154,11 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "routing_aliases": ["longest increasing subsequence", "increasing subsequence",
                             "longest_increasing_subsequence"],
         "negative_guards": [], "fixtures": ["fresh_start", "extend_from_predecessor"]},
+    "n_queens": {
+        "type": "T11", "family": "backtracking", "status": "pilot",
+        "verification_level": "trace_verified", "coding": True, "canonical_solution": "n_queens",
+        "routing_aliases": ["n-queens", "n queens", "nqueens", "eight queens", "queens problem"],
+        "negative_guards": [], "fixtures": ["place", "backtrack"]},
     "arithmetic_eval": {
         "type": "T7", "family": "formula", "status": "production", "verification_level": "trace_verified",
         "coding": True, "canonical_solution": "arithmetic_eval",
