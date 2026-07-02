@@ -399,6 +399,19 @@ Chain: **raw execution → verified semantic trace → teaching checkpoint → c
 > unrelated behaviour. So Floyd-Warshall's `k = B` layer is ONE semantic transition ("2 distances improve, 14
 > unchanged; layer verified") folding its `V²` raw cell checks — truth preserved, pacing sane.
 
+> **Reading the §2 type grammars.** Each type's "one Step is …" defines the **raw-event grain**. Where that
+> grain would exceed the semantic ceiling, the verified semantic transition folds a **contiguous raw run**:
+> **T5** → a dependency-complete cell group (a row / diagonal / bounded run) exposing representative take/skip
+> decisions + the resulting state boundary; **T9b** → one intermediate-`k` layer exposing representative
+> improved/unchanged comparisons + the verified matrix layer; **T9a** → representative relaxations + the pass
+> boundary; **T3** → a recursion phase (split layer · representative base · representative merge · tail-copy ·
+> completed run). One-op-per-step types (T1/T4/T6…) have raw grain == semantic grain and fold nothing.
+
+> **Raw logs never ship, and aren't stored forever.** The raw execution log is never in the lesson payload. For
+> reproducibility the backend keeps the **full** raw log only for fixture / pilot / failure / sampled-production
+> runs; otherwise it keeps only `RawExecutionProvenance(adapter_slug, adapter_version, instance_seed,
+> normalized_instance_hash, raw_log_digest)` — enough to deterministically regenerate the exact log on demand.
+
 ### 7.1 Trace-size budgets — correctness is not enough
 
 > **Rule.** The full trace may be complete; the **learner-facing projection must obey a trace-size budget**.
@@ -439,9 +452,11 @@ events, branch evidence, and the terminal state are never omitted.**
 | T11 backtracking | per-adapter (see T11) | 18 | 12 |
 | T12 program execution | ≤ 12 lines executed | 16 | 12 |
 
-> **Example (T3 merge sort).** Instance cap 6–8 elements → the reference emits every split/merge event (≤ 12,
-> the semantic ceiling) → the teaching projection groups sibling merges to ~10 checkpoints. The absolute
-> learner-facing max is the 12-step trace itself; the projection is always a subset of it.
+> **Example (T3 merge sort).** Instance cap 6–8 elements → the **raw log** records every recursive call, base
+> case, merge comparison, and tail copy (well over 12). The **verified semantic trace** derives ≤ 12 bounded
+> transitions from contiguous recursion phases (split layer · representative base · representative merge ·
+> tail-copy · completed run), each naming its raw-event range (§7.0). The teaching projection then groups
+> sibling phases to ~10 checkpoints. The absolute learner-facing max is the semantic trace, never the raw log.
 
 ### 7.2 Visual-state budgets — few steps can still overload a frame
 
@@ -467,15 +482,18 @@ numeric for every type.
 
 ### 7.3 Teaching-checkpoint selection is ADAPTER-owned & deterministic
 
-Which steps a long trace surfaces (and which support steps it groups) is decided by the **adapter**, via
-`select_teaching_checkpoints(full_trace) -> [step_id]` (default: every step; override to group). The
-**generator never decides omissions** — letting the LLM pick "representative" DP cells or Dijkstra relaxations
-would make it selectively drop truth-bearing transitions. Required-case steps + the terminal are **always**
-surfaced regardless of grouping. Split of ownership:
+Which steps a long trace surfaces (and which support steps it groups) is decided by the **adapter**, via its
+deterministic policy `select_teaching_checkpoints(semantic_trace) -> [step_id]` (default: every step; override
+to group). The **generator never decides omissions** — letting the LLM pick "representative" DP cells or
+Dijkstra relaxations would make it selectively drop truth-bearing transitions. Required-case steps + the
+terminal are **always** surfaced regardless of grouping. Ownership across the four layers (§7.0):
 
-- **Adapter owns:** the complete trace · the selected teaching checkpoints · the grouping rationale · the
-  required visible transitions.
-- **Generator owns:** wording for the already-selected checkpoints.
+- **Adapter** — emits the raw execution log + the verified semantic trace; declares the deterministic
+  checkpoint-selection policy. It never returns UI-shaped artifacts.
+- **Shared pipeline** — invokes the policy, validates provenance + budget compliance, and normalizes the result
+  into `TeachingCheckpoint` artifacts (`teaching_checkpoints`); compiles the cards + visual frames.
+- **Generator** — writes prose only, for the already-normalized checkpoints.
+- **Frontend** — renders the supplied artifacts only.
 
 **Every checkpoint carries provenance** (`TeachingCheckpoint`, `trace_adapters/artifacts.py`). A checkpoint may
 collapse several supporting events into one card, but only if it cites its **complete contiguous
@@ -532,6 +550,13 @@ or a replayable mathematical property that re-checks the answer/invariant by a d
 | Quadratic / polynomial | substitute each root into the original polynomial (≈ 0) |
 | Matrix multiplication | independently recompute a sample of output cells |
 
+Each oracle carries its **preconditions** in the *per-adapter* declaration (not just this generic table), so an
+implementer can't pick the wrong one: Dijkstra's oracle assumes non-negative weights; Bellman-Ford must verify
+the negative-cycle classification too; Kruskal/Prim distinguish connected (MST) from disconnected (spanning
+forest); Gaussian elimination classifies inconsistent / underdetermined systems separately; quadratic roots use
+a float tolerance and handle repeated/complex roots; Floyd-Warshall checks diagonal, unreachable, and
+negative-cycle cells separately.
+
 The oracle is **recommended for `pilot`** and **required for `production`** (§8 status) — so no one has to
 debate whether Prim or AVL rotations count as "high risk". It is separate from the replay gate (§7.3): replay
 proves the trace is *executable*; the oracle proves the *answer* is right by a second, independent method.
@@ -556,7 +581,12 @@ optional `failure_policy` override. (`telemetry_key`/`feature_flag`/`visual_cont
 defaults — slug / None / `<family>_state_v1` — until authored.) Module-level it also declares
 `TYPE_TRACE_BUDGET`, `TYPE_TEACHING_TARGET` (§7.1), `TYPE_VISUAL_BUDGET` (§7.2) and `DEFAULT_FAILURE_POLICY` (§4.1). The Markdown here
 stays human-readable; the **manifest is what code enforces**: `manifest_gaps()` cross-checks it against the live
-registry + canonical solutions + type trace/visual budgets (`test_type_contracts` fails if they disagree), so an adapter
+registry + canonical solutions + type trace/visual budgets, and enforces `teaching_target ≤ semantic-transition
+ceiling` (`test_type_contracts` fails if they disagree). The per-trace layer relationships — checkpoint source
+ranges + semantic-step raw ranges are contiguous (no illegal gap/overlap) — are enforced by
+`structural_invariants` + the replay/provenance tests, not the manifest. The `production`-requires-an-oracle
+rule (§7.5) is today a **promotion checklist**, not yet a hard `manifest_gaps()` field (an `oracle` manifest
+field is the next wire-up). Together these mean an adapter
 can't ship without a complete entry and the manifest can't name a phantom. It is the operational backbone for
 catalog status, routing, test discovery, rollout flags, trace budgets, failure behavior, telemetry, and
 coverage reporting.
@@ -621,7 +651,8 @@ reliability.) The level already flows in the generation report; the frontend bad
    rollout gate (§2.1) is met or that this is a sanctioned pilot.
 2. Copy the type's template class into the family module (create the family module if new).
 3. Fill the **per-concept info** (§3); computation adapters declare a **typed claim ledger** (§7).
-4. Coding only: add the `canonical_solution` (simplest idiomatic Python).
+4. Coding only: add the **canonical executable artifact** for the adapter type (§3.7) — an idiomatic algorithm
+   solution, an operation simulator (T10), or an executable teaching specimen (T12).
 5. Register it (`trace_adapters/__init__.py`) + add the tight routing alias + negative guards (§5).
 6. Add a **manifest entry** (§8) and named **fixtures** (§9–§10); add it to the adversarial coverage set.
 7. Run `test_adapter_conformance`, `test_adapter_artifacts`, `test_trace_prose_adversarial`, and its

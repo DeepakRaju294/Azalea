@@ -75,6 +75,11 @@ class ManifestConsistency(unittest.TestCase):
                     idxs = [order[sid] for sid in cp.source_step_ids]
                     self.assertEqual(idxs, list(range(idxs[0], idxs[0] + len(idxs))),
                                      f"{slug}: checkpoint {cp.checkpoint_id} range not contiguous")
+                    # explicit start/end must bound the same range (a gap can't hide in the id list)
+                    self.assertEqual(cp.source_step_start, cp.source_step_ids[0],
+                                     f"{slug}: checkpoint {cp.checkpoint_id} start != first source step")
+                    self.assertEqual(cp.source_step_end, cp.source_step_ids[-1],
+                                     f"{slug}: checkpoint {cp.checkpoint_id} end != last source step")
                     self.assertIn(cp.state_before_step_id, order)
                     self.assertIn(cp.state_after_step_id, order)
                     seen.extend(idxs)

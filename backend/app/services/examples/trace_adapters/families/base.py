@@ -109,6 +109,7 @@ class FamilyAdapterBase:
                 checkpoint_id=s.id, source_step_ids=[s.id],
                 visible_transition=str(getattr(s, "operation", "") or ""),
                 state_before_step_id=s.id, state_after_step_id=s.id,
+                source_step_start=s.id, source_step_end=s.id,
                 required_cases_covered=covered.get(s.id, [])))
         return out
 

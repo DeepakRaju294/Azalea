@@ -64,7 +64,22 @@ class TeachingCheckpoint:
     visible_transition: str                             # the single transition the learner sees
     state_before_step_id: str                           # first source step's prior_state anchor
     state_after_step_id: str                            # last source step's state_after anchor
+    source_step_start: str = ""                         # explicit range bounds (contiguity is mechanically
+    source_step_end: str = ""                           # obvious — a gap can't hide inside an id LIST)
     required_cases_covered: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RawExecutionProvenance:
+    """§7.0 — enough to REGENERATE the exact raw execution log on demand, so the raw layer stays auditable
+    WITHOUT shipping it in the lesson payload or storing it forever for every generated lesson. The backend
+    retains the full raw log only for fixture/pilot/failure/sampled-production runs; otherwise it keeps just
+    this (adapter version + deterministic instance + digest) and replays to reproduce."""
+    adapter_slug: str
+    adapter_version: int
+    instance_seed: int
+    normalized_instance_hash: str = ""
+    raw_log_digest: str = ""
 
 
 @dataclass(frozen=True)
