@@ -5,6 +5,7 @@ Members here: binary search, bottom-up merge sort. Future: two-pointer, sliding 
 from __future__ import annotations
 
 import random
+import re
 from typing import Any, Iterable
 
 from ...trace_contract import ContractTrace, Step, fact
@@ -344,3 +345,124 @@ class MergeSortAdapter(FamilyAdapterBase):
         if not (str(merged[0]) in prose and str(merged[-1]) in prose):
             return [("merge_result_not_discussed", str(merged))]
         return []
+
+
+# ===================================================================================================
+# Insertion sort (grow a sorted prefix: insert each next element into its place) — T8a incremental build
+# ===================================================================================================
+_INS_CONV = {"algorithm_variant": "insertion_sort", "order": "ascending",
+             "invariant": "the prefix a[0..i] is always sorted", "trace_granularity": "one_insertion"}
+_INS_REQ = ["shift_insert", "stay_in_place", "completion"]
+_INS_INV = [{"id": "prefix_sorted", "scope": "every_step",
+             "statement": "the sorted prefix (up to sorted_len) is in ascending order"}]
+
+
+class InsertionSortAdapter(FamilyAdapterBase):
+    slug = "insertion_sort"
+    label_convention = "ints"
+    example_spec = ExampleSpec(
+        input=InstanceShape("integers", count=(5, 8), value_range=(1, 60), structure=["distinct", "unsorted"]),
+        stages={"insert": StageSpec(
+            "insert", "insert the next element into its place in the sorted prefix",
+            teaching_focus="each element slides left past larger ones until it sits in sorted position",
+            contains={"shift_larger": "aggregated_supporting", "place_key": "required"},
+            state_effects=["the sorted prefix grows by one; it stays in ascending order"])},
+        structure="start_prefix, then insert+ until the whole array is sorted",
+        must_exercise=["shift_insert", "stay_in_place", "completion"],
+        must_avoid=["already_sorted", "reverse_sorted"],
+        terminal="every element is in its sorted position (the array is fully sorted)",
+        output_shape="the sorted array")
+
+    def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+        rng = random.Random(seed)
+        for i in range(80):
+            n = rng.randint(5, 8)
+            arr = rng.sample(range(1, 60), n)
+            yield {"array": arr, "_id": f"insertion_v1_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        ev = trace.case_evidence          # need BOTH a shift-insert and a stay-in-place (mixed order)
+        return len(trace.steps) >= 4 and bool(ev.get("shift_insert")) and bool(ev.get("stay_in_place"))
+
+    def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                  attempt: int = 1, seed: int = 0) -> ContractTrace:
+        arr = list(example_input["array"])
+        a = list(arr)
+        n = len(a)
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        _init = {"array": list(a), "sorted_len": 1}
+        steps.append(Step(
+            id="s0", operation="insert", prior_state=_init, state_after=_init, inputs={"array": list(a)},
+            decision="the first element is a sorted prefix of length 1",
+            reason=f"{a[0]} alone is already sorted, so insertion sort starts with it as the sorted prefix",
+            visual_state={"kind": "array", "array": list(a), "sorted_len": 1, "active": 0},
+            visual_delta={"prefix": 1},
+            expected_visible_result=f"Start: {a[0]} alone is a sorted prefix; the rest is still unsorted.",
+            facts={"allowed_values": sorted(set(arr) | {1}), "required_facts": [], "forbidden_claims": []}))
+        for i in range(1, n):
+            sid = f"s{i}"
+            key = a[i]
+            prior = {"array": list(a), "sorted_len": i}
+            j = i - 1
+            shifted: list[int] = []
+            while j >= 0 and a[j] > key:
+                shifted.append(a[j])
+                a[j + 1] = a[j]
+                j -= 1
+            a[j + 1] = key
+            pos = j + 1
+            after = {"array": list(a), "sorted_len": i + 1}
+            if shifted:
+                reason = (f"insert {key}: it is smaller than {', '.join(map(str, shifted))}, so slide "
+                          f"them right and drop {key} into position {pos}")
+                evidence.setdefault("shift_insert", []).append(sid)
+            else:
+                reason = f"insert {key}: it is already at least as large as the sorted prefix, so it stays put"
+                evidence.setdefault("stay_in_place", []).append(sid)
+            evr = f"Insert {key} into the sorted prefix; array now {a}."
+            allowed = sorted(set(arr) | {int(x) for x in re.findall(r"\d+", reason + " " + evr)})
+            steps.append(Step(
+                id=sid, operation="insert", prior_state=prior, state_after=after,
+                inputs={"key": key, "position": pos, "shifted": list(shifted)},
+                decision=f"insert {key} into the sorted prefix", reason=reason,
+                visual_state={"kind": "array", "array": list(a), "sorted_len": i + 1, "active": pos},
+                visual_delta={"inserted": key, "position": pos},
+                expected_visible_result=evr,
+                facts={"allowed_values": allowed,
+                       "required_facts": [fact("key", key)], "forbidden_claims": []}))
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        return ContractTrace(
+            problem=f"Sort the array {arr} in ascending order using insertion sort.",
+            conventions=dict(_INS_CONV), initial_state={"array": list(arr), "sorted_len": 1},
+            final_answer={"sorted": sorted(arr)}, steps=steps,
+            invariants=[dict(x) for x in _INS_INV], required_cases=list(_INS_REQ), case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        return (list((a or {}).get("array") or []) == list((b or {}).get("array") or [])
+                and (a or {}).get("sorted_len") == (b or {}).get("sorted_len"))
+
+    def final_answer_entails(self, state, answer):
+        return list((state or {}).get("array") or []) == list((answer or {}).get("sorted") or [])
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "prefix_sorted":
+            arr = (state or {}).get("array") or []
+            k = (state or {}).get("sorted_len") or 0
+            pref = arr[:k]
+            return pref == sorted(pref)
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation == "insert" else [f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        if "key" not in step.inputs:                       # the setup card (first prefix) has no key to name
+            return []
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        key = str(step.inputs["key"])
+        return [] if key in prose else [("key_not_stated", key)]
