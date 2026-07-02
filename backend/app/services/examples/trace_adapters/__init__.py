@@ -8,7 +8,8 @@ from .families.algebra import QuadraticEquationAdapter
 from .families.backtracking import NQueensAdapter
 from .families.dp import LongestIncreasingSubsequenceAdapter
 from .families.formula import ArithmeticEvalAdapter
-from .families.graph import (BFSAdapter, DFSIterativeAdapter, DijkstraAdapter, KruskalAdapter, PrimAdapter)
+from .families.graph import (BellmanFordAdapter, BFSAdapter, DFSIterativeAdapter, DijkstraAdapter,
+                             KruskalAdapter, PrimAdapter)
 from .families.physics import KinematicsAdapter
 from .families.sequence import (BinarySearchAdapter, BubbleSortAdapter, HeapSortAdapter,
                                 InsertionSortAdapter, MergeSortAdapter, QuickSortAdapter,
@@ -22,6 +23,7 @@ ADAPTERS = {a.slug: a for a in (
     InsertionSortAdapter(), SelectionSortAdapter(), BubbleSortAdapter(), HeapSortAdapter(),  # T8a pilots — grow a sorted region a pass at a time
     QuickSortAdapter(),                # T3 — 2nd divide-and-conquer pilot (partition-in-place) after merge sort
     ArithmeticEvalAdapter(), DijkstraAdapter(), PrimAdapter(),
+    BellmanFordAdapter(),              # T9 PILOT — repeated relaxation / iterative refinement (directed graph)
     InorderTraversalAdapter(),         # TEMPLATE — coding concept (tree family)
     PreorderTraversalAdapter(), PostorderTraversalAdapter(), LevelOrderTraversalAdapter(),  # verified traversal siblings
     QuadraticEquationAdapter(),        # TEMPLATE — math concept (algebra family, no code)
@@ -35,4 +37,4 @@ __all__ = ["BinarySearchAdapter", "BFSAdapter", "DFSIterativeAdapter", "KruskalA
            "MergeSortAdapter", "QuickSortAdapter", "InsertionSortAdapter", "SelectionSortAdapter", "BubbleSortAdapter", "HeapSortAdapter", "ArithmeticEvalAdapter", "DijkstraAdapter", "PrimAdapter",
            "InorderTraversalAdapter", "PreorderTraversalAdapter", "PostorderTraversalAdapter",
            "LevelOrderTraversalAdapter", "QuadraticEquationAdapter", "KinematicsAdapter",
-           "BSTSearchAdapter", "LongestIncreasingSubsequenceAdapter", "NQueensAdapter", "ADAPTERS"]
+           "BSTSearchAdapter", "LongestIncreasingSubsequenceAdapter", "NQueensAdapter", "BellmanFordAdapter", "ADAPTERS"]

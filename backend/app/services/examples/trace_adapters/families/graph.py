@@ -8,6 +8,7 @@ reusing `random_unweighted_graph` / the normalizers — not as new files.
 from __future__ import annotations
 
 import random
+import re
 from typing import Any, Iterable
 
 from ...state_normalizers import canon_components, components_equal, states_equal
@@ -893,3 +894,176 @@ class PrimAdapter(FamilyAdapterBase):
         if not any(k in prose for k in ("select", "add", "include", "choose", "pick")):
             out.append(("decision_mismatch", "selected edge but prose doesn't say select/add"))
         return out
+
+
+# ===================================================================================================
+# Bellman-Ford (T9 — REPEATED RELAXATION / iterative refinement). Directed graph. Unlike Dijkstra (settle
+# the min, relax once), Bellman-Ford relaxes EVERY edge, PASS after PASS, until a whole pass changes nothing.
+# That fixpoint IS the teaching point: estimates only ever tighten, and a no-change pass proves convergence.
+# ===================================================================================================
+_INF = float("inf")
+_BF_CONV = {"algorithm_variant": "bellman_ford", "graph": "directed", "trace_granularity": "one_pass",
+            "termination": "a full pass with no change"}
+_BF_REQ = ["relax_improves", "converged", "completion"]
+_BF_INV = [{"id": "dist_upper_bounds_true", "scope": "every_step",
+            "statement": "no estimate is ever below the true shortest distance"}]
+
+
+def _true_shortest(graph: dict[str, dict[str, int]], source: str) -> dict[str, float]:
+    """Independent oracle: true single-source shortest distances (Dijkstra; the adapter uses non-negative
+    directed weights). Recomputed from the graph — it refereess the trace's dist map, never echoes it."""
+    import heapq
+    dist = {x: _INF for x in graph}
+    dist[source] = 0.0
+    heap = [(0.0, source)]
+    while heap:
+        d, u = heapq.heappop(heap)
+        if d > dist[u]:
+            continue
+        for v, w in graph.get(u, {}).items():
+            if d + w < dist[v]:
+                dist[v] = d + w
+                heapq.heappush(heap, (dist[v], v))
+    return dist
+
+
+def _fmt_dist(dist: dict[str, float], nodes: list[str]) -> str:
+    return ", ".join(f"{x} = {('∞' if dist[x] == _INF else int(dist[x]))}" for x in nodes)
+
+
+class BellmanFordAdapter(FamilyAdapterBase):
+    slug = "bellman_ford"
+    label_convention = "letters"
+    example_spec = ExampleSpec(
+        input=InstanceShape("weighted_graph", count=(4, 6), value_range=(1, 9),
+                            structure=["directed", "connected_from_source", "non_negative_weights"]),
+        stages={"pass": StageSpec(
+            "pass", "relax every edge once; tighten each estimate that a shorter path now allows",
+            teaching_focus="each pass refines every estimate; a pass that changes nothing means we are done",
+            contains={"relax_edge": "aggregated_supporting", "tighten_estimate": "required"},
+            state_effects=["some estimates drop to a newly-found shorter path; none can ever increase"])},
+        structure="pass+ until a pass makes no change (or V-1 passes complete)",
+        must_exercise=["relax_improves", "converged", "completion"], must_cover=["relax_improves"],
+        must_avoid=["single_edge_graph"],
+        terminal="a full pass changes no estimate, so every shortest distance is final",
+        output_shape="the shortest-distance map from the source")
+
+    def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+        rng = random.Random(seed)
+        for i in range(80):
+            n = rng.randint(4, 6)
+            labels = [chr(65 + j) for j in range(n)]
+            adj: dict[str, dict[str, int]] = {x: {} for x in labels}
+            for j in range(1, n):                          # directed tree from the source -> all reachable
+                p = labels[rng.randrange(j)]
+                adj[p][labels[j]] = rng.randint(1, 9)
+            for _ in range(rng.randint(2, 3)):             # extra directed edges -> multi-pass refinement
+                a, b = rng.sample(labels, 2)
+                adj[a][b] = rng.randint(1, 9)
+            yield {"graph": {k: dict(v) for k, v in adj.items()}, "source": labels[0],
+                   "_id": f"bellman_ford_v1_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        ev = trace.case_evidence
+        return len(trace.steps) >= 2 and bool(ev.get("relax_improves")) and bool(ev.get("converged"))
+
+    def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                  attempt: int = 1, seed: int = 0) -> ContractTrace:
+        graph: dict[str, dict[str, int]] = example_input["graph"]
+        source: str = example_input["source"]
+        nodes = sorted(graph.keys())
+        # Edge processing order is arbitrary in Bellman-Ford — every order yields the SAME distances (the
+        # oracle checks this) — but the count of passes is not. Processing edges so a path is discovered
+        # against the order makes the ITERATIVE REFINEMENT visible: each pass extends the frontier one hop,
+        # which is exactly why up to V-1 passes can be needed. (A single-pass order would hide the concept.)
+        edges = sorted(((u, v, w) for u in graph for v, w in graph[u].items()), reverse=True)
+        dist: dict[str, float] = {x: (0.0 if x == source else _INF) for x in nodes}
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+
+        def snap(k: int) -> dict[str, Any]:
+            return {"dist": dict(dist), "pass": k, "graph": graph, "source": source}
+
+        V = len(nodes)
+        for k in range(1, V + 1):                          # up to V-1 relaxing passes + a convergence check
+            prior = snap(k - 1)
+            improvements: list[tuple] = []
+            for (u, v, w) in edges:
+                if dist[u] + w < dist[v]:
+                    dist[v] = dist[u] + w
+                    improvements.append((u, v, w, int(dist[v])))
+            after = snap(k)
+            sid = f"s{k}"
+            if improvements:
+                impr = "; ".join(f"{u}->{v} tightens {v} to {dv}" for (u, v, w, dv) in improvements)
+                reason = f"pass {k}: relax every edge — {impr}."
+                evr = f"After pass {k}: {_fmt_dist(dist, nodes)}."
+                decision = f"pass {k}: relax all edges and tighten every estimate that improves"
+                evidence.setdefault("relax_improves", []).append(sid)
+            else:
+                reason = (f"pass {k}: relaxing every edge changes no estimate — the distances have converged, "
+                          f"so they are final.")
+                evr = f"Pass {k} changed nothing; the shortest distances are final: {_fmt_dist(dist, nodes)}."
+                decision = f"pass {k}: relax all edges — nothing improves, so stop"
+                evidence.setdefault("converged", []).append(sid)
+            allowed = sorted({int(x) for x in re.findall(r"\d+", reason + " " + evr)})
+            steps.append(Step(
+                id=sid, operation="pass", prior_state=prior, state_after=after,
+                inputs={"pass": k, "improved": [[u, v, w, dv] for (u, v, w, dv) in improvements]},
+                decision=decision, reason=reason,
+                visual_state={"kind": "node_link", "dist": {x: (None if dist[x] == _INF else int(dist[x]))
+                                                            for x in nodes}, "pass": k},
+                visual_delta={"pass": k, "improved": [[u, v] for (u, v, w, dv) in improvements]},
+                expected_visible_result=evr,
+                facts={"allowed_values": allowed, "required_facts": [fact("pass", k)], "forbidden_claims": []}))
+            if not improvements:
+                break
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        return ContractTrace(
+            problem=(f"Run Bellman-Ford from {source} on the directed graph where "
+                     f"{fmt_adjacency(graph, weighted=True)}. Give the shortest distances."),
+            conventions=dict(_BF_CONV), initial_state={"dist": {x: (0.0 if x == source else _INF) for x in nodes},
+                                                       "pass": 0, "graph": graph, "source": source},
+            final_answer={"dist": {x: (None if dist[x] == _INF else int(dist[x])) for x in nodes}}, steps=steps,
+            invariants=[dict(x) for x in _BF_INV], required_cases=list(_BF_REQ), case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    @staticmethod
+    def _norm(d: dict[str, float]) -> tuple:
+        return tuple(sorted((k, ("inf" if v == _INF else v)) for k, v in (d or {}).items()))
+
+    def states_equivalent(self, a, b):
+        a, b = a or {}, b or {}
+        return self._norm(a.get("dist") or {}) == self._norm(b.get("dist") or {}) and a.get("pass") == b.get("pass")
+
+    def final_answer_entails(self, state, answer):
+        dist = (state or {}).get("dist") or {}
+        ans = (answer or {}).get("dist") or {}
+        for x, a in ans.items():
+            d = dist.get(x, _INF)
+            if a is None:
+                if d != _INF:
+                    return False
+            elif d == _INF or int(d) != a:
+                return False
+        return True
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "dist_upper_bounds_true":
+            graph = (state or {}).get("graph") or {}
+            source = (state or {}).get("source")
+            dist = (state or {}).get("dist") or {}
+            true = _true_shortest(graph, source)
+            return all(dist.get(x, _INF) >= true[x] for x in true)   # an estimate below optimal is impossible
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation == "pass" else [f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        pv = str(step.inputs["pass"])
+        return [] if pv in prose else [("pass_not_stated", pv)]

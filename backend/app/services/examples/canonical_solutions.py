@@ -293,6 +293,20 @@ def level_order(root):
     place(0)
     return queens
 """,
+    "bellman_ford": """def bellman_ford(graph, source):
+    dist = {node: float("inf") for node in graph}
+    dist[source] = 0
+    for _ in range(len(graph) - 1):
+        changed = False
+        for u in graph:
+            for v, w in graph[u].items():
+                if dist[u] + w < dist[v]:
+                    dist[v] = dist[u] + w
+                    changed = True
+        if not changed:
+            break
+    return dist
+""",
     "arithmetic_eval": """def evaluate(tokens):
     stack = [tokens[0]]
     i = 1

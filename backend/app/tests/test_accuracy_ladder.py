@@ -22,9 +22,10 @@ class ClassifierTests(unittest.TestCase):
         self.assertEqual(task.evidence.get("adapter"), "kruskal")
 
     def test_computational_without_adapter_is_ambiguous(self):
-        # Bellman-Ford has no adapter → computational but unsupported → ambiguous.
+        # Floyd-Warshall has no adapter → computational but unsupported → ambiguous.
+        # (Bellman-Ford, the previous example here, now HAS a T9a adapter.)
         task = classify_worked_example_task(
-            {"title": "Implementing Bellman-Ford's Algorithm", "topic_type": "coding_implementation"})
+            {"title": "Implementing Floyd-Warshall's Algorithm", "topic_type": "coding_implementation"})
         self.assertEqual(task.classification_status, "ambiguous")
         self.assertFalse(task.can_construct_valid_instance)        # no adapter to generate/verify
         self.assertTrue(task.has_executable_terminal_condition)    # still a computation

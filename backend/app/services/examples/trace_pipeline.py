@@ -112,6 +112,8 @@ def _match_adapter(text: str, slug: str):
         return ADAPTERS["longest_increasing_subsequence"]
     if "order of operations" in text or "evaluate expression" in text or "arithmetic expression" in text:
         return ADAPTERS["arithmetic_eval"]
+    if "bellman-ford" in text or "bellman ford" in text or "bellman_ford" in text or "bellmanford" in text:
+        return ADAPTERS["bellman_ford"]
     if "dijkstra" in text or "shortest path" in text or "shortest-path" in text:
         return ADAPTERS["dijkstra"]
     return None
