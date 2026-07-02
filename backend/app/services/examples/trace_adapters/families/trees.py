@@ -232,8 +232,18 @@ class BSTSearchAdapter(FamilyAdapterBase):
                 evidence.setdefault("found_or_absent", []).append(sid)
                 if not after["found"]:
                     evidence.setdefault("absent", []).append(sid)
-            evr = (f"Compare {target} with {node}: {'FOUND' if after['found'] else decision}; "
-                   f"{after['remaining']} node(s) left to search.")
+            rem = after["remaining"]
+            if after["found"]:
+                evr = f"Compare {target} with {node}: FOUND at this node — search complete."
+            elif nxt is None:                                  # the chosen subtree is empty → target absent
+                side = "left" if "left" in decision else "right"
+                evr = (f"Compare {target} with {node}: go {side}, but {node} has no {side} child — "
+                       f"the target is absent.")
+                reason += f" — but {node} has no {side} child, so the target is absent"
+            else:                                              # descend: the search space shrinks
+                side = "left" if "left" in decision else "right"
+                evr = (f"Compare {target} with {node}: go {side}; "
+                       f"{rem} node{'s' if rem != 1 else ''} still to search.")
             steps.append(Step(
                 id=sid, operation="probe", prior_state=prior, state_after=after,
                 inputs={"node": node, "target": target, "remaining": after["remaining"]},

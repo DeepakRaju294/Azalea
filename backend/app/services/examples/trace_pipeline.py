@@ -339,6 +339,8 @@ def _final_answer_text(trace: ContractTrace) -> str:
         if "roots" in fa:                                          # quadratic
             rs = fa["roots"]
             return "x = " + " and x = ".join(map(str, rs)) if rs else "no real roots"
+        if "found_at" in fa:                                       # BST search
+            return f"found at node {fa['found_at']}" if fa.get("found") else "the target is absent"
         if "value" in fa:
             return f"= {fa['value']}"
         if "dist" in fa:
