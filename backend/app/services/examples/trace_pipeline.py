@@ -306,11 +306,16 @@ def _final_answer_text(trace: ContractTrace) -> str:
             from .trace_adapters.families.graph import fmt_edges
             return f"MST edges: {fmt_edges(fa['mst_edges'])} (total weight {fa.get('total_weight')})"
         if "sorted" in fa:
-            return f"sorted: {fa['sorted']}"
+            return "sorted: " + ", ".join(map(str, fa["sorted"]))
+        if "roots" in fa:                                          # quadratic
+            rs = fa["roots"]
+            return "x = " + " and x = ".join(map(str, rs)) if rs else "no real roots"
         if "value" in fa:
             return f"= {fa['value']}"
         if "dist" in fa:
-            return "shortest distances: " + ", ".join(f"{k}:{v}" for k, v in fa["dist"].items())
+            return "shortest distances: " + ", ".join(f"{k} = {v}" for k, v in fa["dist"].items())
+        # generic clean fallback — NEVER a raw dict repr (kinematics {v,s}, etc.): "v = 2, s = 1.5"
+        return ", ".join(f"{k} = {v}" for k, v in fa.items())
     return str(fa)
 
 

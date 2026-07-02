@@ -92,8 +92,11 @@ class BinarySearchAdapter(FamilyAdapterBase):
                 id=sid, operation="probe", prior_state=prior, state_after=after,
                 inputs={"mid": mid, "value": val, "target": target},
                 decision=decision,
-                reason=(f"nums[{mid}]={val} {'==' if decision=='found' else '<' if decision=='go_right' else '>'} "
-                        f"{target}"),
+                reason=(f"nums[{mid}] = {val} equals the target {target} — found it" if decision == "found"
+                        else f"nums[{mid}] = {val} is less than the target {target}, so discard the left half "
+                             f"and search right" if decision == "go_right"
+                        else f"nums[{mid}] = {val} is greater than the target {target}, so discard the right half "
+                             f"and search left"),
                 visual_state=self._visual(nums, after, mid),
                 visual_delta=vis_delta,
                 expected_visible_result=self._visible(mid, val, target, decision, after),

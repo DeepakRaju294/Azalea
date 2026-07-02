@@ -25,7 +25,7 @@ _TOPICS = [
 # Raw backend state leaking into learner-facing prose (C7/B5): a state DICT (`{'in_tree': [...]}`), a nested
 # list of quoted tuples (`[['C','E',5],...]`), OR a single-level quoted list (`['A', 'B', 'C']` — a raw node
 # set). Plain index/window notation (`[0, 3]`, `arr[4]`) has no quotes and must NOT trip this.
-_RAW_STATE = re.compile(r"\{\s*['\"]?\w+['\"]?\s*:|\[\s*\[\s*['\"]|\[\s*['\"]\w")
+_RAW_STATE = re.compile(r"\{\s*['\"]?\w+['\"]?\s*:|\[\s*\[|[,\[]\s*['\"]")
 
 
 def _faithful(payload):

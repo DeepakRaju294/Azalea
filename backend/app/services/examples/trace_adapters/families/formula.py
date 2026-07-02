@@ -98,7 +98,8 @@ class ArithmeticEvalAdapter(FamilyAdapterBase):
                 reason=f"{op} has the highest remaining precedence, so evaluate {a} {op} {b} = {res}",
                 visual_state={"kind": "expression", "tokens": list(tokens), "highlight": res},
                 visual_delta={"applied": f"{a}{op}{b}", "result": res},
-                expected_visible_result=f"{a} {op} {b} = {res}; expression now {tokens}",
+                expected_visible_result=(f"{a} {op} {b} = {res}; expression now "
+                                         + " ".join(str(t) for t in tokens)),
                 facts={"allowed_values": sorted({t for t in example_input["tokens"] if isinstance(t, int)}
                                                 | {res, a, b}),
                        "required_facts": [fact("operation", f"{a} {op} {b}"), fact("result", res)],
