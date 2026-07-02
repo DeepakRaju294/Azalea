@@ -203,18 +203,24 @@ def _postorder_walk(tree, root):
 
 
 def _levelorder_walk(tree, root):
-    """Level-order (breadth-first): output every node on one level, left to right, before the next level."""
+    """Level-order (breadth-first): output every node on one level, left to right, before the next level.
+
+    Each card names THIS node's parent + side and ties the order to the FIFO queue (why it comes out now),
+    so the walkthrough teaches the mechanism rather than repeating one 'finish each level' rule per card."""
     out: list[tuple[int, str, list[str]]] = []
-    q = deque([(root, 0)])
+    q = deque([(root, 0, None, None)])                     # (node, depth, parent, side)
     while q:
-        n, d = q.popleft()
+        n, d, parent, side = q.popleft()
         if n is None:
             continue
-        why = (f"start at the root {n} — level-order begins at the top (level 0)" if d == 0 else
-               f"{n} is on level {d}; level-order finishes each level left to right before going deeper")
+        if d == 0:
+            why = f"start at the root {n} — level-order begins at the top (level 0)"
+        else:
+            why = (f"{n} is the {side} child of {parent} (level {d}); {parent} enqueued it, and it now reaches "
+                   f"the front of the queue — so every level {d - 1} node is output before it")
         out.append((n, why, ["root_level"] if d == 0 else ["deeper_level"]))
-        q.append((tree[n]["left"], d + 1))
-        q.append((tree[n]["right"], d + 1))
+        q.append((tree[n]["left"], d + 1, n, "left"))
+        q.append((tree[n]["right"], d + 1, n, "right"))
     return out
 
 

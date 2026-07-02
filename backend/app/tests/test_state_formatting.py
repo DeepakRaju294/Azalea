@@ -51,6 +51,20 @@ class NoRawStateInLearnerStrings(unittest.TestCase):
                     self.assertNotRegex(rendered, r"[\[\]{}]",
                                         f"{slug}: final-answer render leaked a bracket/brace: {rendered!r}")
 
+    def test_stage_guidance_surfaces_no_machine_op_tokens(self):
+        # The formatter is told which operations to surface (from each stage's `contains`). Those op ids are
+        # internal snake_case tags, and a formatter can echo them verbatim ("emit_node 20" shipped in a real
+        # BST path). _stage_guidance humanizes them, so NO surfaced op may contain an internal underscore.
+        from app.services.examples.trace_pipeline import _stage_guidance
+        for slug, adapter in sorted(ADAPTERS.items()):
+            guidance = _stage_guidance(adapter)
+            for sid, st in guidance.items():
+                for role in ("required", "aggregated_supporting", "internal"):
+                    for op in st.get(role, []):
+                        with self.subTest(slug=slug, stage=sid, op=op):
+                            self.assertNotRegex(op, r"[a-z]_[a-z]",
+                                                f"{slug}.{sid}: raw machine op token surfaced: {op!r}")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -205,9 +205,18 @@ _STAGE_GRAMMAR_RULE = (
 )
 
 
+def _humanize_op(op: str) -> str:
+    """Op identifiers in `contains` are internal snake_case tags (e.g. `emit_node`, `place_pivot`). They are
+    surfaced to the formatter as the operations to state, and a lazy formatter can echo them VERBATIM into
+    learner text ("emit_node 20" shipped in a real BST path). Convert to plain words at this boundary so the
+    worst case is still readable English — one fix covers every adapter, current and future."""
+    return op.replace("_", " ").strip()
+
+
 def _stage_guidance(adapter: Any) -> dict[str, Any]:
     """Per-operation instructional grammar from the adapter's example_spec: teaching_focus + the role of
-    each contained operation (required / aggregated_supporting / internal). Empty if not declared."""
+    each contained operation (required / aggregated_supporting / internal). Op names are humanized so no raw
+    machine token can leak into a card. Empty if not declared."""
     spec = getattr(adapter, "example_spec", None)
     stages = getattr(spec, "stages", None) if spec is not None else None
     if not stages:
@@ -217,9 +226,9 @@ def _stage_guidance(adapter: Any) -> dict[str, Any]:
         contains = getattr(st, "contains", None) or {}
         out[sid] = {
             "teaching_focus": getattr(st, "teaching_focus", "") or "",
-            "required": [op for op, r in contains.items() if r == "required"],
-            "aggregated_supporting": [op for op, r in contains.items() if r == "aggregated_supporting"],
-            "internal": [op for op, r in contains.items() if r == "internal"],
+            "required": [_humanize_op(op) for op, r in contains.items() if r == "required"],
+            "aggregated_supporting": [_humanize_op(op) for op, r in contains.items() if r == "aggregated_supporting"],
+            "internal": [_humanize_op(op) for op, r in contains.items() if r == "internal"],
         }
     return out
 

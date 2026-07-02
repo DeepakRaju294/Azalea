@@ -94,7 +94,7 @@ class CodingPayloadTests(unittest.TestCase):
         self.assertIn("INSTRUCTIONAL GRAMMAR", p["system"])
         self.assertIn("STAGE_GUIDANCE", p["user"])
         self.assertIn("teaching_focus", p["user"])
-        self.assertIn("decide_accept_or_skip", p["user"])    # the required op surfaces
+        self.assertIn("decide accept or skip", p["user"])    # the required op surfaces (humanized, no raw token)
         self.assertNotIn("INSTRUCTIONAL GRAMMAR", tp.build_format_payload(trace, code=None)["system"])
 
 
