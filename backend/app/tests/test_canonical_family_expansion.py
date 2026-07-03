@@ -61,3 +61,31 @@ class CanonicalFamilyExpansion(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CanonicalFamilyOrdering(unittest.TestCase):
+    """A family survey's topics are grouped in canonical order, each walkthrough next to its coding follow-up
+    (the expansion + coding backfill otherwise scramble them — insertion's code was stranded at the end)."""
+    def test_scrambled_sorts_are_reordered(self):
+        from app.services.topic_generator import _order_canonical_family
+        scrambled = [
+            {"title": "Introduction to Sorting Algorithms", "topic_type": "study_path_introduction"},
+            {"title": "Bubble Sort Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"},
+            {"title": "Selection Sort Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"},
+            {"title": "Insertion Sort Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"},
+            {"title": "Implementing Selection Sort in Code", "topic_type": "coding_implementation"},
+            {"title": "Implementing Bubble Sort in Code", "topic_type": "coding_implementation"},
+            {"title": "Merge Sort Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"},
+            {"title": "Implementing Merge Sort", "topic_type": "coding_implementation"},
+            {"title": "Quicksort Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"},
+            {"title": "Implementing Quicksort", "topic_type": "coding_implementation"},
+            {"title": "Implementing Insertion Sort in Code", "topic_type": "coding_implementation"},
+        ]
+        out = _order_canonical_family(scrambled, "learn about sorting algorithms")
+        titles = [t["title"] for t in out]
+        self.assertEqual(titles[0], "Introduction to Sorting Algorithms")     # intro stays first
+        # canonical order, WT immediately before its code
+        self.assertEqual(titles[1:5], ["Bubble Sort Algorithm Walkthrough", "Implementing Bubble Sort in Code",
+                                       "Selection Sort Algorithm Walkthrough", "Implementing Selection Sort in Code"])
+        self.assertEqual(titles[-1], "Implementing Quicksort")                # insertion code no longer stranded
+        self.assertNotIn("Implementing Insertion Sort in Code", titles[-2:])  # it's now next to insertion WT

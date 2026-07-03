@@ -262,6 +262,48 @@ def _expand_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> 
     return result
 
 
+def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> list[dict[str, Any]]:
+    """Group a family survey's topics into CANONICAL ORDER, each walkthrough immediately followed by its
+    coding follow-up (bubble WT, bubble code, selection WT, selection code, ...). The expansion + coding
+    backfill append injected members out of order (the observed scramble: insertion's code stranded at the
+    end); this consolidates the family into a coherent sequence. Non-family topics (intro) keep their order."""
+    if os.getenv("AZALEA_CANONICAL_FAMILY_EXPANSION", "1") == "0":
+        return topics
+    g = (goal or "").lower()
+    fam = next((f for f in _CANONICAL_FAMILIES.values() if any(m in g for m in f["goal_markers"])), None)
+    if not fam:
+        return topics
+    try:
+        from app.services.examples.trace_pipeline import route_adapter
+    except Exception:  # noqa: BLE001
+        return topics
+    order = {slug: i for i, (_, slug) in enumerate(fam["members"])}
+
+    def _ttype(t: dict[str, Any]) -> str:
+        return str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
+
+    def _slug(t: dict[str, Any]) -> Optional[str]:
+        a = route_adapter({"title": str(t.get("title") or ""), "topic_type": _ttype(t)})
+        return a.slug if a else None
+
+    fam_positions = [i for i, t in enumerate(topics) if _slug(t) in order]
+    if len(fam_positions) < 2:
+        return topics
+    fam_block = sorted((topics[i] for i in fam_positions),
+                       key=lambda t: (order.get(_slug(t), 99), 0 if _ttype(t) != "coding_implementation" else 1))
+    first, famset = fam_positions[0], set(fam_positions)
+    result: list[dict[str, Any]] = []
+    for i, t in enumerate(topics):
+        if i in famset:
+            if i == first:
+                result.extend(fam_block)      # drop the whole ordered family block in at the first slot
+        else:
+            result.append(t)
+    for i, t in enumerate(result, 1):
+        t["order_index"] = i
+    return result
+
+
 def _append_missing_coding_topics(topics: list[dict[str, Any]], goal: str) -> list[dict[str, Any]]:
     """Deterministically guarantee the blueprint's 'append a coding_implementation after the
     walkthrough' rule (course_blueprints §combination_rules) — the rule was prompt-only, so the model
@@ -664,6 +706,9 @@ Chunk index: {chunk.chunk_index}
     # Guarantee a coding_implementation follow-up exists for each algorithm/data-structure subject
     # (the blueprint rule was prompt-only, so the model often dropped it -> "coding never generated").
     cleaned_topics = _append_missing_coding_topics(cleaned_topics, goal)
+    # Consolidate a family survey into canonical order, each walkthrough next to its coding follow-up
+    # (runs AFTER the coding backfill so both halves of each member are present to group).
+    cleaned_topics = _order_canonical_family(cleaned_topics, goal)
 
     if not cleaned_topics:
         cleaned_topics.append(

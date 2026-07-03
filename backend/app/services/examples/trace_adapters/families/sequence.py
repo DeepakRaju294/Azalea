@@ -462,10 +462,13 @@ class InsertionSortAdapter(FamilyAdapterBase):
     def validate_prose_claims(self, card, step):
         if "key" not in step.inputs:                       # the setup card (first prefix) has no key to name
             return []
-        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
-                          str(card.get("result", ""))]).lower()
+        # Check the LLM-written REASONING (+work), NOT the backend-attached `result`: the result is the
+        # verified evr ("Insert 57 ...") and ALWAYS names the key, which would mask a desynced explanation
+        # (the observed bug: reasoning described key 14 while the step inserted 57). Requiring the key in the
+        # reasoning makes a card whose explanation is about the wrong step a HARD violation -> reformat/retry.
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or [])]).lower()
         key = str(step.inputs["key"])
-        return [] if key in prose else [("key_not_stated", key)]
+        return [] if key in prose else [("key_not_stated_in_reasoning", key)]
 
 
 # ===================================================================================================
