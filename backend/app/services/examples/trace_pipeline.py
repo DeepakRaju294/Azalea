@@ -315,6 +315,8 @@ def _final_answer_text(trace: ContractTrace) -> str:
             return f"found at index {k}" if isinstance(k, int) and k >= 0 else "target is absent (index -1)"
         if "visit_order" in fa:
             return "visit order: " + ", ".join(map(str, fa["visit_order"]))
+        if "topo_order" in fa:                                     # topological sort (Kahn)
+            return "topological order: " + ", ".join(map(str, fa["topo_order"]))
         if "mst_edges" in fa:
             from .trace_adapters.families.graph import fmt_edges
             return f"MST edges: {fmt_edges(fa['mst_edges'])} (total weight {fa.get('total_weight')})"

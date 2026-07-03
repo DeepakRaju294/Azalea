@@ -164,6 +164,12 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "verification_level": "trace_verified", "coding": True, "canonical_solution": "n_queens",
         "routing_aliases": ["n-queens", "n queens", "nqueens", "eight queens", "queens problem"],
         "negative_guards": [], "fixtures": ["place", "backtrack"]},
+    "topological_sort": {
+        "type": "T1", "family": "graph", "status": "pilot", "verification_level": "trace_verified",
+        "coding": True, "canonical_solution": "topological_sort",
+        "routing_aliases": ["topological sort", "topological ordering", "topological_sort", "topo sort",
+                            "kahn"],
+        "negative_guards": [], "fixtures": ["frees_dependents", "completion"]},
     "bellman_ford": {
         "type": "T9a", "family": "graph", "status": "pilot", "verification_level": "trace_verified",
         "coding": True, "canonical_solution": "bellman_ford",
@@ -352,6 +358,7 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
     "bfs": {"any": ["breadth-first", "breadth first"], "word": ["bfs"], "not": _IS_TREE, "priority": 130},
     "dfs_iter": {"any": ["depth-first", "depth first"], "word": ["dfs"], "not": _IS_TREE, "priority": 120},
     "n_queens": {"any": ["n-queens", "n queens", "nqueens", "eight queens", "queens problem"], "priority": 110},
+    "topological_sort": {"any": ["topological sort", "topological ordering", "topological_sort", "topo sort", "kahn"], "priority": 108},
     "induction_proof": {"any": ["induction", "prove that", "proof by induction", "mathematical induction"],
                         "priority": 100},
     "sieve_of_eratosthenes": {"any": ["sieve", "eratosthenes"], "priority": 90},

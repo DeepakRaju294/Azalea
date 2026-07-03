@@ -368,6 +368,26 @@ def level_order(root):
                 dp[a] = min(dp[a], dp[a - c] + 1)
     return dp[amount] if dp[amount] <= amount else -1
 """,
+    "topological_sort": """from collections import deque
+
+
+def topological_sort(graph):
+    indeg = {u: 0 for u in graph}
+    for u in graph:
+        for v in graph[u]:
+            indeg[v] += 1
+    ready = deque(sorted(u for u in graph if indeg[u] == 0))
+    order = []
+    while ready:
+        u = ready.popleft()
+        order.append(u)
+        for v in graph[u]:
+            indeg[v] -= 1
+            if indeg[v] == 0:
+                ready.append(v)
+        ready = deque(sorted(ready))
+    return order
+""",
     "arithmetic_eval": """def evaluate(tokens):
     stack = [tokens[0]]
     i = 1

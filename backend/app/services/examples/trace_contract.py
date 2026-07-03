@@ -190,6 +190,7 @@ VISUAL_KINDS: dict[str, dict[str, tuple[type, ...]]] = {
     "array": {"array": (list,)}, "array_window": {}, "board": {"n": (int,), "queens": (list,)},
     "dist_graph": {"dist": (dict,)}, "equation": {}, "expression": {"tokens": (list,)},
     "forest": {"parent": (list,)}, "matrix": {"nodes": (list,), "D": (dict,)}, "node_link": {"dist": (dict,)},
+    "dag": {"order": (list,)},
     "proof": {"established": (list,)}, "queue_graph": {"queue": (list,)}, "run_list": {"runs": (list,)},
     "stack_graph": {"stack": (list,)}, "tree": {"current": (int, type(None))}, "variables": {},
     "weighted_graph": {"selected": (list,)},

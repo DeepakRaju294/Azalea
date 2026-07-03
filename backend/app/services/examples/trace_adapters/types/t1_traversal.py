@@ -60,8 +60,9 @@ DECLARATIONS = [TREE_PREORDER, TREE_POSTORDER, TREE_LEVELORDER]
 # graph traversals BFS/DFS (T1, but the graph family). Their implementations stay in their family.
 from . import declare as _declare
 from ..families.trees import InorderTraversalAdapter as _Inorder
-from ..families.graph import BFSAdapter as _BFS, DFSIterativeAdapter as _DFS
+from ..families.graph import BFSAdapter as _BFS, DFSIterativeAdapter as _DFS, TopologicalSortAdapter as _Topo
 TREE_INORDER = _declare(_Inorder, "tree_inorder", "T1")
 BFS = _declare(_BFS, "bfs", "T1")
 DFS_ITER = _declare(_DFS, "dfs_iter", "T1")
-DECLARATIONS = DECLARATIONS + [TREE_INORDER, BFS, DFS_ITER]
+TOPOLOGICAL_SORT = _declare(_Topo, "topological_sort", "T1")
+DECLARATIONS = DECLARATIONS + [TREE_INORDER, BFS, DFS_ITER, TOPOLOGICAL_SORT]

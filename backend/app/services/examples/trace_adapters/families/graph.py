@@ -1226,3 +1226,142 @@ class FloydWarshallAdapter(FamilyAdapterBase):
                           str(card.get("result", ""))]).lower()
         wp = str(step.inputs["waypoint"]).lower()
         return [] if wp in prose else [("waypoint_not_stated", wp)]
+
+
+# ===================================================================================================
+# Topological sort (Kahn's algorithm) — T1 frontier traversal on a DAG. Repeatedly emit a node whose
+# prerequisites are all met (in-degree 0), then relax its dependents. Refereed by an independent oracle:
+# the emitted order must respect every edge (each node appears after all its prerequisites).
+# ===================================================================================================
+_TOPO_CONV = {"algorithm_variant": "kahn_topological_sort", "graph": "directed_acyclic",
+              "tie_break": "lexicographic_node", "trace_granularity": "one_node_emitted"}
+_TOPO_REQ = ["frees_dependents", "completion"]
+_TOPO_INV = [{"id": "order_respects_edges", "scope": "every_step",
+              "statement": "every emitted node appears after all of its prerequisites"}]
+
+
+def _topo_valid(graph: dict[str, list[str]], order: list[str]) -> bool:
+    """Independent oracle: `order` respects every edge (u before v for each u->v). Recomputed from the graph."""
+    pos = {n: i for i, n in enumerate(order)}
+    for u in graph:
+        if u not in pos:
+            continue
+        for v in graph[u]:
+            if v in pos and pos[u] > pos[v]:
+                return False
+    return True
+
+
+class TopologicalSortAdapter(FamilyAdapterBase):
+    slug = "topological_sort"
+    label_convention = "letters"
+    example_spec = ExampleSpec(
+        input=InstanceShape("weighted_graph", count=(5, 7), structure=["directed", "acyclic"]),
+        stages={"emit": StageSpec(
+            "emit", "emit a node whose prerequisites are all satisfied (in-degree 0), then relax its dependents",
+            teaching_focus="a node can be output once nothing still points to it; emitting it frees its dependents",
+            contains={"pick_ready_node": "required", "relax_dependents": "aggregated_supporting"},
+            state_effects=["one node joins the order; its dependents' in-degrees drop, maybe freeing them"])},
+        structure="emit+ until every node is output (a valid dependency order)",
+        must_exercise=["frees_dependents", "completion"], must_cover=["frees_dependents"],
+        must_avoid=["no_edges"],
+        terminal="every node has been emitted, so the order is a valid topological (dependency) order",
+        output_shape="a topological ordering of the nodes")
+
+    def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+        rng = random.Random(seed)
+        for i in range(80):
+            n = rng.randint(5, 7)
+            labels = [chr(65 + j) for j in range(n)]
+            graph: dict[str, list[str]] = {x: [] for x in labels}
+            for a in range(n):                             # edges only low->high index => acyclic
+                for b in range(a + 1, n):
+                    if rng.random() < 0.45:
+                        graph[labels[a]].append(labels[b])
+            for x in labels:
+                graph[x].sort()
+            yield {"graph": graph, "_id": f"topological_sort_v1_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        return len(trace.steps) >= 4 and bool(trace.case_evidence.get("frees_dependents"))
+
+    def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                  attempt: int = 1, seed: int = 0) -> ContractTrace:
+        graph: dict[str, list[str]] = {k: list(v) for k, v in example_input["graph"].items()}
+        nodes = sorted(graph)
+        indeg = {x: 0 for x in nodes}
+        for u in nodes:
+            for v in graph[u]:
+                indeg[v] += 1
+        order: list[str] = []
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        idx = 0
+        while len(order) < len(nodes):
+            ready = sorted(x for x in nodes if indeg[x] == 0 and x not in order)
+            node = ready[0]
+            idx += 1
+            sid = f"s{idx}"
+            prior = {"order": list(order), "indegree": dict(indeg), "graph": graph}
+            order.append(node)
+            freed = []
+            for v in graph[node]:
+                indeg[v] -= 1
+                if indeg[v] == 0:
+                    freed.append(v)
+            after = {"order": list(order), "indegree": dict(indeg), "graph": graph}
+            deps = graph[node]
+            if deps:
+                free_txt = f" — this frees {', '.join(freed)}" if freed else ""
+                reason = (f"{node} has no remaining prerequisites (in-degree 0), so emit it. Removing {node} "
+                          f"lowers the in-degree of its dependents {', '.join(deps)}{free_txt}.")
+                evr = f"Emit {node}; order so far: {', '.join(order)}."
+                evidence.setdefault("frees_dependents", []).append(sid)
+            else:
+                reason = (f"{node} has no remaining prerequisites and no dependents, so emit it next.")
+                evr = f"Emit {node}; order so far: {', '.join(order)}."
+            allowed = sorted({int(x) for x in re.findall(r"\d+", reason + " " + evr)})
+            steps.append(Step(
+                id=sid, operation="emit", prior_state=prior, state_after=after,
+                inputs={"node": node, "freed": freed}, decision=f"emit {node}", reason=reason,
+                visual_state={"kind": "dag", "order": list(order), "active": node},
+                visual_delta={"emitted": node, "freed": freed}, expected_visible_result=evr,
+                facts={"allowed_values": allowed, "required_facts": [fact("node", node)],
+                       "forbidden_claims": []}))
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        return ContractTrace(
+            problem=(f"Find a topological order of the directed acyclic graph where "
+                     f"{fmt_adjacency(graph)}, using Kahn's algorithm."),
+            conventions=dict(_TOPO_CONV),
+            initial_state={"order": [], "indegree": {x: sum(1 for u in nodes for w in graph[u] if w == x)
+                                                     for x in nodes}, "graph": graph},
+            final_answer={"topo_order": list(order)}, steps=steps,
+            invariants=[dict(x) for x in _TOPO_INV], required_cases=list(_TOPO_REQ), case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        a, b = a or {}, b or {}
+        return list(a.get("order") or []) == list(b.get("order") or []) and \
+            dict(a.get("indegree") or {}) == dict(b.get("indegree") or {})
+
+    def final_answer_entails(self, state, answer):
+        order = list((state or {}).get("order") or [])
+        graph = (state or {}).get("graph") or {}
+        want = list((answer or {}).get("topo_order") or [])
+        return order == want and sorted(order) == sorted(graph) and _topo_valid(graph, order)
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "order_respects_edges":
+            return _topo_valid((state or {}).get("graph") or {}, list((state or {}).get("order") or []))
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation == "emit" else [f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        n = str(step.inputs["node"]).lower()
+        return [] if n in prose else [("node_not_stated", n)]
