@@ -57,6 +57,16 @@ class DriftIsCaught(unittest.TestCase):
         self.assertFalse(reproduces_trace_applies(tr, CANONICAL_SOLUTIONS["kruskal"]))
         self.assertEqual(code_reproduces_trace(CANONICAL_SOLUTIONS["kruskal"], tr), [])
 
+    def test_unrunnable_snippet_skips_not_withholds(self):
+        # the DISPLAYED code strips imports (design choice) -> merge's `deque` is undefined and the code
+        # cannot run. The gate must SKIP (return []), never treat an execution failure as drift and withhold
+        # a valid topic. (Regression: importless merge code was wrongly withholding.)
+        tr = tp.select_instance(ADAPTERS["merge_sort"], seed=0)
+        importless = "\n".join(l for l in CANONICAL_SOLUTIONS["merge_sort"].splitlines() if "import" not in l)
+        self.assertIn("deque", importless)                          # uses deque
+        self.assertNotIn("import", importless)                      # but cannot resolve it
+        self.assertEqual(code_reproduces_trace(importless, tr), [])
+
 
 class WiredIntoPipeline(unittest.TestCase):
     def test_coding_topic_withholds_on_drifted_code(self):

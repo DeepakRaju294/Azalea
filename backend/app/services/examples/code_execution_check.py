@@ -360,8 +360,9 @@ def code_reproduces_trace(code: str, trace: Any) -> list:
     try:
         from app.services.visual_v2.simulators.code_tracer import trace_execution
         steps, result = trace_execution(code, entry, {"array": list(arr)})
-    except Exception as exc:  # noqa: BLE001 — a canonical solution that will not run is itself a defect
-        return [f"canonical code failed to execute on {arr}: {type(exc).__name__}: {exc}"]
+    except Exception:  # noqa: BLE001 — the DISPLAYED code may be a snippet (missing imports / free names), so it
+        return []      # cannot be run here: SKIP rather than withhold a valid topic. A genuinely broken canonical
+                       # solution is caught at build time (test_canonical_solutions), not by a false runtime withhold.
     out: list = []
     expected = (getattr(trace, "final_answer", None) or {}).get("sorted")
     if expected is not None and result != expected:
