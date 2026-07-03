@@ -90,7 +90,7 @@ class ReasonExtractWiringTests(unittest.TestCase):
 
     def test_non_deterministic_topic_ships_via_reason_extract(self):
         res = tp.solve_trace_pipeline(
-            {"title": "Proof by Induction"}, format_fn=lambda p: self._FMT,
+            {"title": "Understanding Recursion"}, format_fn=lambda p: self._FMT,
             reason_fn=lambda p: "…FINAL ANSWER: ok", extract_fn=lambda p: self._EXTRACT,
             critic_fn=lambda p: {"illegal_step": None})
         self.assertIsNotNone(res)
@@ -99,14 +99,14 @@ class ReasonExtractWiringTests(unittest.TestCase):
 
     def test_critic_rejection_withholds(self):
         res = tp.solve_trace_pipeline(
-            {"title": "Proof by Induction"}, format_fn=lambda p: self._FMT,
+            {"title": "Understanding Recursion"}, format_fn=lambda p: self._FMT,
             reason_fn=lambda p: "x", extract_fn=lambda p: self._EXTRACT,
             critic_fn=lambda p: {"illegal_step": {"id": "s1", "reason": "invalid"}})
         self.assertIsNone(res)
 
     def test_disabled_by_default_defers(self):
         os.environ.pop("AZALEA_WORKED_EXAMPLE_REASON_EXTRACT", None)   # flag off
-        self.assertIsNone(tp.solve_trace_pipeline({"title": "Proof by Induction"},
+        self.assertIsNone(tp.solve_trace_pipeline({"title": "Understanding Recursion"},
                                                   reason_fn=lambda p: "x", extract_fn=lambda p: self._EXTRACT))
 
 

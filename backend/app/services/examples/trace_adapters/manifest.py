@@ -174,6 +174,11 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "coding": True, "canonical_solution": "euclid_gcd",
         "routing_aliases": ["euclid", "euclidean algorithm", "gcd", "greatest common divisor"],
         "negative_guards": [], "fixtures": ["reduce", "loop_ends"]},
+    "induction_proof": {
+        "type": "T8b", "family": "proof", "status": "pilot", "verification_level": "trace_verified",
+        "coding": False, "canonical_solution": None,
+        "routing_aliases": ["induction", "proof by induction", "mathematical induction", "prove that"],
+        "negative_guards": [], "fixtures": ["base_case", "inductive_step"]},
     "arithmetic_eval": {
         "type": "T7", "family": "formula", "status": "production", "verification_level": "trace_verified",
         "coding": True, "canonical_solution": "arithmetic_eval",
