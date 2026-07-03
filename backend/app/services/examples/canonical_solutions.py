@@ -103,24 +103,33 @@ def dijkstra(graph, start):
                 heapq.heappush(heap, (nd, v))
     return dist
 """,
-    "merge_sort": """def merge_sort(arr):
+    # BOTTOM-UP queue merge — MATCHES the walkthrough trace (bottom_up_queue_merge_sort): each element is a
+    # run, then repeatedly dequeue two runs, merge them, enqueue the result at the back. Kept in sync with the
+    # trace so the code-walkthrough annotations describe the same operations (a top-down recursive variant here
+    # produced contradictory per-line comments).
+    "merge_sort": """from collections import deque
+
+
+def merge_sort(arr):
     if len(arr) <= 1:
         return arr
-    mid = len(arr) // 2
-    left = merge_sort(arr[:mid])
-    right = merge_sort(arr[mid:])
-    merged = []
-    i = j = 0
-    while i < len(left) and j < len(right):
-        if left[i] <= right[j]:
-            merged.append(left[i])
-            i += 1
-        else:
-            merged.append(right[j])
-            j += 1
-    merged.extend(left[i:])
-    merged.extend(right[j:])
-    return merged
+    runs = deque([x] for x in arr)          # each element is its own sorted run
+    while len(runs) > 1:
+        left = runs.popleft()
+        right = runs.popleft()
+        merged = []
+        i = j = 0
+        while i < len(left) and j < len(right):
+            if left[i] <= right[j]:
+                merged.append(left[i])
+                i += 1
+            else:
+                merged.append(right[j])
+                j += 1
+        merged.extend(left[i:])
+        merged.extend(right[j:])
+        runs.append(merged)                 # enqueue the merged run at the back
+    return runs[0]
 """,
     "binary_search": """def binary_search(arr, target):
     lo, hi = 0, len(arr) - 1
@@ -232,13 +241,29 @@ def level_order(root):
             break
     return arr
 """,
+    # IN-PLACE Lomuto partition (last element as pivot) — MATCHES the walkthrough trace (lomuto_quicksort):
+    # partition the subarray so the pivot lands at its final index, then recurse on each side. Kept in sync
+    # with the trace so the code-walkthrough describes the same operations (the out-of-place comprehension
+    # variant traced differently and mislabeled the steps). This is also the more standard quicksort.
     "quick_sort": """def quick_sort(arr):
-    if len(arr) <= 1:
-        return arr
-    pivot = arr[-1]
-    smaller = [x for x in arr[:-1] if x < pivot]
-    larger = [x for x in arr[:-1] if x >= pivot]
-    return quick_sort(smaller) + [pivot] + quick_sort(larger)
+    def partition(lo, hi):
+        pivot = arr[hi]
+        i = lo
+        for j in range(lo, hi):
+            if arr[j] < pivot:
+                arr[i], arr[j] = arr[j], arr[i]
+                i += 1
+        arr[i], arr[hi] = arr[hi], arr[i]
+        return i
+
+    def sort(lo, hi):
+        if lo < hi:
+            p = partition(lo, hi)
+            sort(lo, p - 1)
+            sort(p + 1, hi)
+
+    sort(0, len(arr) - 1)
+    return arr
 """,
     "heap_sort": """def heap_sort(arr):
     n = len(arr)
