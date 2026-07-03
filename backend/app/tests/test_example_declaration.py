@@ -105,13 +105,13 @@ class TestPickFixture(unittest.TestCase):
             ("Solving Linear Equations", "math_formula_method", "linear_equation_concept_3x_plus_4_01"),
             ("The Distance Formula", "math_formula_method", "distance_formula_concept_3_4_5_01"),
             ("Compound Interest Explained", "math_formula_method", "compound_interest_concept_1000_10pct_2y_01"),
-            ("Set Operations: Union and Intersection", "concept_intuition", "set_operation_concept_two_clubs_01"),
             ("Graphing a Quadratic Parabola", "math_formula_method", "function_graph_analysis_concept_parabola_01"),
-            ("Stack vs Heap Memory", "concept_intuition", "stack_heap_allocation_concept_list_01"),
             ("The TCP Three-Way Handshake", "process_walkthrough", "protocol_sequence_concept_tcp_handshake_01"),
             ("The Pythagorean Theorem", "math_formula_method", "triangle_geometry_concept_3_4_5_01"),
             ("Proof by Induction", "proof_reasoning", "induction_proof_concept_sum_formula_01"),
             # comparison topics no longer carry a worked_example (compare_distinguish -> comparison card only)
+            # concept_intuition topics ("Set Operations", "Stack vs Heap Memory") no longer carry a
+            # worked_example either — a concept is carried by its VISUAL + prose (design decision).
         ]
         for title, ttype, expected in cases:
             with self.subTest(title=title):

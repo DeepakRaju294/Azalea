@@ -1060,10 +1060,12 @@ TOPIC_BLUEPRINTS: dict[str, Blueprint] = {
     TopicType.CONCEPT_INTUITION.value: {
         "name": "Concept / Intuition",
         "description": "Teach what one idea means, why it exists, how to picture it, and how to apply it.",
+        # A concept topic is carried by its VISUAL + prose — it has NO worked example. Forcing one produced
+        # an algorithm line-trace (the wrong kind of content for a concept). The visual attaches to the
+        # background/components cards via visual_card_rules, so dropping the example keeps the picture.
         "default_card_sequence": sequence(
             "background",
             "components_terms",
-            "worked_example",
             "edge_case",
             "practice",
         ),

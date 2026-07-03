@@ -43,7 +43,7 @@ TOPIC_TYPE_DEFINITIONS: dict[str, dict] = {
             "where the concept fits in the bigger picture",
             "components or terms only when needed",
             "core idea / mental model",
-            "worked example",
+            "a visual / picture of the idea (the concept is carried by the visual, NOT a worked example)",
             "common mistake when useful",
             "edge case when useful",
             "application-based practice",
