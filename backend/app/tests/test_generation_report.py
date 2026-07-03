@@ -9,6 +9,13 @@ from app.services.examples import trace_pipeline as tp
 from app.services.examples.trace_adapters import ADAPTERS
 
 
+def _force_llm_path(slug="kruskal"):
+    """Tier 2b: walkthrough adapters now ship deterministic-first (the LLM formatter is bypassed). These
+    tests exercise the LLM retry/fallback MACHINERY, which is still live for coding topics and as the
+    narration-gate fallback — force it by turning off provides_narration for the routed adapter."""
+    return mock.patch.object(type(ADAPTERS[slug]), "provides_narration", False)
+
+
 class Cp1InvariantStanding(unittest.TestCase):
     """CP1/CP6 standing guarantee: an adapter-supported topic may NEVER ship from a from-scratch source.
     `invariant_violations` is the machine check that locks it in (and runs over the JSONL log in audits)."""
@@ -95,7 +102,8 @@ class TracePreservingFallback(unittest.TestCase):
             return {"cards": [{"title": "x", "goal": "", "reasoning": "", "work": ["skip it"],
                                "result": "skip; nothing"} for _ in steps]}
 
-        res = tp.solve_trace_pipeline(topic, format_fn=always_fails)
+        with _force_llm_path():
+            res = tp.solve_trace_pipeline(topic, format_fn=always_fails)
         self.assertIsNotNone(res, "must ship a trace-preserving narration, never None → fallback")
         we = gr.current().worked_example
         self.assertEqual(we.get("tp_reason"), "trace_preserving_narration")
@@ -175,14 +183,26 @@ class TracePipelineRecordsOutcome(unittest.TestCase):
                            "result": s["expected_visible_result"]} for s in steps]}
 
     def test_ship_is_recorded(self):
+        # Tier 2b: a walkthrough adapter ships deterministic-first (the LLM formatter is bypassed).
         gr.start({"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"})
         tp.solve_trace_pipeline({"title": "Kruskal's Algorithm Walkthrough",
                                  "topic_type": "algorithm_walkthrough"}, format_fn=self._faithful)
         we = gr.current().worked_example
         self.assertEqual(we.get("adapter"), "kruskal")
         self.assertTrue(we.get("tp_shipped"))
-        self.assertEqual(we.get("tp_reason"), "shipped")
+        self.assertEqual(we.get("tp_reason"), "deterministic_narration_primary")
         self.assertEqual(we.get("formatter_cards"), we.get("verified_steps"))
+        gr.finish_and_persist()
+
+    def test_llm_path_ship_is_recorded_when_narration_disabled(self):
+        # the LLM formatter path still ships + records "shipped" when forced (coding / narration-gate fallback)
+        gr.start({"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"})
+        with _force_llm_path():
+            tp.solve_trace_pipeline({"title": "Kruskal's Algorithm Walkthrough",
+                                     "topic_type": "algorithm_walkthrough"}, format_fn=self._faithful)
+        we = gr.current().worked_example
+        self.assertTrue(we.get("tp_shipped"))
+        self.assertEqual(we.get("tp_reason"), "shipped")
         gr.finish_and_persist()
 
     def test_cp6b_prose_validation_is_structured(self):
@@ -227,8 +247,9 @@ class TracePipelineRecordsOutcome(unittest.TestCase):
         # narration and records WHY the LLM path was abandoned (narration_failed_reason=count_mismatch).
         gr.start({"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"})
         bad = lambda p: {"cards": [{"title": "x", "work": ["w"], "result": "r"}]}   # wrong card count (1)
-        res = tp.solve_trace_pipeline({"title": "Kruskal's Algorithm Walkthrough",
-                                       "topic_type": "algorithm_walkthrough"}, format_fn=bad)
+        with _force_llm_path():
+            res = tp.solve_trace_pipeline({"title": "Kruskal's Algorithm Walkthrough",
+                                           "topic_type": "algorithm_walkthrough"}, format_fn=bad)
         self.assertIsNotNone(res)
         we = gr.current().worked_example
         self.assertTrue(we.get("tp_shipped"))
@@ -264,7 +285,8 @@ class TargetedRetry(unittest.TestCase):
                                "work": [s["expected_visible_result"]],            # 1 line -> no aggregation retry
                                "result": s["expected_visible_result"]} for s in steps]}
 
-        res = tp.solve_trace_pipeline(topic, format_fn=fmt)
+        with _force_llm_path():
+            res = tp.solve_trace_pipeline(topic, format_fn=fmt)
         self.assertIsNotNone(res, "targeted retry did not recover the count mismatch")
         self.assertEqual(calls["n"], 2)                                          # 2nd attempt saw the feedback
         self.assertTrue(gr.current().worked_example.get("tp_shipped"))
@@ -289,7 +311,8 @@ class TargetedRetry(unittest.TestCase):
                 out.append({"title": s["operation"], "goal": "", "reasoning": "", "work": work, "result": evr})
             return {"cards": out}
 
-        res = tp.solve_trace_pipeline(topic, format_fn=fmt)
+        with _force_llm_path():
+            res = tp.solve_trace_pipeline(topic, format_fn=fmt)
         self.assertIsNotNone(res)
         self.assertEqual(calls["n"], 2)                                          # retried once to aggregate
         self.assertTrue(all(len(c.get("work") or []) <= 2 for c in res["cards"] if c.get("work")))

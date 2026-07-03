@@ -362,6 +362,14 @@ def validate_prose(cards: list[dict[str, Any]], trace: ContractTrace, adapter,
         facts = step.facts or {}
         allowed = {str(x) for x in facts.get("allowed_values", [])}
         if allowed and not code_anchored:
+            # A number in the step's OWN verified fields (reason/decision/result) or the trace's final answer
+            # is ground truth by construction — never a hallucination — so it extends the allowlist. This keeps
+            # the guard aimed at INVENTED numbers while not flagging a true value the adapter forgot to declare
+            # (a beaten Dijkstra distance, an unevaluated operand, the absent index -1).
+            truth = " ".join(str(x) for x in (
+                getattr(step, "reason", ""), getattr(step, "decision", ""),
+                getattr(step, "expected_visible_result", ""), trace.final_answer))
+            allowed = allowed | set(re.findall(r"-?\d+", truth))
             # An ordinal card label ("Step 2:", "Pass 3") is a POSITION in the walkthrough, not a data value —
             # drop it before the numeric scan so the ordinal isn't misread as a wrong array element.
             scan = re.sub(r"\b(?:step|pass|round|phase|iteration)\s+\d+", " ", prose)

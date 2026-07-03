@@ -527,11 +527,12 @@ def _deterministic_narration(trace: ContractTrace, adapter: Any = None) -> list[
         evr = str(getattr(step, "expected_visible_result", "") or "").strip()
         decision = str(getattr(step, "decision", "") or "").strip()
         reason = str(getattr(step, "reason", "") or "").strip()
+        work_line = re.sub(r"_+", " ", decision).strip()   # humanize internal tokens ("go_right" -> "go right")
         out.append({
             "title": _det_step_title(step, i),
             "goal": "",
             "reasoning": reason,
-            "work": [decision] if decision else ([evr] if evr else ["state update"]),
+            "work": [work_line] if work_line else ([evr] if evr else ["state update"]),
             "result": evr or decision or "state updated",
             "trace_step_ids": [step.id],
             "prior_state": step.prior_state,

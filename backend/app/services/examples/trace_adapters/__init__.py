@@ -24,4 +24,22 @@ DECLARATIONS = [d for mod in _TYPE_MODULES for d in mod.DECLARATIONS]
 # data-driven in trace_pipeline via manifest.ROUTING_RULES, §17).
 ADAPTERS = {d.slug: _hydrate(d) for d in DECLARATIONS}
 
-__all__ = ["ADAPTERS", "DECLARATIONS"]
+# Tier 2 — deterministic-first narration (single source of truth). These adapters ship their WALKTHROUGH cards
+# straight from the verified trace (no LLM re-authoring): each is verified to pass fidelity + hard-prose on its
+# OWN deterministic narration across many seeds (test_deterministic_narration_primary), and its step
+# decision/reason/expected_visible_result read as learner-facing prose. The trace is the content; the LLM's
+# re-authoring here is pure downside (leaked labels, wrong values, dropped mechanism). Coding topics still use
+# the code-anchored LLM path (they need per-line anchors the trace does not carry).
+NARRATION_SLUGS = frozenset({
+    "bubble_sort", "selection_sort", "insertion_sort", "merge_sort", "quick_sort", "heap_sort",
+    "bfs", "dfs_iter", "tree_inorder", "tree_preorder", "tree_postorder", "tree_levelorder",
+    "kruskal", "prim", "dijkstra", "bellman_ford", "floyd_warshall", "topological_sort",
+    "coin_change", "longest_increasing_subsequence", "n_queens", "union_find",
+    "sieve_of_eratosthenes", "euclid_gcd", "bst_search", "binary_search",
+    "quadratic", "kinematics", "arithmetic_eval", "induction_proof",
+})
+for _slug in NARRATION_SLUGS:
+    if _slug in ADAPTERS:
+        type(ADAPTERS[_slug]).provides_narration = True
+
+__all__ = ["ADAPTERS", "DECLARATIONS", "NARRATION_SLUGS"]
