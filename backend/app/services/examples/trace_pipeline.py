@@ -499,11 +499,21 @@ def _to_solve_result(trace: ContractTrace, cards: list[dict[str, Any]]) -> dict[
 
 
 def _det_step_title(step: Step, i: int) -> str:
-    # prefer the visible result (it names the entity: "Edge (A,C,1) accept") over the bare decision verb
+    # prefer the visible result (it names the entity: "Edge (A,C,1) accept") over the bare decision verb.
+    # The title is the ENTITY + ACTION (no "Step N:" ordinal — the card's position is already shown, and the
+    # ordinal reads as noise and trips the value guard).
     src = str(getattr(step, "expected_visible_result", "") or getattr(step, "decision", "")
               or getattr(step, "operation", "") or "").strip()
-    head = re.split(r"[;:.\n]", src, maxsplit=1)[0].strip()[:60].strip()
-    return f"Step {i + 1}: {head}" if head else f"Step {i + 1}"
+    # cut at the first clause / arrow — the title is the ACTION ("Merge [3] and [5]"), not the result value
+    head = re.split(r"[;:.\n]|→|->", src, maxsplit=1)[0].strip()
+    if len(head) > 60:                                     # never truncate mid-token (a cut number like "51"
+        head = head[:60]                                   # -> "5" would read as a stray value and trip the guard)
+        if " " in head:
+            head = head[:head.rfind(" ")]
+        head = head.rstrip(" ,[(→-")
+    if not head:
+        return f"Step {i + 1}"
+    return head[0].upper() + head[1:] if head[:1].islower() else head
 
 
 def _deterministic_narration(trace: ContractTrace, adapter: Any = None) -> list[dict[str, Any]]:
@@ -582,6 +592,26 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
     last_raw, last_cards, last_prose = None, None, None
     reason, detail, attempts, feedback = "formatter_none", [], 0, ""
     n_steps = len(trace.steps)
+    # Tier 2 — deterministic-first narration. For a WALKTHROUGH adapter that declares learner-quality
+    # narration, the verified trace IS the content: ship it directly rather than let an LLM re-author (and
+    # garble) faithful data. Correct + complete by construction, fully offline. Coding topics (code-anchored)
+    # keep the LLM path — they need per-line code anchors the trace does not carry.
+    if getattr(adapter, "provides_narration", False) and not code:
+        det = _deterministic_narration(trace, adapter)
+        fid = validate_fidelity(det, trace, adapter, validate_visual_state=False)
+        prose = validate_prose(det, trace, adapter)
+        hard = hard_prose_violations(prose)
+        if fid.ok and not hard:
+            checkpoints = _attach_checkpoints(det, trace, adapter)
+            _retain_debug(topic, trace, {"narration": "deterministic"}, det, fid, prose, shipped=True)
+            _gr.we(tp_shipped=True, tp_reason="deterministic_narration_primary", narration="deterministic",
+                   verified_steps=n_steps, formatter_cards=len(det), tp_attempts=0)
+            _gr.we(**_coverage_fields(trace, det))
+            _gr.we(**_checkpoint_coverage_fields(trace, det, checkpoints))
+            _gr.we(**_prose_validation_field(prose))
+            return _to_solve_result(trace, det)
+        _log.warning("trace_pipeline: %s deterministic narration failed its own gate (fid.ok=%s, hard=%d) — "
+                     "falling back to LLM formatting", getattr(adapter, "slug", "?"), fid.ok, len(hard))
     for _ in range(_MAX_FORMAT_ATTEMPTS):
         attempts += 1
         raw = fmt(build_format_payload(trace, code=code, feedback=feedback, adapter=adapter))   # §1a + M7 retry

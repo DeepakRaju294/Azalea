@@ -29,6 +29,13 @@ class TeachingTracePolicy:
 class FamilyAdapterBase:
     version: int = 1
 
+    # Tier 2 (deterministic-first narration): when True, the pipeline ships this adapter's WALKTHROUGH cards
+    # straight from the verified trace instead of asking an LLM to re-author them. The step's own
+    # decision/reason/expected_visible_result are already learner-quality and always correct, so the LLM's
+    # re-authoring is pure downside (leaked labels, wrong values, dropped mechanism). Set on adapters whose
+    # step.reason reads as finished prose. Coding topics (code-anchored) still use the LLM path.
+    provides_narration: bool = False
+
     def _provenance(self, *, seed: int, candidate_id: str, example_input: dict[str, Any],
                     attempt: int) -> dict[str, Any]:
         return {"source": "adapter_reference", "adapter": self.slug, "adapter_version": self.version,

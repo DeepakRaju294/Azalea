@@ -224,6 +224,7 @@ def _merge(a: list[int], b: list[int]) -> list[int]:
 
 class MergeSortAdapter(FamilyAdapterBase):
     slug = "merge_sort"
+    provides_narration = True
     label_convention = "ints"             # §2.3 — array values are integers
     # NOTE: current behavior merges a whole pair of runs in ONE step (`merge`). The contract's finer
     # merge_select-per-card grain is a planned iteration (keep instances small so a full merge stays safe).
@@ -359,6 +360,7 @@ _INS_INV = [{"id": "prefix_sorted", "scope": "every_step",
 
 class InsertionSortAdapter(FamilyAdapterBase):
     slug = "insertion_sort"
+    provides_narration = True
     label_convention = "ints"
     example_spec = ExampleSpec(
         input=InstanceShape("integers", count=(5, 8), value_range=(1, 60), structure=["distinct", "unsorted"]),
@@ -483,6 +485,7 @@ _SEL_INV = [{"id": "prefix_is_sorted_minimums", "scope": "every_step",
 
 class SelectionSortAdapter(FamilyAdapterBase):
     slug = "selection_sort"
+    provides_narration = True
     label_convention = "ints"
     example_spec = ExampleSpec(
         input=InstanceShape("integers", count=(5, 8), value_range=(1, 60), structure=["distinct", "unsorted"]),
@@ -592,6 +595,7 @@ _BUB_INV = [{"id": "suffix_is_sorted_maximums", "scope": "every_step",
 
 class BubbleSortAdapter(FamilyAdapterBase):
     slug = "bubble_sort"
+    provides_narration = True
     label_convention = "ints"
     example_spec = ExampleSpec(
         input=InstanceShape("integers", count=(5, 8), value_range=(1, 60), structure=["distinct", "unsorted"]),
@@ -717,6 +721,7 @@ _QS_INV = [{"id": "pivots_in_final_position", "scope": "every_step",
 
 class QuickSortAdapter(FamilyAdapterBase):
     slug = "quick_sort"
+    provides_narration = True
     label_convention = "ints"
     example_spec = ExampleSpec(
         input=InstanceShape("integers", count=(6, 8), value_range=(1, 60), structure=["distinct", "unsorted"]),
