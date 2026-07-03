@@ -16,6 +16,7 @@ import re
 from typing import Any, Callable, Optional
 
 from .trace_adapters import ADAPTERS
+from .trace_adapters.manifest import match_routing_slug
 from .trace_contract import (ContractTrace, Step, hard_prose_violations, structural_invariants,
                              validate_fidelity, validate_prose)
 
@@ -58,77 +59,13 @@ def route_adapter(topic: dict[str, Any]):
 
 
 def _match_adapter(text: str, slug: str):
-    """The tight alias matcher (kept separate so the routing-safety guards wrap it cleanly)."""
-    # Covered TREE + ALGEBRA concepts route explicitly (checked before the tree-defer guard below). Only
-    # inorder BST traversal has a tree adapter today; other tree/BST topics still defer.
-    if "inorder" in text or "in-order" in text:
-        return ADAPTERS["tree_inorder"]
-    if "preorder" in text or "pre-order" in text:
-        return ADAPTERS["tree_preorder"]
-    if "postorder" in text or "post-order" in text:
-        return ADAPTERS["tree_postorder"]
-    if "level order" in text or "level-order" in text or "levelorder" in text:
-        return ADAPTERS["tree_levelorder"]
-    # A BST *search* is a tree probe (not array binary search); but "binary search tree" also names
-    # INSERTION/DELETION/TRAVERSAL topics — so strip the structure name, then require the search OPERATION.
-    _bst_op = text.replace("binary search tree", " ").replace("binary-search tree", " ")
-    if ("bst" in text or "binary search tree" in text) and "search" in _bst_op:
-        return ADAPTERS["bst_search"]
-    if "quadratic" in text:
-        return ADAPTERS["quadratic"]
-    if "kinematic" in text or "constant acceleration" in text or "uniform acceleration" in text:
-        return ADAPTERS["kinematics"]
-    # Tree traversal is a DIFFERENT algorithm from graph BFS/DFS (no visited-set / cycle handling; a
-    # parent/child structure; pre/in/post/level order) — and a binary-search TREE is not array binary search.
-    # These graph/array adapters do NOT cover trees, so a tree topic must NOT route here; it defers (None)
-    # and degrades honestly per the coverage ladder rather than shipping a confidently-wrong trace.
-    is_tree = any(k in text for k in ("tree", "bst", "inorder", "preorder", "postorder", "level order",
-                                      "level-order", "subtree", "leaf"))
-    if ("binary_search" in slug or "binary search" in text) and not is_tree:
-        return ADAPTERS["binary_search"]
-    if "kruskal" in text:
-        return ADAPTERS["kruskal"]
-    if "prim" in text:
-        return ADAPTERS["prim"]
-    if "merge sort" in text or "merge_sort" in text:
-        return ADAPTERS["merge_sort"]
-    if "quicksort" in text or "quick sort" in text or "quick_sort" in text:
-        return ADAPTERS["quick_sort"]
-    if "insertion sort" in text or "insertion_sort" in text:
-        return ADAPTERS["insertion_sort"]
-    if "selection sort" in text or "selection_sort" in text:
-        return ADAPTERS["selection_sort"]
-    if "bubble sort" in text or "bubble_sort" in text:
-        return ADAPTERS["bubble_sort"]
-    if "heapsort" in text or "heap sort" in text or "heap_sort" in text:
-        return ADAPTERS["heap_sort"]
-    if not is_tree and ("breadth-first" in text or "breadth first" in text or " bfs" in f" {text}"):
-        return ADAPTERS["bfs"]
-    if not is_tree and ("depth-first" in text or "depth first" in text or " dfs" in f" {text}"):
-        return ADAPTERS["dfs_iter"]
-    if "n-queens" in text or "n queens" in text or "nqueens" in text or "eight queens" in text or "queens problem" in text:
-        return ADAPTERS["n_queens"]
-    if "induction" in text or "prove that" in text or "proof by induction" in text or "mathematical induction" in text:
-        return ADAPTERS["induction_proof"]
-    if "sieve" in text or "eratosthenes" in text:
-        return ADAPTERS["sieve_of_eratosthenes"]
-    if "euclid" in text or "euclidean" in text or "gcd" in text or "greatest common divisor" in text:
-        return ADAPTERS["euclid_gcd"]
-    if "union-find" in text or "union find" in text or "disjoint set" in text or "disjoint-set" in text or "union_find" in text:
-        return ADAPTERS["union_find"]
-    if "coin change" in text or "coin_change" in text or "fewest coins" in text or "minimum coins" in text or "making change" in text:
-        return ADAPTERS["coin_change"]
-    if "increasing subsequence" in text or "longest_increasing_subsequence" in text:
-        return ADAPTERS["longest_increasing_subsequence"]
-    if "order of operations" in text or "evaluate expression" in text or "arithmetic expression" in text:
-        return ADAPTERS["arithmetic_eval"]
-    if "floyd-warshall" in text or "floyd warshall" in text or "floyd_warshall" in text or "all-pairs" in text or "all pairs shortest" in text:
-        return ADAPTERS["floyd_warshall"]
-    if "bellman-ford" in text or "bellman ford" in text or "bellman_ford" in text or "bellmanford" in text:
-        return ADAPTERS["bellman_ford"]
-    if "dijkstra" in text or "shortest path" in text or "shortest-path" in text:
-        return ADAPTERS["dijkstra"]
-    return None
+    """The tight alias matcher. DATA-DRIVEN (scalable-adapters infra): the per-adapter routing rules live in
+    the manifest's declarative ROUTING_RULES table (single source of truth), and `match_routing_slug` returns
+    the highest-priority rule that fires — equivalent to the first branch of the old hand-written if-chain.
+    Adding an adapter adds one rule there, not a branch here. `text` already includes the slug (route_adapter
+    joins slug + title), so the slug arg is unused now but kept for signature stability."""
+    matched = match_routing_slug(text)
+    return ADAPTERS.get(matched) if matched else None
 
 
 def _seed_for(topic: dict[str, Any]) -> int:

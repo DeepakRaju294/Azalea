@@ -6,7 +6,7 @@ readable for humans; THIS is what code enforces — `manifest_gaps()` cross-chec
 so an adapter cannot ship without a complete manifest entry, and the manifest cannot name a phantom adapter."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 # The structural types (ADAPTER_DEVELOPMENT_SPEC §2). T2 = "greedy frontier update" (frontier/relaxation, not
 # merely accept/reject). T8 splits into T8a/T8b. T9/T10 keep distinct trace shapes out of T2/T3: Bellman-Ford
@@ -320,3 +320,77 @@ def failure_policy(slug: str) -> dict[str, str]:
     policy = dict(DEFAULT_FAILURE_POLICY)
     policy.update((MANIFEST.get(slug, {}) or {}).get("failure_policy") or {})
     return policy
+
+
+# --- Declarative routing (data-driven; replaces the hand-written if-chain in trace_pipeline) --------------
+# Each rule: any=OR substrings · word=OR whole-word tokens (boundary-matched) · all=AND substrings (checked
+# AFTER `strip`) · strip=substrings removed before the `all` check · not=blocking substrings · priority=
+# match precedence (higher wins; set to the old if-chain order so "highest-priority match" == "first `if`").
+# This is the single source of truth for routing — adding an adapter adds ONE rule here, no code change.
+_IS_TREE = ["tree", "bst", "inorder", "preorder", "postorder", "level order", "level-order", "subtree", "leaf"]
+
+ROUTING_RULES: dict[str, dict[str, Any]] = {
+    "tree_inorder": {"any": ["inorder", "in-order"], "priority": 290},
+    "tree_preorder": {"any": ["preorder", "pre-order"], "priority": 280},
+    "tree_postorder": {"any": ["postorder", "post-order"], "priority": 270},
+    "tree_levelorder": {"any": ["level order", "level-order", "levelorder"], "priority": 260},
+    # a BST *search* is a tree probe, not array binary search: needs a 'search' OPERATION that survives
+    # stripping the structure name "binary search tree" (so the bare structure doesn't self-trigger).
+    "bst_search": {"any": ["bst", "binary search tree"], "all": ["search"],
+                   "strip": ["binary search tree", "binary-search tree"], "priority": 250},
+    "quadratic": {"any": ["quadratic"], "priority": 240},
+    "kinematics": {"any": ["kinematic", "constant acceleration", "uniform acceleration"], "priority": 230},
+    "binary_search": {"any": ["binary search", "binary_search"], "not": _IS_TREE, "priority": 220},
+    "kruskal": {"any": ["kruskal"], "priority": 210},
+    "prim": {"any": ["prim"], "priority": 200},
+    "merge_sort": {"any": ["merge sort", "merge_sort"], "priority": 190},
+    "quick_sort": {"any": ["quicksort", "quick sort", "quick_sort"], "priority": 180},
+    "insertion_sort": {"any": ["insertion sort", "insertion_sort"], "priority": 170},
+    "selection_sort": {"any": ["selection sort", "selection_sort"], "priority": 160},
+    "bubble_sort": {"any": ["bubble sort", "bubble_sort"], "priority": 150},
+    "heap_sort": {"any": ["heapsort", "heap sort", "heap_sort"], "priority": 140},
+    "bfs": {"any": ["breadth-first", "breadth first"], "word": ["bfs"], "not": _IS_TREE, "priority": 130},
+    "dfs_iter": {"any": ["depth-first", "depth first"], "word": ["dfs"], "not": _IS_TREE, "priority": 120},
+    "n_queens": {"any": ["n-queens", "n queens", "nqueens", "eight queens", "queens problem"], "priority": 110},
+    "induction_proof": {"any": ["induction", "prove that", "proof by induction", "mathematical induction"],
+                        "priority": 100},
+    "sieve_of_eratosthenes": {"any": ["sieve", "eratosthenes"], "priority": 90},
+    "euclid_gcd": {"any": ["euclid", "euclidean", "gcd", "greatest common divisor"], "priority": 80},
+    "union_find": {"any": ["union-find", "union find", "disjoint set", "disjoint-set", "union_find"],
+                   "priority": 70},
+    "coin_change": {"any": ["coin change", "coin_change", "fewest coins", "minimum coins", "making change"],
+                    "priority": 60},
+    "longest_increasing_subsequence": {"any": ["increasing subsequence", "longest_increasing_subsequence"],
+                                       "priority": 50},
+    "arithmetic_eval": {"any": ["order of operations", "evaluate expression", "arithmetic expression"],
+                        "priority": 40},
+    "floyd_warshall": {"any": ["floyd-warshall", "floyd warshall", "floyd_warshall", "all-pairs",
+                               "all pairs shortest"], "priority": 30},
+    "bellman_ford": {"any": ["bellman-ford", "bellman ford", "bellman_ford", "bellmanford"], "priority": 20},
+    "dijkstra": {"any": ["dijkstra", "shortest path", "shortest-path"], "priority": 10},
+}
+
+
+def _rule_hits(text: str, rule: dict[str, Any]) -> bool:
+    stripped = text
+    for s in rule.get("strip", []):
+        stripped = stripped.replace(s, " ")
+    hit = any(a in text for a in rule.get("any", [])) or \
+        any(f" {w}" in f" {text}" for w in rule.get("word", []))
+    if not hit:
+        return False
+    if not all(a in stripped for a in rule.get("all", [])):
+        return False
+    if any(g in text for g in rule.get("not", [])):
+        return False
+    return True
+
+
+def match_routing_slug(text: str) -> "Optional[str]":
+    """The declarative alias matcher: the highest-priority rule that fires (== the first `if` in the old
+    hand-written chain). Returns the adapter slug or None. Pure string logic — no adapter imports."""
+    best, best_pri = None, None
+    for slug, rule in ROUTING_RULES.items():
+        if _rule_hits(text, rule) and (best_pri is None or rule.get("priority", 0) > best_pri):
+            best, best_pri = slug, rule.get("priority", 0)
+    return best
