@@ -307,6 +307,28 @@ def level_order(root):
             break
     return dist
 """,
+    "union_find": """def union_find(n, unions):
+    parent = list(range(n))
+    size = [1] * n
+
+    def find(x):
+        while parent[x] != x:
+            x = parent[x]
+        return x
+
+    for a, b in unions:
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            continue
+        if size[ra] < size[rb]:
+            ra, rb = rb, ra
+        parent[rb] = ra
+        size[ra] += size[rb]
+    groups = {}
+    for x in range(n):
+        groups.setdefault(find(x), []).append(x)
+    return sorted(sorted(g) for g in groups.values())
+""",
     "arithmetic_eval": """def evaluate(tokens):
     stack = [tokens[0]]
     i = 1

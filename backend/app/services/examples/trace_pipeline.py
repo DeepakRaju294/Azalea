@@ -108,6 +108,8 @@ def _match_adapter(text: str, slug: str):
         return ADAPTERS["dfs_iter"]
     if "n-queens" in text or "n queens" in text or "nqueens" in text or "eight queens" in text or "queens problem" in text:
         return ADAPTERS["n_queens"]
+    if "union-find" in text or "union find" in text or "disjoint set" in text or "disjoint-set" in text or "union_find" in text:
+        return ADAPTERS["union_find"]
     if "increasing subsequence" in text or "longest_increasing_subsequence" in text:
         return ADAPTERS["longest_increasing_subsequence"]
     if "order of operations" in text or "evaluate expression" in text or "arithmetic expression" in text:
@@ -381,6 +383,9 @@ def _final_answer_text(trace: ContractTrace) -> str:
         if "queen_rows" in fa:                                     # N-Queens (backtracking)
             rows = fa["queen_rows"]
             return "queens on rows " + ", ".join(map(str, rows)) + " (one per column, left to right)"
+        if "groups" in fa:                                         # union-find (disjoint sets) — no braces (guard)
+            return "; ".join(f"group {i + 1}: {', '.join(map(str, g))}"
+                             for i, g in enumerate(fa["groups"]))
         if "value" in fa:
             return f"= {fa['value']}"
         if "dist" in fa:
