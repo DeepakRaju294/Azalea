@@ -154,6 +154,11 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "routing_aliases": ["longest increasing subsequence", "increasing subsequence",
                             "longest_increasing_subsequence"],
         "negative_guards": [], "fixtures": ["fresh_start", "extend_from_predecessor"]},
+    "coin_change": {
+        "type": "T5", "family": "dynamic_programming", "status": "pilot",
+        "verification_level": "trace_verified", "coding": True, "canonical_solution": "coin_change",
+        "routing_aliases": ["coin change", "coin_change", "fewest coins", "minimum coins", "making change"],
+        "negative_guards": [], "fixtures": ["single_coin", "build_from_subproblem"]},
     "n_queens": {
         "type": "T11", "family": "backtracking", "status": "pilot",
         "verification_level": "trace_verified", "coding": True, "canonical_solution": "n_queens",

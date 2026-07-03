@@ -116,6 +116,8 @@ def _match_adapter(text: str, slug: str):
         return ADAPTERS["euclid_gcd"]
     if "union-find" in text or "union find" in text or "disjoint set" in text or "disjoint-set" in text or "union_find" in text:
         return ADAPTERS["union_find"]
+    if "coin change" in text or "coin_change" in text or "fewest coins" in text or "minimum coins" in text or "making change" in text:
+        return ADAPTERS["coin_change"]
     if "increasing subsequence" in text or "longest_increasing_subsequence" in text:
         return ADAPTERS["longest_increasing_subsequence"]
     if "order of operations" in text or "evaluate expression" in text or "arithmetic expression" in text:
@@ -388,6 +390,8 @@ def _final_answer_text(trace: ContractTrace) -> str:
             return f"found at node {fa['found_at']}" if fa.get("found") else "the target is absent"
         if "lis_length" in fa:                                     # longest increasing subsequence (DP)
             return f"longest increasing subsequence length = {fa['lis_length']}"
+        if "min_coins" in fa:                                      # coin change (DP)
+            return f"fewest coins = {fa['min_coins']}"
         if "queen_rows" in fa:                                     # N-Queens (backtracking)
             rows = fa["queen_rows"]
             return "queens on rows " + ", ".join(map(str, rows)) + " (one per column, left to right)"

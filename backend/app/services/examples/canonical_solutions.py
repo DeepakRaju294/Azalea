@@ -359,6 +359,15 @@ def level_order(root):
         p += 1
     return [i for i in range(2, n + 1) if is_prime[i]]
 """,
+    "coin_change": """def coin_change(coins, amount):
+    INF = amount + 1
+    dp = [0] + [INF] * amount
+    for a in range(1, amount + 1):
+        for c in coins:
+            if c <= a:
+                dp[a] = min(dp[a], dp[a - c] + 1)
+    return dp[amount] if dp[amount] <= amount else -1
+""",
     "arithmetic_eval": """def evaluate(tokens):
     stack = [tokens[0]]
     i = 1

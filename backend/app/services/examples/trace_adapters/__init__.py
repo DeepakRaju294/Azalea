@@ -6,7 +6,7 @@ classes. New algorithms are added to their family module, not as new files. Rout
 """
 from .families.algebra import QuadraticEquationAdapter
 from .families.backtracking import NQueensAdapter
-from .families.dp import LongestIncreasingSubsequenceAdapter
+from .families.dp import CoinChangeAdapter, LongestIncreasingSubsequenceAdapter
 from .families.execution import EuclidGCDAdapter
 from .families.formula import ArithmeticEvalAdapter
 from .families.graph import (BellmanFordAdapter, BFSAdapter, DFSIterativeAdapter, DijkstraAdapter,
@@ -38,7 +38,7 @@ ADAPTERS = {a.slug: a for a in (
     QuadraticEquationAdapter(),        # TEMPLATE — math concept (algebra family, no code)
     KinematicsAdapter(),               # TEMPLATE — science concept (physics family, no code)
     BSTSearchAdapter(),                # T4 GATE — second search state model (tree node, not array bounds)
-    LongestIncreasingSubsequenceAdapter(),   # T5 PILOT — first dynamic-programming adapter (1-D table fill)
+    LongestIncreasingSubsequenceAdapter(), CoinChangeAdapter(),   # T5 pilots — 1-D DP table fill (max-run / min-coins)
     NQueensAdapter(),                  # T11 PILOT — backtracking (place / conflict / BACKTRACK; non-monotonic search)
 )}
 
@@ -46,4 +46,4 @@ __all__ = ["BinarySearchAdapter", "BFSAdapter", "DFSIterativeAdapter", "KruskalA
            "MergeSortAdapter", "QuickSortAdapter", "InsertionSortAdapter", "SelectionSortAdapter", "BubbleSortAdapter", "HeapSortAdapter", "ArithmeticEvalAdapter", "DijkstraAdapter", "PrimAdapter",
            "InorderTraversalAdapter", "PreorderTraversalAdapter", "PostorderTraversalAdapter",
            "LevelOrderTraversalAdapter", "QuadraticEquationAdapter", "KinematicsAdapter",
-           "BSTSearchAdapter", "LongestIncreasingSubsequenceAdapter", "NQueensAdapter", "BellmanFordAdapter", "FloydWarshallAdapter", "UnionFindAdapter", "EuclidGCDAdapter", "InductionProofAdapter", "SieveAdapter", "ADAPTERS"]
+           "BSTSearchAdapter", "LongestIncreasingSubsequenceAdapter", "CoinChangeAdapter", "NQueensAdapter", "BellmanFordAdapter", "FloydWarshallAdapter", "UnionFindAdapter", "EuclidGCDAdapter", "InductionProofAdapter", "SieveAdapter", "ADAPTERS"]
