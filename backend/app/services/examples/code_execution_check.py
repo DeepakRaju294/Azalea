@@ -20,6 +20,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from collections import deque
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -379,4 +380,82 @@ def code_reproduces_trace(code: str, trace: Any) -> list:
             out.append(f"step {st.id}: trace state {sigs[0]} never occurs in the code's execution "
                        f"(the code is a different variant than the walkthrough)")
             break                                           # one drift proves the mismatch; don't spam
+    return out
+
+
+# --- executed-reference: per-line VALUE attribution (catches a wrong value on a correct-variant line) -------
+# The trace-reproduction gate proves the code is the right VARIANT. This finer check proves each card's // comment
+# does not attribute a WRONG concrete value to an indexed code expression — the merge `append(left[i]) // append
+# value 9` bug where left[i] is really 30. It maps each card to its slice of the real execution (segmenting on
+# the trace's own step states), reads the actual value the expression took there, and flags a single-value claim
+# that never matches. Deliberately narrow: fires only on a line with exactly ONE index read and exactly ONE
+# introduced value, so an unambiguous contradiction — never a comparison/aside — is all it can flag.
+import re as _re
+
+_INDEX_READ = _re.compile(r"\b([A-Za-z_]\w*)\s*\[\s*([A-Za-z_]\w*)\s*\]")
+
+
+def _step_regions(exec_steps: list, trace: Any) -> Optional[list]:
+    """Segment the execution into one (start, end) slice per trace step, by finding where each step's state
+    first materializes in the run (in order). None if any step can't be located — the caller then SKIPS the
+    per-line check rather than guess a mapping (no false positives)."""
+    exec_lists = [{json.dumps(list(v) if isinstance(v, deque) else v, default=str)
+                   for v in (st.get("vars") or {}).values() if isinstance(v, (list, deque))}
+                  for st in exec_steps]
+    regions: list = []
+    cursor = 0
+    for st in getattr(trace, "steps", []):
+        sigs = set(_list_keys(getattr(st, "state_after", None)))
+        found = next((i for i in range(cursor, len(exec_steps)) if exec_lists[i] & sigs), None)
+        if found is None:
+            return None
+        regions.append((cursor, found))
+        cursor = found + 1
+    return regions
+
+
+def executed_reference_violations(cards: list, code: str, trace: Any) -> list:
+    """Per-line value check (see block comment). Returns (code, detail) tuples for hard violations — a card's
+    // comment attributing a value an indexed expression never held at that step. [] when out of scope or the
+    execution can't be mapped (never a false positive)."""
+    entry = find_entry_function(code or "")
+    arr = _input_array(trace)
+    if not entry or arr is None:
+        return []
+    try:
+        from app.services.visual_v2.simulators.code_tracer import trace_execution
+        exec_steps, _ = trace_execution(code, entry, {"array": list(arr)})
+    except Exception:  # noqa: BLE001 — execution defects are the reproduction gate's job, not this one
+        return []
+    regions = _step_regions(exec_steps, trace)
+    if regions is None:
+        return []
+    out: list = []
+    for k, card in enumerate(cards):
+        if k >= len(regions):
+            break
+        start, end = regions[k]
+        region = exec_steps[start:end + 1]
+        for wline in (card.get("work") or []):
+            if "//" not in str(wline):
+                continue
+            code_part, _, comment = str(wline).partition("//")
+            reads = _INDEX_READ.findall(code_part)
+            if len(reads) != 1:                              # ambiguous (swap / compare) -> skip
+                continue
+            name, idx = reads[0]
+            vals: set = set()                                # every value NAME[IDX] took in this step's slice
+            for es in region:
+                v = es.get("vars") or {}
+                seq, i = v.get(name), v.get(idx)
+                if isinstance(seq, list) and isinstance(i, int) and 0 <= i < len(seq) and isinstance(seq[i], int):
+                    vals.add(seq[i])
+            if not vals:
+                continue
+            comment_nums = {int(x) for x in _re.findall(r"-?\d+", comment)}
+            code_nums = {int(x) for x in _re.findall(r"-?\d+", code_part)}
+            claim = comment_nums - code_nums                 # values the comment INTRODUCES (not indices/literals)
+            if len(claim) == 1 and not (claim & vals):
+                out.append(("code_comment_value_mismatch",
+                            f"{name}[{idx}] is {sorted(vals)} here, not {claim.pop()}"))
     return out

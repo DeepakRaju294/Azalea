@@ -650,6 +650,11 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
         prose = validate_prose(cards, trace, adapter, code_anchored=bool(code))
         last_prose = prose
         hard = hard_prose_violations(prose)
+        if code:                                                  # executed-reference per-line value check:
+            from .code_execution_check import executed_reference_violations   # a // comment must not attribute
+            from .trace_contract import ProseViolation                        # a value the real run never held
+            hard = hard + [ProseViolation(c, d, 0, "") for c, d in
+                           executed_reference_violations(cards, code, trace)]
         advisory = [v for v in prose if v.severity != "hard"]
         if advisory:
             _log.info("trace_pipeline: %s advisory prose (missing/soft) x%d", adapter.slug, len(advisory))
