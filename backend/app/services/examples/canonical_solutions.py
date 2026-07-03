@@ -348,6 +348,17 @@ def level_order(root):
                     dist[i][j] = dist[i][k] + dist[k][j]
     return dist
 """,
+    "sieve_of_eratosthenes": """def sieve(n):
+    is_prime = [True] * (n + 1)
+    is_prime[0] = is_prime[1] = False
+    p = 2
+    while p * p <= n:
+        if is_prime[p]:
+            for m in range(p * p, n + 1, p):
+                is_prime[m] = False
+        p += 1
+    return [i for i in range(2, n + 1) if is_prime[i]]
+""",
     "arithmetic_eval": """def evaluate(tokens):
     stack = [tokens[0]]
     i = 1

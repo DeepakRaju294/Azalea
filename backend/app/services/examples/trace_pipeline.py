@@ -110,6 +110,8 @@ def _match_adapter(text: str, slug: str):
         return ADAPTERS["n_queens"]
     if "induction" in text or "prove that" in text or "proof by induction" in text or "mathematical induction" in text:
         return ADAPTERS["induction_proof"]
+    if "sieve" in text or "eratosthenes" in text:
+        return ADAPTERS["sieve_of_eratosthenes"]
     if "euclid" in text or "euclidean" in text or "gcd" in text or "greatest common divisor" in text:
         return ADAPTERS["euclid_gcd"]
     if "union-find" in text or "union find" in text or "disjoint set" in text or "disjoint-set" in text or "union_find" in text:
@@ -394,6 +396,8 @@ def _final_answer_text(trace: ContractTrace) -> str:
                              for i, g in enumerate(fa["groups"]))
         if "gcd" in fa:                                            # Euclid GCD (program execution)
             return f"gcd = {fa['gcd']}"
+        if "primes" in fa:                                         # Sieve of Eratosthenes (number theory)
+            return "primes: " + ", ".join(map(str, fa["primes"]))
         if "claim" in fa:                                          # induction proof (formal derivation)
             return f"proved by induction: {fa['claim']}"
         if "value" in fa:

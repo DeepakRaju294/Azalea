@@ -179,6 +179,11 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "coding": True, "canonical_solution": "euclid_gcd",
         "routing_aliases": ["euclid", "euclidean algorithm", "gcd", "greatest common divisor"],
         "negative_guards": [], "fixtures": ["reduce", "loop_ends"]},
+    "sieve_of_eratosthenes": {
+        "type": "T8a", "family": "number_theory", "status": "pilot", "verification_level": "trace_verified",
+        "coding": True, "canonical_solution": "sieve_of_eratosthenes",
+        "routing_aliases": ["sieve", "sieve of eratosthenes", "eratosthenes"],
+        "negative_guards": [], "fixtures": ["mark_prime", "completion"]},
     "induction_proof": {
         "type": "T8b", "family": "proof", "status": "pilot", "verification_level": "trace_verified",
         "coding": False, "canonical_solution": None,
