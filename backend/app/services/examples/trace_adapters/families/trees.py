@@ -325,37 +325,10 @@ def _trav_spec(order_desc: str, focus: str, must: list[str], out_shape: str) -> 
         terminal="every node visited exactly once", output_shape=out_shape)
 
 
-class PreorderTraversalAdapter(_TreeTraversalBase):
-    slug = "tree_preorder"
-    _walk = staticmethod(_preorder_walk)
-    _conv = {"structure": "binary_search_tree", "order": "preorder (node, left, right)",
-             "trace_granularity": "one_node_visit"}
-    _required = ["root_first", "right_branch", "completion"]
-    _order_word = "preorder"
-    example_spec = _trav_spec("preorder", "a node is output BEFORE its subtrees (root first)",
-                              ["root_first", "right_branch", "completion"], "the preorder node sequence")
-
-
-class PostorderTraversalAdapter(_TreeTraversalBase):
-    slug = "tree_postorder"
-    _walk = staticmethod(_postorder_walk)
-    _conv = {"structure": "binary_search_tree", "order": "postorder (left, right, node)",
-             "trace_granularity": "one_node_visit"}
-    _required = ["leaf", "root_last", "completion"]
-    _order_word = "postorder"
-    example_spec = _trav_spec("postorder", "a node is output AFTER both its subtrees (root last)",
-                              ["leaf", "root_last", "completion"], "the postorder node sequence")
-
-
-class LevelOrderTraversalAdapter(_TreeTraversalBase):
-    slug = "tree_levelorder"
-    _walk = staticmethod(_levelorder_walk)
-    _conv = {"structure": "binary_tree", "order": "level-order (breadth-first, top to bottom)",
-             "trace_granularity": "one_node_visit"}
-    _required = ["root_level", "deeper_level", "completion"]
-    _order_word = "level-order"
-    example_spec = _trav_spec("level-order", "process the tree one level at a time, left to right (a queue)",
-                              ["root_level", "deeper_level", "completion"], "the level-order node sequence")
+# NOTE: the pre/post/level-order traversal adapters were MIGRATED to declarations — see
+# `types/t1_traversal.py`. They now hydrate from `_TreeTraversalBase` (the type template) + `_*_walk` +
+# `_trav_spec` (all still here), so this family file keeps only the shared machinery, not the per-adapter
+# classes. Byte-identical traces verified by test_declared_adapters_golden.
 
 
 class BSTSearchAdapter(FamilyAdapterBase):

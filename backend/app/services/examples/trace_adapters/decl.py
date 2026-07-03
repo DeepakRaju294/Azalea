@@ -36,6 +36,7 @@ class AdapterDecl:
     routing: dict[str, Any] = field(default_factory=dict)  # the ROUTING_RULES entry for this adapter
     canonical: Optional[str] = None                        # canonical-solution key (coding adapters), else None
     version: int = 1
+    class_attrs: dict[str, Any] = field(default_factory=dict)  # extra class attrs the methods read (e.g. _walk)
 
     def missing_methods(self) -> list[str]:
         return [m for m in _REQUIRED_METHODS if m not in self.methods]
@@ -50,7 +51,8 @@ def hydrate(decl: AdapterDecl) -> FamilyAdapterBase:
         raise ValueError(f"adapter {decl.slug!r} declaration is missing methods: {missing}")
     ns: dict[str, Any] = {
         "slug": decl.slug, "label_convention": decl.label_convention,
-        "example_spec": decl.example_spec, "version": decl.version, **decl.methods,
+        "example_spec": decl.example_spec, "version": decl.version,
+        **decl.class_attrs, **decl.methods,
     }
     cls_name = "".join(part.capitalize() for part in decl.slug.split("_")) + "Adapter"
     cls = type(cls_name, (FamilyAdapterBase,), ns)

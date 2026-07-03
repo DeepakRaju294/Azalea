@@ -18,11 +18,15 @@ from .families.structures import UnionFindAdapter
 from .families.sequence import (BinarySearchAdapter, BubbleSortAdapter, HeapSortAdapter,
                                 InsertionSortAdapter, MergeSortAdapter, QuickSortAdapter,
                                 SelectionSortAdapter)
-from .families.trees import (BSTSearchAdapter, InorderTraversalAdapter, LevelOrderTraversalAdapter,
-                             PostorderTraversalAdapter, PreorderTraversalAdapter)
+from .families.trees import BSTSearchAdapter, InorderTraversalAdapter
+# Declarative adapters (scalable-adapters infra): grouped by TYPE in `types/`, hydrated into runtime adapters.
+from .decl import hydrate as _hydrate
+from .types.t1_traversal import DECLARATIONS as _T1_TRAVERSAL_DECLS
+
+_DECLARED = [_hydrate(d) for d in _T1_TRAVERSAL_DECLS]   # tree pre/post/level-order (T1) now come from decls
 
 # Explicit slug -> adapter registry (no fuzzy keyword matching; routing is in trace_pipeline, §17).
-ADAPTERS = {a.slug: a for a in (
+ADAPTERS = {a.slug: a for a in (*_DECLARED,
     BinarySearchAdapter(), BFSAdapter(), DFSIterativeAdapter(), KruskalAdapter(), MergeSortAdapter(),
     InsertionSortAdapter(), SelectionSortAdapter(), BubbleSortAdapter(), HeapSortAdapter(),  # T8a pilots — grow a sorted region a pass at a time
     QuickSortAdapter(),                # T3 — 2nd divide-and-conquer pilot (partition-in-place) after merge sort
@@ -34,7 +38,6 @@ ADAPTERS = {a.slug: a for a in (
     InductionProofAdapter(),           # T8b PILOT — formal derivation (proof by induction; numeric-oracle refereed)
     SieveAdapter(),                    # T8a — sieve of Eratosthenes (incremental composite marking)
     InorderTraversalAdapter(),         # TEMPLATE — coding concept (tree family)
-    PreorderTraversalAdapter(), PostorderTraversalAdapter(), LevelOrderTraversalAdapter(),  # verified traversal siblings
     QuadraticEquationAdapter(),        # TEMPLATE — math concept (algebra family, no code)
     KinematicsAdapter(),               # TEMPLATE — science concept (physics family, no code)
     BSTSearchAdapter(),                # T4 GATE — second search state model (tree node, not array bounds)
@@ -44,6 +47,5 @@ ADAPTERS = {a.slug: a for a in (
 
 __all__ = ["BinarySearchAdapter", "BFSAdapter", "DFSIterativeAdapter", "KruskalAdapter",
            "MergeSortAdapter", "QuickSortAdapter", "InsertionSortAdapter", "SelectionSortAdapter", "BubbleSortAdapter", "HeapSortAdapter", "ArithmeticEvalAdapter", "DijkstraAdapter", "PrimAdapter",
-           "InorderTraversalAdapter", "PreorderTraversalAdapter", "PostorderTraversalAdapter",
-           "LevelOrderTraversalAdapter", "QuadraticEquationAdapter", "KinematicsAdapter",
+           "InorderTraversalAdapter", "QuadraticEquationAdapter", "KinematicsAdapter",
            "BSTSearchAdapter", "LongestIncreasingSubsequenceAdapter", "CoinChangeAdapter", "NQueensAdapter", "BellmanFordAdapter", "FloydWarshallAdapter", "UnionFindAdapter", "EuclidGCDAdapter", "InductionProofAdapter", "SieveAdapter", "ADAPTERS"]
