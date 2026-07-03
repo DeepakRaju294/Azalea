@@ -184,18 +184,23 @@ def structural_invariants(trace: ContractTrace, adapter) -> list[str]:
 # contract is WELL-FORMEDNESS, not field-equality: every step must emit a non-empty visual_state whose `kind`
 # is one the renderer knows, carrying that kind's renderer-essential fields. This locks the visual vocabulary
 # and guarantees every adapter (present and future) hands the renderer something it can draw.
-VISUAL_KINDS: dict[str, tuple[str, ...]] = {
-    "array": ("array",), "array_window": (), "board": ("n", "queens"), "dist_graph": ("dist",),
-    "equation": (), "expression": ("tokens",), "forest": ("parent",), "matrix": ("nodes", "D"),
-    "node_link": ("dist",), "proof": ("established",), "queue_graph": ("queue",), "run_list": ("runs",),
-    "stack_graph": ("stack",), "tree": ("current",), "variables": (), "weighted_graph": ("selected",),
+# kind -> {required field: accepted python types}. The renderer relies on both presence AND type, so the
+# contract checks both. (Empty {} = the kind carries per-step-varying fields with no single required one.)
+VISUAL_KINDS: dict[str, dict[str, tuple[type, ...]]] = {
+    "array": {"array": (list,)}, "array_window": {}, "board": {"n": (int,), "queens": (list,)},
+    "dist_graph": {"dist": (dict,)}, "equation": {}, "expression": {"tokens": (list,)},
+    "forest": {"parent": (list,)}, "matrix": {"nodes": (list,), "D": (dict,)}, "node_link": {"dist": (dict,)},
+    "proof": {"established": (list,)}, "queue_graph": {"queue": (list,)}, "run_list": {"runs": (list,)},
+    "stack_graph": {"stack": (list,)}, "tree": {"current": (int, type(None))}, "variables": {},
+    "weighted_graph": {"selected": (list,)},
 }
 
 
 def visual_contract_violations(trace: "ContractTrace") -> list[str]:
     """Every step's `visual_state` is well-formed for the renderer: a non-empty dict, a `kind` the renderer
-    knows (VISUAL_KINDS), and that kind's required fields present. Returns [] when the trace is Phase-1.5
-    render-ready. (Enforced only on the Phase-1.5 path — see `validate_fidelity(validate_visual_state=True)`.)"""
+    knows (VISUAL_KINDS), and that kind's required fields PRESENT and correctly TYPED. Returns [] when the
+    trace is Phase-1.5 render-ready. (Enforced only on the Phase-1.5 path — see
+    `validate_fidelity(validate_visual_state=True)`.)"""
     errs: list[str] = []
     for s in getattr(trace, "steps", []) or []:
         vs = getattr(s, "visual_state", None) or {}
@@ -206,9 +211,13 @@ def visual_contract_violations(trace: "ContractTrace") -> list[str]:
         if kind not in VISUAL_KINDS:
             errs.append(f"{s.id}: unknown visual kind {kind!r} (not in the renderer's vocabulary)")
             continue
-        for field_name in VISUAL_KINDS[kind]:
+        for field_name, field_types in VISUAL_KINDS[kind].items():
             if field_name not in vs:
                 errs.append(f"{s.id}: visual kind {kind!r} is missing required field {field_name!r}")
+            elif not isinstance(vs[field_name], field_types):
+                want = "/".join(t.__name__ for t in field_types)
+                errs.append(f"{s.id}: visual kind {kind!r} field {field_name!r} should be {want}, "
+                            f"got {type(vs[field_name]).__name__}")
     return errs
 
 

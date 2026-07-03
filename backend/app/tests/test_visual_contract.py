@@ -57,6 +57,16 @@ class VisualContract(unittest.TestCase):
         self.assertIn("array", VISUAL_KINDS)
         self.assertNotIn("", VISUAL_KINDS)
 
+    def test_wrong_field_type_is_caught(self):
+        # The contract enforces TYPE, not just presence: an array kind whose "array" is not a list fails.
+        adapter = ADAPTERS["binary_search"]
+        trace = tp.select_instance(adapter, seed=3)
+        steps = list(trace.steps)
+        steps[0] = dataclasses.replace(steps[0], visual_state={"kind": "array", "array": "not-a-list"})
+        bad = dataclasses.replace(trace, steps=steps)
+        v = visual_contract_violations(bad)
+        self.assertTrue(any("should be list" in e for e in v), v)
+
 
 if __name__ == "__main__":
     unittest.main()
