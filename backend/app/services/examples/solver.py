@@ -1499,7 +1499,9 @@ def _enforce_worked_example_schema_cap(
             "coding_implementation": bool(code),
             "topic_family": topic.get("topic_family") or "",
         }
-        cap = build_prepass_config(tdict).maximum_example_cards
+        _cfg = build_prepass_config(tdict)
+        cap = _cfg.maximum_example_cards
+        category = _cfg.example_category
         from app.services.examples import generation_report as _gr
         _gr.we(we_card_count=len(cards), we_card_cap=cap)
         if len(cards) <= cap:
@@ -1530,7 +1532,20 @@ def _enforce_worked_example_schema_cap(
                 bounded.setdefault("expected_final_answer", sol.get("expected_final_answer") or sol.get("final_answer"))
                 bounded.setdefault("required_cases", sol.get("required_cases") or [])
                 return bounded, True
-        # Couldn't produce a bounded version — keep the original but flag it loudly so it's visible.
+        # Couldn't produce a bounded version. For a CONCEPT-category topic (concept/definition/formula/proof/
+        # comparison), a worked example must be a SHORT conceptual illustration — the idea applied once — never
+        # a multi-step algorithm line-trace. An over-cap line-trace here is the WRONG KIND of example, so
+        # WITHHOLD it: the topic is better with no worked example than an 18-card trace. Emptying `cards` makes
+        # the downstream builder skip the example (its "no cards -> return False" path).
+        if category == "simple_concept":
+            _log.info("worked-example: withholding over-cap line-trace on concept-category topic %s "
+                      "(%d cards > cap %d — a concept example must be a short illustration, not a trace)",
+                      topic.get("id"), len(cards), cap)
+            _gr.we(final_source="withheld_over_cap_concept")
+            withheld = dict(sol)
+            withheld["cards"] = []
+            return withheld, False
+        # Non-concept topic: keep the original but flag it loudly so it's visible.
         _log.warning("worked-example: bounded re-solve unavailable for %s; over-cap example flagged", topic.get("id"))
         sol.setdefault("_schema", {})["projection_cap_exceeded"] = {"cards": len(cards), "cap": cap}
         return sol, False

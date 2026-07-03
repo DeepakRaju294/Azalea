@@ -345,8 +345,10 @@ class TestSchemaCapEnforcement(unittest.TestCase):
         self.assertNotIn("_schema", out)
 
     def test_over_cap_flagged_offline(self):
+        # A NON-concept topic (algorithm_walkthrough) over-cap that can't be bounded is KEPT + flagged.
+        # (Concept-category topics instead WITHHOLD the over-cap line-trace — see test_concept_example_withhold.)
         sol = {"cards": [{"title": f"s{i}"} for i in range(25)], "final_answer": "x"}
-        topic = {"id": "qs", "title": "Intro to Quick Sort", "topic_type": "concept"}
+        topic = {"id": "qs", "title": "Quick Sort Walkthrough", "topic_type": "algorithm_walkthrough"}
         out, bounded = _enforce_worked_example_schema_cap(sol, topic, None)
         self.assertFalse(bounded)  # no key -> can't re-solve, but the violation is recorded
         # cap is read from the live config so this stays correct whether the raised-caps flag is on/off

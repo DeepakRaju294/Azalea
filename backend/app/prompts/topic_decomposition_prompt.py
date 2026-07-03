@@ -79,6 +79,12 @@ RULES:
 - Two topics on the same subject are allowed only when the learner job (primary_action) differs.
 - Keep the path minimal (usually 3-10 topics); foundation topics only when a brief just-in-time note
   inside the next topic would not suffice.
+- A `concept_intuition` topic is only for a concept the learner must MASTER on its own (a substantial,
+  distinct learning delta). A paradigm / mental-model / "what X is" FRAMING for the topics that follow is
+  NOT its own topic: set ownership_mode "embedded" with owner = the study-path introduction (or the first
+  topic that uses it). NEVER create a standalone concept_intuition topic whose worked example could only be
+  a trace of one of the concrete algorithms that follow — that concept is framing; embed it in the intro so
+  the intro carries it, and do not spend a topic (or a forced worked example) on it.
 
 Return ONLY JSON of this shape:
 {{
