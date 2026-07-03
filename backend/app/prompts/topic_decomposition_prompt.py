@@ -77,8 +77,17 @@ RULES:
 - practice_evidence_type ∈ {", ".join(PRACTICE_EVIDENCE_TYPES)}.
 - expected_output = the concrete artifact the learner produces (distinct from practice_target).
 - Two topics on the same subject are allowed only when the learner job (primary_action) differs.
+- Distinct TECHNIQUES are distinct learning deltas — even at the same complexity class or under one umbrella.
+  When the GOAL is to learn or survey a FAMILY of methods (e.g. "sorting algorithms", "graph traversals",
+  "search algorithms", "tree traversals"), each canonical member that teaches a DIFFERENT technique is its
+  OWN topic — do NOT fold them as redundant. Cover the canonical set a course or textbook would teach
+  (sorting -> bubble, selection, insertion, merge, quicksort; graph traversal -> BFS and DFS; not a single
+  representative). The "unique delta" here is the TECHNIQUE, not the runtime class or the shared umbrella
+  subject. (This does NOT apply when the goal targets ONE specific method — then include only what that
+  method needs, not its whole family.)
 - Keep the path minimal (usually 3-10 topics); foundation topics only when a brief just-in-time note
-  inside the next topic would not suffice.
+  inside the next topic would not suffice. EXCEPTION: a family SURVEY (above) covers its canonical members
+  even when that pushes past the usual count — breadth across the techniques IS the learning there.
 - A `concept_intuition` topic is only for a concept the learner must MASTER on its own (a substantial,
   distinct learning delta). A paradigm / mental-model / "what X is" FRAMING for the topics that follow is
   NOT its own topic: set ownership_mode "embedded" with owner = the study-path introduction (or the first
