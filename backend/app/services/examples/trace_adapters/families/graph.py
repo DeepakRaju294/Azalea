@@ -1067,3 +1067,162 @@ class BellmanFordAdapter(FamilyAdapterBase):
                           str(card.get("result", ""))]).lower()
         pv = str(step.inputs["pass"])
         return [] if pv in prose else [("pass_not_stated", pv)]
+
+
+# ===================================================================================================
+# Floyd-Warshall (T9b — LAYERED STATE REFINEMENT). Unlike Bellman-Ford's edge-pass relaxation (T9a), the
+# whole distance MATRIX is refined in layers: layer k re-derives every pair while allowing intermediate
+# vertices up to k. Each layer is a global refinement of the state, not a sweep of edges — the T9b shape.
+# ===================================================================================================
+_FW_CONV = {"algorithm_variant": "floyd_warshall", "graph": "directed", "trace_granularity": "one_layer",
+            "layer_meaning": "layer k allows paths whose intermediate vertices are all <= k"}
+_FW_REQ = ["layer_improves", "completion"]
+_FW_INV = [{"id": "matrix_upper_bounds_true", "scope": "every_step",
+            "statement": "no matrix entry is ever below the true all-pairs shortest distance"}]
+
+
+def _all_pairs_true(graph: dict[str, dict[str, int]]) -> dict[str, dict[str, float]]:
+    """Independent oracle: true all-pairs shortest distances via one Dijkstra per source (reuses the T9a
+    helper). Refereess the Floyd-Warshall matrix — recomputed from the graph, never echoes the trace."""
+    return {s: _true_shortest(graph, s) for s in graph}
+
+
+class FloydWarshallAdapter(FamilyAdapterBase):
+    slug = "floyd_warshall"
+    label_convention = "letters"
+    example_spec = ExampleSpec(
+        input=InstanceShape("weighted_graph", count=(4, 4), value_range=(1, 9),
+                            structure=["directed", "non_negative_weights"]),
+        stages={"layer": StageSpec(
+            "layer", "allow one more intermediate vertex and refine every pair's distance",
+            teaching_focus="each layer opens one new waypoint; a pair improves if routing through it is shorter",
+            contains={"scan_all_pairs": "internal", "refine_via_waypoint": "required"},
+            state_effects=["some pairs drop to a shorter path through the new waypoint; none can increase"])},
+        structure="layer+ (one per vertex) until every vertex has been allowed as a waypoint",
+        must_exercise=["layer_improves", "completion"], must_cover=["layer_improves"],
+        must_avoid=["complete_graph_no_shortcuts"],
+        terminal="every vertex has been allowed as a waypoint, so the matrix holds all-pairs shortest distances",
+        output_shape="the all-pairs shortest-distance matrix")
+
+    def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+        rng = random.Random(seed)
+        for i in range(120):
+            n = 4
+            labels = [chr(65 + j) for j in range(n)]
+            adj: dict[str, dict[str, int]] = {x: {} for x in labels}
+            # a directed cycle guarantees reachability; sparse extra edges create multi-hop shortcuts
+            for j in range(n):
+                adj[labels[j]][labels[(j + 1) % n]] = rng.randint(1, 9)
+            for _ in range(rng.randint(1, 2)):
+                a, b = rng.sample(labels, 2)
+                adj[a][b] = rng.randint(1, 9)
+            yield {"graph": {k: dict(v) for k, v in adj.items()}, "_id": f"floyd_warshall_v1_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        return len(trace.steps) >= 2 and bool(trace.case_evidence.get("layer_improves"))
+
+    def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                  attempt: int = 1, seed: int = 0) -> ContractTrace:
+        graph: dict[str, dict[str, int]] = example_input["graph"]
+        nodes = sorted(graph)
+        D: dict[str, dict[str, float]] = {i: {j: (0.0 if i == j else _INF) for j in nodes} for i in nodes}
+        for i in graph:
+            for j, w in graph[i].items():
+                D[i][j] = min(D[i][j], float(w))
+        init_D = {i: dict(D[i]) for i in nodes}            # matrix with edges loaded, before any layer (= s1 prior)
+
+        def snap(k_done: int) -> dict[str, Any]:
+            return {"D": {i: dict(D[i]) for i in nodes}, "k_done": k_done, "graph": graph}
+
+        def pairs_text() -> str:
+            out = [f"{i}→{j} = {int(D[i][j])}" for i in nodes for j in nodes
+                   if i != j and D[i][j] != _INF]
+            return ", ".join(out)
+
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        for idx, k in enumerate(nodes, start=1):
+            prior = snap(idx - 1)
+            improvements: list[tuple] = []
+            for i in nodes:
+                for j in nodes:
+                    if i == j:
+                        continue
+                    if D[i][k] + D[k][j] < D[i][j]:
+                        D[i][j] = D[i][k] + D[k][j]
+                        improvements.append((i, j, int(D[i][k]), int(D[k][j]), int(D[i][j])))
+            after = snap(idx)
+            sid = f"s{idx}"
+            if improvements:
+                impr = "; ".join(f"{i}→{j} via {k} costs {ik}+{kj}={tot}" for (i, j, ik, kj, tot) in improvements)
+                reason = f"layer {k}: allow {k} as an intermediate vertex — {impr}."
+                evr = f"After layer {k}: {pairs_text()}."
+                decision = f"layer {k}: refine every pair that is shorter through {k}"
+                evidence.setdefault("layer_improves", []).append(sid)
+            else:
+                reason = (f"layer {k}: allow {k} as an intermediate vertex — no pair becomes shorter through "
+                          f"{k}, so the matrix is unchanged.")
+                evr = f"Layer {k} changes nothing; the matrix is unchanged."
+                decision = f"layer {k}: no pair improves through {k}"
+                evidence.setdefault("layer_no_change", []).append(sid)
+            allowed = sorted({int(x) for x in re.findall(r"\d+", reason + " " + evr)})
+            steps.append(Step(
+                id=sid, operation="layer", prior_state=prior, state_after=after,
+                inputs={"waypoint": k, "improved": [[i, j, tot] for (i, j, ik, kj, tot) in improvements]},
+                decision=decision, reason=reason,
+                visual_state={"kind": "matrix", "nodes": nodes,
+                              "D": {i: {j: (None if D[i][j] == _INF else int(D[i][j])) for j in nodes}
+                                    for i in nodes}, "waypoint": k},
+                visual_delta={"waypoint": k, "improved": [[i, j] for (i, j, ik, kj, tot) in improvements]},
+                expected_visible_result=evr,
+                facts={"allowed_values": allowed, "required_facts": [fact("waypoint", k)],
+                       "forbidden_claims": []}))
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        all_pairs = sorted([i, j, int(D[i][j])] for i in nodes for j in nodes
+                           if i != j and D[i][j] != _INF)
+        return ContractTrace(
+            problem=(f"Run Floyd-Warshall on the directed graph where {fmt_adjacency(graph, weighted=True)}. "
+                     f"Give the all-pairs shortest distances."),
+            conventions=dict(_FW_CONV),
+            initial_state={"D": init_D, "k_done": 0, "graph": graph},
+            final_answer={"all_pairs": all_pairs}, steps=steps,
+            invariants=[dict(x) for x in _FW_INV], required_cases=list(_FW_REQ), case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    @staticmethod
+    def _norm(D: dict[str, dict[str, float]]) -> tuple:
+        return tuple(sorted((i, j, ("inf" if v == _INF else v)) for i, row in (D or {}).items()
+                            for j, v in row.items()))
+
+    def states_equivalent(self, a, b):
+        a, b = a or {}, b or {}
+        return self._norm(a.get("D") or {}) == self._norm(b.get("D") or {}) and a.get("k_done") == b.get("k_done")
+
+    def final_answer_entails(self, state, answer):
+        D = (state or {}).get("D") or {}
+        got = sorted([i, j, int(v)] for i, row in D.items() for j, v in row.items()
+                     if i != j and v != _INF)
+        return got == list((answer or {}).get("all_pairs") or [])
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "matrix_upper_bounds_true":
+            graph = (state or {}).get("graph") or {}
+            D = (state or {}).get("D") or {}
+            true = _all_pairs_true(graph)
+            for i in true:
+                for j in true[i]:
+                    if D.get(i, {}).get(j, _INF) < true[i][j]:   # below optimal is impossible
+                        return False
+            return True
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation == "layer" else [f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        wp = str(step.inputs["waypoint"]).lower()
+        return [] if wp in prose else [("waypoint_not_stated", wp)]

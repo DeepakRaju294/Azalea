@@ -334,6 +334,20 @@ def level_order(root):
         a, b = b, a % b
     return a
 """,
+    "floyd_warshall": """def floyd_warshall(graph):
+    nodes = list(graph)
+    INF = float("inf")
+    dist = {i: {j: (0 if i == j else INF) for j in nodes} for i in nodes}
+    for i in graph:
+        for j, w in graph[i].items():
+            dist[i][j] = min(dist[i][j], w)
+    for k in nodes:
+        for i in nodes:
+            for j in nodes:
+                if dist[i][k] + dist[k][j] < dist[i][j]:
+                    dist[i][j] = dist[i][k] + dist[k][j]
+    return dist
+""",
     "arithmetic_eval": """def evaluate(tokens):
     stack = [tokens[0]]
     i = 1

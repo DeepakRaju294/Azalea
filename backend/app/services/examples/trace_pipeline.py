@@ -118,6 +118,8 @@ def _match_adapter(text: str, slug: str):
         return ADAPTERS["longest_increasing_subsequence"]
     if "order of operations" in text or "evaluate expression" in text or "arithmetic expression" in text:
         return ADAPTERS["arithmetic_eval"]
+    if "floyd-warshall" in text or "floyd warshall" in text or "floyd_warshall" in text or "all-pairs" in text or "all pairs shortest" in text:
+        return ADAPTERS["floyd_warshall"]
     if "bellman-ford" in text or "bellman ford" in text or "bellman_ford" in text or "bellmanford" in text:
         return ADAPTERS["bellman_ford"]
     if "dijkstra" in text or "shortest path" in text or "shortest-path" in text:
@@ -396,6 +398,8 @@ def _final_answer_text(trace: ContractTrace) -> str:
             return f"proved by induction: {fa['claim']}"
         if "value" in fa:
             return f"= {fa['value']}"
+        if "all_pairs" in fa:                                      # Floyd-Warshall (all-pairs shortest paths)
+            return "all-pairs shortest distances: " + ", ".join(f"{i}→{j} = {d}" for i, j, d in fa["all_pairs"])
         if "dist" in fa:
             return "shortest distances: " + ", ".join(f"{k} = {v}" for k, v in fa["dist"].items())
         # generic clean fallback — NEVER a raw dict/list repr (kinematics {v,s}, a stray sequence key, etc.):

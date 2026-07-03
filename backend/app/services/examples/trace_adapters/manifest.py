@@ -164,6 +164,11 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "coding": True, "canonical_solution": "bellman_ford",
         "routing_aliases": ["bellman-ford", "bellman ford", "bellman_ford", "bellmanford"],
         "negative_guards": [], "fixtures": ["relax_improves", "converged"]},
+    "floyd_warshall": {
+        "type": "T9b", "family": "graph", "status": "pilot", "verification_level": "trace_verified",
+        "coding": True, "canonical_solution": "floyd_warshall",
+        "routing_aliases": ["floyd-warshall", "floyd warshall", "floyd_warshall", "all-pairs shortest paths"],
+        "negative_guards": [], "fixtures": ["layer_improves", "layer_no_change"]},
     "union_find": {
         "type": "T10", "family": "structures", "status": "pilot", "verification_level": "trace_verified",
         "coding": True, "canonical_solution": "union_find",

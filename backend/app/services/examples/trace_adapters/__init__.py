@@ -10,7 +10,7 @@ from .families.dp import LongestIncreasingSubsequenceAdapter
 from .families.execution import EuclidGCDAdapter
 from .families.formula import ArithmeticEvalAdapter
 from .families.graph import (BellmanFordAdapter, BFSAdapter, DFSIterativeAdapter, DijkstraAdapter,
-                             KruskalAdapter, PrimAdapter)
+                             FloydWarshallAdapter, KruskalAdapter, PrimAdapter)
 from .families.physics import KinematicsAdapter
 from .families.proof import InductionProofAdapter
 from .families.structures import UnionFindAdapter
@@ -27,6 +27,7 @@ ADAPTERS = {a.slug: a for a in (
     QuickSortAdapter(),                # T3 — 2nd divide-and-conquer pilot (partition-in-place) after merge sort
     ArithmeticEvalAdapter(), DijkstraAdapter(), PrimAdapter(),
     BellmanFordAdapter(),              # T9a PILOT — repeated relaxation / iterative refinement (directed graph)
+    FloydWarshallAdapter(),            # T9b PILOT — layered state refinement (all-pairs matrix, one layer per waypoint)
     UnionFindAdapter(),                # T10 PILOT — stateful invariant maintenance (mutable disjoint-set forest)
     EuclidGCDAdapter(),                # T12 PILOT — program execution / memory trace (loop + evolving variables)
     InductionProofAdapter(),           # T8b PILOT — formal derivation (proof by induction; numeric-oracle refereed)
@@ -43,4 +44,4 @@ __all__ = ["BinarySearchAdapter", "BFSAdapter", "DFSIterativeAdapter", "KruskalA
            "MergeSortAdapter", "QuickSortAdapter", "InsertionSortAdapter", "SelectionSortAdapter", "BubbleSortAdapter", "HeapSortAdapter", "ArithmeticEvalAdapter", "DijkstraAdapter", "PrimAdapter",
            "InorderTraversalAdapter", "PreorderTraversalAdapter", "PostorderTraversalAdapter",
            "LevelOrderTraversalAdapter", "QuadraticEquationAdapter", "KinematicsAdapter",
-           "BSTSearchAdapter", "LongestIncreasingSubsequenceAdapter", "NQueensAdapter", "BellmanFordAdapter", "UnionFindAdapter", "EuclidGCDAdapter", "InductionProofAdapter", "ADAPTERS"]
+           "BSTSearchAdapter", "LongestIncreasingSubsequenceAdapter", "NQueensAdapter", "BellmanFordAdapter", "FloydWarshallAdapter", "UnionFindAdapter", "EuclidGCDAdapter", "InductionProofAdapter", "ADAPTERS"]
