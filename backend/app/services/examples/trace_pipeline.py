@@ -106,7 +106,8 @@ _CODING_FORMAT_SYSTEM = (
     "FIELDS per card:\n"
     "- title: a SHORT, DISTINCT name for THIS step that NAMES the entity it acts on, in THIS algorithm's own "
     "terms (e.g. 'Add edge (A,B,7)', 'Compare arr[3] with the target', 'Merge two sorted runs') — NEVER the "
-    "raw operation id like 'select_edge' (that repeats every step), and never borrow another algorithm's nouns.\n"
+    "raw operation id like 'select_edge' (that repeats every step), and never borrow another algorithm's nouns. "
+    "Do NOT prefix the title with an ordinal like 'Step 2:' / 'Pass 3:' — the card's position is already shown.\n"
     "- goal: leave EMPTY — the card title already states the structural step (do not restate it).\n"
     "- reasoning: WHICH code construct implements it and why (the condition / loop / call / branch).\n"
     "- work: REQUIRED list. Each line BEGINS with the LITERAL code line from the CODE below, quoted "
@@ -217,6 +218,8 @@ def build_format_payload(trace: ContractTrace, code: Optional[str] = None,
         "decision in words, in THIS algorithm's own terms (e.g. 'add it / accept'; 'move the lower bound to "
         "6'; 'copy 3 to the output'; 'skip it — it would form a cycle'). Use this algorithm's nouns, never "
         "another's. A step that omits the entity/values or the decision is INVALID. "
+        "Do NOT prefix the title with an ordinal like 'Step 2:' / 'Pass 3:' — the card's position is already "
+        "shown; the title is the ACTION on the ENTITY (e.g. 'Insert 29 into the sorted prefix'). "
         "Do NOT invent or alter any value, and do NOT output any machine-state/JSON-state fields. "
         'Return ONLY JSON: {"cards":[{"title","goal","reasoning","work":[...],"result"}, ...]}'
     ) + g_rule

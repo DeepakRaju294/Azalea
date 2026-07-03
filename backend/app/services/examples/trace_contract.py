@@ -112,6 +112,7 @@ DEFAULT_TEACHING_VALIDATION = TeachingValidationContract(
         "decision_contradiction",   # prose asserts the OPPOSITE of the verified decision (accept vs skip)
         "mislabeled_value",         # a named quantity stated with the WRONG value (typed claim ledger, §7)
         "forbidden_claim",          # a claim the adapter declared must never appear
+        "code_comment_side_mismatch",  # a code line's // comment names the OPPOSITE run/side it operates on
         "wrong_selected", "wrong_final_answer", "invented_transition", "missing_terminal",
     }),
     soft_codes=frozenset({
@@ -361,7 +362,10 @@ def validate_prose(cards: list[dict[str, Any]], trace: ContractTrace, adapter,
         facts = step.facts or {}
         allowed = {str(x) for x in facts.get("allowed_values", [])}
         if allowed and not code_anchored:
-            for n in set(re.findall(r"-?\d+", prose)):
+            # An ordinal card label ("Step 2:", "Pass 3") is a POSITION in the walkthrough, not a data value —
+            # drop it before the numeric scan so the ordinal isn't misread as a wrong array element.
+            scan = re.sub(r"\b(?:step|pass|round|phase|iteration)\s+\d+", " ", prose)
+            for n in set(re.findall(r"-?\d+", scan)):
                 if n not in allowed:
                     out.append(ProseViolation("value_not_allowed", n, i, step.id))
         for f in facts.get("required_facts", []):
@@ -377,9 +381,33 @@ def validate_prose(cards: list[dict[str, Any]], trace: ContractTrace, adapter,
         ledger = facts.get("claims")
         if isinstance(ledger, dict):
             out += validate_claim_ledger(prose, ledger, i, step.id)
+        if code_anchored:
+            out += _code_comment_side_contradiction(card, i, step.id)
         # adapter-specific claims are contradictions (wrong node / decision / membership) -> hard
         out += [ProseViolation(code, detail, i, step.id)
                 for code, detail in adapter.validate_prose_claims(card, step)]
+    return out
+
+
+def _code_comment_side_contradiction(card: dict[str, Any], i: int, step_id: str) -> list[ProseViolation]:
+    """Code-anchored guard: a work line's `<code> // <comment>` where the CODE reads from one run/side but
+    the COMMENT names the OTHER (e.g. `merged.append(left[i]) // append value 9 from the right run`). This is
+    the classic merge mis-annotation the value/state checks miss — the array end-state stays correct while the
+    line taught is wrong. Fires only on an unambiguous left/right contradiction; correct cards never trip it."""
+    out: list[ProseViolation] = []
+    for line in (card.get("work") or []):
+        if "//" not in str(line):
+            continue
+        code, _, comment = str(line).partition("//")
+        code_l, comment_l = code.lower(), comment.lower()
+        code_left = bool(re.search(r"\bleft\s*\[", code_l))
+        code_right = bool(re.search(r"\bright\s*\[", code_l))
+        says_left = bool(re.search(r"\bfrom (?:the )?left\b|\bleft run\b", comment_l))
+        says_right = bool(re.search(r"\bfrom (?:the )?right\b|\bright run\b", comment_l))
+        if code_left and not code_right and says_right:
+            out.append(ProseViolation("code_comment_side_mismatch", "code reads left[..] but comment says right", i, step_id))
+        elif code_right and not code_left and says_left:
+            out.append(ProseViolation("code_comment_side_mismatch", "code reads right[..] but comment says left", i, step_id))
     return out
 
 

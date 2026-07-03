@@ -767,9 +767,11 @@ class QuickSortAdapter(FamilyAdapterBase):
             placed.append(i)
             counter["i"] += 1
             sid = f"s{counter['i']}"
-            reason = (f"partition the subarray {window} around pivot {pivot} (its last element): every value "
-                      f"smaller than {pivot} shifts to the left, so {pivot} settles at position {i} — "
-                      f"everything left of it is now smaller and everything right is larger")
+            reason = (f"partition the subarray {window} (this is the current recursive call's slice) around "
+                      f"pivot {pivot}, its last element: every value smaller than {pivot} shifts to the left, "
+                      f"so {pivot} settles at position {i} — everything left of it is now smaller and everything "
+                      f"right is larger. Quicksort then recurses into the left slice, then the right slice, each "
+                      f"partitioned the same way — which is why the pivots land in this order")
             evr = f"Pivot {pivot} locked into position {i}; array now {a}."
             if hi - lo >= 2:
                 evidence.setdefault("multi_element_partition", []).append(sid)

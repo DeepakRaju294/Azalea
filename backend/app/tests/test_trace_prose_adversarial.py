@@ -181,5 +181,51 @@ class CodeAnchoredAllowlist(unittest.TestCase):
                              for x in validate_prose([card], tr, _StubAdapter(), code_anchored=True)))
 
 
+class OrdinalTitleIsNotADataValue(unittest.TestCase):
+    """A card titled 'Step 2: Insert 29' must NOT flag the ordinal 2 as an out-of-vocabulary value — the
+    false positive was demoting insertion sort to the deterministic narration path."""
+    def _trace(self):
+        step = Step(id="s1", operation="insert", prior_state={}, state_after={},
+                    facts={"allowed_values": [29]})
+        return ContractTrace(problem="p", conventions={}, initial_state={}, final_answer=None, steps=[step]), step
+
+    def test_step_ordinal_in_title_is_ignored(self):
+        tr, step = self._trace()
+        card = _card(step, ["insert 29 into the sorted prefix"])
+        card["title"] = "Step 2: Insert 29"          # ordinal 2 is a position, not an array value
+        hard = hard_prose_violations(validate_prose([card], tr, _StubAdapter()))
+        self.assertEqual([x.detail for x in hard if x.code == "value_not_allowed"], [])
+
+    def test_genuine_out_of_vocab_value_still_caught(self):
+        tr, step = self._trace()
+        card = _card(step, ["insert 77 into the sorted prefix"])   # 77 is a real (wrong) data value
+        hard = hard_prose_violations(validate_prose([card], tr, _StubAdapter()))
+        self.assertTrue(any(x.code == "value_not_allowed" and x.detail == "77" for x in hard))
+
+
+class CodeCommentSideMismatch(unittest.TestCase):
+    """The merge mis-annotation the value/state checks miss: a code line reads one run but its // comment
+    names the opposite side. Hard, and only under code_anchored."""
+    def _card_with(self, work):
+        step = Step(id="s1", operation="merge", prior_state={}, state_after={}, facts={})
+        tr = ContractTrace(problem="p", conventions={}, initial_state={}, final_answer=None, steps=[step])
+        return tr, {"trace_step_ids": ["s1"], "title": "", "goal": "", "reasoning": "", "work": work, "result": ""}
+
+    def test_left_code_right_comment_is_hard(self):
+        tr, card = self._card_with(["merged.append(left[i])  // append value 9 from the right run"])
+        hard = hard_prose_violations(validate_prose([card], tr, _StubAdapter(), code_anchored=True))
+        self.assertTrue(any(x.code == "code_comment_side_mismatch" for x in hard))
+
+    def test_matching_side_is_clean(self):
+        tr, card = self._card_with(["merged.append(right[j])  // append value 9 from the right run"])
+        hard = hard_prose_violations(validate_prose([card], tr, _StubAdapter(), code_anchored=True))
+        self.assertFalse(any(x.code == "code_comment_side_mismatch" for x in hard))
+
+    def test_not_applied_without_code_anchor(self):
+        tr, card = self._card_with(["merged.append(left[i])  // append value 9 from the right run"])
+        v = validate_prose([card], tr, _StubAdapter(), code_anchored=False)
+        self.assertFalse(any(x.code == "code_comment_side_mismatch" for x in v))
+
+
 if __name__ == "__main__":
     unittest.main()
