@@ -74,7 +74,7 @@ def serialize_value(value: Any, _depth: int = 0) -> Any:
         return "…"
     if hasattr(value, "val") or hasattr(value, "value"):
         return getattr(value, "val", getattr(value, "value", None))
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, (list, tuple, deque)):
         return [serialize_value(v, _depth + 1) for v in list(value)[:50]]
     if isinstance(value, set):
         return sorted(serialize_value(v, _depth + 1) for v in list(value)[:50])

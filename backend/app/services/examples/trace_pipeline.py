@@ -613,6 +613,21 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
             return _to_solve_result(trace, det)
         _log.warning("trace_pipeline: %s deterministic narration failed its own gate (fid.ok=%s, hard=%d) — "
                      "falling back to LLM formatting", getattr(adapter, "slug", "?"), fid.ok, len(hard))
+    # Executed-reference gate (WORKED_EXAMPLE_ACCURACY_SPEC): a CODING topic shows canonical code beside a
+    # walkthrough of the SAME trace. If the code is a different VARIANT than the trace, every per-line
+    # annotation silently contradicts it (the code still computes the right answer, so value/state checks
+    # pass). Run the code once on the trace's own instance; on drift it is a backend/code defect a formatter
+    # retry cannot fix — WITHHOLD rather than ship a self-contradicting pair (same policy as a fidelity fail).
+    # Array shapes only; graph/tree topics skip the gate (returns []), never a false withhold.
+    if code:
+        from .code_execution_check import code_reproduces_trace, reproduces_trace_applies
+        if reproduces_trace_applies(trace, code):
+            drift = code_reproduces_trace(code, trace)
+            if drift:
+                _log.error("trace_pipeline: %s canonical code does not reproduce the trace (variant drift) — "
+                           "withholding: %s", getattr(adapter, "slug", "?"), drift[0])
+                _gr.we(tp_shipped=False, tp_reason="code_trace_drift", tp_detail=drift[:3], verified_steps=n_steps)
+                return None
     for _ in range(_MAX_FORMAT_ATTEMPTS):
         attempts += 1
         raw = fmt(build_format_payload(trace, code=code, feedback=feedback, adapter=adapter))   # §1a + M7 retry

@@ -316,3 +316,67 @@ def validate_graph_implementation(code: str, *, num_nodes: int, edges: list, adj
             return mst_properties(num_nodes, edges_repr, result, expected_total)
         last_err = err
     return CodeCheck("unverifiable", f"no argument shape ran successfully (last: {last_err})")
+
+
+# --- executed-reference: array-shaped TRACE reproduction (sorts / search) --------------------------
+# The MST checks above validate a graph result by PROPERTY. Array algorithms need a stronger check: the code
+# shown must be the SAME VARIANT as the walkthrough trace (a top-down merge beside a bottom-up-queue trace
+# still sorts, so a property/final-answer check passes while every per-line annotation contradicts the code).
+# So we run the code once on the trace's own instance and require every trace step's STATE to occur among the
+# code's real intermediate states. This needs the intermediate states, so it uses the in-process settrace
+# recorder (`trace_execution`), not the subprocess runner above.
+
+def _input_array(trace: Any) -> Optional[list]:
+    """Derive the entry array from the trace's initial state (a bottom-up merge's single-element `runs` are
+    flattened back to the array the code's function takes). None for non-array shapes (graph/tree)."""
+    init = getattr(trace, "initial_state", None) or {}
+    if isinstance(init.get("array"), list):
+        return list(init["array"])
+    if isinstance(init.get("runs"), list) and all(isinstance(r, list) for r in init["runs"]):
+        return [x for run in init["runs"] for x in run]
+    return None
+
+
+def _list_keys(state: Optional[dict]) -> list:
+    return [json.dumps(v, default=str) for v in (state or {}).values() if isinstance(v, list)]
+
+
+def reproduces_trace_applies(trace: Any, code: Optional[str]) -> bool:
+    """True when the executed-reference trace-reproduction gate can run (array-shaped topic + code present)."""
+    return bool(code) and find_entry_function(code or "") is not None and _input_array(trace) is not None
+
+
+def code_reproduces_trace(code: str, trace: Any) -> list:
+    """[] when the canonical code, run on the trace's own instance, reproduces the trace — same final answer
+    AND every trace step's state occurs among the code's real intermediate states (proving the code is the
+    SAME variant as the walkthrough, not a lookalike whose per-line annotations would contradict it).
+    Non-empty = variant drift or a broken solution; the code must not be shown beside this walkthrough. SKIPS
+    non-array shapes (returns [] — never a false positive)."""
+    entry = find_entry_function(code)
+    arr = _input_array(trace)
+    if not entry or arr is None:
+        return []
+    try:
+        from app.services.visual_v2.simulators.code_tracer import trace_execution
+        steps, result = trace_execution(code, entry, {"array": list(arr)})
+    except Exception as exc:  # noqa: BLE001 — a canonical solution that will not run is itself a defect
+        return [f"canonical code failed to execute on {arr}: {type(exc).__name__}: {exc}"]
+    out: list = []
+    expected = (getattr(trace, "final_answer", None) or {}).get("sorted")
+    if expected is not None and result != expected:
+        out.append(f"code result {result} != trace final answer {expected}")
+    from collections import deque
+    seen: set = set()                                        # every list a variable held at any executed line
+    for s in steps:
+        for v in (s.get("vars") or {}).values():
+            if isinstance(v, deque):                         # a bottom-up merge's run queue -> list of runs
+                v = list(v)
+            if isinstance(v, list):
+                seen.add(json.dumps(v, default=str))
+    for st in getattr(trace, "steps", []):
+        sigs = _list_keys(getattr(st, "state_after", None))
+        if sigs and not any(sig in seen for sig in sigs):
+            out.append(f"step {st.id}: trace state {sigs[0]} never occurs in the code's execution "
+                       f"(the code is a different variant than the walkthrough)")
+            break                                           # one drift proves the mismatch; don't spam
+    return out
