@@ -206,6 +206,12 @@ _CANONICAL_FAMILIES: dict[str, dict[str, Any]] = {
     },
 }
 
+# A member counts as already TAUGHT only by a walkthrough or coding topic — NOT a compare/concept topic that
+# merely NAMES it in its title. ("Comparing Quick Sort and Merge Sort" routes to merge_sort but does not
+# teach it; counting it as present made the expansion skip the real merge-sort walkthrough.)
+_MEMBER_TEACHING_TYPES = frozenset({"algorithm_walkthrough", "data_structure_operation",
+                                    "coding_implementation"})
+
 
 def _expand_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> list[dict[str, Any]]:
     """Deterministically ensure a FAMILY SURVEY covers its canonical members. When the goal surveys a known
@@ -233,7 +239,8 @@ def _expand_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> 
         a = route_adapter({"title": str(title or ""), "topic_type": ttype})
         return a.slug if a else None
 
-    present = {s for s in (_slug(t.get("title"), _ttype(t)) for t in topics) if s}
+    present = {slug for t in topics if _ttype(t) in _MEMBER_TEACHING_TYPES
+               for slug in [_slug(t.get("title"), _ttype(t))] if slug}
     member_slugs = {slug for _, slug in fam["members"]}
     if not (present & member_slugs):            # path teaches no member of this family -> do not inject
         return topics
@@ -286,7 +293,8 @@ def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> l
         a = route_adapter({"title": str(t.get("title") or ""), "topic_type": _ttype(t)})
         return a.slug if a else None
 
-    fam_positions = [i for i, t in enumerate(topics) if _slug(t) in order]
+    fam_positions = [i for i, t in enumerate(topics)
+                     if _ttype(t) in _MEMBER_TEACHING_TYPES and _slug(t) in order]
     if len(fam_positions) < 2:
         return topics
     fam_block = sorted((topics[i] for i in fam_positions),

@@ -39,6 +39,21 @@ class CanonicalFamilyExpansion(unittest.TestCase):
                  "topic_type": t["topic_type"]}).slug == "quick_sort"]
         self.assertEqual(len(quick), 1, "quick_sort must not be duplicated across title variants")
 
+
+    def test_compare_topic_naming_a_member_does_not_mark_it_present(self):
+        # "Comparing Quick Sort and Merge Sort" routes to merge_sort but does NOT teach it -> merge must
+        # still be injected (regression: this compare topic made merge_sort look present and it went missing).
+        topics = [
+            {"title": "Tracing Bubble Sort Step-by-Step", "topic_type": "algorithm_walkthrough"},
+            {"title": "Quicksort Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"},
+            {"title": "Comparing Quick Sort and Merge Sort", "topic_type": "compare_distinguish"},
+        ]
+        out = _expand_canonical_family(topics, "comparison-based sorting algorithms")
+        taught = _slugs([t for t in out if t["topic_type"] in ("algorithm_walkthrough", "coding_implementation")])
+        self.assertIn("merge_sort", taught, "merge sort must be injected despite the compare topic naming it")
+        self.assertEqual(taught, {"bubble_sort", "selection_sort", "insertion_sort", "merge_sort", "quick_sort"})
+        self.assertTrue(any(t["topic_type"] == "compare_distinguish" for t in out))  # compare topic preserved
+
     def test_graph_traversal_survey(self):
         topics = [{"title": "Breadth-First Search Walkthrough", "topic_type": "algorithm_walkthrough"}]
         out = _expand_canonical_family(topics, "graph traversal")
