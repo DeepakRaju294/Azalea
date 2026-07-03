@@ -157,7 +157,10 @@ _STAGE_GRAMMAR_RULE = (
     "and outcome. A card whose reasoning is generic (identical to a sibling card) is INVALID.\n"
     "- In `work`: surface the `required` operation as the step's single DECISION line; combine ALL "
     "`aggregated_supporting` operations into ONE summary line; OMIT `internal` operations unless the "
-    "teaching_focus needs them. Aim for ~1-2 work lines — surface the decision, do not narrate machinery."
+    "teaching_focus needs them. Aim for ~1-2 work lines — surface the decision, do not narrate machinery. "
+    "The words 'decision', 'required', 'aggregated_supporting', 'internal' are GRAMMAR LABELS telling you how "
+    "to treat each op — NEVER write them (or 'decision:' / 'aggregated supporting:') as the text of a work "
+    "line. Each work line is plain learner-facing content (the actual action + values), not a label."
 )
 
 
@@ -262,6 +265,33 @@ def _norm_txt(s: str) -> str:
     return re.sub(r"\s+", " ", str(s or "").strip().lower()).rstrip(".!;: ")
 
 
+# The stage-grammar labels are INSTRUCTIONS to the formatter (which op is the `required` decision vs
+# `aggregated_supporting` detail) — never learner-facing text. The LLM occasionally echoes them verbatim
+# ("decision: insert 36", "aggregated supporting: -"); strip that leak so it never reaches a card.
+_WORK_LABEL_RE = re.compile(
+    r"^\s*(?:decision|required|aggregated[ _]supporting|aggregated|supporting|internal)\s*:\s*", re.I)
+_EMPTY_WORK = {"", "-", "—", "–", "*", "•", "…", "..."}
+
+
+def _strip_work_label(line: str) -> str:
+    return _WORK_LABEL_RE.sub("", str(line)).strip()
+
+
+def _clean_work(card: dict[str, Any], fallback: str) -> tuple[list[str], Optional[list]]:
+    """Strip leaked stage-grammar labels from work lines. On a CODING card (has `code_lines`) keep a 1:1
+    line count so the anchors stay aligned — only strip the label. On a WALKTHROUGH card, also drop a line
+    that reduced to nothing (a bare "aggregated supporting: -"); if that empties the card, fall back to the
+    step's verified decision so the card is never blank."""
+    raw = [str(w) for w in (card.get("work") or [])]
+    code_lines = card.get("code_lines") if isinstance(card.get("code_lines"), list) else None
+    if code_lines is not None:
+        return [_strip_work_label(w) for w in raw], code_lines
+    cleaned = [s for w in raw if (s := _strip_work_label(w)) and s not in _EMPTY_WORK]
+    if not cleaned and fallback:
+        cleaned = [fallback.strip()]
+    return cleaned, None
+
+
 def _normalize_and_attach(raw: Any, trace: ContractTrace,
                           adapter: Any = None) -> Optional[list[dict[str, Any]]]:
     cards = raw.get("cards") if isinstance(raw, dict) else raw
@@ -289,15 +319,16 @@ def _normalize_and_attach(raw: Any, trace: ContractTrace,
         step_reason = str(getattr(step, "reason", "") or "").strip()
         if step_reason and (not reasoning or _norm_txt(reasoning) == _norm_txt(focus)):
             reasoning = step_reason
+        work, code_lines = _clean_work(card, fallback=str(getattr(step, "decision", "") or ""))
         c: dict[str, Any] = {
             "title": str(card.get("title", "")).strip(),
             "goal": str(card.get("goal", "")).strip(),
             "reasoning": reasoning,
-            "work": [str(w) for w in (card.get("work") or [])],
+            "work": work,
             "result": result,
         }
-        if isinstance(card.get("code_lines"), list):           # coding path: per-action anchors (validated downstream)
-            c["code_lines"] = card["code_lines"]
+        if code_lines is not None:                             # coding path: per-action anchors (validated downstream)
+            c["code_lines"] = code_lines
         # backend attaches the truth-bearing fields deterministically (§11) — the model never produced them
         c["trace_step_ids"] = [step.id]
         c["prior_state"] = step.prior_state

@@ -62,5 +62,35 @@ class CodingWorkCollapse(unittest.TestCase):
             self.assertIn("same code runs", c["work"][0])            # repeats abbreviated, not reprinted
 
 
+class TestWorkLabelLeak(unittest.TestCase):
+    """Tier 1 formatter hygiene: the stage-grammar labels the LLM occasionally echoes verbatim
+    ('decision:', 'aggregated supporting: -') must never reach a learner-facing work line."""
+    def test_walkthrough_labels_stripped_and_empty_dropped(self):
+        from app.services.examples.trace_pipeline import _clean_work
+        card = {"work": ["decision: insert 36 into the sorted prefix", "aggregated supporting: -"]}
+        work, code_lines = _clean_work(card, fallback="insert 36 into the sorted prefix")
+        self.assertEqual(work, ["insert 36 into the sorted prefix"])   # label stripped, empty dash dropped
+        self.assertIsNone(code_lines)
+
+    def test_all_labels_fall_back_to_step_decision(self):
+        from app.services.examples.trace_pipeline import _clean_work
+        work, _ = _clean_work({"work": ["decision: -", "internal: -"]}, fallback="insert 4")
+        self.assertEqual(work, ["insert 4"])                           # never a blank card
+
+    def test_coding_card_keeps_line_count_aligned_with_code_lines(self):
+        from app.services.examples.trace_pipeline import _clean_work
+        card = {"work": ["pivot = arr[hi]  // set pivot", "decision: arr[i], arr[hi] = ...  // swap"],
+                "code_lines": [[1], [9]]}
+        work, code_lines = _clean_work(card, fallback="x")
+        self.assertEqual(len(work), len(code_lines))                   # 1:1 anchors preserved on coding path
+        self.assertTrue(work[1].startswith("arr[i]"))                  # label stripped, code kept
+
+    def test_clean_work_is_untouched(self):
+        from app.services.examples.trace_pipeline import _clean_work
+        card = {"work": ["bubble 56 to position 5", "swap adjacent pairs"]}
+        work, _ = _clean_work(card, fallback="x")
+        self.assertEqual(work, card["work"])
+
+
 if __name__ == "__main__":
     unittest.main()
