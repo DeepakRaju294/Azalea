@@ -736,10 +736,20 @@ class QuickSortAdapter(FamilyAdapterBase):
         for i in range(80):
             n = rng.randint(6, 8)
             arr = rng.sample(range(1, 60), n)
+            # The first pivot is the LAST element (Lomuto). If it is the current min or max, the FIRST
+            # partition is a visual no-op — the pivot is already at its final slot, nothing shifts, and the
+            # opening card "partitions" while the array stays identical (a confusing first example). Require
+            # an INTERIOR first pivot so the very first partition visibly moves values.
+            if not (min(arr) < arr[-1] < max(arr)):
+                continue
             yield {"array": arr, "_id": f"quick_v1_case_{i}"}
 
     def is_teaching_trace(self, trace: ContractTrace) -> bool:
-        return len(trace.steps) >= 3 and bool(trace.case_evidence.get("multi_element_partition"))
+        if len(trace.steps) < 3 or not trace.case_evidence.get("multi_element_partition"):
+            return False
+        # Belt-and-suspenders: the FIRST partition must visibly change the array (never a no-op opening).
+        first = trace.steps[0]
+        return (first.prior_state or {}).get("array") != (first.state_after or {}).get("array")
 
     def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
                   attempt: int = 1, seed: int = 0) -> ContractTrace:

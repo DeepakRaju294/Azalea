@@ -70,6 +70,21 @@ class AdapterCorrectness(unittest.TestCase):
         self.assertEqual(tr.final_answer["sorted"], [1, 2, 3, 5, 8, 9])
         self.assertEqual(structural_invariants(tr, a), [])
 
+    def test_quick_sort_first_partition_is_never_a_no_op(self):
+        # The opening card must visibly move values — reject instances whose first pivot (the last
+        # element) is already the min/max, which would "partition" while nothing changes.
+        from app.services.examples import trace_pipeline as tp
+        a = ADAPTERS["quick_sort"]
+        for seed in range(12):
+            tr = tp.select_instance(a, seed=seed)
+            arr = tr.initial_state["array"]
+            first = tr.steps[0]
+            with self.subTest(seed=seed):
+                self.assertLess(min(arr), arr[-1])
+                self.assertLess(arr[-1], max(arr))
+                self.assertNotEqual(first.prior_state["array"], first.state_after["array"])
+                self.assertEqual(tr.final_answer["sorted"], sorted(arr))
+
 
 class RoutingTests(unittest.TestCase):
     def test_explicit_routing(self):
