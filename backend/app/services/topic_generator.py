@@ -186,6 +186,82 @@ def _subject_phrase(title: str) -> str:
     return " ".join(words).strip() or str(title or "").strip()
 
 
+# Canonical member sets for common SURVEY/FAMILY goals. The decomposition LLM under-generates these (it
+# folds "another sort" as a redundant delta), and the rest of the pipeline is SUBTRACTIVE — nothing backfills
+# a missing member. This table + _expand_canonical_family inject them deterministically, exactly like
+# _append_missing_coding_topics backfills coding topics. Every listed member has a VERIFIED adapter, so an
+# injected topic ships verified content. (title = the injected walkthrough subject; slug = its adapter.)
+_CANONICAL_FAMILIES: dict[str, dict[str, Any]] = {
+    "sorting": {
+        "goal_markers": ("sorting algorithm", "sorting algorithms", "learn sorting", "sorting method",
+                         "sorting technique", "comparison-based sorting", "comparison based sorting",
+                         "how sorting works"),
+        "members": [("Bubble Sort", "bubble_sort"), ("Selection Sort", "selection_sort"),
+                    ("Insertion Sort", "insertion_sort"), ("Merge Sort", "merge_sort"),
+                    ("Quicksort", "quick_sort")],
+    },
+    "graph_traversal": {
+        "goal_markers": ("graph traversal", "graph traversals", "traverse a graph", "traversing a graph"),
+        "members": [("Breadth-First Search", "bfs"), ("Depth-First Search", "dfs_iter")],
+    },
+}
+
+
+def _expand_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> list[dict[str, Any]]:
+    """Deterministically ensure a FAMILY SURVEY covers its canonical members. When the goal surveys a known
+    family (sorting, graph traversal), the decomposition LLM emits only 1-2 members and the subtractive
+    pipeline can't backfill the rest — so this injects the missing canonical members as walkthrough topics
+    (each then gets a coding follow-up + routes to its verified adapter). Mirrors _append_missing_coding_topics.
+    Presence is detected by ROUTING each title to an adapter slug (robust to title variants). GUARDED: only
+    expands a family the path ALREADY teaches >=1 member of, so it never injects into an unrelated path.
+    Off via AZALEA_CANONICAL_FAMILY_EXPANSION=0."""
+    if os.getenv("AZALEA_CANONICAL_FAMILY_EXPANSION", "1") == "0":
+        return topics
+    g = (goal or "").lower()
+    fam = next((f for f in _CANONICAL_FAMILIES.values() if any(m in g for m in f["goal_markers"])), None)
+    if not fam:
+        return topics
+    try:
+        from app.services.examples.trace_pipeline import route_adapter
+    except Exception:  # noqa: BLE001 — expansion must never break topic generation
+        return topics
+
+    def _ttype(t: dict[str, Any]) -> str:
+        return str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
+
+    def _slug(title: Any, ttype: str) -> Optional[str]:
+        a = route_adapter({"title": str(title or ""), "topic_type": ttype})
+        return a.slug if a else None
+
+    present = {s for s in (_slug(t.get("title"), _ttype(t)) for t in topics) if s}
+    member_slugs = {slug for _, slug in fam["members"]}
+    if not (present & member_slugs):            # path teaches no member of this family -> do not inject
+        return topics
+    template = next((t for t in topics if _ttype(t) == "algorithm_walkthrough"), None)
+    result = list(topics)
+    for member_title, slug in fam["members"]:
+        if slug in present:
+            continue
+        new = dict(template) if template else {}
+        new.pop("topic_id", None)
+        new.pop("id", None)
+        new.update({
+            "title": f"{member_title} Algorithm Walkthrough",
+            "course_type": "algorithm_walkthrough", "topic_type": "algorithm_walkthrough",
+            "subject_key": slug, "secondary_course_types": [],
+            "unit_title": (template or {}).get("unit_title") or "Algorithms",
+            "learner_outcome": f"The learner can trace {member_title} step by step on a concrete input.",
+            "purpose": f"Trace {member_title} on a concrete input to see how the algorithm works.",
+            "in_scope": [f"Tracing {member_title} on a concrete input"],
+            "out_of_scope": [], "prerequisite_topics": [], "source_refs": [],
+        })
+        result.append(new)
+        present.add(slug)
+        _log.info("canonical-family expansion: injected %r (survey backfill for goal %r)",
+                  new["title"], goal)
+    return result
+
+
 def _append_missing_coding_topics(topics: list[dict[str, Any]], goal: str) -> list[dict[str, Any]]:
     """Deterministically guarantee the blueprint's 'append a coding_implementation after the
     walkthrough' rule (course_blueprints §combination_rules) — the rule was prompt-only, so the model
@@ -581,6 +657,10 @@ Chunk index: {chunk.chunk_index}
     # same-type topic for the same subject (e.g. a "Process Overview" walkthrough next to a
     # "Step by Step" walkthrough for quick sort) before it becomes a duplicate lesson.
     cleaned_topics = _drop_same_type_subject_duplicates(cleaned_topics)
+    # Deterministically fill in a FAMILY SURVEY's canonical members (e.g. sorting -> all five sorts) that the
+    # decomposition LLM under-generated. The pipeline is otherwise subtractive, so this is the only place the
+    # canonical set is guaranteed. Runs BEFORE the coding backfill so injected walkthroughs get coding topics.
+    cleaned_topics = _expand_canonical_family(cleaned_topics, goal)
     # Guarantee a coding_implementation follow-up exists for each algorithm/data-structure subject
     # (the blueprint rule was prompt-only, so the model often dropped it -> "coding never generated").
     cleaned_topics = _append_missing_coding_topics(cleaned_topics, goal)
