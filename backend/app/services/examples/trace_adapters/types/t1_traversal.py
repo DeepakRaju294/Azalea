@@ -54,3 +54,14 @@ TREE_LEVELORDER = _traversal_decl(
     routing={"any": ["level order", "level-order", "levelorder"], "priority": 260})
 
 DECLARATIONS = [TREE_PREORDER, TREE_POSTORDER, TREE_LEVELORDER]
+
+
+# Migrated onto the infra alongside the template-built siblings: inorder (its own class) + the
+# graph traversals BFS/DFS (T1, but the graph family). Their implementations stay in their family.
+from . import declare as _declare
+from ..families.trees import InorderTraversalAdapter as _Inorder
+from ..families.graph import BFSAdapter as _BFS, DFSIterativeAdapter as _DFS
+TREE_INORDER = _declare(_Inorder, "tree_inorder", "T1")
+BFS = _declare(_BFS, "bfs", "T1")
+DFS_ITER = _declare(_DFS, "dfs_iter", "T1")
+DECLARATIONS = DECLARATIONS + [TREE_INORDER, BFS, DFS_ITER]

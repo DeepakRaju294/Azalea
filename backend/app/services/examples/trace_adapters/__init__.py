@@ -1,51 +1,27 @@
 """Algorithm trace adapters (WORKED_EXAMPLE_REASONING_SPEC §15) — the bounded per-algorithm surface.
 
-Adapters are organized by FAMILY (WORKED_EXAMPLE_ACCURACY_SPEC §15.3), one module per family in `families/`;
-each family owns shared machinery (generators, normalizers, visuals) and hosts many algorithms as compact
-classes. New algorithms are added to their family module, not as new files. Routing is in trace_pipeline.
+Adapters are now built from DECLARATIONS (scalable-adapters infra): grouped by TYPE in `types/` (t1..t12),
+each declaration carrying identity + type + family + routing + the behavior (either a type template's methods
+or the migrated class's methods). Shared MACHINERY still lives by FAMILY in `families/`. `decl.hydrate` turns
+each declaration into a runtime adapter with the exact `FamilyAdapterBase` interface, so routing, the
+pipeline, and every contract test consume it unchanged. Routing is data-driven (manifest.ROUTING_RULES).
+
+Adding an adapter = add one declaration to its `types/tN_*.py` file (+ its family machinery if new).
 """
-from .families.algebra import QuadraticEquationAdapter
-from .families.backtracking import NQueensAdapter
-from .families.dp import CoinChangeAdapter, LongestIncreasingSubsequenceAdapter
-from .families.execution import EuclidGCDAdapter
-from .families.formula import ArithmeticEvalAdapter
-from .families.graph import (BellmanFordAdapter, BFSAdapter, DFSIterativeAdapter, DijkstraAdapter,
-                             FloydWarshallAdapter, KruskalAdapter, PrimAdapter)
-from .families.number_theory import SieveAdapter
-from .families.physics import KinematicsAdapter
-from .families.proof import InductionProofAdapter
-from .families.structures import UnionFindAdapter
-from .families.sequence import (BinarySearchAdapter, BubbleSortAdapter, HeapSortAdapter,
-                                InsertionSortAdapter, MergeSortAdapter, QuickSortAdapter,
-                                SelectionSortAdapter)
-from .families.trees import BSTSearchAdapter, InorderTraversalAdapter
-# Declarative adapters (scalable-adapters infra): grouped by TYPE in `types/`, hydrated into runtime adapters.
 from .decl import hydrate as _hydrate
-from .types.t1_traversal import DECLARATIONS as _T1_TRAVERSAL_DECLS
+from .types import (t1_traversal, t2_greedy, t3_divide_conquer, t4_search, t5_dp, t6_formula, t7_rewrite,
+                    t8a_incremental, t8b_derivation, t9_relaxation, t10_stateful, t11_backtracking,
+                    t12_execution)
 
-_DECLARED = [_hydrate(d) for d in _T1_TRAVERSAL_DECLS]   # tree pre/post/level-order (T1) now come from decls
+# One module per TYPE; each exposes DECLARATIONS. The order here is the registration order.
+_TYPE_MODULES = [t1_traversal, t2_greedy, t3_divide_conquer, t4_search, t5_dp, t6_formula, t7_rewrite,
+                 t8a_incremental, t8b_derivation, t9_relaxation, t10_stateful, t11_backtracking,
+                 t12_execution]
 
-# Explicit slug -> adapter registry (no fuzzy keyword matching; routing is in trace_pipeline, §17).
-ADAPTERS = {a.slug: a for a in (*_DECLARED,
-    BinarySearchAdapter(), BFSAdapter(), DFSIterativeAdapter(), KruskalAdapter(), MergeSortAdapter(),
-    InsertionSortAdapter(), SelectionSortAdapter(), BubbleSortAdapter(), HeapSortAdapter(),  # T8a pilots — grow a sorted region a pass at a time
-    QuickSortAdapter(),                # T3 — 2nd divide-and-conquer pilot (partition-in-place) after merge sort
-    ArithmeticEvalAdapter(), DijkstraAdapter(), PrimAdapter(),
-    BellmanFordAdapter(),              # T9a PILOT — repeated relaxation / iterative refinement (directed graph)
-    FloydWarshallAdapter(),            # T9b PILOT — layered state refinement (all-pairs matrix, one layer per waypoint)
-    UnionFindAdapter(),                # T10 PILOT — stateful invariant maintenance (mutable disjoint-set forest)
-    EuclidGCDAdapter(),                # T12 PILOT — program execution / memory trace (loop + evolving variables)
-    InductionProofAdapter(),           # T8b PILOT — formal derivation (proof by induction; numeric-oracle refereed)
-    SieveAdapter(),                    # T8a — sieve of Eratosthenes (incremental composite marking)
-    InorderTraversalAdapter(),         # TEMPLATE — coding concept (tree family)
-    QuadraticEquationAdapter(),        # TEMPLATE — math concept (algebra family, no code)
-    KinematicsAdapter(),               # TEMPLATE — science concept (physics family, no code)
-    BSTSearchAdapter(),                # T4 GATE — second search state model (tree node, not array bounds)
-    LongestIncreasingSubsequenceAdapter(), CoinChangeAdapter(),   # T5 pilots — 1-D DP table fill (max-run / min-coins)
-    NQueensAdapter(),                  # T11 PILOT — backtracking (place / conflict / BACKTRACK; non-monotonic search)
-)}
+DECLARATIONS = [d for mod in _TYPE_MODULES for d in mod.DECLARATIONS]
 
-__all__ = ["BinarySearchAdapter", "BFSAdapter", "DFSIterativeAdapter", "KruskalAdapter",
-           "MergeSortAdapter", "QuickSortAdapter", "InsertionSortAdapter", "SelectionSortAdapter", "BubbleSortAdapter", "HeapSortAdapter", "ArithmeticEvalAdapter", "DijkstraAdapter", "PrimAdapter",
-           "InorderTraversalAdapter", "QuadraticEquationAdapter", "KinematicsAdapter",
-           "BSTSearchAdapter", "LongestIncreasingSubsequenceAdapter", "CoinChangeAdapter", "NQueensAdapter", "BellmanFordAdapter", "FloydWarshallAdapter", "UnionFindAdapter", "EuclidGCDAdapter", "InductionProofAdapter", "SieveAdapter", "ADAPTERS"]
+# Explicit slug -> adapter registry. Every adapter is a hydrated declaration (no fuzzy matching; routing is
+# data-driven in trace_pipeline via manifest.ROUTING_RULES, §17).
+ADAPTERS = {d.slug: _hydrate(d) for d in DECLARATIONS}
+
+__all__ = ["ADAPTERS", "DECLARATIONS"]

@@ -16,7 +16,9 @@ from app.services.examples.trace_contract import structural_invariants, visual_c
 class DeclaredAdapters(unittest.TestCase):
     def test_t1_traversals_are_declarations(self):
         slugs = {d.slug for d in DECLARATIONS}
-        self.assertEqual(slugs, {"tree_preorder", "tree_postorder", "tree_levelorder"})
+        # t1_traversal owns the template-built order-traversals + inorder + the graph traversals (all T1)
+        self.assertTrue({"tree_preorder", "tree_postorder", "tree_levelorder", "tree_inorder",
+                         "bfs", "dfs_iter"} <= slugs)
         for d in DECLARATIONS:
             self.assertIsInstance(d, AdapterDecl)
             self.assertEqual(d.type, "T1")

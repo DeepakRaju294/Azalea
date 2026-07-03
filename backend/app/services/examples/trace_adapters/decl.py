@@ -42,6 +42,20 @@ class AdapterDecl:
         return [m for m in _REQUIRED_METHODS if m not in self.methods]
 
 
+def decl_from_class(cls: type, *, type: str, family: str, routing: dict[str, Any],
+                    canonical: Optional[str] = None) -> AdapterDecl:
+    """Build a declaration from an existing adapter CLASS by pulling its methods + attributes. Used to migrate
+    hand-written adapters onto the declarative infra with ZERO behavior change (the hydrated adapter runs the
+    class's exact code). `type`/`family`/`routing` come from the manifest + routing table."""
+    methods = {name: getattr(cls, name) for name in _REQUIRED_METHODS}
+    _std = {"slug", "label_convention", "example_spec", "version", *_REQUIRED_METHODS}
+    class_attrs = {k: v for k, v in vars(cls).items() if not k.startswith("__") and k not in _std}
+    return AdapterDecl(
+        slug=cls.slug, type=type, family=family, example_spec=cls.example_spec, methods=methods,
+        label_convention=getattr(cls, "label_convention", ""), routing=routing, canonical=canonical,
+        class_attrs=class_attrs, version=getattr(cls, "version", 1))
+
+
 def hydrate(decl: AdapterDecl) -> FamilyAdapterBase:
     """Build a runtime adapter (a `FamilyAdapterBase` subclass instance) from a declaration. The declaration's
     `methods` become real methods on a fresh subclass, so the shared base helpers (`_provenance`,
