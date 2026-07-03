@@ -169,6 +169,11 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "coding": True, "canonical_solution": "union_find",
         "routing_aliases": ["union-find", "union find", "disjoint set", "disjoint-set", "union_find"],
         "negative_guards": [], "fixtures": ["merge", "already_connected"]},
+    "euclid_gcd": {
+        "type": "T12", "family": "execution", "status": "pilot", "verification_level": "trace_verified",
+        "coding": True, "canonical_solution": "euclid_gcd",
+        "routing_aliases": ["euclid", "euclidean algorithm", "gcd", "greatest common divisor"],
+        "negative_guards": [], "fixtures": ["reduce", "loop_ends"]},
     "arithmetic_eval": {
         "type": "T7", "family": "formula", "status": "production", "verification_level": "trace_verified",
         "coding": True, "canonical_solution": "arithmetic_eval",

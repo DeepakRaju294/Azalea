@@ -7,6 +7,7 @@ classes. New algorithms are added to their family module, not as new files. Rout
 from .families.algebra import QuadraticEquationAdapter
 from .families.backtracking import NQueensAdapter
 from .families.dp import LongestIncreasingSubsequenceAdapter
+from .families.execution import EuclidGCDAdapter
 from .families.formula import ArithmeticEvalAdapter
 from .families.graph import (BellmanFordAdapter, BFSAdapter, DFSIterativeAdapter, DijkstraAdapter,
                              KruskalAdapter, PrimAdapter)
@@ -26,6 +27,7 @@ ADAPTERS = {a.slug: a for a in (
     ArithmeticEvalAdapter(), DijkstraAdapter(), PrimAdapter(),
     BellmanFordAdapter(),              # T9a PILOT — repeated relaxation / iterative refinement (directed graph)
     UnionFindAdapter(),                # T10 PILOT — stateful invariant maintenance (mutable disjoint-set forest)
+    EuclidGCDAdapter(),                # T12 PILOT — program execution / memory trace (loop + evolving variables)
     InorderTraversalAdapter(),         # TEMPLATE — coding concept (tree family)
     PreorderTraversalAdapter(), PostorderTraversalAdapter(), LevelOrderTraversalAdapter(),  # verified traversal siblings
     QuadraticEquationAdapter(),        # TEMPLATE — math concept (algebra family, no code)
@@ -39,4 +41,4 @@ __all__ = ["BinarySearchAdapter", "BFSAdapter", "DFSIterativeAdapter", "KruskalA
            "MergeSortAdapter", "QuickSortAdapter", "InsertionSortAdapter", "SelectionSortAdapter", "BubbleSortAdapter", "HeapSortAdapter", "ArithmeticEvalAdapter", "DijkstraAdapter", "PrimAdapter",
            "InorderTraversalAdapter", "PreorderTraversalAdapter", "PostorderTraversalAdapter",
            "LevelOrderTraversalAdapter", "QuadraticEquationAdapter", "KinematicsAdapter",
-           "BSTSearchAdapter", "LongestIncreasingSubsequenceAdapter", "NQueensAdapter", "BellmanFordAdapter", "UnionFindAdapter", "ADAPTERS"]
+           "BSTSearchAdapter", "LongestIncreasingSubsequenceAdapter", "NQueensAdapter", "BellmanFordAdapter", "UnionFindAdapter", "EuclidGCDAdapter", "ADAPTERS"]

@@ -329,6 +329,11 @@ def level_order(root):
         groups.setdefault(find(x), []).append(x)
     return sorted(sorted(g) for g in groups.values())
 """,
+    "euclid_gcd": """def gcd(a, b):
+    while b:
+        a, b = b, a % b
+    return a
+""",
     "arithmetic_eval": """def evaluate(tokens):
     stack = [tokens[0]]
     i = 1

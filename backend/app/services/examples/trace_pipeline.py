@@ -108,6 +108,8 @@ def _match_adapter(text: str, slug: str):
         return ADAPTERS["dfs_iter"]
     if "n-queens" in text or "n queens" in text or "nqueens" in text or "eight queens" in text or "queens problem" in text:
         return ADAPTERS["n_queens"]
+    if "euclid" in text or "euclidean" in text or "gcd" in text or "greatest common divisor" in text:
+        return ADAPTERS["euclid_gcd"]
     if "union-find" in text or "union find" in text or "disjoint set" in text or "disjoint-set" in text or "union_find" in text:
         return ADAPTERS["union_find"]
     if "increasing subsequence" in text or "longest_increasing_subsequence" in text:
@@ -386,6 +388,8 @@ def _final_answer_text(trace: ContractTrace) -> str:
         if "groups" in fa:                                         # union-find (disjoint sets) — no braces (guard)
             return "; ".join(f"group {i + 1}: {', '.join(map(str, g))}"
                              for i, g in enumerate(fa["groups"]))
+        if "gcd" in fa:                                            # Euclid GCD (program execution)
+            return f"gcd = {fa['gcd']}"
         if "value" in fa:
             return f"= {fa['value']}"
         if "dist" in fa:
