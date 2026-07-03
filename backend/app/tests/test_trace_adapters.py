@@ -85,6 +85,27 @@ class AdapterCorrectness(unittest.TestCase):
                 self.assertNotEqual(first.prior_state["array"], first.state_after["array"])
                 self.assertEqual(tr.final_answer["sorted"], sorted(arr))
 
+    def test_quick_sort_partition_names_true_smaller_set(self):
+        # The adapter must state the ACTUAL smaller values (never let the formatter guess). The two observed
+        # bugs: (a) "no values are less than 50" when 39/40/27 all are; (b) "smaller values (24,18)" for
+        # pivot 7 when 24,18 are LARGER. Both must be caught; the faithful reason must be clean.
+        a = ADAPTERS["quick_sort"]
+        tr = a.reference({"array": [41, 24, 18, 7, 26, 30, 56]})
+        s7 = next(s for s in tr.steps if s.inputs["pivot"] == 7)
+        self.assertEqual(s7.inputs["smaller"], [])                          # 7 is the slice minimum
+        bug = {"reasoning": "shift smaller values (24, 18) left", "work": [], "result": "pivot 7"}
+        self.assertTrue(any(c == "larger_value_called_smaller" for c, _ in a.validate_prose_claims(bug, s7)))
+
+        tr2 = a.reference({"array": [11, 50, 39, 40, 27, 18]})
+        s50 = next(s for s in tr2.steps if s.inputs["pivot"] == 50)
+        self.assertEqual(s50.inputs["smaller"], [27, 39, 40])
+        bug2 = {"reasoning": "since no values are less than 50 it stays", "work": [], "result": "pivot 50"}
+        self.assertTrue(any(c == "false_no_smaller_values" for c, _ in a.validate_prose_claims(bug2, s50)))
+
+        for s in (s7, s50):                                                # faithful reason never flagged
+            faithful = {"reasoning": s.reason, "work": [], "result": s.expected_visible_result}
+            self.assertEqual(a.validate_prose_claims(faithful, s), [])
+
 
 class RoutingTests(unittest.TestCase):
     def test_explicit_routing(self):

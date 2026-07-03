@@ -768,6 +768,9 @@ class QuickSortAdapter(FamilyAdapterBase):
             prior_placed = sorted(placed)
             window = list(a[lo:hi + 1])
             pivot = a[hi]                                   # Lomuto: last element is the pivot
+            others = window[:-1]                            # the non-pivot elements of this slice
+            smaller = sorted(v for v in others if v < pivot)   # exactly the values that end up left of the pivot
+            larger = sorted(v for v in others if v > pivot)
             i = lo
             for j in range(lo, hi):
                 if a[j] < pivot:
@@ -777,11 +780,20 @@ class QuickSortAdapter(FamilyAdapterBase):
             placed.append(i)
             counter["i"] += 1
             sid = f"s{counter['i']}"
-            reason = (f"partition the subarray {window} (this is the current recursive call's slice) around "
-                      f"pivot {pivot}, its last element: every value smaller than {pivot} shifts to the left, "
-                      f"so {pivot} settles at position {i} — everything left of it is now smaller and everything "
-                      f"right is larger. Quicksort then recurses into the left slice, then the right slice, each "
-                      f"partitioned the same way — which is why the pivots land in this order")
+            # State the ACTUAL smaller/larger sets — never the generic "every smaller value shifts left" (which
+            # the formatter then fills with wrong values for a min/all-smaller pivot). If nothing is smaller, say
+            # so explicitly so the pivot's move to the front is not mis-explained as values shifting.
+            if smaller:
+                shift_desc = (f"the values smaller than {pivot} ({', '.join(map(str, smaller))}) move to its "
+                              f"left, so {pivot} settles at position {i}")
+            else:
+                shift_desc = (f"no value in this slice is smaller than {pivot}, so it is already the smallest "
+                              f"here and moves to the front at position {i}")
+            larger_desc = (f" The larger values ({', '.join(map(str, larger))}) stay to its right." if larger
+                           else "")
+            reason = (f"partition the subarray {window} (the current recursive call's slice) around pivot "
+                      f"{pivot}, its last element: {shift_desc}.{larger_desc} Quicksort then recurses into the "
+                      f"left slice, then the right slice, each partitioned the same way")
             evr = f"Pivot {pivot} locked into position {i}; array now {a}."
             if hi - lo >= 2:
                 evidence.setdefault("multi_element_partition", []).append(sid)
@@ -790,7 +802,8 @@ class QuickSortAdapter(FamilyAdapterBase):
                 id=sid, operation="partition",
                 prior_state={"array": prior_arr, "placed": prior_placed},
                 state_after={"array": list(a), "placed": sorted(placed)},
-                inputs={"pivot": pivot, "position": i, "lo": lo, "hi": hi},
+                inputs={"pivot": pivot, "position": i, "lo": lo, "hi": hi,
+                        "smaller": smaller, "larger": larger},
                 decision=f"place pivot {pivot} at position {i}", reason=reason,
                 visual_state={"kind": "array", "array": list(a), "placed": sorted(placed), "active": i},
                 visual_delta={"pivot": pivot, "position": i},
@@ -836,8 +849,23 @@ class QuickSortAdapter(FamilyAdapterBase):
     def validate_prose_claims(self, card, step):
         prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
                           str(card.get("result", ""))]).lower()
-        pv = str(step.inputs["pivot"])
-        return [] if pv in prose else [("pivot_not_stated", pv)]
+        out = []
+        pivot = step.inputs["pivot"]
+        if str(pivot) not in prose:
+            out.append(("pivot_not_stated", str(pivot)))
+        smaller = step.inputs.get("smaller") or []
+        # (a) claiming NOTHING is smaller when values ARE smaller (the observed pivot-50 "no values are less
+        # than 50" bug — false, since all of 39/40/27 are smaller and that is exactly why the pivot stays last).
+        if smaller and re.search(r"no (?:value|element)s?(?: are| is)?(?: any)? (?:smaller|less)", prose):
+            out.append(("false_no_smaller_values", f"{len(smaller)} value(s) are smaller"))
+        # (b) a LARGER value named inside a "smaller (...)" group (the pivot-7 "shift smaller values (24, 18)
+        # left" bug — 24 and 18 are larger than 7). The parenthetical must IMMEDIATELY follow "smaller[ than N]
+        # [values]" so a later "larger values (...)" group is not swept in. Any number so tied must be < pivot.
+        for m in re.finditer(r"smaller(?:\s+than\s+\d+)?(?:\s+values?|\s+elements?)?\s*\(([^)]*)\)", prose):
+            bad = [int(x) for x in re.findall(r"\d+", m.group(1)) if int(x) >= pivot]
+            if bad:
+                out.append(("larger_value_called_smaller", str(bad)))
+        return out
 
 
 # --- heap sort (T8a — heap-ASSISTED selection: like selection sort it grows a sorted suffix by repeatedly
