@@ -328,6 +328,50 @@ class GraphFamilyDeterministicCoding(unittest.TestCase):
                         self.assertNotIn("merged run", w)                     # no leaked SORT template
                         self.assertNotIn("front of the queue", w)             # no borrowed BFS wording
 
+    def test_tree_levelorder_coding_generates_cleanly_across_seeds(self):
+        # CP11b — level-order is BFS over a binary tree. Two fixes make it map: (1) the code-tracer builds the
+        # tree from the adapter's adjacency dict + root (not by packing values into a complete tree), so the code
+        # walks the SAME tree the trace did; (2) tree-node templates (visit / queue left|right child) name the
+        # current node from the verified "visit N" step. Regression-guards the tree-build bug (wrong shape → the
+        # code's order silently diverged from the trace).
+        from app.services.examples.trace_contract import (validate_prose, hard_prose_violations,
+                                                          validate_fidelity)
+        from app.services.examples.code_execution_check import executed_reference_violations, _execute_on_instance
+        from app.services.examples.canonical_solutions import display_solution
+        from app.services.examples.trace_adapters import DETERMINISTIC_CODING_SLUGS
+        self.assertIn("tree_levelorder", DETERMINISTIC_CODING_SLUGS)
+        code = display_solution("tree_levelorder")
+        for seed in range(20):
+            a, tr, cards = self._cards("tree_levelorder", seed)
+            with self.subTest(seed=seed):
+                self.assertIsNotNone(cards, "tree_levelorder should generate deterministically")
+                # the code must reproduce the trace's visit order (proves the tree was built from the adjacency)
+                _, result, _ = _execute_on_instance(code, tr)
+                self.assertEqual(result, (tr.final_answer or {}).get("visit_order"))
+                self.assertEqual(hard_prose_violations(validate_prose(cards, tr, a, code_anchored=True)), [])
+                self.assertTrue(validate_fidelity(cards, tr, a, validate_visual_state=False).ok)
+                self.assertEqual(executed_reference_violations(cards, code, tr), [])
+                for c in cards:
+                    for w in c["work"]:
+                        self.assertNotIn("carry out this step", w)
+                        self.assertNotIn("neighbour", w)                      # tree wording, not graph adjacency
+
+    def test_tree_build_from_adjacency_matches_the_trace_order(self):
+        # Direct guard on the code-tracer fix: build_tree_from_adjacency must follow the explicit left/right
+        # links, NOT pack the dict keys into a complete binary tree (which silently reordered the BFS).
+        from app.services.visual_v2.simulators.code_tracer import build_tree_from_adjacency
+        adj = {38: {"left": 35, "right": 39}, 35: {"left": 9, "right": None},
+               9: {"left": None, "right": 24}, 24: {"left": None, "right": None},
+               39: {"left": None, "right": None}}
+        root = build_tree_from_adjacency(adj, 38)
+        from collections import deque
+        order, q = [], deque([root])
+        while q:
+            nd = q.popleft(); order.append(nd.val)
+            if nd.left: q.append(nd.left)
+            if nd.right: q.append(nd.right)
+        self.assertEqual(order, [38, 35, 39, 9, 24])                          # true level order, not [38,35,9,24,39]
+
     def test_bfs_coding_generates_cleanly_across_seeds(self):
         from app.services.examples.trace_contract import (validate_prose, hard_prose_violations,
                                                           validate_fidelity)

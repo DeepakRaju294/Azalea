@@ -66,6 +66,24 @@ def build_tree(values: list[Any]) -> TreeNode | None:
     return root
 
 
+def build_tree_from_adjacency(adj: dict[Any, Any], root_val: Any) -> TreeNode | None:
+    """Build a tree from an adjacency dict `{val: {'left': v|None, 'right': v|None}}` rooted at `root_val`.
+    Node values must be distinct (they key the map) — true for the tree adapters. This is the shape the trace
+    adapters emit; the plain-list `build_tree` above is the LeetCode level-order form used elsewhere. Using the
+    explicit left/right links (not `list(adj)` packed into a complete tree) makes the code traverse the SAME
+    tree the walkthrough did, so a deterministic tree-coding walkthrough can map."""
+    if root_val is None or not isinstance(adj, dict) or root_val not in adj:
+        return None
+    nodes = {v: TreeNode(v) for v in adj}
+    for v, links in adj.items():
+        lv, rv = (links or {}).get("left"), (links or {}).get("right")
+        if lv is not None and lv in nodes:
+            nodes[v].left = nodes[lv]
+        if rv is not None and rv in nodes:
+            nodes[v].right = nodes[rv]
+    return nodes.get(root_val)
+
+
 def serialize_value(value: Any, _depth: int = 0) -> Any:
     """Convert a runtime object to a readable display value for the panels."""
     if value is None or isinstance(value, (int, float, str, bool)):
@@ -87,7 +105,13 @@ def _build_args(input_spec: dict[str, Any]) -> list[Any]:
     """Construct the entry-function arguments from the declared input spec."""
     args: list[Any] = []
     if "tree" in input_spec:
-        args.append(build_tree(input_spec["tree"]))
+        t = input_spec["tree"]
+        # Adapters emit an adjacency dict {val: {left, right}} + an explicit root; build from the links so the
+        # code walks the SAME tree the trace did. A plain list is the LeetCode level-order form (build_tree).
+        if isinstance(t, dict):
+            args.append(build_tree_from_adjacency(t, input_spec.get("root")))
+        else:
+            args.append(build_tree(t))
     elif "array" in input_spec:
         args.append(list(input_spec["array"]))
     elif "graph" in input_spec:                       # adjacency dict for a traversal (bfs/dfs)

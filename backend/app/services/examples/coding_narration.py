@@ -102,6 +102,24 @@ def _annotate(code: str, snaps: list, step: Any) -> str:
         if code.startswith("while "):                                        # while ready:
             return "keep going while there are still ready nodes"
 
+    # --- BINARY TREE TRAVERSAL (level-order/BFS over node.left/node.right). The queue holds TreeNode OBJECTS,
+    # so child values aren't scalars in the snapshots; name the current node from the verified "visit N" step and
+    # describe the child links structurally. Checked before the graph block (whose queue templates assume an
+    # adjacency 'neighbor'). The shared lines (popleft, while, out=[]) are handled by the graph block below. ---
+    if any(k in code for k in (".val", ".value", ".left", ".right")):
+        mvis = re.match(r"visit\s+(\w+)", str(getattr(step, "decision", "") or ""))
+        tnode = mvis.group(1) if mvis else None
+        if re.match(r"^\w+\.append\(\s*\w+\.(val|value)\s*\)", code):         # out.append(node.val)
+            return f"visit {tnode} — add its value to the output" if tnode else "add this node's value to the output"
+        if re.match(r"^if\s+\w+\.left", code):                                # if node.left:
+            return f"if {tnode} has a left child, queue it" if tnode else "if it has a left child, queue it"
+        if re.match(r"^if\s+\w+\.right", code):                               # if node.right:
+            return f"if {tnode} has a right child, queue it" if tnode else "if it has a right child, queue it"
+        if re.match(r"^\w+\.append\(\s*\w+\.left\s*\)", code):                # queue.append(node.left)
+            return f"enqueue {tnode}'s left child" if tnode else "enqueue the left child"
+        if re.match(r"^\w+\.append\(\s*\w+\.right\s*\)", code):               # queue.append(node.right)
+            return f"enqueue {tnode}'s right child" if tnode else "enqueue the right child"
+
     # --- GRAPH TRAVERSAL (BFS/DFS) — checked first, before the sort templates. Node labels (not ints); the
     # settrace snapshot is BEFORE the line runs, so the just-popped node comes from the verified step ("visit X"),
     # and neighbour writes are aggregated over the inner loop. ---
