@@ -484,8 +484,16 @@ scale to a domain. The declaration infra already exists (`types/tN_*.py` → `DE
 > derivation (4). Each shares one auto-registration pattern — adding a concept in any grammar is a one-file edit
 > to the relevant `families/*_specs.py`. The catalog build is now DATA authoring (+ the deferred CAS-backed
 > symbolic-calculus variant and the long-tail T9/T10/◇ pilots).
-- **12e — Long tail + ◇ items.** T9 (Newton/Euler/gradient descent), T10 (FSM/flip-flop/simplex), remaining
-  ◇-marked rows — piloted individually as they each introduce a genuinely new trace shape, not engine data.
+- **12e — T10 Stateful Engine ✅ STARTED (`3c1e0ec`) + long tail.** `families/stateful_engine.py`: a
+  `StatefulSpec` (build instance + operation script, apply the i-th operation, render, answer, independent
+  REPLAY oracle) hydrates into a T10 adapter — the first engine whose structure both GROWS and SHRINKS. **Pilots
+  live (120 adapters):** stack_operations (push/pop), queue_operations (enqueue/dequeue). Also this phase:
+  numerical iteration landed on the construction engine (babylonian_sqrt — Newton's-method shape). Remaining
+  ◇/long-tail: hash-table ops, FSM/flip-flop traces (more T10 data), Euler/gradient-descent (T9), simplex, etc.
+
+> **FIVE declarative engines now live** (T6 formula, T7 rewrite, T8a construction, T8b derivation, T10
+> stateful), covering formula / rewrite / grow / derive / mutate trace shapes + iterative refinement. Adding a
+> concept in any is a one-file edit to `families/*_specs.py`, gate-verified. ~120 adapters (was 30 pre-CP12).
 
 ### Guardrails (unchanged from CP8/10, applied per type-engine)
 - **Two-sided guarantee still applies:** a formula/rewrite topic ships its walkthrough deterministically (the
