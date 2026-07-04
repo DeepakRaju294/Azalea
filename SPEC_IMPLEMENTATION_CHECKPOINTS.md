@@ -335,8 +335,28 @@ Retires the CP9 per-adapter coding guards. **Prerequisite to CP11** (§18.5): sc
 the *coding* surface, so finish coding-by-construction before breadth.
 
 ## Checkpoint 11 — Adapter breadth / full catalog 🔴 (AFTER CP10)
-Scale the taxonomy/instances (§15). **Blocked on CP10.** A few new adapter *types* (new structural shapes) to
-stress-test that the deterministic architecture generalizes are allowed earlier; the bulk instance build waits.
+Scale the taxonomy/instances (§15) — but as **incremental family rollouts**, not one monolith. Each new
+family proves the two-sided deterministic guarantee (walkthrough CP8 + coding CP10) generalizes to its
+execution shape before its instances count as reuse. Sub-steps:
+
+- **11a — Generalize the narrator (the coding-narration polish folds in here).** Extend `coding_narration`
+  + `map_step_regions` to the NEXT family's code shape (graph traversal or tree, then DP), and — designed
+  ONCE across families here, not patched per-adapter — settle the two open core-sort refinements:
+  (1) **repeat-collapse policy** — later cards that re-run an already-shown loop should abbreviate the
+  UNCHANGED bookkeeping while keeping the decision line + this step's values (never hide the loop, the CP9
+  omission we fixed); (2) a **loop-body comparison line** should summarize its iterations' outcome, not show
+  only the first snapshot. This first family doubles as the "does the architecture hold" stress-test.
+- **11b — Roll the deterministic path out family by family** (memory-layout, formula/geometric, …), each with
+  its region-mapper shape + annotation templates + visual kind, gated by the CP10 generation test extended to
+  that family.
+- **11c — Bulk instances** within proven families (mechanical once 11a/11b hold).
+
+**Blocked on CP10.** A few new adapter *types* (new structural shapes) may be piloted early as the 11a
+stress-test; the bulk instance build (11c) waits until the family's two-sided guarantee is green.
+
+> NOT part of CP11: the **live-regen human sign-off** (CP7 "feels useful" sweep) is VALIDATION, not a build,
+> and needs the product + an API key — it must not be folded into a code-breadth checkpoint (that would let
+> breadth claim done without the human look CP7 exists to force).
 
 ---
 
