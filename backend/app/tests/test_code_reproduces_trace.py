@@ -290,3 +290,54 @@ class DeterministicCodingGeneration(unittest.TestCase):
                     for anchors in (c.get("code_lines") or []):
                         for ln in anchors:
                             self.assertTrue(1 <= ln <= disp_len, f"{title}: code_lines {ln} out of range")
+
+
+class GraphFamilyDeterministicCoding(unittest.TestCase):
+    """CP11a first new family: BFS coding is authored from the executed reference (instance recovered from the
+    adapter's seeded candidate pool — the graph is NOT on the trace). Proves the deterministic path generalizes
+    beyond arrays. Recursive/other graph shapes (DFS) that don't map cleanly fall back to the LLM."""
+    def _cards(self, slug, seed):
+        from app.services.examples.canonical_solutions import display_solution
+        from app.services.examples.coding_narration import generate_coding_cards
+        a = ADAPTERS[slug]
+        tr = tp.select_instance(a, seed=seed)
+        return a, tr, generate_coding_cards(tr, display_solution(slug), tp._deterministic_narration(tr, a))
+
+    def test_bfs_coding_generates_cleanly_across_seeds(self):
+        from app.services.examples.trace_contract import (validate_prose, hard_prose_violations,
+                                                          validate_fidelity)
+        for seed in range(20):
+            a, tr, cards = self._cards("bfs", seed)
+            with self.subTest(seed=seed):
+                self.assertIsNotNone(cards, "BFS should generate deterministically (instance recovered)")
+                self.assertEqual(hard_prose_violations(validate_prose(cards, tr, a)), [])
+                self.assertTrue(validate_fidelity(cards, tr, a, validate_visual_state=False).ok)
+                for c in cards:
+                    for w in c["work"]:
+                        self.assertNotIn("carry out this step", w)         # no weak fallback
+                        self.assertNotIn("sorted prefix", w)               # no leaked SORT template
+                        self.assertNotIn("merged run", w)
+
+    def test_bfs_names_the_visited_node_and_enqueued_neighbours(self):
+        a, tr, cards = self._cards("bfs", 3)                               # A → B, E; …
+        visit_a = next(c for c in cards if c["title"].startswith("Visit A"))
+        work = " ".join(visit_a["work"])
+        self.assertIn("take A from the front of the queue", work)          # the popped node from the verified step
+        self.assertIn("visited", work)
+        self.assertTrue("B, E" in work or "E, B" in work)                  # both neighbours aggregated
+
+    def test_bfs_ships_deterministically_without_the_llm(self):
+        from app.services.examples.canonical_solutions import display_solution
+        def boom(*a, **k):
+            raise AssertionError("BFS coding must not call the LLM")
+        res = tp.solve_trace_pipeline({"id": "t", "title": "Implementing BFS",
+                                       "topic_type": "coding_implementation"},
+                                      format_fn=boom, code=display_solution("bfs"), seed=3)
+        self.assertIsNotNone(res)
+
+    def test_recursive_dfs_falls_back_gracefully(self):
+        # dfs_iter is recursive (order += dfs(...)); it does not map to one slice per step -> None -> LLM path
+        from app.services.examples.coding_narration import generate_coding_cards
+        from app.services.examples.canonical_solutions import display_solution
+        a = ADAPTERS["dfs_iter"]; tr = tp.select_instance(a, seed=3)
+        self.assertIsNone(generate_coding_cards(tr, display_solution("dfs_iter"), tp._deterministic_narration(tr, a)))

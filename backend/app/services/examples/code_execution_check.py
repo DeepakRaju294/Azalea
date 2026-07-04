@@ -378,14 +378,38 @@ def coding_omits_core_decision(cards: list, code: Optional[str]) -> bool:
     return True
 
 
+def _recover_input_spec(trace: Any) -> Optional[dict]:
+    """The entry-function inputs to run the code on THIS trace's instance. Arrays live in `initial_state`
+    (sorts/search). Other shapes (a graph traversal's adjacency) are NOT on the trace — recover them by
+    re-running the adapter's seeded candidate pool to the exact `candidate_id` in provenance (deterministic).
+    Returns an input_spec dict for `trace_execution._build_args`, or None when the instance can't be recovered."""
+    init = getattr(trace, "initial_state", None) or {}
+    if isinstance(init.get("array"), list):
+        return {"array": list(init["array"])}
+    if isinstance(init.get("runs"), list) and all(isinstance(r, list) for r in init["runs"]):
+        return {"array": [x for run in init["runs"] for x in run]}
+    prov = getattr(trace, "provenance", None) or {}
+    slug, seed, cid = prov.get("adapter"), prov.get("candidate_seed"), prov.get("candidate_id")
+    if slug and seed is not None and cid:
+        try:
+            from .trace_adapters import ADAPTERS
+            a = ADAPTERS.get(slug)
+            for cand in (a.candidates(seed) if a else []):
+                if cand.get("_id") == cid:
+                    return {k: v for k, v in cand.items() if k != "_id"}
+        except Exception:  # noqa: BLE001
+            return None
+    return None
+
+
 def _execute_on_instance(code: Optional[str], trace: Any):
-    """Run the coding topic on the trace's own array and return (raw_steps, result), or None when it can't be
-    run. The DISPLAYED code has imports stripped (design choice), so a `deque`/`heapq` solution won't run as
-    shown — fall back to the CANONICAL source (imports intact) for the same adapter, which is the same
-    algorithm the display was derived from. Line numbers may differ, but the checks compare values/states,
-    not line numbers, so the canonical run is an exact stand-in. None only if neither form runs."""
-    arr = _input_array(trace)
-    if arr is None:
+    """Run the coding topic on the trace's own instance and return (raw_steps, result, src_that_ran), or None.
+    The DISPLAYED code has imports stripped (design choice), so a `deque`/`heapq` solution won't run as shown —
+    fall back to the CANONICAL source (imports intact) for the same adapter, the same algorithm the display was
+    derived from. Line numbers may differ, but the checks compare values/states, not line numbers, so the
+    canonical run is an exact stand-in. None only if neither form runs on the recovered instance."""
+    spec = _recover_input_spec(trace)
+    if spec is None:
         return None
     from app.services.visual_v2.simulators.code_tracer import trace_execution
     candidates = []
@@ -402,7 +426,7 @@ def _execute_on_instance(code: Optional[str], trace: Any):
             candidates.append(canon)
     for src in candidates:
         try:
-            steps, result = trace_execution(src, find_entry_function(src), {"array": list(arr)})
+            steps, result = trace_execution(src, find_entry_function(src), spec)
             return steps, result, src                        # src = the code that actually RAN (line numbers)
         except Exception:  # noqa: BLE001 — try the next candidate (e.g. canonical with imports)
             continue

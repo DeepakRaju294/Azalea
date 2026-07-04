@@ -71,6 +71,40 @@ def _annotate(code: str, snaps: list, step: Any) -> str:
     if book:
         return book
 
+    # --- GRAPH TRAVERSAL (BFS/DFS) — checked first, before the sort templates. Node labels (not ints); the
+    # settrace snapshot is BEFORE the line runs, so the just-popped node comes from the verified step ("visit X"),
+    # and neighbour writes are aggregated over the inner loop. ---
+    if any(k in code for k in ("graph[", "visited", "queue", "stack", "popleft",
+                               "node", "neighbor", "order", "frontier")):
+        node = None
+        mnode = re.match(r"visit\s+(\w+)", str(getattr(step, "decision", "") or ""))
+        if mnode:
+            node = mnode.group(1)
+        nbrs = list(dict.fromkeys(s.get("neighbor") for s in snaps if s.get("neighbor") is not None))
+        if ".popleft()" in code:
+            return f"take {node} from the front of the queue" if node else "take the next node from the queue"
+        if re.match(r"^\w+\s*=\s*\w+\.pop\(\)$", code):
+            return f"take {node} off the top of the stack" if node else "take the next node off the stack"
+        if re.match(r"^\w+\.append\(\s*node\s*\)$", code):                    # order.append(node)
+            return f"visit {node} — record it in the output order" if node else "record this node as visited"
+        if _LOOP.match(code) and "graph[" in code:                           # for neighbor in graph[node]:
+            return f"look at each neighbour of {node}" if node else "look at each neighbour of this node"
+        if code.startswith("while "):                                        # while queue: / while stack:
+            return "keep going while there are still nodes waiting to be explored"
+        if code.startswith("if ") and "not in visited" in code:
+            return "for each neighbour, act only on the ones NOT visited yet"
+        if re.match(r"^visited\.(add|append)\(", code):
+            return f"mark {', '.join(map(str, nbrs))} visited" if nbrs else "mark this neighbour visited"
+        if re.match(r"^(queue|stack|frontier)\.append\(", code):
+            dest = code.split(".", 1)[0]
+            return f"add {', '.join(map(str, nbrs))} to the {dest}" if nbrs else f"add this neighbour to the {dest}"
+        if re.match(r"^visited\s*=\s*\{", code):                             # visited = {start}
+            return "mark the start node as already visited"
+        if re.match(r"^(order|result)\s*=\s*\[\]$", code):
+            return "the output order starts empty"
+        if re.match(r"^(queue|stack)\s*=\s*(deque\()?\[", code):
+            return "seed the frontier with the start node"
+
     m = _PLACE.match(code)                                                    # arr[j+1] = key  (drop the value in)
     if m and not m.group(3).isdigit():
         val = v0.get(m.group(3))
@@ -176,7 +210,9 @@ def _work_from_slice(events: list, exec_lines: list, step: Any, line_map: dict) 
     last_commit = -1
     for k, (ln, _snaps) in enumerate(lines):
         code = _COMMENT.sub("", exec_lines[ln - 1]).strip()
-        if _SWAP.match(code) or _SHIFT.match(code) or _APPEND.match(code) or re.match(r"^\w+\[[^\]]+\]\s*=", code):
+        if (_SWAP.match(code) or _SHIFT.match(code) or _APPEND.match(code)
+                or re.match(r"^\w+\[[^\]]+\]\s*=", code)                        # arr[i] = …
+                or re.match(r"^\w+\.(append|add|push|extend)\(", code)):        # queue.append / visited.add …
             last_commit = k
     if last_commit >= 0:
         lines = lines[:last_commit + 1]

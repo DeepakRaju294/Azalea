@@ -90,9 +90,13 @@ def _build_args(input_spec: dict[str, Any]) -> list[Any]:
         args.append(build_tree(input_spec["tree"]))
     elif "array" in input_spec:
         args.append(list(input_spec["array"]))
+    elif "graph" in input_spec:                       # adjacency dict for a traversal (bfs/dfs)
+        args.append(input_spec["graph"])
+        if "start" in input_spec:                     # start node — ONLY paired with a graph arg here, never
+            args.append(input_spec["start"])          # globally (a fixture may carry `start` for other reasons)
     elif "args" in input_spec:
         args.extend(input_spec["args"])
-    for key in ("target", "k", "n"):
+    for key in ("target", "k", "n"):                  # a search's target / size
         if key in input_spec:
             args.append(input_spec[key])
     return args
