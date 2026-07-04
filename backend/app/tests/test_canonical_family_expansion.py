@@ -104,3 +104,28 @@ class CanonicalFamilyOrdering(unittest.TestCase):
                                        "Selection Sort Algorithm Walkthrough", "Implementing Selection Sort in Code"])
         self.assertEqual(titles[-1], "Implementing Quicksort")                # insertion code no longer stranded
         self.assertNotIn("Implementing Insertion Sort in Code", titles[-2:])  # it's now next to insertion WT
+
+
+class StudyVerbTitlesDoNotLeakIntoCodingTopics(unittest.TestCase):
+    """The decomposition LLM sometimes titles a walkthrough with a study-verb ("Analyzing Quick Sort",
+    "Exploring Selection Sort"). The synthesized coding follow-up must strip it — title "Implementing Quick
+    Sort", NOT "Implementing Analyzing Quick Sort" — and the same-subject dedup must not treat the verb
+    variant as a different algorithm (which produced a DUPLICATE quicksort coding topic)."""
+    def test_study_verb_stripped_from_coding_title(self):
+        from app.services.topic_generator import _subject_phrase
+        self.assertEqual(_subject_phrase("Analyzing Quick Sort"), "Quick Sort")
+        self.assertEqual(_subject_phrase("Exploring Selection Sort"), "Selection Sort")
+
+    def test_no_duplicate_coding_topic_from_verb_variant(self):
+        from app.services.topic_generator import _append_missing_coding_topics
+        topics = [{"title": "Analyzing Quick Sort", "topic_type": "algorithm_walkthrough", "unit_title": "U"},
+                  {"title": "Quick Sort Algorithm Walkthrough", "topic_type": "algorithm_walkthrough",
+                   "unit_title": "U"}]
+        coding = [t["title"] for t in _append_missing_coding_topics(topics, "sorting algorithms")
+                  if t["topic_type"] == "coding_implementation"]
+        self.assertEqual(coding, ["Implementing Quick Sort"])          # exactly one, clean
+        self.assertNotIn("Implementing Analyzing Quick Sort", coding)
+
+
+if __name__ == "__main__":
+    unittest.main()

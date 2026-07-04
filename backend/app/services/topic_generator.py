@@ -108,6 +108,11 @@ _SUBJECT_FRAMING_WORDS: frozenset[str] = frozenset({
     # the bare subject and collapse with a plain intro of the same subject)
     "mechanism", "mechanics", "algorithm", "algorithms", "explained", "explain", "concept", "concepts",
     "what", "is", "are", "key", "terms", "essentials", "primer",
+    # study-verb framings the decomposition LLM sprinkles inconsistently ("Analyzing X", "Exploring X").
+    # Stripping them keeps the SUBJECT clean so the synthesized coding title is "Implementing Quick Sort"
+    # (not "Implementing Analyzing Quick Sort") AND the same-subject dedup collapses the duplicate.
+    "analyzing", "analyze", "analysis", "examining", "examine", "learning", "learn", "mastering", "master",
+    "discovering", "discover", "investigating", "investigate", "applying",
 })
 
 
