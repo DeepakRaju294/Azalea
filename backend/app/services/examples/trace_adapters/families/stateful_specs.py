@@ -188,4 +188,32 @@ LRU_CACHE = StatefulSpec(
     target="every access has been processed")
 
 
-ALL_SPECS = [STACK_OPERATIONS, QUEUE_OPERATIONS, HASH_TABLE_INSERT, LRU_CACHE]
+# --- modular counter: add amounts, wrapping mod m -----------------------------------------------------
+def _mod_setup(rng: random.Random) -> dict:
+    return {"m": rng.randint(5, 9), "incs": [rng.randint(1, 4) for _ in range(rng.randint(4, 6))], "value": 0}
+
+
+def _mod_apply(s: dict, i: int) -> tuple:
+    inc, m = s["incs"][i], s["m"]
+    new = (s["value"] + inc) % m
+    return {**s, "value": new}, f"add {inc}: ({s['value']} + {inc}) mod {m} = {new}"
+
+
+def _mod_oracle(s0: dict) -> dict:
+    v = 0
+    for inc in s0["incs"]:
+        v = (v + inc) % s0["m"]
+    return {"final_value": str(v)}
+
+
+MODULAR_COUNTER = StatefulSpec(
+    slug="modular_counter", title="a modular counter under a sequence of increments", family="structures",
+    aliases=["modular counter", "mod counter", "counter modulo"], priority=65, op_word="increment",
+    problem_template="Apply the increments to a counter that wraps modulo m; give the final value.",
+    setup=_mod_setup, ops_count=lambda s: len(s["incs"]), apply=_mod_apply,
+    render=lambda s: f"counter = {s['value']}",
+    answer=lambda s: {"final_value": str(s["value"])}, oracle=_mod_oracle,
+    target="every increment has been applied")
+
+
+ALL_SPECS = [STACK_OPERATIONS, QUEUE_OPERATIONS, HASH_TABLE_INSERT, LRU_CACHE, MODULAR_COUNTER]

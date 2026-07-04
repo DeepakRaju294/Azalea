@@ -365,6 +365,71 @@ GRADIENT_DESCENT = ConstructSpec(
     target="the estimate approaches the minimum")
 
 
+# --- prime factorization (repeated division by the smallest prime) ------------------------------------
+def _factorize(n: int) -> list:
+    f: list = []
+    d = 2
+    while d * d <= n:
+        while n % d == 0:
+            f.append(d); n //= d
+        d += 1
+    if n > 1:
+        f.append(n)
+    return f
+
+
+def _pf_setup(rng: random.Random) -> dict:
+    while True:
+        n = rng.randint(12, 90)
+        factors = _factorize(n)
+        if len(factors) >= 2:
+            return {"n": n, "factors": factors, "cur": n, "output": []}
+
+
+def _pf_step(s: dict, i: int) -> tuple:
+    f, cur = s["factors"][i], s["cur"]
+    rule = f"{f} divides {cur}: {cur} / {f} = {cur // f} ({f} is prime)"
+    return {**s, "output": s["output"] + [f], "cur": cur // f}, rule
+
+
+PRIME_FACTORIZATION = ConstructSpec(
+    slug="prime_factorization", title="prime factorization of an integer", family="number_theory",
+    aliases=["prime factorization", "prime factors", "factor into primes"], priority=48,
+    piece_word="prime factor",
+    problem_template="Find the prime factorization of {n}.",
+    setup=_pf_setup, pieces=lambda s: len(s["factors"]), step=_pf_step,
+    render=lambda s: " x ".join(str(x) for x in s["output"]) if s["output"] else "1",
+    valid=lambda s: s["output"] == s["factors"][: len(s["output"])],
+    answer=lambda s: {"factorization": " x ".join(str(x) for x in s["output"])},
+    oracle=lambda s0: {"factorization": " x ".join(str(x) for x in _factorize(s0["n"]))},
+    target="the number is fully broken into primes")
+
+
+# --- triangular numbers -------------------------------------------------------------------------------
+def _tri_setup(rng: random.Random) -> dict:
+    return {"count": rng.randint(5, 8), "output": []}
+
+
+def _tri_step(s: dict, i: int) -> tuple:
+    prev = s["output"][-1] if s["output"] else 0
+    val = prev + (i + 1)
+    rule = "the first triangular number is 1" if i == 0 else f"add {i + 1}: {prev} + {i + 1} = {val}"
+    return {**s, "output": s["output"] + [val]}, rule
+
+
+TRIANGULAR_NUMBERS = ConstructSpec(
+    slug="triangular_numbers", title="triangular numbers", family="discrete",
+    aliases=["triangular numbers", "triangular number sequence"], priority=47, piece_word="triangular number",
+    problem_template="Build the first {count} triangular numbers.",
+    setup=_tri_setup, pieces=lambda s: s["count"], step=_tri_step,
+    render=lambda s: _seq(s["output"]),
+    valid=lambda s: s["output"] == [(k + 1) * (k + 2) // 2 for k in range(len(s["output"]))],
+    answer=lambda s: {"sequence": _seq(s["output"])},
+    oracle=lambda s0: {"sequence": _seq([(k + 1) * (k + 2) // 2 for k in range(s0["count"])])},
+    target="the requested triangular numbers are listed")
+
+
 ALL_SPECS = [PREFIX_SUMS, RUNNING_MAXIMUM, DEPRECIATION_SCHEDULE,
              POLYNOMIAL_DERIVATIVE, POLYNOMIAL_INTEGRAL, FIBONACCI_SEQUENCE,
-             PASCALS_TRIANGLE_ROW, POWERS_OF_TWO, BABYLONIAN_SQRT, COLLATZ_SEQUENCE, GRADIENT_DESCENT]
+             PASCALS_TRIANGLE_ROW, POWERS_OF_TWO, BABYLONIAN_SQRT, COLLATZ_SEQUENCE, GRADIENT_DESCENT,
+             PRIME_FACTORIZATION, TRIANGULAR_NUMBERS]

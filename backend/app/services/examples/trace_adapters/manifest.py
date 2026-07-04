@@ -367,7 +367,7 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
     "kinematics": {"any": ["kinematic", "constant acceleration", "uniform acceleration"], "priority": 230},
     "binary_search": {"any": ["binary search", "binary_search"], "not": _IS_TREE, "priority": 220},
     "kruskal": {"any": ["kruskal"], "priority": 210},
-    "prim": {"any": ["prim"], "priority": 200},
+    "prim": {"any": ["prim"], "not": ["prime", "primitive", "primary"], "priority": 200},
     "merge_sort": {"any": ["merge sort", "merge_sort"], "priority": 190},
     "quick_sort": {"any": ["quicksort", "quick sort", "quick_sort"], "priority": 180},
     "insertion_sort": {"any": ["insertion sort", "insertion_sort"], "priority": 170},
