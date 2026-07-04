@@ -772,7 +772,14 @@ class QuickSortAdapter(FamilyAdapterBase):
         placed: list[int] = []
         counter = {"i": 0}
 
-        def do(lo: int, hi: int) -> None:
+        def _side(size: int, which: str) -> str:
+            if size <= 0:
+                return f"there is nothing on the {which} (an empty slice)"
+            if size == 1:
+                return f"the {which} slice is a single element, so it is already sorted"
+            return f"the {which} slice ({size} elements) still needs sorting"
+
+        def do(lo: int, hi: int, why: str) -> None:
             if lo >= hi:                                    # 0- or 1-element subarray is already in place
                 return
             prior_arr = list(a)
@@ -788,23 +795,29 @@ class QuickSortAdapter(FamilyAdapterBase):
                     a[i], a[j] = a[j], a[i]
                     i += 1
             a[i], a[hi] = a[hi], a[i]                       # pivot swaps into its final resting index
+            moved = prior_arr != a                          # did this partition actually rearrange the slice?
             placed.append(i)
             counter["i"] += 1
             sid = f"s{counter['i']}"
             # State the ACTUAL smaller/larger sets — never the generic "every smaller value shifts left" (which
             # the formatter then fills with wrong values for a min/all-smaller pivot). If nothing is smaller, say
             # so explicitly so the pivot's move to the front is not mis-explained as values shifting.
-            if smaller:
+            if not moved:                                   # slice already ordered around the pivot (fixes the
+                shift_desc = (f"the values here are already in order around {pivot}, so nothing moves — {pivot} "  # confusing 'array looks frozen' no-op: name it as a real, expected step)
+                              f"is simply confirmed in its final place at position {i}")
+            elif smaller:
                 shift_desc = (f"the values smaller than {pivot} ({', '.join(map(str, smaller))}) move to its "
                               f"left, so {pivot} settles at position {i}")
             else:
                 shift_desc = (f"no value in this slice is smaller than {pivot}, so it is already the smallest "
                               f"here and moves to the front at position {i}")
             larger_desc = (f" The larger values ({', '.join(map(str, larger))}) stay to its right." if larger
-                           else "")
-            reason = (f"partition the subarray {window} (the current recursive call's slice) around pivot "
-                      f"{pivot}, its last element: {shift_desc}.{larger_desc} Quicksort then recurses into the "
-                      f"left slice, then the right slice, each partitioned the same way")
+                           and moved else "")
+            # Recursion is what makes the pivot ORDER look arbitrary; narrate the descent — why THIS slice now,
+            # and which sides come next (naming trivial sides so a beginner is not left wondering).
+            next_note = (f" Next, {_side(i - lo, 'left')}; then {_side(hi - i, 'right')}." )
+            reason = (f"{why}partition this slice {window} around pivot {pivot} (its last element): "
+                      f"{shift_desc}.{larger_desc}{next_note}")
             evr = f"Pivot {pivot} locked into position {i}; array now {a}."
             if hi - lo >= 2:
                 evidence.setdefault("multi_element_partition", []).append(sid)
@@ -816,15 +829,18 @@ class QuickSortAdapter(FamilyAdapterBase):
                 inputs={"pivot": pivot, "position": i, "lo": lo, "hi": hi,
                         "smaller": smaller, "larger": larger},
                 decision=f"place pivot {pivot} at position {i}", reason=reason,
-                visual_state={"kind": "array", "array": list(a), "placed": sorted(placed), "active": i},
+                # `window` = [lo, hi] lets the renderer spotlight the ACTIVE slice, so recursion progress is
+                # visible even on a no-op partition where the array text does not change.
+                visual_state={"kind": "array", "array": list(a), "placed": sorted(placed),
+                              "active": i, "window": [lo, hi]},
                 visual_delta={"pivot": pivot, "position": i},
                 expected_visible_result=evr,
                 facts={"allowed_values": allowed, "required_facts": [fact("pivot", pivot)],
                        "forbidden_claims": []}))
-            do(lo, i - 1)                                   # recurse: smaller side, then larger side
-            do(i + 1, hi)
+            do(lo, i - 1, f"With pivot {pivot} placed, recurse into its LEFT side (the values below it): ")
+            do(i + 1, hi, f"Now the RIGHT side of pivot {pivot} (the values above it): ")
 
-        do(0, n - 1)
+        do(0, n - 1, "Start with the whole array. ")
         if steps:
             evidence.setdefault("completion", []).append(steps[-1].id)
         return ContractTrace(

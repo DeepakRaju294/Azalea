@@ -106,6 +106,27 @@ class AdapterCorrectness(unittest.TestCase):
             faithful = {"reasoning": s.reason, "work": [], "result": s.expected_visible_result}
             self.assertEqual(a.validate_prose_claims(faithful, s), [])
 
+    def test_quick_sort_walkthrough_narrates_recursion_and_names_noops(self):
+        # Tier 3 pedagogy: the pivot ORDER must not read as arbitrary — each partition states which side of
+        # which parent pivot it is, and a partition that changes nothing is named (not a silently 'frozen'
+        # array). [55,11,13,2,19,34,52,9] ends sorted early, then recurses down the right side with no-ops.
+        a = ADAPTERS["quick_sort"]
+        tr = a.reference({"array": [55, 11, 13, 2, 19, 34, 52, 9]})
+        reasons = [s.reason for s in tr.steps]
+        joined = " ".join(reasons)
+        self.assertIn("Start with the whole array", reasons[0])
+        self.assertTrue(any("RIGHT side of pivot" in r for r in reasons))   # recursion descent narrated
+        self.assertTrue(any("LEFT side" in r for r in reasons))
+        # a no-op partition (pivot already in order) is explicitly named, not silently identical
+        noop = [s for s in tr.steps if s.prior_state["array"] == s.state_after["array"]]
+        self.assertTrue(noop, "this instance should have a no-op partition on the right side")
+        for s in noop:
+            self.assertIn("nothing moves", s.reason)
+        # the visual carries the active slice window so recursion progress shows even on a no-op
+        for s in tr.steps:
+            self.assertIn("window", s.visual_state)
+            self.assertEqual(len(s.visual_state["window"]), 2)
+
 
 class RoutingTests(unittest.TestCase):
     def test_explicit_routing(self):
