@@ -448,13 +448,14 @@ scale to a domain. The declaration infra already exists (`types/tN_*.py` → `DE
   compound_interest** (finance), **molarity, density** (chemistry). All route from their natural titles and ship
   the walkthrough deterministically (no LLM); `manifest_gaps()` clean; full suite green. Remaining 12b waves
   (more finance/statistics/physics/chemistry/geometry rows) are now pure spec authoring on this engine.
-- **12b (cont.) — Domain data-row waves on the T6 engine** (each wave = a family + its gate green, demand-ordered
-  within). LIVE so far (38 adapters total): physics/EE (kinetic_energy, ohms_law), finance (simple_interest,
-  compound_interest), chemistry (molarity, density), and **statistics** (descriptive_stats = mean/variance/sd,
-  median_range) — the last via the **dataset (list-input) variant** of the engine (`34604aa`: `Dataset` given +
-  `Output.show` intermediates, eval-globals for genexpr free vars). Continue with **more finance/physics/
-  chemistry rows** + **more statistics** (z-score, correlation, regression). Pure spec authoring now — add a
-  `FormulaSpec` + manifest + routing per concept.
+- **12b (cont.) — Domain data-row waves on the T6 engine.** LIVE: **56 adapters total** (was 30 pre-CP12),
+  ~26 formula concepts across physics/EE, finance, geometry, chemistry, statistics. The engine now supports
+  scalar givens, a **dataset (list-input) variant** (statistics; `34604aa`), and named `constants` (g, R).
+  **Auto-registration landed (`998c40c`):** each `FormulaSpec` carries its own family + routing aliases +
+  priority, and the manifest entry, routing rule, declaration, and narration flag are all DERIVED from
+  `families/formula_specs.py` — **adding a concept is now a one-file edit** (append a spec to `ALL_SPECS`).
+  T6 is engine-complete; remaining T6 work is pure data authoring (more of each domain, e.g. correlation/
+  regression, projectile, annuities, gas-law variants) as demand warrants — no engine changes.
 - **12c — T7 Rewrite Engine.** Generic rewrite adapter driven by `{ start expression, allowed rule set, goal /
   normal-form predicate, per-rule narration }`; each step applies exactly one allowed rule and the gate proves
   every step is rule-justified and the goal is reached. Unlocks algebra (B1), symbolic calculus (B3/B4), row
