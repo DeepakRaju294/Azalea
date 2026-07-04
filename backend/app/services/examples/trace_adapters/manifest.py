@@ -241,6 +241,32 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "coding": False, "canonical_solution": None,
         "routing_aliases": ["kinematic", "constant acceleration", "uniform acceleration"],
         "negative_guards": [], "fixtures": ["zero_initial_velocity", "nonzero_initial_velocity"]},
+    # T6 Formula Engine concepts (CP12b) — declarative FormulaSpec rows in families/formula_specs.py; verified
+    # by test_formula_engine (each output re-evaluated independently). Non-coding computation topics.
+    "kinetic_energy": {
+        "type": "T6", "family": "physics", "status": "experimental", "verification_level": "trace_verified",
+        "coding": False, "canonical_solution": None,
+        "routing_aliases": ["kinetic energy"], "negative_guards": [], "fixtures": []},
+    "ohms_law": {
+        "type": "T6", "family": "physics", "status": "experimental", "verification_level": "trace_verified",
+        "coding": False, "canonical_solution": None,
+        "routing_aliases": ["ohm's law", "ohms law"], "negative_guards": [], "fixtures": []},
+    "simple_interest": {
+        "type": "T6", "family": "finance", "status": "experimental", "verification_level": "trace_verified",
+        "coding": False, "canonical_solution": None,
+        "routing_aliases": ["simple interest"], "negative_guards": ["compound"], "fixtures": []},
+    "compound_interest": {
+        "type": "T6", "family": "finance", "status": "experimental", "verification_level": "trace_verified",
+        "coding": False, "canonical_solution": None,
+        "routing_aliases": ["compound interest"], "negative_guards": [], "fixtures": []},
+    "molarity": {
+        "type": "T6", "family": "chemistry", "status": "experimental", "verification_level": "trace_verified",
+        "coding": False, "canonical_solution": None,
+        "routing_aliases": ["molarity"], "negative_guards": [], "fixtures": []},
+    "density": {
+        "type": "T6", "family": "chemistry", "status": "experimental", "verification_level": "trace_verified",
+        "coding": False, "canonical_solution": None,
+        "routing_aliases": ["density"], "negative_guards": [], "fixtures": []},
 }
 
 
@@ -375,6 +401,14 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
                                "all pairs shortest"], "priority": 30},
     "bellman_ford": {"any": ["bellman-ford", "bellman ford", "bellman_ford", "bellmanford"], "priority": 20},
     "dijkstra": {"any": ["dijkstra", "shortest path", "shortest-path"], "priority": 10},
+    # T6 Formula Engine concepts (CP12b) — distinct alias phrases; compound_interest must win over
+    # simple_interest when both "compound" and "interest" appear (higher priority + simple's `not` guard).
+    "kinetic_energy": {"any": ["kinetic energy"], "priority": 96},
+    "ohms_law": {"any": ["ohm's law", "ohms law", "ohm law"], "priority": 95},
+    "compound_interest": {"any": ["compound interest"], "priority": 94},
+    "simple_interest": {"any": ["simple interest"], "not": ["compound"], "priority": 93},
+    "molarity": {"any": ["molarity", "molar concentration"], "priority": 92},
+    "density": {"any": ["density"], "priority": 91},
 }
 
 

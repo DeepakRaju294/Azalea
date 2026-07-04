@@ -37,6 +37,7 @@ NARRATION_SLUGS = frozenset({
     "coin_change", "longest_increasing_subsequence", "n_queens", "union_find",
     "sieve_of_eratosthenes", "euclid_gcd", "bst_search", "binary_search",
     "quadratic", "kinematics", "arithmetic_eval", "induction_proof",
+    "kinetic_energy", "ohms_law", "simple_interest", "compound_interest", "molarity", "density",  # T6 formula (CP12b)
 })
 for _slug in NARRATION_SLUGS:
     if _slug in ADAPTERS:
