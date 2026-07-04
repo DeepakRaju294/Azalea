@@ -25,14 +25,22 @@ from ..example_spec import ExampleSpec, InstanceShape, StageSpec
 
 # Formulas are AUTHORED by us (never user input), but eval with no builtins + a whitelisted math namespace so a
 # typo can't reach the interpreter. Extend as new concepts need functions.
+def _median(xs: list) -> float:
+    s = sorted(xs); n = len(s); m = n // 2
+    return float(s[m]) if n % 2 else (s[m - 1] + s[m]) / 2
+
+
 _SAFE_NS = {k: getattr(math, k) for k in
             ("sqrt", "pi", "e", "sin", "cos", "tan", "asin", "acos", "atan", "log", "log10", "exp",
              "floor", "ceil", "fabs", "factorial", "radians", "degrees")}
-_SAFE_NS["abs"] = abs
+_SAFE_NS.update({"abs": abs, "sum": sum, "len": len, "min": min, "max": max, "sorted": sorted,
+                 "median": _median})
 
 
 def _eval(expr: str, values: dict[str, Any]) -> float:
-    return float(eval(expr, {"__builtins__": {}}, {**_SAFE_NS, **values}))  # noqa: S307 — authored expr, sealed ns
+    # Names go in GLOBALS (not locals) so a generator expression's free vars (e.g. `mean` in
+    # sum((x-mean)**2 for x in xs)) resolve — a comprehension's inner scope can't read eval's locals dict.
+    return float(eval(expr, {"__builtins__": {}, **_SAFE_NS, **values}))  # noqa: S307 — authored expr, sealed ns
 
 
 def _num(x: float) -> Any:
@@ -69,6 +77,18 @@ class Given:
 
 
 @dataclass
+class Dataset:
+    """A LIST-valued given (statistics): the concept's input is a dataset, not scalar quantities. Output exprs
+    reference it by `name` plus the derived `n` (count), and may use sum/len/min/max/sorted/median."""
+    name: str = "xs"
+    size_lo: int = 4
+    size_hi: int = 7
+    val_lo: int = 1
+    val_hi: int = 20
+    unit: str = ""
+
+
+@dataclass
 class Output:
     name: str                                   # symbol for the computed quantity
     equation: str                               # DISPLAY form incl. LHS, human powers: "v = u + a*t", "s = u*t + (a*t^2)/2"
@@ -77,6 +97,9 @@ class Output:
     stage_id: str = ""                          # Step.operation (defaults to compute_<name>)
     teaching_focus: str = ""
     fact_kind: str = ""                         # required_fact kind (defaults to <name>)
+    # DISPLAY intermediates (list concepts): (token, expr) pairs computed + literal-substituted into `equation`
+    # for the "= …" step, so "mean = Σx / n" shows "= 25 / 5". Empty -> scalar var substitution is used instead.
+    show: list = field(default_factory=list)
 
     def stage(self) -> str:
         return self.stage_id or f"compute_{self.name}"
@@ -95,6 +118,7 @@ class FormulaSpec:
     problem_template: str                       # .format(**givens) -> the problem statement
     givens: list[Given]
     outputs: list[Output]
+    dataset: Optional[Dataset] = None           # set for list-input (statistics) concepts; givens then usually []
     conventions: dict[str, str] = field(default_factory=dict)
     cases: list[Case] = field(default_factory=list)          # optional coverage cases keyed on the givens
     must_avoid: list[str] = field(default_factory=list)
@@ -102,9 +126,16 @@ class FormulaSpec:
     label_convention: str = "ints"
 
     # ------- derived -------------------------------------------------------------------------------
-    def compute(self, givens: dict[str, Any]) -> dict[str, Any]:
+    def base_env(self, example_input: dict[str, Any]) -> dict[str, Any]:
+        """The starting evaluation environment for an instance: scalar givens, or the dataset + its count `n`."""
+        if self.dataset is not None:
+            data = list(example_input[self.dataset.name])
+            return {self.dataset.name: data, "n": len(data)}
+        return {g.name: example_input[g.name] for g in self.givens}
+
+    def compute(self, example_input: dict[str, Any]) -> dict[str, Any]:
         """The real arithmetic: each output in order, later outputs may read earlier ones."""
-        env = dict(givens)
+        env = self.base_env(example_input)
         for o in self.outputs:
             env[o.name] = _num(_eval(o.expr, env))
         return {o.name: env[o.name] for o in self.outputs}
@@ -116,6 +147,9 @@ def _candidates(self, seed: int) -> Iterable[dict[str, Any]]:
     rng = random.Random(seed)
     for i in range(spec.n_candidates):
         row: dict[str, Any] = {}
+        if spec.dataset is not None:
+            ds = spec.dataset
+            row[ds.name] = [rng.randint(ds.val_lo, ds.val_hi) for _ in range(rng.randint(ds.size_lo, ds.size_hi))]
         for g in spec.givens:
             row[g.name] = rng.randint(g.lo, g.hi) if g.integer else round(rng.uniform(g.lo, g.hi), 1)
         row["_id"] = f"{spec.slug}_v1_case_{i}"
@@ -132,28 +166,43 @@ def _is_teaching_trace(self, trace: ContractTrace) -> bool:
 def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
                attempt: int = 1, seed: int = 0) -> ContractTrace:
     spec: FormulaSpec = self._formula_spec
-    givens = {g.name: example_input[g.name] for g in spec.givens}
+    env = spec.base_env(example_input)                       # scalar givens OR {dataset, n}
+    state0 = dict(env)                                       # the knowns that seed the trace state
 
-    knowns_str = ", ".join(f"{g.name} = {_num(givens[g.name])}{(' ' + g.unit) if g.unit else ''}"
-                           for g in spec.givens)
+    if spec.dataset is not None:
+        ds = spec.dataset
+        data = env[ds.name]
+        du = (" " + ds.unit) if ds.unit else ""
+        knowns_str = f"{ds.name} = {data}{du} (n = {env['n']})"
+        f1 = [fact("known", f"{ds.name} has {env['n']} values")]
+    else:
+        knowns_str = ", ".join(f"{g.name} = {_num(env[g.name])}{(' ' + g.unit) if g.unit else ''}"
+                               for g in spec.givens)
+        f1 = [fact("known", f"{g.name} = {_num(env[g.name])}") for g in spec.givens]
     d1 = knowns_str
-    r1 = f"the given quantities are {knowns_str}"
+    r1 = f"the given data is {knowns_str}" if spec.dataset is not None else f"the given quantities are {knowns_str}"
     e1 = f"Knowns: {knowns_str}."
-    f1 = [fact("known", f"{g.name} = {_num(givens[g.name])}") for g in spec.givens]
     steps = [Step(id="s1", operation="identify_knowns", prior_state={"problem": spec.title},
-                  state_after=dict(givens), inputs=dict(givens), decision=d1, reason=r1,
-                  visual_state={"kind": "equation", **givens}, expected_visible_result=e1,
+                  state_after=dict(state0), inputs=dict(state0), decision=d1, reason=r1,
+                  visual_state={"kind": "equation", **{k: v for k, v in state0.items() if not isinstance(v, list)}},
+                  expected_visible_result=e1,
                   facts={"allowed_values": _ints(d1, r1, e1), "required_facts": f1, "forbidden_claims": []})]
 
-    env = dict(givens)
-    prior = dict(givens)
+    prior = dict(state0)
     answer: dict[str, Any] = {}
     for k, o in enumerate(spec.outputs, start=2):
         val = _num(_eval(o.expr, env))
+        # Build the substituted display BEFORE binding o.name into env, so an output named like a namespace
+        # function (e.g. `median`) doesn't shadow that function inside its own show-token exprs.
+        rhs = o.equation.split("=", 1)[1].strip()
+        if o.show:                                          # list concepts: literal-substitute named intermediates
+            subst = rhs
+            for tok, expr in o.show:
+                subst = subst.replace(tok, str(_num(_eval(expr, env))))
+        else:                                               # scalar concepts: substitute the variable values
+            subst = _substitute(rhs, {n: env[n] for n in env if not isinstance(env[n], list)})
         env[o.name] = val
         answer[o.name] = val
-        rhs = o.equation.split("=", 1)[1].strip()
-        subst = _substitute(rhs, {**givens, **{n: env[n] for n in env}})
         unit = (" " + o.unit) if o.unit else ""
         d = f"{o.name} = {val}{unit}"
         r = f"{o.equation} = {subst} = {val}{unit}"
@@ -167,8 +216,8 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
                                  "required_facts": [fact(fk, f"{o.name} = {val}")], "forbidden_claims": []}))
         prior = after
 
-    # coverage case for this instance (optional)
-    case_id = next((c.id for c in spec.cases if c.when(givens)), None)
+    # coverage case for this instance (optional; predicate reads the knowns env)
+    case_id = next((c.id for c in spec.cases if c.when(state0)), None)
     required = ["identify_knowns"] + [o.stage() for o in spec.outputs] + ["completion"]
     evidence: dict[str, list[str]] = {"identify_knowns": ["s1"], "completion": [f"s{len(steps)}"]}
     for k, o in enumerate(spec.outputs, start=2):
@@ -178,8 +227,9 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
 
     inv = [{"id": f"{spec.slug}_hold", "scope": "final_only",
             "statement": "; ".join(o.equation for o in spec.outputs)}]
+    fmt_vals = {k: (v if isinstance(v, list) else _num(v)) for k, v in state0.items()}
     return ContractTrace(
-        problem=spec.problem_template.format(**{k: _num(v) for k, v in givens.items()}),
+        problem=spec.problem_template.format(**fmt_vals),
         conventions=dict(spec.conventions), initial_state={"problem": spec.title},
         final_answer=dict(answer), steps=steps, invariants=inv,
         required_cases=list(required), case_evidence=evidence,
@@ -202,9 +252,12 @@ def _invariant_holds(self, inv, state):
     if inv.get("id") != f"{spec.slug}_hold":
         return True
     st = state or {}
-    if any(st.get(g.name) is None for g in spec.givens):
+    keys = [spec.dataset.name] if spec.dataset is not None else [g.name for g in spec.givens]
+    if any(st.get(k) is None for k in keys):
         return True
-    env = {g.name: st[g.name] for g in spec.givens}
+    env = {k: st[k] for k in keys}
+    if spec.dataset is not None:
+        env["n"] = len(st[spec.dataset.name])
     for o in spec.outputs:
         if st.get(o.name) is None:
             return True
@@ -254,9 +307,14 @@ def build_example_spec(spec: FormulaSpec) -> ExampleSpec:
             contains={"substitute": "required", "evaluate": "required"},
             state_effects=[f"{o.name} is known"])
     structure = " ".join(["identify_knowns", *(o.stage() for o in spec.outputs)])
+    if spec.dataset is not None:
+        in_shape = InstanceShape("integers", count=(spec.dataset.size_lo, spec.dataset.size_hi),
+                                 structure=[spec.dataset.name])
+    else:
+        in_shape = InstanceShape("integers", count=(len(spec.givens), len(spec.givens)),
+                                 structure=[g.name for g in spec.givens])
     return ExampleSpec(
-        input=InstanceShape("integers", count=(len(spec.givens), len(spec.givens)),
-                            structure=[g.name for g in spec.givens]),
+        input=in_shape,
         stages=stages, structure=structure,
         must_exercise=["identify_knowns", *(o.stage() for o in spec.outputs), "completion"],
         must_cover=[c.id for c in spec.cases], must_avoid=list(spec.must_avoid),

@@ -7,7 +7,7 @@ Adding a concept = add a `FormulaSpec` here. Wiring it live = add its `formula_d
 DECLARATIONS + a manifest/routing entry (mechanical, gated by `manifest_gaps()`)."""
 from __future__ import annotations
 
-from .formula_engine import Case, FormulaSpec, Given, Output
+from .formula_engine import Case, Dataset, FormulaSpec, Given, Output
 
 # --- physics / mechanics (B9) --------------------------------------------------------------------------
 KINEMATICS = FormulaSpec(
@@ -71,4 +71,31 @@ DENSITY = FormulaSpec(
     outputs=[Output("rho", "rho = m/V", "m/V", "g/mL", "compute_density", "density")],
     conventions={"definition": "density = mass per unit volume"})
 
-ALL_SPECS = [KINEMATICS, KINETIC_ENERGY, OHMS_LAW, SIMPLE_INTEREST, COMPOUND_INTEREST, MOLARITY, DENSITY]
+# --- statistics (B7) — LIST-input concepts on the dataset variant of the engine -----------------------
+DESCRIPTIVE_STATS = FormulaSpec(
+    slug="descriptive_stats", title="mean, variance and standard deviation of a dataset",
+    problem_template="For the dataset {xs}, find the mean, the (population) variance, and the standard deviation.",
+    givens=[], dataset=Dataset("xs", size_lo=5, size_hi=8, val_lo=1, val_hi=20),
+    outputs=[
+        Output("mean", "mean = (sum of the values) / n", "sum(xs)/n", "", "compute_mean", "mean",
+               show=[("sum of the values", "sum(xs)"), ("n", "n")]),
+        Output("variance", "variance = (sum of squared deviations from the mean) / n",
+               "sum((x-mean)**2 for x in xs)/n", "", "compute_variance", "population variance",
+               show=[("sum of squared deviations from the mean", "sum((x-mean)**2 for x in xs)"), ("n", "n")]),
+        Output("sd", "sd = sqrt(variance)", "sqrt(variance)", "", "compute_std_dev", "standard deviation",
+               show=[("variance", "variance")])],
+    conventions={"model": "population (divide by n, not n-1)"})
+
+MEDIAN_RANGE = FormulaSpec(
+    slug="median_range", title="median and range of a dataset",
+    problem_template="For the dataset {xs}, find the median and the range.",
+    givens=[], dataset=Dataset("xs", size_lo=5, size_hi=9, val_lo=1, val_hi=30),
+    outputs=[
+        Output("median", "median = middle value of the sorted data", "median(xs)", "", "compute_median", "median",
+               show=[("middle value of the sorted data", "median(xs)")]),
+        Output("range", "range = max - min", "max(xs) - min(xs)", "", "compute_range", "range",
+               show=[("max", "max(xs)"), ("min", "min(xs)")])],
+    conventions={"definition": "median = middle of the sorted values; range = max minus min"})
+
+ALL_SPECS = [KINEMATICS, KINETIC_ENERGY, OHMS_LAW, SIMPLE_INTEREST, COMPOUND_INTEREST, MOLARITY, DENSITY,
+             DESCRIPTIVE_STATS, MEDIAN_RANGE]

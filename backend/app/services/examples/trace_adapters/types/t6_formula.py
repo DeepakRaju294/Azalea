@@ -18,7 +18,7 @@ KINEMATICS = declare(KinematicsAdapter, "kinematics", "T6")
 # from the manifest + its routing from ROUTING_RULES (single source of truth). The hand-coded KINEMATICS above
 # keeps its slot; the engine's own kinematics spec stays gate-only (test_formula_engine) to avoid a duplicate.
 _FORMULA_SPECS = [_fs.KINETIC_ENERGY, _fs.OHMS_LAW, _fs.SIMPLE_INTEREST, _fs.COMPOUND_INTEREST,
-                  _fs.MOLARITY, _fs.DENSITY]
+                  _fs.MOLARITY, _fs.DENSITY, _fs.DESCRIPTIVE_STATS, _fs.MEDIAN_RANGE]
 _FORMULA_DECLS = [formula_decl(s, routing={**ROUTING_RULES.get(s.slug, {}),
                                            "family": MANIFEST[s.slug]["family"]}) for s in _FORMULA_SPECS]
 

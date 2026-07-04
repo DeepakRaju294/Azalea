@@ -38,6 +38,7 @@ NARRATION_SLUGS = frozenset({
     "sieve_of_eratosthenes", "euclid_gcd", "bst_search", "binary_search",
     "quadratic", "kinematics", "arithmetic_eval", "induction_proof",
     "kinetic_energy", "ohms_law", "simple_interest", "compound_interest", "molarity", "density",  # T6 formula (CP12b)
+    "descriptive_stats", "median_range",                                                          # T6 statistics (CP12b)
 })
 for _slug in NARRATION_SLUGS:
     if _slug in ADAPTERS:

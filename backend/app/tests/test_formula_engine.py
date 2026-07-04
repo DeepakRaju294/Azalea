@@ -42,8 +42,7 @@ class FormulaEngineGate(unittest.TestCase):
             with self.subTest(slug=spec.slug):
                 for seed in range(12):
                     tr = tp.select_instance(a, seed=seed)
-                    givens = {g.name: tr.steps[0].inputs[g.name] for g in spec.givens}
-                    env = dict(givens)
+                    env = spec.base_env(tr.steps[0].inputs)   # scalar givens or {dataset, n}
                     for o in spec.outputs:
                         want = _num(_eval(o.expr, env))
                         self.assertEqual(tr.final_answer[o.name], want,
@@ -69,7 +68,8 @@ class FormulaEngineGate(unittest.TestCase):
         self.assertEqual(len(slugs), len(set(slugs)), "duplicate formula slug")
         for s in ALL_SPECS:
             self.assertTrue(s.outputs, f"{s.slug}: no outputs")
-            self.assertTrue(s.givens, f"{s.slug}: no givens")
+            self.assertTrue(s.givens or s.dataset is not None,   # scalar givens OR a dataset input
+                            f"{s.slug}: no givens and no dataset")
 
 
 if __name__ == "__main__":

@@ -267,6 +267,14 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "type": "T6", "family": "chemistry", "status": "experimental", "verification_level": "trace_verified",
         "coding": False, "canonical_solution": None,
         "routing_aliases": ["density"], "negative_guards": [], "fixtures": []},
+    "descriptive_stats": {
+        "type": "T6", "family": "statistics", "status": "experimental", "verification_level": "trace_verified",
+        "coding": False, "canonical_solution": None,
+        "routing_aliases": ["mean", "variance", "standard deviation"], "negative_guards": [], "fixtures": []},
+    "median_range": {
+        "type": "T6", "family": "statistics", "status": "experimental", "verification_level": "trace_verified",
+        "coding": False, "canonical_solution": None,
+        "routing_aliases": ["median", "range of"], "negative_guards": [], "fixtures": []},
 }
 
 
@@ -409,6 +417,9 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
     "simple_interest": {"any": ["simple interest"], "not": ["compound"], "priority": 93},
     "molarity": {"any": ["molarity", "molar concentration"], "priority": 92},
     "density": {"any": ["density"], "priority": 91},
+    "descriptive_stats": {"any": ["mean, variance", "mean and variance", "standard deviation", "variance and"],
+                          "priority": 89},
+    "median_range": {"any": ["median"], "priority": 88},
 }
 
 
