@@ -216,4 +216,49 @@ MODULAR_COUNTER = StatefulSpec(
     target="every increment has been applied")
 
 
-ALL_SPECS = [STACK_OPERATIONS, QUEUE_OPERATIONS, HASH_TABLE_INSERT, LRU_CACHE, MODULAR_COUNTER]
+# --- set operations: add / remove (with no-op on duplicate add) --------------------------------------
+def _set_setup(rng: random.Random) -> dict:
+    ops: list = []
+    model: set = set()
+    for _ in range(rng.randint(5, 7)):
+        if model and rng.random() < 0.35:
+            x = rng.choice(sorted(model)); ops.append(("remove", x)); model.discard(x)
+        else:
+            x = rng.randint(1, 9); ops.append(("add", x)); model.add(x)
+    return {"ops": ops, "elems": []}
+
+
+def _set_apply(s: dict, i: int) -> tuple:
+    kind, x = s["ops"][i]
+    elems = list(s["elems"])
+    if kind == "add":
+        if x in elems:
+            return {**s, "elems": elems}, f"add {x}: already in the set, no change (a no-op)"
+        elems = sorted(elems + [x])
+        return {**s, "elems": elems}, f"add {x}"
+    elems.remove(x)
+    return {**s, "elems": elems}, f"remove {x}"
+
+
+def _set_oracle(s0: dict) -> dict:
+    elems: list = []
+    for kind, x in s0["ops"]:
+        if kind == "add":
+            if x not in elems:
+                elems.append(x)
+        else:
+            elems.remove(x)
+    return {"final_set": _seq(sorted(elems))}
+
+
+SET_OPERATIONS = StatefulSpec(
+    slug="set_operations", title="a sequence of set add/remove operations", family="structures",
+    aliases=["set operations", "add and remove from a set"], priority=64, op_word="operation",
+    problem_template="Apply the add/remove operations to a set; give the final set (a duplicate add is a no-op).",
+    setup=_set_setup, ops_count=lambda s: len(s["ops"]), apply=_set_apply,
+    render=lambda s: f"set: {_seq(sorted(s['elems']))}",
+    answer=lambda s: {"final_set": _seq(sorted(s["elems"]))}, oracle=_set_oracle,
+    target="every add and remove has been applied")
+
+
+ALL_SPECS = [STACK_OPERATIONS, QUEUE_OPERATIONS, HASH_TABLE_INSERT, LRU_CACHE, MODULAR_COUNTER, SET_OPERATIONS]

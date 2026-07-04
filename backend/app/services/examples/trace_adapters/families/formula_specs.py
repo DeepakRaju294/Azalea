@@ -841,6 +841,43 @@ POLYGON_EXTERIOR_ANGLE = FormulaSpec(
     outputs=[Output("angle", "angle = 360/n", "360/n", "deg", "compute_angle", "exterior angle")],
     conventions={"formula": "exterior angle = 360/n"})
 
+EFFICIENCY = FormulaSpec(
+    slug="efficiency", title="energy efficiency", family="physics",
+    aliases=["efficiency", "energy efficiency"], priority=43,
+    problem_template="A machine delivers useful = {useful} J of useful energy and wastes wasted = {wasted} J. "
+                     "Find its efficiency.",
+    givens=[Given("useful", "J", 10, 100), Given("wasted", "J", 1, 50)],
+    outputs=[Output("eff", "eff = useful/(useful + wasted) * 100", "useful/(useful + wasted) * 100", "%",
+                    "compute_efficiency", "efficiency")],
+    conventions={"definition": "efficiency = useful / total energy * 100"})
+
+PERCENT_ERROR = FormulaSpec(
+    slug="percent_error", title="percent error", family="statistics",
+    aliases=["percent error", "percentage error"], priority=42,
+    problem_template="A measurement is measured = {measured} against a true value actual = {actual}. "
+                     "Find the percent error.",
+    givens=[Given("measured", "", 1, 100), Given("actual", "", 1, 100)],
+    outputs=[Output("error", "error = abs(measured - actual)/actual * 100", "abs(measured - actual)/actual * 100",
+                    "%", "compute_error", "percent error")],
+    conventions={"definition": "percent error = |measured - actual| / actual * 100"})
+
+UNIT_PRICE = FormulaSpec(
+    slug="unit_price", title="unit price", family="finance",
+    aliases=["unit price", "price per unit"], priority=41,
+    problem_template="A package of quantity = {quantity} units costs price = ${price}. Find the unit price.",
+    givens=[Given("price", "$", 2, 100), Given("quantity", "", 2, 20)],
+    outputs=[Output("unit", "unit = price/quantity", "price/quantity", "$/unit", "compute_unit_price",
+                    "unit price")],
+    conventions={"definition": "unit price = total price / quantity"})
+
+IMPULSE = FormulaSpec(
+    slug="impulse", title="impulse of a force", family="physics",
+    aliases=["impulse"], priority=39,
+    problem_template="A force F = {F} N acts for time t = {t} s. Find the impulse.",
+    givens=[Given("F", "N", 1, 50), Given("t", "s", 1, 10)],
+    outputs=[Output("J", "J = F*t", "F*t", "N*s", "compute_impulse", "impulse")],
+    conventions={"formula": "impulse = force x time"})
+
 # --- the full concept set; ALL_SPECS drives the gate, the registry, the manifest, and routing ---------
 ALL_SPECS = [
     # physics / EE
@@ -876,4 +913,6 @@ ALL_SPECS = [
     CUBE_VOLUME, CUBE_SURFACE_AREA, HOOKES_FORCE, ROOT_MEAN_SQUARE,
     # polygon angles
     POLYGON_INTERIOR_ANGLE, POLYGON_EXTERIOR_ANGLE,
+    # efficiency / error / pricing / impulse
+    EFFICIENCY, PERCENT_ERROR, UNIT_PRICE, IMPULSE,
 ]

@@ -448,6 +448,37 @@ CUBE_OF_BINOMIAL = DerivationSpec(
     preserved="the expression keeps the same value for every x")
 
 
+# --- sum of the first n odd numbers:  1 + 3 + ... + (2n-1) = n^2 ------------------------------------
+def _odd_setup(rng: random.Random) -> dict:
+    return {"n": rng.randint(4, 9), "phase": 0}
+
+
+def _odd_render(s: dict) -> str:
+    n, p = s["n"], s["phase"]
+    if p == 0:
+        return f"1 + 3 + 5 + ... + {2 * n - 1}"
+    if p == 1:
+        return f"{n}^2"
+    return f"{n * n}"
+
+
+SUM_ODD_NUMBERS = DerivationSpec(
+    slug="sum_odd_numbers", title="sum of the first n odd numbers", family="algebra",
+    aliases=["sum of odd numbers", "sum of consecutive odd", "odd numbers sum"], priority=75,
+    problem_template="Find the sum {start}.",
+    setup=_odd_setup, render=_odd_render,
+    steps=[
+        DerivationStep("apply_identity", "sum-of-odds identity", lambda s: {**s, "phase": 1},
+                       lambda s: f"the sum of the first n odd numbers is n^2, with n = {s['n']}"),
+        DerivationStep("evaluate", "arithmetic", lambda s: {**s, "phase": 2},
+                       lambda s: f"{s['n']}^2 = {s['n'] * s['n']}")],
+    conclusion=lambda s: f"{s['n'] * s['n']}",
+    answer=lambda s: {"sum": s["n"] * s["n"]},
+    oracle=lambda s0: {"sum": s0["n"] * s0["n"]},
+    invariant=lambda s: sum(2 * i - 1 for i in range(1, s["n"] + 1)) == s["n"] * s["n"],
+    preserved="the value of the sum is fixed")
+
+
 ALL_SPECS = [EXPONENT_LAWS, POWER_OF_POWER, LOG_EVALUATION, LOG_PRODUCT_LAW, LOG_QUOTIENT_LAW, FOIL_EXPANSION,
              DIFFERENCE_OF_SQUARES, PERFECT_SQUARE, FACTOR_GCF, SUM_ARITHMETIC_SERIES,
-             COMPLETE_THE_SQUARE, SUM_GEOMETRIC_SERIES, DIFFERENCE_OF_CUBES, CUBE_OF_BINOMIAL]
+             COMPLETE_THE_SQUARE, SUM_GEOMETRIC_SERIES, DIFFERENCE_OF_CUBES, CUBE_OF_BINOMIAL, SUM_ODD_NUMBERS]
