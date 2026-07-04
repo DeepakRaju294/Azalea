@@ -51,6 +51,7 @@ class RewriteSpec:
     invariant: Callable[[dict], bool] = lambda s: True
     preserved: str = "the solution set is preserved by every step"
     goal: str = "the variable is isolated"          # terminal description
+    task: str = "solve"                             # "solve" (for var) | "simplify" (an expression) — frames the intro
     family: str = "algebra"
     aliases: list = field(default_factory=list)
     not_aliases: list = field(default_factory=list)
@@ -82,8 +83,12 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
     var = state.get("var", "x")
     start_render = spec.render(state)
 
-    d1 = f"solve {start_render} for {var}"
-    r1 = f"the equation is {start_render}; isolate {var}"
+    if spec.task == "simplify":
+        d1 = f"simplify {start_render}"
+        r1 = f"the expression is {start_render}; combine it into a simpler form"
+    else:
+        d1 = f"solve {start_render} for {var}"
+        r1 = f"the equation is {start_render}; isolate {var}"
     e1 = f"Start: {start_render}."
     steps = [Step(id="s1", operation="state_equation", prior_state={"problem": spec.title},
                   state_after={**state, "expr": start_render}, inputs=dict(state), decision=d1, reason=r1,
