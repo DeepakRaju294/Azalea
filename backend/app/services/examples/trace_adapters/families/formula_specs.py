@@ -935,6 +935,31 @@ POTENTIAL_TO_KINETIC = FormulaSpec(
     outputs=[Output("v", "v = sqrt(2*g*h)", "sqrt(2*g*h)", "m/s", "compute_speed", "speed")],
     conventions={"principle": "1/2 m v^2 = m g h"})
 
+SPHERE_SURFACE_AREA = FormulaSpec(
+    slug="sphere_surface_area", title="surface area of a sphere", family="geometry",
+    aliases=["surface area of a sphere", "sphere surface area"], priority=36,
+    problem_template="A sphere has radius r = {r}. Find its surface area.",
+    givens=[Given("r", "", 1, 15)],
+    outputs=[Output("A", "A = 4*pi*r^2", "4*pi*r**2", "sq units", "compute_area", "surface area")],
+    conventions={"pi": "3.14159..."})
+
+DENSITY_MASS = FormulaSpec(
+    slug="mass_from_density", title="mass from density and volume", family="chemistry",
+    aliases=["mass from density", "mass = density x volume"], priority=93,  # > density (91): "mass from …" wins
+    problem_template="A material has density rho = {rho} g/mL and volume V = {V} mL. Find its mass.",
+    givens=[Given("rho", "g/mL", 1, 20), Given("V", "mL", 1, 50)],
+    outputs=[Output("m", "m = rho*V", "rho*V", "g", "compute_mass", "mass")],
+    conventions={"relation": "mass = density x volume"})
+
+PERCENT_INCREASE = FormulaSpec(
+    slug="percent_increase", title="new value after a percent increase", family="finance",
+    aliases=["percent increase", "increase by a percent"], priority=34,
+    problem_template="A value original = {original} increases by pct = {pct}%. Find the new value.",
+    givens=[Given("original", "", 10, 200), Given("pct", "%", 1, 50)],
+    outputs=[Output("new_value", "new = original*(1 + pct/100)", "original*(1 + pct/100)", "",
+                    "compute_new_value", "new value")],
+    conventions={"definition": "new = original x (1 + percent)"})
+
 # --- the full concept set; ALL_SPECS drives the gate, the registry, the manifest, and routing ---------
 ALL_SPECS = [
     # physics / EE
@@ -975,4 +1000,6 @@ ALL_SPECS = [
     EFFICIENCY, PERCENT_ERROR, UNIT_PRICE, IMPULSE,
     # free fall / energy
     FREE_FALL_VELOCITY, FREE_FALL_DISTANCE, POTENTIAL_TO_KINETIC,
+    # more solids / density / percent
+    SPHERE_SURFACE_AREA, DENSITY_MASS, PERCENT_INCREASE,
 ]
