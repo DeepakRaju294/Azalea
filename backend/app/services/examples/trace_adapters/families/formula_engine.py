@@ -34,7 +34,7 @@ _SAFE_NS = {k: getattr(math, k) for k in
             ("sqrt", "pi", "e", "sin", "cos", "tan", "asin", "acos", "atan", "log", "log10", "exp",
              "floor", "ceil", "fabs", "factorial", "radians", "degrees")}
 _SAFE_NS.update({"abs": abs, "sum": sum, "len": len, "min": min, "max": max, "sorted": sorted,
-                 "median": _median})
+                 "median": _median, "zip": zip})
 
 
 def _eval(expr: str, values: dict[str, Any]) -> float:
@@ -119,6 +119,7 @@ class FormulaSpec:
     givens: list[Given]
     outputs: list[Output]
     dataset: Optional[Dataset] = None           # set for list-input (statistics) concepts; givens then usually []
+    dataset2: Optional[Dataset] = None          # a SECOND aligned list (paired data: weighted mean, covariance)
     constants: dict[str, float] = field(default_factory=dict)   # named constants merged into env (e.g. g=9.8)
     conventions: dict[str, str] = field(default_factory=dict)
     cases: list[Case] = field(default_factory=list)          # optional coverage cases keyed on the givens
@@ -138,7 +139,10 @@ class FormulaSpec:
         plus any named constants (g, ...)."""
         if self.dataset is not None:
             data = list(example_input[self.dataset.name])
-            return {self.dataset.name: data, "n": len(data), **self.constants}
+            env = {self.dataset.name: data, "n": len(data), **self.constants}
+            if self.dataset2 is not None:
+                env[self.dataset2.name] = list(example_input[self.dataset2.name])
+            return env
         return {**{g.name: example_input[g.name] for g in self.givens}, **self.constants}
 
     def compute(self, example_input: dict[str, Any]) -> dict[str, Any]:
@@ -157,7 +161,11 @@ def _candidates(self, seed: int) -> Iterable[dict[str, Any]]:
         row: dict[str, Any] = {}
         if spec.dataset is not None:
             ds = spec.dataset
-            row[ds.name] = [rng.randint(ds.val_lo, ds.val_hi) for _ in range(rng.randint(ds.size_lo, ds.size_hi))]
+            size = rng.randint(ds.size_lo, ds.size_hi)
+            row[ds.name] = [rng.randint(ds.val_lo, ds.val_hi) for _ in range(size)]
+            if spec.dataset2 is not None:                    # a paired list of the SAME length
+                d2 = spec.dataset2
+                row[d2.name] = [rng.randint(d2.val_lo, d2.val_hi) for _ in range(size)]
         for g in spec.givens:
             row[g.name] = rng.randint(g.lo, g.hi) if g.integer else round(rng.uniform(g.lo, g.hi), 1)
         row["_id"] = f"{spec.slug}_v1_case_{i}"
@@ -182,6 +190,8 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
         data = env[ds.name]
         du = (" " + ds.unit) if ds.unit else ""
         knowns_str = f"{ds.name} = {data}{du} (n = {env['n']})"
+        if spec.dataset2 is not None:
+            knowns_str += f", {spec.dataset2.name} = {env[spec.dataset2.name]}"
         f1 = [fact("known", f"{ds.name} has {env['n']} values")]
     else:
         knowns_str = ", ".join(f"{g.name} = {_num(env[g.name])}{(' ' + g.unit) if g.unit else ''}"

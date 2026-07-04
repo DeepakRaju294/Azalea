@@ -263,6 +263,35 @@ MEDIAN_RANGE = FormulaSpec(
                show=[("max", "max(xs)"), ("min", "min(xs)")])],
     conventions={"definition": "median = middle of the sorted values; range = max minus min"})
 
+WEIGHTED_MEAN = FormulaSpec(
+    slug="weighted_mean", title="weighted mean of values and weights", family="statistics",
+    aliases=["weighted mean", "weighted average"], priority=86,
+    problem_template="For values xs = {xs} with weights ws = {ws}, find the weighted mean.",
+    givens=[], dataset=Dataset("xs", size_lo=3, size_hi=5, val_lo=1, val_hi=20),
+    dataset2=Dataset("ws", size_lo=3, size_hi=5, val_lo=1, val_hi=5),
+    outputs=[Output("wmean", "wmean = (sum of value x weight)/(sum of weights)",
+                    "sum(v*w for v, w in zip(xs, ws))/sum(ws)", "", "compute_weighted_mean", "weighted mean",
+                    show=[("sum of value x weight", "sum(v*w for v, w in zip(xs, ws))"),
+                          ("sum of weights", "sum(ws)")])],
+    conventions={"definition": "weighted mean = sum(value x weight) / sum(weights)"})
+
+COVARIANCE = FormulaSpec(
+    slug="covariance", title="covariance of two datasets", family="statistics",
+    aliases=["covariance"], priority=85,
+    problem_template="For paired data xs = {xs} and ys = {ys}, find the (population) covariance.",
+    givens=[], dataset=Dataset("xs", size_lo=4, size_hi=6, val_lo=1, val_hi=15),
+    dataset2=Dataset("ys", size_lo=4, size_hi=6, val_lo=1, val_hi=15),
+    outputs=[
+        Output("mean_x", "mean_x = (sum of xs)/n", "sum(xs)/n", "", "compute_mean_x", "mean of xs",
+               show=[("sum of xs", "sum(xs)"), ("n", "n")]),
+        Output("mean_y", "mean_y = (sum of ys)/n", "sum(ys)/n", "", "compute_mean_y", "mean of ys",
+               show=[("sum of ys", "sum(ys)"), ("n", "n")]),
+        Output("cov", "cov = (sum of (x - mean_x)(y - mean_y))/n",
+               "sum((x-mean_x)*(y-mean_y) for x, y in zip(xs, ys))/n", "", "compute_covariance", "covariance",
+               show=[("sum of (x - mean_x)(y - mean_y)", "sum((x-mean_x)*(y-mean_y) for x, y in zip(xs, ys))"),
+                     ("n", "n")])],
+    conventions={"model": "population covariance (divide by n)"})
+
 Z_SCORE = FormulaSpec(
     slug="z_score", title="z-score (standard score)", family="statistics",
     aliases=["z-score", "z score", "standard score"], priority=87,
@@ -925,6 +954,7 @@ ALL_SPECS = [
     DETERMINANT_2X2, VECTOR_MAGNITUDE, DOT_PRODUCT_3D,
     # statistics
     DESCRIPTIVE_STATS, MEDIAN_RANGE, Z_SCORE, COEFF_OF_VARIATION, MEAN_ABS_DEVIATION,
+    WEIGHTED_MEAN, COVARIANCE,
     # rates / sequences / conversions
     DISTANCE_RATE_TIME, AVERAGE_SPEED, CELSIUS_TO_FAHRENHEIT, ARITHMETIC_SEQUENCE_TERM, GEOMETRIC_SEQUENCE_TERM,
     # trig / business math / more physics
