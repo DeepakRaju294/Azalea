@@ -50,7 +50,7 @@ for _slug in NARRATION_SLUGS:
 # NARRATION_SLUGS set — only the coding walkthrough is gated here.)
 DETERMINISTIC_CODING_SLUGS = frozenset({
     "bubble_sort", "selection_sort", "insertion_sort", "merge_sort", "quick_sort",  # arrays (CP10)
-    "bfs",                                                                          # graph traversal (CP11a)
+    "bfs", "dfs_iter",                                                              # graph traversal (CP11a)
 })
 
 __all__ = ["ADAPTERS", "DECLARATIONS", "NARRATION_SLUGS", "DETERMINISTIC_CODING_SLUGS"]

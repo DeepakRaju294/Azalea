@@ -39,14 +39,19 @@ def bfs(graph, start):
     return order
 """,
     # DFS recursive — simpler than an explicit stack, equally efficient.
-    "dfs_iter": """def dfs(graph, start, visited=None):
-    if visited is None:
-        visited = set()
-    visited.add(start)
-    order = [start]
-    for neighbor in graph[start]:
-        if neighbor not in visited:
-            order += dfs(graph, neighbor, visited)
+    "dfs_iter": """def dfs(graph, start):
+    visited = set()
+    order = []
+    stack = [start]
+    while stack:
+        node = stack.pop()
+        if node in visited:
+            continue
+        visited.add(node)
+        order.append(node)
+        for neighbor in reversed(graph[node]):
+            if neighbor not in visited:
+                stack.append(neighbor)
     return order
 """,
     "kruskal": """def find(parent, u):

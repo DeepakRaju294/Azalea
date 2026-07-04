@@ -336,12 +336,23 @@ class GraphFamilyDeterministicCoding(unittest.TestCase):
                                       format_fn=boom, code=display_solution("bfs"), seed=3)
         self.assertIsNotNone(res)
 
-    def test_recursive_dfs_falls_back_gracefully(self):
-        # dfs_iter is recursive (order += dfs(...)); it does not map to one slice per step -> None -> LLM path
+    def test_dfs_iterative_code_matches_its_trace_and_generates(self):
+        # dfs_iter's canonical code was RECURSIVE while its trace is iterative (stack pop/push) — a code-vs-
+        # walkthrough variant mismatch. Fixed: the canonical code is now the iterative stack DFS, so it maps
+        # cleanly and ships deterministic coding (stack.pop / stack.append, mark-on-pop, duplicates skipped).
+        from app.services.examples.canonical_solutions import display_solution, canonical_python
         from app.services.examples.coding_narration import generate_coding_cards
-        from app.services.examples.canonical_solutions import display_solution
-        a = ADAPTERS["dfs_iter"]; tr = tp.select_instance(a, seed=3)
-        self.assertIsNone(generate_coding_cards(tr, display_solution("dfs_iter"), tp._deterministic_narration(tr, a)))
+        self.assertIn("stack", canonical_python("dfs_iter"))
+        self.assertNotIn("order += dfs", canonical_python("dfs_iter"))          # no longer recursive
+        a = ADAPTERS["dfs_iter"]
+        for seed in range(10):
+            tr = tp.select_instance(a, seed=seed)
+            cards = generate_coding_cards(tr, display_solution("dfs_iter"), tp._deterministic_narration(tr, a))
+            with self.subTest(seed=seed):
+                self.assertIsNotNone(cards)
+                for c in cards:
+                    for w in c["work"]:
+                        self.assertNotIn("carry out this step", w)
 
 
 class DeterministicCodingIsWhitelisted(unittest.TestCase):

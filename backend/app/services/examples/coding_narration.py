@@ -44,6 +44,7 @@ _BOOKKEEP = {
     "i=j=0": "two read cursors, one per input run",
     "runs=deque([x]forxinarr)": "each element starts as its own length-1 sorted run",
     "break": "stop early — the array is already sorted",
+    "continue": "skip to the next node on the stack",
 }
 
 
@@ -93,11 +94,17 @@ def _annotate(code: str, snaps: list, step: Any) -> str:
             return "keep going while there are still nodes waiting to be explored"
         if code.startswith("if ") and "not in visited" in code:
             return "for each neighbour, act only on the ones NOT visited yet"
-        if re.match(r"^visited\.(add|append)\(", code):
+        if code.startswith("if ") and "in visited" in code:                  # if node in visited: (dup skip)
+            return "if this node was already visited, skip it — a stale duplicate left on the stack"
+        if re.match(r"^visited\.(add|append)\(\s*node\s*\)", code):          # visited.add(node) — the popped node
+            return f"mark {node} visited" if node else "mark the current node visited"
+        if re.match(r"^visited\.(add|append)\(", code):                      # visited.add(neighbor) — aggregate
             return f"mark {', '.join(map(str, nbrs))} visited" if nbrs else "mark this neighbour visited"
         if re.match(r"^(queue|stack|frontier)\.append\(", code):
             dest = code.split(".", 1)[0]
             return f"add {', '.join(map(str, nbrs))} to the {dest}" if nbrs else f"add this neighbour to the {dest}"
+        if re.match(r"^visited\s*=\s*set\(\)\s*$", code):                    # visited = set() (mark-on-pop)
+            return "start with nothing marked visited yet"
         if re.match(r"^visited\s*=\s*\{", code):                             # visited = {start}
             return "mark the start node as already visited"
         if re.match(r"^(order|result)\s*=\s*\[\]$", code):
