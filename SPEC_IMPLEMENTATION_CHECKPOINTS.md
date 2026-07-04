@@ -363,13 +363,40 @@ execution shape before its instances count as reuse. Sub-steps:
     (Dijkstra/Prim/Kruskal). Each needs a state-model reconciliation, not just a new template — the real cost
     the stress-test surfaced: the anchor+state-validation mapper works where the TRACE's per-step state equals a
     CODE variable's value (sorts in-place, BFS shared lists), and falls back otherwise.
-- **11b — Roll the deterministic path out family by family** (memory-layout, formula/geometric, …), each with
-  its region-mapper shape + annotation templates + visual kind, gated by the CP10 generation test extended to
-  that family.
+- **11b — Roll the deterministic path out family by family**, each with its region-mapper shape + annotation
+  templates, gated by the CP10 generation test extended to that family. **Done so far (9 families whitelisted):**
+  - **topological_sort ✅** — Kahn's is BFS-shaped so it already mapped; added in-degree/prerequisite/ready-queue
+    templates gated on the `"emit X"` step decision (vs BFS/DFS `"visit X"`). 20/20 seeds. (`a297d8e`)
+  - **tree_levelorder ✅** — needed a code-tracer fix: `_build_args` was passing the adapter's adjacency dict to
+    `build_tree` (a LeetCode level-order LIST builder), which packed the values into a COMPLETE tree so the code
+    silently traversed a different tree than the trace. Added `build_tree_from_adjacency` (follows real
+    left/right links) + tree-node templates naming the current node from the `"visit N"` step. 20/20. (`4608e40`)
+  - **heap_sort ✅** — two-phase (build + extract), each step a `sift_down` CALL from one of two sites, so NO
+    single line runs once-per-step. Added an **additive multi-anchor fallback** to `map_step_regions`: segment on
+    the CALL STACK (each excursion above base depth = one call = one step); only runs after the single-anchor
+    families return, still state-validated, guarded so it can't remap them. Heap templates for the sift-down body.
+    20/20. (`b4c7684`)
+  - **Language guard ✅ (cross-cutting):** deterministic coding annotates the executed PYTHON canonical; on a
+    java/cpp path the display is a translation, `_line_map` matched nothing → empty `code_lines` → an
+    unrenderable card (this hung "Implementing BFS" live). `generate_coding_cards` now returns None on an empty
+    line-map → LLM fallback (which translates faithfully). Every future whitelist add is safe on non-Python. (`58b0320`)
 - **11c — Bulk instances** within proven families (mechanical once 11a/11b hold).
 
-**Blocked on CP10.** A few new adapter *types* (new structural shapes) may be piloted early as the 11a
-stress-test; the bulk instance build (11c) waits until the family's two-sided guarantee is green.
+**Remaining LLM-path (each needs infra, not just a template):**
+- **sieve_of_eratosthenes** — state-model bridge: the trace tracks `crossed` numbers, the code tracks `is_prime`
+  booleans; they never match by value. Low value (2 steps).
+- **RECURSIVE traversals** (dfs, tree in/pre/post-order) — recursive accumulation (`order += dfs(...)`) can't map
+  to one-slice-per-step; stay LLM by design.
+- **DP tables** (coin_change, LIS) — growing-trace vs pre-allocated-code state mismatch.
+- **Weighted graphs** (dijkstra, prim, kruskal, bellman_ford, floyd_warshall) — priority-queue / distance-array
+  state needs reconciliation with the trace's per-step state.
+- **Formula / proof / misc** (quadratic, kinematics, arithmetic_eval, induction_proof, n_queens, union_find,
+  binary_search, bst_search, euclid_gcd) — mostly few-step or non-array shapes; binary_search/euclid also need
+  input recovery for `(array,target)` / `(a,b)`.
+
+**Blocked on CP10 → now UNBLOCKED and in progress (9/30 coding-deterministic).** A few new adapter *types* (new
+structural shapes) may be piloted early as the 11a stress-test; the bulk instance build (11c) waits until the
+family's two-sided guarantee is green.
 
 > NOT part of CP11: the **live-regen human sign-off** (CP7 "feels useful" sweep) is VALIDATION, not a build,
 > and needs the product + an API key — it must not be folded into a code-breadth checkpoint (that would let
