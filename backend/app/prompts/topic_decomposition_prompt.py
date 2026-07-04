@@ -72,6 +72,11 @@ PROCESS (capability-first):
 RULES:
 - subject_key = the SUBJECT IDENTITY only (the thing learned), never the action: "breadth_first_search",
   "binary_search_tree", "prim". The action lives in primary_action.
+- title = a CLEAN, CONSISTENT name — the subject, optionally "<Subject> Algorithm Walkthrough". Do NOT
+  decorate it with a study-verb ("Analyzing/Exploring/Understanding/Mastering <X>"): within a family survey
+  every member's title must read the SAME way (e.g. all "Bubble Sort", "Selection Sort", … — not "Understanding
+  Bubble Sort" beside "Merge Sort Algorithm Walkthrough"). A coding follow-up is auto-titled "Implementing
+  <Subject>", so a decorated walkthrough title corrupts it ("Implementing Analyzing Quick Sort").
 - primary_action ∈ {", ".join(ACTION_VERBS)}.
 - content_role ∈ {", ".join(CONTENT_ROLES)}; topic_type ∈ {", ".join(TOPIC_TYPES)}.
 - practice_evidence_type ∈ {", ".join(PRACTICE_EVIDENCE_TYPES)}.

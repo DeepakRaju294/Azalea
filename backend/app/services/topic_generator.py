@@ -304,6 +304,14 @@ def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> l
         return topics
     fam_block = sorted((topics[i] for i in fam_positions),
                        key=lambda t: (order.get(_slug(t), 99), 0 if _ttype(t) != "coding_implementation" else 1))
+    # Consistent titles across the family (deterministic backstop for the decomposition prompt): every
+    # walkthrough member reads the SAME way — "<Canonical> Algorithm Walkthrough" — so a study-verb the LLM
+    # sprinkled on one ("Analyzing Quick Sort" next to "Merge Sort Algorithm Walkthrough") never survives.
+    # Coding members are left as their auto-titled "Implementing <Canonical>".
+    canon = {slug: name for name, slug in fam["members"]}
+    for t in fam_block:
+        if _ttype(t) == "algorithm_walkthrough" and _slug(t) in canon:
+            t["title"] = f"{canon[_slug(t)]} Algorithm Walkthrough"
     first, famset = fam_positions[0], set(fam_positions)
     result: list[dict[str, Any]] = []
     for i, t in enumerate(topics):

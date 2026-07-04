@@ -106,6 +106,25 @@ class CanonicalFamilyOrdering(unittest.TestCase):
         self.assertNotIn("Implementing Insertion Sort in Code", titles[-2:])  # it's now next to insertion WT
 
 
+class FamilyWalkthroughTitlesAreConsistent(unittest.TestCase):
+    """Within a family survey, every walkthrough title reads the same way — a study-verb the LLM sprinkles on
+    one member ("Analyzing Quick Sort" beside "Merge Sort Algorithm Walkthrough") is normalized away."""
+    def test_verb_decorated_titles_are_normalized(self):
+        from app.services.topic_generator import _order_canonical_family
+        topics = [
+            {"title": "Understanding Bubble Sort", "topic_type": "algorithm_walkthrough"},
+            {"title": "Exploring Selection Sort", "topic_type": "algorithm_walkthrough"},
+            {"title": "Insertion Sort Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"},
+            {"title": "Merge Sort Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"},
+            {"title": "Analyzing Quick Sort", "topic_type": "algorithm_walkthrough"},
+        ]
+        out = _order_canonical_family(topics, "sorting algorithms")
+        wt = [t["title"] for t in out if t["topic_type"] == "algorithm_walkthrough"]
+        self.assertTrue(all(t.endswith(" Algorithm Walkthrough") for t in wt), wt)
+        self.assertNotIn("Analyzing Quick Sort", wt)
+        self.assertNotIn("Understanding Bubble Sort", wt)
+
+
 class StudyVerbTitlesDoNotLeakIntoCodingTopics(unittest.TestCase):
     """The decomposition LLM sometimes titles a walkthrough with a study-verb ("Analyzing Quick Sort",
     "Exploring Selection Sort"). The synthesized coding follow-up must strip it — title "Implementing Quick
