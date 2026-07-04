@@ -10,10 +10,17 @@
 > REFEREE runs the code (CP9), and — the load-bearing piece — CODING is now authored from the executed
 > reference, not the LLM (CP10, `coding_narration`, 5 core sorts; heap/graph defer). Both sides of an
 > adapter-backed topic are correct-by-construction, so the per-adapter guards (CP9 stopgaps) no longer fire on
-> the core sorts. Scaling the catalog (CP11) is the next work: extend the same two-sided guarantee to more
-> adapter families (new execution shapes for CP10's region mapper, new visual kinds), replicating a solid
-> foundation rather than a half-reliable one. *(Historical: the old CP3 grouped-artifact wiring stays deferred,
-> not on the critical path.)*
+> the core sorts. Scaling the catalog (CP11) is in progress: the two-sided guarantee now covers **9/30 CS coding
+> families** (5 sorts + bfs + topological_sort + tree_levelorder + heap_sort), with the mapper grown for graph
+> adjacency, tree adjacency, and two-phase call-stack shapes, plus a language guard for translated displays.
+> *(Historical: the old CP3 grouped-artifact wiring stays deferred, not on the critical path.)*
+>
+> **CP12 (complete the catalog) is committed scope.** The non-CS domains (math / physics / chemistry / finance,
+> catalog B0–B11) are now planned, not demand-only — the goal is a system complete across curricula. The plan
+> hinges on one insight: those ~600 rows collapse onto ~4 trace grammars (T6 formula, T7 rewrite, T8a
+> construction, T8b derivation), so the build is "turn each dominant type into a declarative ENGINE, then add
+> each concept as a gated DATA SPEC" — bounded new code, large row count. See Checkpoint 12; **12a (the T6
+> formula engine) is the single highest-leverage task in the roadmap.**
 >
 > **Status legend:** ✅ done & tested · 🟡 partial · 🔴 planned/blocking · ❌ not started.
 
@@ -404,6 +411,73 @@ family's two-sided guarantee is green.
 
 ---
 
+## Checkpoint 12 — Complete the catalog: math / physics / chemistry / finance 🔴 (AFTER CP11 CS families)
+**Decision (owner):** the full `ADAPTER_CATALOG.md` menu — including the non-CS domains B0–B11 (arithmetic
+through finance) — IS the goal, so the system is complete across curricula, not just CS. This overrides the
+"menu not a mandate / demand-only" framing FOR THESE DOMAINS: they are now committed scope. The anti-batch
+guardrails still hold at the row level (every concept still earns a correctness gate), but the *intent* is full
+coverage.
+
+### The load-bearing insight — hundreds of rows collapse onto ~4 type-engines
+The B-catalog is enormous by ROW (600+ concepts) but tiny by TRACE GRAMMAR. Nearly every row is one of:
+- **T6 — formula plug-in** (given values → substitute → compute → units → answer): most of statistics (B7),
+  physics mechanics + circuits (B9), chemistry (B10), finance (B11), geometry formulas (B2), applied calculus.
+- **T7 — symbolic rewrite** (apply one allowed rule per step until a normal form): algebra (B1), derivatives /
+  integrals (B3/B4), linear-algebra row reduction (B5), boolean simplification (B6).
+- **T8a — incremental construction** (add one valid piece to a growing structure): truth tables, matrix mult,
+  accounting statements, loan/depreciation schedules.
+- **T8b — formal derivation** (each step justified by a named rule): proofs, balancing equations, limits by
+  ε-argument, induction.
+
+So the work is NOT "author 600 adapters." It is **"turn each of the 4 dominant types from hand-coded classes
+into a declarative ENGINE, then add each concept as a DATA SPEC gated by the type's test."** Today T6 is two
+hand-coded classes (`QuadraticEquationAdapter`, `KinematicsAdapter`, ~150 lines each) — that shape does not
+scale to a domain. The declaration infra already exists (`types/tN_*.py` → `DECLARATIONS`); CP12 pushes the
+*behavior* into the type template so a row is data, not code.
+
+### Sub-steps
+- **12a — T6 Formula Engine (biggest single unlock; do first).** One generic formula adapter whose behavior is
+  driven by a **concept spec**: `{ vars (+units+ranges), formula(s), given-set / solve-for policy, step
+  narration templates, answer + tolerance }`. The engine provides all the boilerplate methods (`candidates`,
+  `is_teaching_trace`, `states_equivalent`, `final_answer_entails`, invariants, prose validation) generically;
+  each concept is ~15 lines of spec. **Gate:** a `TypeFormulaGate` test that, for every declared spec, checks
+  the trace's computed answer against an independent evaluation of the formula across seeded inputs (units +
+  tolerance) — the T6 analogue of `test_code_reproduces_trace`. Migrate quadratic + kinematics onto it first
+  (byte-compatible), then it is pure data authoring.
+- **12b — Domain data-row waves on the T6 engine** (each wave = a family + its gate green, demand-ordered
+  within): **finance (B11)** → **statistics (B7)** → **physics mechanics + Ohm/series/parallel (B9)** →
+  **chemistry stoichiometry/gas/pH (B10)** → **geometry formulas (B2)**. These are the highest-value, purest
+  plug-in rows and share the one engine.
+- **12c — T7 Rewrite Engine.** Generic rewrite adapter driven by `{ start expression, allowed rule set, goal /
+  normal-form predicate, per-rule narration }`; each step applies exactly one allowed rule and the gate proves
+  every step is rule-justified and the goal is reached. Unlocks algebra (B1), symbolic calculus (B3/B4), row
+  reduction (B5), boolean simplification (B6).
+- **12d — T8a construction + T8b derivation engines.** Declarative construction (each piece keeps the partial
+  output valid → target) and rule-justified derivation (each step cites an allowed rule → conclusion). Unlocks
+  truth tables, matrix mult, accounting schedules (T8a) and proofs, equation balancing, limits (T8b).
+- **12e — Long tail + ◇ items.** T9 (Newton/Euler/gradient descent), T10 (FSM/flip-flop/simplex), remaining
+  ◇-marked rows — piloted individually as they each introduce a genuinely new trace shape, not engine data.
+
+### Guardrails (unchanged from CP8/10, applied per type-engine)
+- **Two-sided guarantee still applies:** a formula/rewrite topic ships its walkthrough deterministically (the
+  spec IS the content); where the concept has a `coding` treatment, coding is deterministic too, else it defers.
+- **A data row is not "done" because the engine ran** — it is done when its type gate verifies the answer
+  against an INDEPENDENT computation (formula re-eval / rule replay), the same "gate-passing ≠ correct" lesson
+  as `DETERMINISTIC_CODING_SLUGS`. Wrong-unit / wrong-formula specs must fail the gate, not ship.
+- **Part C stays Part C:** the eligibility-review families (SWE, ethics, HCI, …) are NOT trace adapters — they
+  remain guided/source-grounded. CP12 is Parts A/B only.
+
+### Sequencing vs CP11
+CP11 (remaining CS coding families) and CP12a (the T6 engine) are independent and can interleave. But **12a is
+the highest-leverage single task in the whole roadmap** — it converts the largest slice of the catalog from
+"unwritten" to "author a spec," so once the CS families settle, the formula engine is the next build.
+
+> **Rough scale (for planning, not a commitment to hand-build each):** ~30 of 30 CS adapters are the current
+> surface; the B-catalog adds ~600 concept rows but only ~4 engines + ~5 long-tail pilots of NEW code. The row
+> count is large; the *code* to write is small and bounded by the engines.
+
+---
+
 ## Final Definition of Done
 Done only when: adapter-supported topics cannot fall back to from-scratch generation · trace-preserving fallback
 exists · `count_mismatch` is coverage-based (not count-only) · hard vs soft prose failures are separated ·
@@ -414,4 +488,10 @@ LLM-authored (CP10)**. **Do not scale to more adapters (CP11) until these — in
 This matches the main spec invariant (§1.2): *adapter-supported topics must use the adapter trace as the only
 executable truth, never a from-scratch fallback* — extended in §18.5: **the trace, not the LLM, authors both the
 walkthrough and the coding walkthrough.**
+
+**Full-system completion (CP12) adds:** every catalog Part A/B family — CS *and* math/physics/chemistry/finance —
+is served by a verified-trace adapter, delivered through the ~4 declarative type-engines (T6/T7/T8a/T8b) with
+each concept a data spec whose answer is checked against an independent computation. Part C families stay
+guided/source-grounded by design. The system is "complete" when a learner topic in any Part A/B domain routes to
+a correct-by-construction trace, not an LLM fallback.
 
