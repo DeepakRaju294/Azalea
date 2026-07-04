@@ -72,6 +72,36 @@ def _annotate(code: str, snaps: list, step: Any) -> str:
     if book:
         return book
 
+    # --- TOPOLOGICAL SORT (Kahn's) — in-degree bookkeeping over a ready queue. Gated on the step's own
+    # decision ("emit X", vs BFS/DFS's "visit X"), so its lines read in prerequisite/in-degree vocabulary
+    # instead of borrowing the BFS or merge-run wording. `u` is the just-emitted node from the verified step;
+    # `v` values (the successors touched this round) are aggregated over the inner loop's snapshots. ---
+    _dec = str(getattr(step, "decision", "") or "")
+    if _dec.startswith("emit"):
+        memit = re.match(r"emit\s+(\w+)", _dec)
+        u = memit.group(1) if memit else None
+        vs = list(dict.fromkeys(s.get("v") for s in snaps if s.get("v") is not None))
+        if ".popleft()" in code:                                             # u = ready.popleft()
+            return f"take {u} — it has no remaining prerequisites" if u else "take a node with no prerequisites left"
+        if re.match(r"^(order|result)\.append\(", code):                     # order.append(u)
+            return f"add {u} to the topological order" if u else "add this node to the topological order"
+        if _LOOP.match(code) and "graph[" in code:                           # for v in graph[u]:
+            return f"look at each node that depended on {u}" if u else "look at each node that depended on it"
+        if re.match(r"^\w+\[\w+\]\s*-=\s*1", code):                          # indeg[v] -= 1
+            return (f"{u} is placed — drop the in-degree of {', '.join(map(str, vs))} by one"
+                    if u and vs else "one prerequisite is satisfied — drop this node's in-degree by one")
+        if code.startswith("if ") and "== 0" in code:                        # if indeg[v] == 0:
+            return "a dependent whose in-degree hits 0 has all prerequisites met — it becomes ready"
+        if re.match(r"^\w+\.append\(", code):                                # ready.append(v)
+            return (f"{', '.join(map(str, vs))} is now ready — add it to the ready queue"
+                    if vs else "this node is now ready — add it to the ready queue")
+        if re.match(r"^\w+\s*=\s*deque\(sorted\(\w+\)\)", code):             # ready = deque(sorted(ready))
+            return "keep the ready queue in sorted order so the result is deterministic"
+        if re.match(r"^\w+\s*=\s*deque\(sorted\(", code):                    # ready = deque(sorted(indeg==0))
+            return "start with every node that has no prerequisites"
+        if code.startswith("while "):                                        # while ready:
+            return "keep going while there are still ready nodes"
+
     # --- GRAPH TRAVERSAL (BFS/DFS) — checked first, before the sort templates. Node labels (not ints); the
     # settrace snapshot is BEFORE the line runs, so the just-popped node comes from the verified step ("visit X"),
     # and neighbour writes are aggregated over the inner loop. ---

@@ -304,6 +304,30 @@ class GraphFamilyDeterministicCoding(unittest.TestCase):
         tr = tp.select_instance(a, seed=seed)
         return a, tr, generate_coding_cards(tr, display_solution(slug), tp._deterministic_narration(tr, a))
 
+    def test_topological_sort_coding_generates_cleanly_across_seeds(self):
+        # CP11b — Kahn's algorithm (in-degree queue) is BFS-shaped, so it maps to the anchor-line model. Its
+        # steps carry decision "emit X" (vs BFS/DFS "visit X"), which routes the annotations to the topo
+        # vocabulary (in-degree / prerequisites / ready queue) instead of borrowing the BFS or merge-run wording.
+        from app.services.examples.trace_contract import (validate_prose, hard_prose_violations,
+                                                          validate_fidelity)
+        from app.services.examples.code_execution_check import executed_reference_violations
+        from app.services.examples.canonical_solutions import display_solution
+        from app.services.examples.trace_adapters import DETERMINISTIC_CODING_SLUGS
+        self.assertIn("topological_sort", DETERMINISTIC_CODING_SLUGS)
+        code = display_solution("topological_sort")
+        for seed in range(20):
+            a, tr, cards = self._cards("topological_sort", seed)
+            with self.subTest(seed=seed):
+                self.assertIsNotNone(cards, "topo should generate deterministically")
+                self.assertEqual(hard_prose_violations(validate_prose(cards, tr, a, code_anchored=True)), [])
+                self.assertTrue(validate_fidelity(cards, tr, a, validate_visual_state=False).ok)
+                self.assertEqual(executed_reference_violations(cards, code, tr), [])
+                for c in cards:
+                    for w in c["work"]:
+                        self.assertNotIn("carry out this step", w)            # no weak fallback
+                        self.assertNotIn("merged run", w)                     # no leaked SORT template
+                        self.assertNotIn("front of the queue", w)             # no borrowed BFS wording
+
     def test_bfs_coding_generates_cleanly_across_seeds(self):
         from app.services.examples.trace_contract import (validate_prose, hard_prose_violations,
                                                           validate_fidelity)
@@ -381,15 +405,17 @@ class DeterministicCodingIsWhitelisted(unittest.TestCase):
     def test_whitelist_is_a_subset_of_narration_and_holds_the_verified_families(self):
         from app.services.examples.trace_adapters import DETERMINISTIC_CODING_SLUGS, NARRATION_SLUGS
         self.assertTrue(DETERMINISTIC_CODING_SLUGS <= NARRATION_SLUGS)
-        for s in ("bubble_sort", "selection_sort", "insertion_sort", "merge_sort", "quick_sort", "bfs"):
+        for s in ("bubble_sort", "selection_sort", "insertion_sort", "merge_sort", "quick_sort", "bfs",
+                  "topological_sort"):
             self.assertIn(s, DETERMINISTIC_CODING_SLUGS)
 
     def test_unverified_adapters_do_not_ship_generated_coding(self):
-        # LIS (spurious dp mapping) and topological_sort / bst_search (missing templates -> weak fallback) must
-        # return None so the pipeline keeps the LLM coding path — never ship the misaligned/robotic content.
+        # LIS (spurious dp mapping) and bst_search (missing templates -> weak fallback) must return None so the
+        # pipeline keeps the LLM coding path — never ship the misaligned/robotic content. (topological_sort was
+        # here until CP11b added its templates; it now ships deterministically.)
         from app.services.examples.coding_narration import generate_coding_cards
         from app.services.examples.canonical_solutions import display_solution
-        for slug in ("longest_increasing_subsequence", "topological_sort", "bst_search"):
+        for slug in ("longest_increasing_subsequence", "bst_search"):
             a = ADAPTERS[slug]
             tr = tp.select_instance(a, seed=3)
             with self.subTest(slug=slug):

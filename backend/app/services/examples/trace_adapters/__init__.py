@@ -51,6 +51,7 @@ for _slug in NARRATION_SLUGS:
 DETERMINISTIC_CODING_SLUGS = frozenset({
     "bubble_sort", "selection_sort", "insertion_sort", "merge_sort", "quick_sort",  # arrays (CP10)
     "bfs",                                                                         # graph traversal (CP11a)
+    "topological_sort",                                                            # Kahn's in-degree queue (CP11b)
 })
 
 __all__ = ["ADAPTERS", "DECLARATIONS", "NARRATION_SLUGS", "DETERMINISTIC_CODING_SLUGS"]
