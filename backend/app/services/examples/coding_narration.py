@@ -103,16 +103,18 @@ def _annotate(code: str, snaps: list, step: Any) -> str:
             return f"shift {', '.join(map(str, vals))} one position right to open a slot"
 
     if _LOOP.match(code):                                                     # loop header — say what it scans
+        is_while = code.startswith("while")
         if "pivot" in inp:
             return f"scan the slice, moving values below the pivot {inp['pivot']} to the left"
-        if "key" in inp:
-            return f"walk left through the sorted prefix while it is larger than {inp['key']}"
-        if "shifted" in inp or step.operation == "insert":
-            return "walk left through the sorted prefix"
+        if is_while:                                                          # insertion's INNER walk-left loop
+            return (f"walk left through the sorted prefix while it is larger than {inp['key']}"
+                    if "key" in inp else "walk left through the sorted prefix")
+        if step.operation == "insert":                                       # the OUTER for-loop (not the while)
+            return "take each element after the first and insert it into the sorted prefix"
         if step.operation == "select":
             return "scan the unsorted part for the smallest value"
         if step.operation in ("bubble", "sweep") or "bubble" in str(getattr(step, "decision", "")):
-            return "sweep adjacent pairs left to right"
+            return "sweep adjacent pairs left to right, swapping any that are out of order"
         return "scan the current range"
 
     # comparison / condition body pieces get the outcome from the verified step, not a per-iteration replay
