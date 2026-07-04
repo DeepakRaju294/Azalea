@@ -677,6 +677,33 @@ SIMPLE_ROI = FormulaSpec(
                     "ROI")],
     conventions={"definition": "ROI = (gain - cost) / cost * 100"})
 
+PROBABILITY_SIMPLE = FormulaSpec(
+    slug="probability_simple", title="probability of a simple event", family="statistics",
+    aliases=["simple probability", "probability of an event", "theoretical probability"], priority=17,
+    problem_template="An event has favorable = {favorable} favorable outcomes and unfavorable = {unfavorable} "
+                     "unfavorable outcomes. Find its probability.",
+    givens=[Given("favorable", "", 1, 12), Given("unfavorable", "", 1, 12)],
+    outputs=[Output("P", "P = favorable/(favorable + unfavorable)", "favorable/(favorable + unfavorable)", "",
+                    "compute_probability", "probability")],
+    conventions={"definition": "P = favorable outcomes / total outcomes"})
+
+MOLE_FRACTION = FormulaSpec(
+    slug="mole_fraction", title="mole fraction", family="chemistry",
+    aliases=["mole fraction"], priority=16,
+    problem_template="A mixture has na = {na} mol of component A and nb = {nb} mol of component B. "
+                     "Find the mole fraction of A.",
+    givens=[Given("na", "mol", 1, 10), Given("nb", "mol", 1, 10)],
+    outputs=[Output("x_A", "x_A = na/(na + nb)", "na/(na + nb)", "", "compute_mole_fraction", "mole fraction")],
+    conventions={"definition": "mole fraction = moles of component / total moles"})
+
+OHMS_POWER = FormulaSpec(
+    slug="ohms_power", title="power from voltage and resistance", family="physics",
+    aliases=["power from voltage", "v squared over r"], priority=15,
+    problem_template="A voltage V = {V} V is across a resistor R = {R} ohm. Find the power dissipated.",
+    givens=[Given("V", "V", 2, 24), Given("R", "ohm", 1, 12)],
+    outputs=[Output("P", "P = V^2/R", "V**2/R", "W", "compute_power", "power")],
+    conventions={"law": "P = V^2 / R"})
+
 # --- the full concept set; ALL_SPECS drives the gate, the registry, the manifest, and routing ---------
 ALL_SPECS = [
     # physics / EE
@@ -702,4 +729,6 @@ ALL_SPECS = [
     TANGENT_RATIO, PERCENT_OF, DISCOUNT_PRICE, SALES_TAX_TOTAL, POWER_FROM_CURRENT, PENDULUM_PERIOD,
     # more geometry / finance
     SECTOR_AREA, ARC_LENGTH, SIMPLE_ROI,
+    # probability / chemistry / EE
+    PROBABILITY_SIMPLE, MOLE_FRACTION, OHMS_POWER,
 ]

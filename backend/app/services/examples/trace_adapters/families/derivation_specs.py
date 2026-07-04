@@ -296,5 +296,36 @@ FACTOR_GCF = DerivationSpec(
     preserved="the expression keeps the same value for every x")
 
 
+# --- sum of 1..n by the arithmetic-series formula (Gauss pairing) ------------------------------------
+def _sumn_setup(rng: random.Random) -> dict:
+    return {"n": rng.randint(5, 12), "phase": 0}
+
+
+def _sumn_render(s: dict) -> str:
+    n, p = s["n"], s["phase"]
+    if p == 0:
+        return f"1 + 2 + ... + {n}"
+    if p == 1:
+        return f"{n}({n} + 1)/2"
+    return f"{n * (n + 1) // 2}"
+
+
+SUM_ARITHMETIC_SERIES = DerivationSpec(
+    slug="sum_first_n", title="sum of the first n integers (Gauss)", family="algebra",
+    aliases=["sum of the first n", "sum 1 to n", "gauss sum", "arithmetic series sum"], priority=80,
+    problem_template="Find the sum {start} using the arithmetic-series formula.",
+    setup=_sumn_setup, render=_sumn_render,
+    steps=[
+        DerivationStep("apply_formula", "arithmetic-series (Gauss pairing) formula", lambda s: {**s, "phase": 1},
+                       lambda s: f"pairing terms gives sum = n(n+1)/2 with n = {s['n']}"),
+        DerivationStep("evaluate", "arithmetic", lambda s: {**s, "phase": 2},
+                       lambda s: f"{s['n']} x {s['n'] + 1} / 2 = {s['n'] * (s['n'] + 1) // 2}")],
+    conclusion=lambda s: f"{s['n'] * (s['n'] + 1) // 2}",
+    answer=lambda s: {"sum": s["n"] * (s["n"] + 1) // 2},
+    oracle=lambda s0: {"sum": s0["n"] * (s0["n"] + 1) // 2},
+    invariant=lambda s: sum(range(1, s["n"] + 1)) == s["n"] * (s["n"] + 1) // 2,
+    preserved="the value of the sum is fixed")
+
+
 ALL_SPECS = [EXPONENT_LAWS, POWER_OF_POWER, LOG_EVALUATION, LOG_PRODUCT_LAW, LOG_QUOTIENT_LAW, FOIL_EXPANSION,
-             DIFFERENCE_OF_SQUARES, PERFECT_SQUARE, FACTOR_GCF]
+             DIFFERENCE_OF_SQUARES, PERFECT_SQUARE, FACTOR_GCF, SUM_ARITHMETIC_SERIES]

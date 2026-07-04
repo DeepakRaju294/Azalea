@@ -146,4 +146,46 @@ HASH_TABLE_INSERT = StatefulSpec(
     target="every key has been inserted")
 
 
-ALL_SPECS = [STACK_OPERATIONS, QUEUE_OPERATIONS, HASH_TABLE_INSERT]
+# --- LRU cache: access keys, evicting the least-recently-used on overflow --------------------------
+def _lru_setup(rng: random.Random) -> dict:
+    return {"cap": 3, "accesses": [rng.randint(1, 5) for _ in range(rng.randint(6, 8))], "cache": []}
+
+
+def _lru_apply(s: dict, i: int) -> tuple:
+    key, cap = s["accesses"][i], s["cap"]
+    cache = list(s["cache"])
+    if key in cache:
+        cache.remove(key); cache.insert(0, key)
+        op = f"access {key}: hit, move it to most-recently-used"
+    else:
+        cache.insert(0, key)
+        if len(cache) > cap:
+            ev = cache.pop()
+            op = f"access {key}: miss, add it; evict least-recently-used {ev}"
+        else:
+            op = f"access {key}: miss, add it"
+    return {**s, "cache": cache}, op
+
+
+def _lru_oracle(s0: dict) -> dict:
+    cache: list = []
+    for key in s0["accesses"]:
+        if key in cache:
+            cache.remove(key)
+        elif len(cache) >= s0["cap"]:
+            cache.pop()
+        cache.insert(0, key)
+    return {"final_cache": _seq(cache)}
+
+
+LRU_CACHE = StatefulSpec(
+    slug="lru_cache", title="an LRU cache under a sequence of accesses", family="structures",
+    aliases=["lru cache", "least recently used", "cache eviction"], priority=66, op_word="access",
+    problem_template="Process the key accesses through a capacity-3 LRU cache; give the final cache.",
+    setup=_lru_setup, ops_count=lambda s: len(s["accesses"]), apply=_lru_apply,
+    render=lambda s: f"most-recent -> {_seq(s['cache'])}",
+    answer=lambda s: {"final_cache": _seq(s["cache"])}, oracle=_lru_oracle,
+    target="every access has been processed")
+
+
+ALL_SPECS = [STACK_OPERATIONS, QUEUE_OPERATIONS, HASH_TABLE_INSERT, LRU_CACHE]

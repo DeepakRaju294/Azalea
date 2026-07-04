@@ -233,5 +233,24 @@ SOLVE_PROPORTION = RewriteSpec(
     preserved="every step keeps the same solution x", goal="the variable is isolated")
 
 
+# --- multiplication equation:  a*x = c  ->  x = c/a --------------------------------------------------
+def _mult_setup(rng: random.Random) -> dict:
+    x = rng.randint(2, 12)
+    a = rng.randint(2, 9)
+    return {"coef": a, "const": 0, "rhs": a * x, "var": "x", "sol": x}
+
+
+MULTIPLICATION_EQUATION = RewriteSpec(
+    slug="multiplication_equation", title="solving a multiplication equation", family="algebra",
+    aliases=["multiplication equation", "one-step multiplication"], priority=89,
+    problem_template="Solve the equation {eqn} for {var}.",
+    setup=_mult_setup, render=_render_linear,
+    steps=[RewriteStep("solve_for_variable", "divide by the coefficient", _div_coef, _describe_div)],
+    answer=lambda s: {s.get("var", "x"): s["rhs"]},
+    oracle=lambda s0: {s0.get("var", "x"): int(round(s0["rhs"] / s0["coef"]))},
+    invariant=lambda s: s["coef"] * s["sol"] + s["const"] == s["rhs"],
+    preserved="every step keeps the same solution x", goal="the variable is alone on one side")
+
+
 ALL_SPECS = [LINEAR_EQUATION, EQUATION_BOTH_SIDES, COMBINE_LIKE_TERMS, DISTRIBUTE, ONE_STEP_EQUATION,
-             SOLVE_PROPORTION]
+             SOLVE_PROPORTION, MULTIPLICATION_EQUATION]
