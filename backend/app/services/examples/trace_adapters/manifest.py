@@ -252,9 +252,10 @@ def _inject_formula_specs() -> None:
     the spec itself, so those concepts have exactly ONE source of truth (families/*_specs.py). Imported lazily
     to avoid an import cycle at module load (the engines import decl/example_spec, not this module)."""
     from .families import construct_engine as ce
+    from .families import derivation_engine as de
     from .families import formula_engine as fe
     from .families import rewrite_engine as re_
-    for mod in (fe, re_, ce):
+    for mod in (fe, re_, ce, de):
         for spec in mod.registered_specs():
             MANIFEST.setdefault(spec.slug, mod.manifest_entry(spec))
             ROUTING_RULES.setdefault(spec.slug, mod.routing_rule(spec))

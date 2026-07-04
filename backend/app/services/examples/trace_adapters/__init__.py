@@ -43,8 +43,9 @@ NARRATION_SLUGS = frozenset({
 from .families.formula_engine import registered_specs as _formula_specs  # noqa: E402
 from .families.rewrite_engine import registered_specs as _rewrite_specs  # noqa: E402
 from .families.construct_engine import registered_specs as _construct_specs  # noqa: E402
+from .families.derivation_engine import registered_specs as _derivation_specs  # noqa: E402
 NARRATION_SLUGS = NARRATION_SLUGS | frozenset(
-    s.slug for s in (*_formula_specs(), *_rewrite_specs(), *_construct_specs()))
+    s.slug for s in (*_formula_specs(), *_rewrite_specs(), *_construct_specs(), *_derivation_specs()))
 for _slug in NARRATION_SLUGS:
     if _slug in ADAPTERS:
         type(ADAPTERS[_slug]).provides_narration = True
