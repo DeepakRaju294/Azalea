@@ -351,10 +351,18 @@ execution shape before its instances count as reuse. Sub-steps:
     graph is not on the trace); `_build_args` learned graph+start; graph annotation templates author the visit
     body from the verified step ("take A from the front of the queue", "mark B, E visited"). BFS ships
     deterministically end-to-end, clean across seeds (`test_code_reproduces_trace.GraphFamilyDeterministicCoding`).
-  - **Still LLM (fall back gracefully):** RECURSIVE traversals (DFS `order += dfs(...)`) don't map to one slice
-    per step → `map_step_regions` returns None → LLM path. Recursion is the next mapper shape to add (quicksort
-    maps only because each partition's array state materializes in order; a recursion that accumulates a return
-    value does not). Weighted-graph families (Dijkstra/Prim/Kruskal) also fall back until their state shapes map.
+  - **Deterministic coding is a VERIFIED whitelist, not "whatever gate-passes."** `DETERMINISTIC_CODING_SLUGS`
+    = the 5 sorts + bfs, hand-checked for correct+non-robotic content. The coding branch gates on it. This was
+    learned the hard way: generalizing the runner let LIS / topological_sort / bst_search generate cards that
+    PASSED the code-anchored gate yet were misaligned/robotic (LIS's unchanging input array validated a spurious
+    mapping while its growing-dp trace never matches the code's pre-allocated dp; topo/bst_search hit missing
+    templates). Two backstops added so the whitelist is not the only guard: `map_step_regions` excludes CONSTANT
+    state from validation, and `generate_coding_cards` returns None on any weak fallback annotation.
+  - **Still LLM (fall back gracefully):** RECURSIVE traversals (DFS `order += dfs(...)`) and the DP tables
+    (LIS/coin_change — growing-trace vs pre-allocated-code state mismatch) and weighted-graph families
+    (Dijkstra/Prim/Kruskal). Each needs a state-model reconciliation, not just a new template — the real cost
+    the stress-test surfaced: the anchor+state-validation mapper works where the TRACE's per-step state equals a
+    CODE variable's value (sorts in-place, BFS shared lists), and falls back otherwise.
 - **11b — Roll the deterministic path out family by family** (memory-layout, formula/geometric, …), each with
   its region-mapper shape + annotation templates + visual kind, gated by the CP10 generation test extended to
   that family.
