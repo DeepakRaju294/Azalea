@@ -85,7 +85,7 @@ def _log_render(s: dict) -> str:
 
 LOG_EVALUATION = DerivationSpec(
     slug="log_evaluation", title="evaluating a logarithm with the power law", family="algebra",
-    aliases=["evaluate a logarithm", "logarithm evaluation", "log base", "logarithm law"], priority=93,
+    aliases=["evaluate a logarithm", "evaluating a logarithm", "logarithm evaluation", "log base"], priority=93,
     problem_template="Evaluate {start}.",
     setup=_log_setup, render=_log_render,
     steps=[
@@ -100,4 +100,74 @@ LOG_EVALUATION = DerivationSpec(
     preserved="the value of the logarithm is fixed throughout")
 
 
-ALL_SPECS = [EXPONENT_LAWS, POWER_OF_POWER, LOG_EVALUATION]
+# --- logarithm product law:  log_b(x·y) = log_b(x) + log_b(y) = p + q  (x=b^p, y=b^q) ----------------
+def _logprod_setup(rng: random.Random) -> dict:
+    b = rng.randint(2, 4)
+    p = rng.randint(1, 4)
+    q = rng.randint(1, 4)
+    return {"base": b, "p": p, "q": q, "x": b ** p, "y": b ** q, "phase": 0}
+
+
+def _logprod_render(s: dict) -> str:
+    b, x, y, p, q, ph = s["base"], s["x"], s["y"], s["p"], s["q"], s["phase"]
+    if ph == 0:
+        return f"log_{b}({x} · {y})"
+    if ph == 1:
+        return f"log_{b}({x}) + log_{b}({y})"
+    return f"{p + q}"
+
+
+LOG_PRODUCT_LAW = DerivationSpec(
+    slug="log_product_law", title="the logarithm product law", family="algebra",
+    aliases=["log product", "logarithm product", "log of a product"], priority=86,
+    problem_template="Evaluate {start} using the product law.",
+    setup=_logprod_setup, render=_logprod_render,
+    steps=[
+        DerivationStep("product_law", "logarithm product law", lambda s: {**s, "phase": 1},
+                       lambda s: f"the log of a product is the sum of the logs"),
+        DerivationStep("evaluate_logs", "power law", lambda s: {**s, "phase": 2},
+                       lambda s: f"log_{s['base']}({s['x']}) = {s['p']} and log_{s['base']}({s['y']}) = {s['q']}, "
+                                 f"so {s['p']} + {s['q']} = {s['p'] + s['q']}")],
+    conclusion=lambda s: f"{s['p'] + s['q']}",
+    answer=lambda s: {"value": s["p"] + s["q"]},
+    oracle=lambda s0: {"value": s0["p"] + s0["q"]},
+    invariant=lambda s: s["x"] * s["y"] == s["base"] ** (s["p"] + s["q"]),
+    preserved="the value of the logarithm is fixed throughout")
+
+
+# --- logarithm quotient law:  log_b(x/y) = log_b(x) - log_b(y) = p - q  (x=b^p, y=b^q, p>q) -----------
+def _logquot_setup(rng: random.Random) -> dict:
+    b = rng.randint(2, 4)
+    q = rng.randint(1, 3)
+    p = rng.randint(q + 1, q + 4)                     # p > q so the result is positive
+    return {"base": b, "p": p, "q": q, "x": b ** p, "y": b ** q, "phase": 0}
+
+
+def _logquot_render(s: dict) -> str:
+    b, x, y, p, q, ph = s["base"], s["x"], s["y"], s["p"], s["q"], s["phase"]
+    if ph == 0:
+        return f"log_{b}({x} / {y})"
+    if ph == 1:
+        return f"log_{b}({x}) - log_{b}({y})"
+    return f"{p - q}"
+
+
+LOG_QUOTIENT_LAW = DerivationSpec(
+    slug="log_quotient_law", title="the logarithm quotient law", family="algebra",
+    aliases=["log quotient", "logarithm quotient", "log of a quotient"], priority=85,
+    problem_template="Evaluate {start} using the quotient law.",
+    setup=_logquot_setup, render=_logquot_render,
+    steps=[
+        DerivationStep("quotient_law", "logarithm quotient law", lambda s: {**s, "phase": 1},
+                       lambda s: f"the log of a quotient is the difference of the logs"),
+        DerivationStep("evaluate_logs", "power law", lambda s: {**s, "phase": 2},
+                       lambda s: f"log_{s['base']}({s['x']}) = {s['p']} and log_{s['base']}({s['y']}) = {s['q']}, "
+                                 f"so {s['p']} - {s['q']} = {s['p'] - s['q']}")],
+    conclusion=lambda s: f"{s['p'] - s['q']}",
+    answer=lambda s: {"value": s["p"] - s["q"]},
+    oracle=lambda s0: {"value": s0["p"] - s0["q"]},
+    invariant=lambda s: s["x"] // s["y"] == s["base"] ** (s["p"] - s["q"]),
+    preserved="the value of the logarithm is fixed throughout")
+
+
+ALL_SPECS = [EXPONENT_LAWS, POWER_OF_POWER, LOG_EVALUATION, LOG_PRODUCT_LAW, LOG_QUOTIENT_LAW]

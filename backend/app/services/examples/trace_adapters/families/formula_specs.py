@@ -549,6 +549,51 @@ MEAN_ABS_DEVIATION = FormulaSpec(
                show=[("sum of |x - mean|", "sum(abs(x-mean) for x in xs)"), ("n", "n")])],
     conventions={"definition": "average absolute distance from the mean"})
 
+# ======================================================================================================
+# RATES / SEQUENCES / CONVERSIONS — algebra & everyday math
+# ======================================================================================================
+DISTANCE_RATE_TIME = FormulaSpec(
+    slug="distance_rate_time", title="distance from rate and time", family="algebra",
+    aliases=["distance rate time", "distance from rate", "distance traveled", "d = rt"], priority=31,
+    problem_template="An object travels at rate r = {r} for time t = {t}. Find the distance.",
+    givens=[Given("r", "units/hr", 1, 60), Given("t", "hr", 1, 10)],
+    outputs=[Output("d", "d = r*t", "r*t", "units", "compute_distance", "distance")],
+    conventions={"relation": "distance = rate x time"})
+
+AVERAGE_SPEED = FormulaSpec(
+    slug="average_speed", title="average speed", family="physics",
+    aliases=["average speed", "speed formula"], priority=30,
+    problem_template="An object covers distance d = {d} in time t = {t}. Find the average speed.",
+    givens=[Given("d", "m", 10, 300), Given("t", "s", 1, 10)],
+    outputs=[Output("v", "v = d/t", "d/t", "m/s", "compute_speed", "average speed")],
+    conventions={"relation": "speed = distance / time"})
+
+CELSIUS_TO_FAHRENHEIT = FormulaSpec(
+    slug="celsius_to_fahrenheit", title="Celsius to Fahrenheit conversion", family="physics",
+    aliases=["celsius to fahrenheit", "fahrenheit"], priority=29,
+    problem_template="Convert C = {C} degrees Celsius to Fahrenheit.",
+    givens=[Given("C", "deg C", 0, 40)],
+    outputs=[Output("F", "F = (9*C)/5 + 32", "(9*C)/5 + 32", "deg F", "compute_fahrenheit", "temperature")],
+    conventions={"relation": "F = 9C/5 + 32"})
+
+ARITHMETIC_SEQUENCE_TERM = FormulaSpec(
+    slug="arithmetic_sequence_term", title="nth term of an arithmetic sequence", family="algebra",
+    aliases=["arithmetic sequence", "arithmetic progression", "nth term of an arithmetic"], priority=28,
+    problem_template="An arithmetic sequence has first term a1 = {a1} and common difference d = {d}. "
+                     "Find the term at position n = {n}.",
+    givens=[Given("a1", "", 1, 10), Given("d", "", 1, 8), Given("n", "", 2, 10)],
+    outputs=[Output("a_n", "a_n = a1 + (n-1)*d", "a1 + (n-1)*d", "", "compute_term", "nth term")],
+    conventions={"formula": "a_n = a1 + (n-1)d"})
+
+GEOMETRIC_SEQUENCE_TERM = FormulaSpec(
+    slug="geometric_sequence_term", title="nth term of a geometric sequence", family="algebra",
+    aliases=["geometric sequence", "geometric progression", "nth term of a geometric"], priority=27,
+    problem_template="A geometric sequence has first term a1 = {a1} and common ratio r = {r}. "
+                     "Find the term at position n = {n}.",
+    givens=[Given("a1", "", 1, 6), Given("r", "", 2, 3), Given("n", "", 2, 5)],
+    outputs=[Output("a_n", "a_n = a1 * r^(n-1)", "a1 * r**(n-1)", "", "compute_term", "nth term")],
+    conventions={"formula": "a_n = a1 * r^(n-1)"})
+
 # --- the full concept set; ALL_SPECS drives the gate, the registry, the manifest, and routing ---------
 ALL_SPECS = [
     # physics / EE
@@ -568,4 +613,6 @@ ALL_SPECS = [
     DETERMINANT_2X2, VECTOR_MAGNITUDE, DOT_PRODUCT_3D,
     # statistics
     DESCRIPTIVE_STATS, MEDIAN_RANGE, Z_SCORE, COEFF_OF_VARIATION, MEAN_ABS_DEVIATION,
+    # rates / sequences / conversions
+    DISTANCE_RATE_TIME, AVERAGE_SPEED, CELSIUS_TO_FAHRENHEIT, ARITHMETIC_SEQUENCE_TERM, GEOMETRIC_SEQUENCE_TERM,
 ]
