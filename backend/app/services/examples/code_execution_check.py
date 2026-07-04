@@ -402,7 +402,8 @@ def _execute_on_instance(code: Optional[str], trace: Any):
             candidates.append(canon)
     for src in candidates:
         try:
-            return trace_execution(src, find_entry_function(src), {"array": list(arr)})
+            steps, result = trace_execution(src, find_entry_function(src), {"array": list(arr)})
+            return steps, result, src                        # src = the code that actually RAN (line numbers)
         except Exception:  # noqa: BLE001 — try the next candidate (e.g. canonical with imports)
             continue
     return None
@@ -420,7 +421,7 @@ def code_reproduces_trace(code: str, trace: Any) -> list:
     run = _execute_on_instance(code, trace)
     if run is None:                                          # cannot run either form -> unverifiable, skip
         return []
-    steps, result = run
+    steps, result, _ = run
     out: list = []
     expected = (getattr(trace, "final_answer", None) or {}).get("sorted")
     if expected is not None and result != expected:
@@ -534,7 +535,7 @@ def executed_reference_violations(cards: list, code: str, trace: Any) -> list:
     run = _execute_on_instance(code, trace)      # displayed code (imports stripped) or the canonical fallback
     if run is None:
         return []
-    exec_steps, _ = run
+    exec_steps, _, _ = run
     regions = map_step_regions(exec_steps, trace) or _step_regions(exec_steps, trace)  # robust anchor, then legacy
     if regions is None:
         return []
@@ -548,6 +549,8 @@ def executed_reference_violations(cards: list, code: str, trace: Any) -> list:
             if "//" not in str(wline):
                 continue
             code_part, _, comment = str(wline).partition("//")
+            if re.match(r"^\s*(for|while)\b", code_part):    # a loop CONDITION describes the loop, not a value
+                continue                                     # attribution (its // may name the key/pivot bound)
             reads = _INDEX_READ.findall(code_part)
             if len(reads) != 1:                              # ambiguous (swap / compare) -> skip
                 continue

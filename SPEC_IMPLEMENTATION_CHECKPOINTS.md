@@ -5,14 +5,15 @@
 > coverage until all preceding BLOCKING checkpoints pass.** Independent safety, observability, and regression
 > work may proceed in parallel — but must not be treated as proof that an earlier blocking checkpoint is done.
 >
-> **Current load-bearing item: CP10 — Tier 2c deterministic coding generation (Phase 2, ACCURACY_SPEC §18.4).**
-> Phase 1 (CP0–7) is done/backstopped and Phase 2's authorship shift has landed for WALKTHROUGHS (CP8, 30
-> adapters ship from the trace) and the coding REFEREE (CP9, executed-reference gates). The remaining
-> blocker before scaling the catalog (CP11) is making the coding walkthrough itself deterministic (CP10) — the
-> LLM still authors coding annotations and errs one algorithm at a time; the per-adapter guards in CP9 are
-> stopgaps, not the scaling mechanism. **Do not begin the bulk adapter-breadth build (CP11) until CP10 passes**
-> (§18.5). *(Historical: the old CP3 grouped-artifact wiring remains deferred — held back to protect 1:1
-> reliability — but is no longer the critical path.)*
+> **CP11 (adapter breadth) is now UNBLOCKED.** Phase 1 (CP0–7) is done/backstopped and Phase 2's
+> deterministic-authorship shift is complete: WALKTHROUGHS ship from the trace (CP8, 30 adapters), the coding
+> REFEREE runs the code (CP9), and — the load-bearing piece — CODING is now authored from the executed
+> reference, not the LLM (CP10, `coding_narration`, 5 core sorts; heap/graph defer). Both sides of an
+> adapter-backed topic are correct-by-construction, so the per-adapter guards (CP9 stopgaps) no longer fire on
+> the core sorts. Scaling the catalog (CP11) is the next work: extend the same two-sided guarantee to more
+> adapter families (new execution shapes for CP10's region mapper, new visual kinds), replicating a solid
+> foundation rather than a half-reliable one. *(Historical: the old CP3 grouped-artifact wiring stays deferred,
+> not on the critical path.)*
 >
 > **Status legend:** ✅ done & tested · 🟡 partial · 🔴 planned/blocking · ❌ not started.
 
@@ -33,7 +34,7 @@
 | **Phase 2 — deterministic authorship (ACCURACY_SPEC §18)** | | | |
 | 8 | Deterministic-first narration — walkthroughs ship from the trace, not the LLM | ✅ | `provides_narration`/`NARRATION_SLUGS` → `_format_validate_ship` ships `_deterministic_narration` (LLM = fallback only); 30 adapters gated by `test_deterministic_narration_primary`; includes Tier-3 quicksort recursion narration + no-op naming + visual `window` (§18.1) |
 | 9 | Executed-reference referee — coding correctness by execution | ✅ | `code_execution_check.py`: variant gate (`code_reproduces_trace`) · per-line value check (`executed_reference_violations`) · core-decision nudge · canonical-import fallback · general `comparison_contradiction` guard; `test_code_reproduces_trace.py` (§18.2–18.3) |
-| 10 | **Tier 2c — deterministic coding generation** | 🟡 | **region-mapping blocker SOLVED** — `map_step_regions` (anchor-line, no-op-safe, trace-detected init) maps 1 slice/step for the 5 core sorts, 0 degenerate across seeds (`test_code_reproduces_trace.RobustRegionMapping`); heap/graph defer gracefully. REMAINING: generate the coding work lines from those slices (value-annotated, loop-collapsed) + ship deterministic-first for coding. Retires the CP9 per-adapter guards. **Prerequisite to CP11.** |
+| 10 | **Tier 2c — deterministic coding generation** | ✅ | `coding_narration.generate_coding_cards` authors the coding walkthrough from the executed reference (`map_step_regions` slices → real lines + value-annotated comments, loop-collapsed, `code_lines` mapped to the import-stripped display); shipped deterministic-first in `_format_validate_ship` for the 5 core sorts. Every seed passes fidelity + per-line + core-decision + comparison gates by construction (`test_code_reproduces_trace.DeterministicCodingGeneration`) — the decision loop is always shown, values always correct. heap/graph defer to the LLM path. **CP11 unblocked.** |
 | 11 | Adapter breadth / full catalog (§15) | 🔴 | scale the taxonomy/instances. **Blocked on CP10** — do not start the bulk instance build until coding is deterministic (§18.5). A few new *types* to stress-test generality are allowed earlier. |
 
 ---
@@ -318,7 +319,7 @@ A coding topic's code is verified by RUNNING it on the trace's instance, not by 
 canonical-import fallback · general `comparison_contradiction` guard. `test_code_reproduces_trace.py`,
 `test_trace_prose_adversarial.py`. **The per-adapter guards here are explicit STOPGAPS (§18.3) — retired by CP10.**
 
-## Checkpoint 10 — Tier 2c: deterministic coding generation 🔴 (LOAD-BEARING)
+## Checkpoint 10 — Tier 2c: deterministic coding generation ✅ (5 core sorts)
 ### Rule
 For a coding topic of a `provides_narration` adapter, GENERATE the code walkthrough deterministically from the
 executed reference (source lines that actually ran per step + value-annotated comments from real `vars`,

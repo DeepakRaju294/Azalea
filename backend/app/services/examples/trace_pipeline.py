@@ -618,6 +618,32 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
             return _to_solve_result(trace, det)
         _log.warning("trace_pipeline: %s deterministic narration failed its own gate (fid.ok=%s, hard=%d) — "
                      "falling back to LLM formatting", getattr(adapter, "slug", "?"), fid.ok, len(hard))
+    # CP10 — deterministic CODING generation (ACCURACY_SPEC §18.4). For a narration adapter whose execution
+    # maps cleanly, author the code walkthrough from the EXECUTED REFERENCE (real lines + real values) instead
+    # of the LLM: the decision loop is always shown and every value is correct by construction, so none of the
+    # LLM defects (omission, wrong value, inverted comparison) can occur. Falls through to the LLM path when
+    # generation is out of scope (graph/tree — `map_step_regions` returns None) or fails its own gate.
+    if getattr(adapter, "provides_narration", False) and code:
+        from .coding_narration import generate_coding_cards
+        from .code_execution_check import executed_reference_violations
+        from .trace_contract import ProseViolation
+        gen = generate_coding_cards(trace, code, _deterministic_narration(trace, adapter))
+        if gen is not None:
+            fid = validate_fidelity(gen, trace, adapter, validate_visual_state=False)
+            prose = validate_prose(gen, trace, adapter, code_anchored=True)
+            hard = hard_prose_violations(prose) + [ProseViolation(c, d, 0, "") for c, d in
+                                                   executed_reference_violations(gen, code, trace)]
+            if fid.ok and not hard:
+                checkpoints = _attach_checkpoints(gen, trace, adapter)
+                _retain_debug(topic, trace, {"narration": "deterministic_coding"}, gen, fid, prose, shipped=True)
+                _gr.we(tp_shipped=True, tp_reason="deterministic_coding_primary", narration="deterministic",
+                       verified_steps=n_steps, formatter_cards=len(gen), tp_attempts=0)
+                _gr.we(**_coverage_fields(trace, gen))
+                _gr.we(**_checkpoint_coverage_fields(trace, gen, checkpoints))
+                _gr.we(**_prose_validation_field(prose))
+                return _to_solve_result(trace, gen)
+            _log.warning("trace_pipeline: %s deterministic coding failed its own gate (fid.ok=%s, hard=%d) — "
+                         "falling back to LLM formatting", getattr(adapter, "slug", "?"), fid.ok, len(hard))
     # Executed-reference gate (WORKED_EXAMPLE_ACCURACY_SPEC): a CODING topic shows canonical code beside a
     # walkthrough of the SAME trace. If the code is a different VARIANT than the trace, every per-line
     # annotation silently contradicts it (the code still computes the right answer, so value/state checks

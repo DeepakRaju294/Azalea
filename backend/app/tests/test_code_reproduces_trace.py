@@ -102,6 +102,8 @@ class WiredIntoPipeline(unittest.TestCase):
     def test_value_mismatch_comment_retries_then_falls_back(self):
         # a coding formatter that attributes a wrong value to left[i] must NOT ship that card: the pipeline
         # retries, then ships the correct trace-preserving narration (never the contradicted comment).
+        # Force the LLM path — merge coding now ships deterministic (CP10), which would bypass the formatter.
+        from unittest import mock
         from app.services.examples import generation_report as gr
         calls = {"n": 0}
 
@@ -119,7 +121,8 @@ class WiredIntoPipeline(unittest.TestCase):
 
         topic = {"id": "t", "title": "Implementing Merge Sort", "topic_type": "coding_implementation"}
         gr.start(topic)
-        res = tp.solve_trace_pipeline(topic, format_fn=bad, code=CANONICAL_SOLUTIONS["merge_sort"], seed=0)
+        with mock.patch.object(type(ADAPTERS["merge_sort"]), "provides_narration", False):
+            res = tp.solve_trace_pipeline(topic, format_fn=bad, code=CANONICAL_SOLUTIONS["merge_sort"], seed=0)
         self.assertGreater(calls["n"], 1, "must retry on a value-mismatch comment, not ship it")
         self.assertIsNotNone(res)                                    # ships the trace-preserving narration
         self.assertNotIn("999", " ".join(w for c in res["cards"] for w in c["work"]))
@@ -240,3 +243,48 @@ class PerLineValueAttribution(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeterministicCodingGeneration(unittest.TestCase):
+    """CP10 (ACCURACY_SPEC §18.4): a coding topic of a core-sort adapter is authored from the EXECUTED
+    REFERENCE, not the LLM — the decision loop is always shown and every value is correct by construction."""
+    _SORTS = ["insertion_sort", "selection_sort", "quick_sort", "bubble_sort", "merge_sort"]
+
+    def test_generated_cards_pass_all_gates_every_seed(self):
+        from app.services.examples.coding_narration import generate_coding_cards
+        from app.services.examples.code_execution_check import (coding_omits_core_decision,
+                                                                executed_reference_violations)
+        from app.services.examples.trace_contract import (validate_prose, hard_prose_violations,
+                                                          validate_fidelity)
+        for slug in self._SORTS:
+            a, code = ADAPTERS[slug], CANONICAL_SOLUTIONS[slug]
+            for seed in range(20):
+                tr = tp.select_instance(a, seed=seed)
+                cards = generate_coding_cards(tr, code, tp._deterministic_narration(tr, a))
+                with self.subTest(slug=slug, seed=seed):
+                    self.assertIsNotNone(cards)
+                    self.assertFalse(coding_omits_core_decision(cards, code))     # decision loop shown
+                    self.assertEqual(executed_reference_violations(cards, code, tr), [])  # values correct
+                    self.assertEqual(hard_prose_violations(validate_prose(cards, tr, a, code_anchored=True)), [])
+                    self.assertTrue(validate_fidelity(cards, tr, a, validate_visual_state=False).ok)
+                    for c in cards:
+                        for w in c["work"]:
+                            self.assertIn("//", w)                                # every line annotated
+                            self.assertNotIn("carry out this step", w)            # no weak fallback
+
+    def test_ships_deterministically_without_the_llm(self):
+        from app.services.examples.canonical_solutions import display_solution
+        def boom(*a, **k):
+            raise AssertionError("the LLM must not be called — coding is deterministic (CP10)")
+        for title, slug in [("Implementing Selection Sort", "selection_sort"),
+                            ("Implementing Merge Sort", "merge_sort")]:      # merge = the import-stripped case
+            topic = {"id": "t", "title": title, "topic_type": "coding_implementation"}
+            res = tp.solve_trace_pipeline(topic, format_fn=boom, code=display_solution(slug), seed=3)
+            with self.subTest(title=title):
+                self.assertIsNotNone(res)
+                # code_lines anchor into the DISPLAYED (import-stripped) code — valid indices, none dangling
+                disp_len = len(display_solution(slug).splitlines())
+                for c in res["cards"]:
+                    for anchors in (c.get("code_lines") or []):
+                        for ln in anchors:
+                            self.assertTrue(1 <= ln <= disp_len, f"{title}: code_lines {ln} out of range")
