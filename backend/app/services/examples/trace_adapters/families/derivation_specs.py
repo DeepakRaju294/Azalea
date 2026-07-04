@@ -327,5 +327,69 @@ SUM_ARITHMETIC_SERIES = DerivationSpec(
     preserved="the value of the sum is fixed")
 
 
+# --- completing the square:  x^2 + 2h x  ->  (x + h)^2 - h^2 -----------------------------------------
+def _cts_setup(rng: random.Random) -> dict:
+    return {"h": rng.randint(1, 6), "phase": 0}
+
+
+def _cts_render(s: dict) -> str:
+    h, p = s["h"], s["phase"]
+    if p == 0:
+        return f"x^2 + {2 * h}x"
+    if p == 1:
+        return f"(x + {h})^2 - {h}^2"
+    return f"(x + {h})^2 - {h * h}"
+
+
+COMPLETE_THE_SQUARE = DerivationSpec(
+    slug="complete_the_square", title="completing the square", family="algebra",
+    aliases=["complete the square", "completing the square"], priority=79,
+    problem_template="Complete the square for {start}.",
+    setup=_cts_setup, render=_cts_render,
+    steps=[
+        DerivationStep("add_square", "completing-the-square rule", lambda s: {**s, "phase": 1},
+                       lambda s: f"half the x-coefficient is {s['h']}; add and subtract {s['h']}^2 to form "
+                                 f"(x + {s['h']})^2 - {s['h']}^2"),
+        DerivationStep("evaluate", "arithmetic", lambda s: {**s, "phase": 2},
+                       lambda s: f"{s['h']}^2 = {s['h'] * s['h']}")],
+    conclusion=lambda s: f"(x + {s['h']})^2 - {s['h'] * s['h']}",
+    answer=lambda s: {"h": s["h"]},
+    oracle=lambda s0: {"h": s0["h"]},
+    invariant=lambda s: 1 + 2 * s["h"] == (1 + s["h"]) ** 2 - s["h"] ** 2,
+    preserved="the expression keeps the same value for every x")
+
+
+# --- geometric series sum:  1 + 2 + 4 + ... + 2^(n-1) = 2^n - 1 --------------------------------------
+def _geo_setup(rng: random.Random) -> dict:
+    return {"n": rng.randint(3, 6), "phase": 0}
+
+
+def _geo_render(s: dict) -> str:
+    n, p = s["n"], s["phase"]
+    if p == 0:
+        return f"1 + 2 + 4 + ... + {2 ** (n - 1)}"
+    if p == 1:
+        return f"(2^{n} - 1)/(2 - 1)"
+    return f"{2 ** n - 1}"
+
+
+SUM_GEOMETRIC_SERIES = DerivationSpec(
+    slug="sum_geometric_series", title="sum of a geometric series (ratio 2)", family="algebra",
+    aliases=["geometric series sum", "sum of a geometric series", "sum of powers of two"], priority=78,
+    problem_template="Find the sum {start} using the geometric-series formula.",
+    setup=_geo_setup, render=_geo_render,
+    steps=[
+        DerivationStep("apply_formula", "geometric-series formula", lambda s: {**s, "phase": 1},
+                       lambda s: f"sum = (r^n - 1)/(r - 1) with r = 2, n = {s['n']}"),
+        DerivationStep("evaluate", "arithmetic", lambda s: {**s, "phase": 2},
+                       lambda s: f"(2^{s['n']} - 1)/1 = {2 ** s['n'] - 1}")],
+    conclusion=lambda s: f"{2 ** s['n'] - 1}",
+    answer=lambda s: {"sum": 2 ** s["n"] - 1},
+    oracle=lambda s0: {"sum": 2 ** s0["n"] - 1},
+    invariant=lambda s: sum(2 ** i for i in range(s["n"])) == 2 ** s["n"] - 1,
+    preserved="the value of the sum is fixed")
+
+
 ALL_SPECS = [EXPONENT_LAWS, POWER_OF_POWER, LOG_EVALUATION, LOG_PRODUCT_LAW, LOG_QUOTIENT_LAW, FOIL_EXPANSION,
-             DIFFERENCE_OF_SQUARES, PERFECT_SQUARE, FACTOR_GCF, SUM_ARITHMETIC_SERIES]
+             DIFFERENCE_OF_SQUARES, PERFECT_SQUARE, FACTOR_GCF, SUM_ARITHMETIC_SERIES,
+             COMPLETE_THE_SQUARE, SUM_GEOMETRIC_SERIES]

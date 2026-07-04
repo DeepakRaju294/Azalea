@@ -4,6 +4,7 @@ gate checks against. Adding a concept = add a `RewriteSpec` and list it in `ALL_
 from __future__ import annotations
 
 import random
+from math import gcd
 
 from .rewrite_engine import RewriteSpec, RewriteStep
 
@@ -252,5 +253,28 @@ MULTIPLICATION_EQUATION = RewriteSpec(
     preserved="every step keeps the same solution x", goal="the variable is alone on one side")
 
 
+# --- simplify a fraction to lowest terms:  a/b  ->  (a/g)/(b/g) ---------------------------------------
+def _frac_setup(rng: random.Random) -> dict:
+    g = rng.randint(2, 6)
+    while True:
+        p, q = rng.randint(1, 8), rng.randint(2, 9)
+        if gcd(p, q) == 1 and p != q:
+            return {"a": g * p, "b": g * q, "g": g, "p": p, "q": q, "phase": 0}
+
+
+SIMPLIFY_FRACTION = RewriteSpec(
+    slug="simplify_fraction", title="simplifying a fraction to lowest terms", family="algebra", task="simplify",
+    aliases=["simplify a fraction", "reduce a fraction", "lowest terms"], priority=88,
+    problem_template="Simplify {eqn} to lowest terms.",
+    setup=_frac_setup, render=lambda s: f"{s['a']}/{s['b']}" if s["phase"] == 0 else f"{s['p']}/{s['q']}",
+    steps=[RewriteStep("reduce", "divide by the GCF", lambda s: {**s, "phase": 1},
+                       lambda s: f"the GCF of {s['a']} and {s['b']} is {s['g']}; divide both by {s['g']}: "
+                                 f"{s['a']}/{s['g']} = {s['p']}, {s['b']}/{s['g']} = {s['q']}")],
+    answer=lambda s: {"numerator": s["p"], "denominator": s["q"]},
+    oracle=lambda s0: {"numerator": s0["p"], "denominator": s0["q"]},
+    invariant=lambda s: s["a"] * s["q"] == s["b"] * s["p"],
+    preserved="the fraction keeps the same value", goal="the fraction is in lowest terms")
+
+
 ALL_SPECS = [LINEAR_EQUATION, EQUATION_BOTH_SIDES, COMBINE_LIKE_TERMS, DISTRIBUTE, ONE_STEP_EQUATION,
-             SOLVE_PROPORTION, MULTIPLICATION_EQUATION]
+             SOLVE_PROPORTION, MULTIPLICATION_EQUATION, SIMPLIFY_FRACTION]

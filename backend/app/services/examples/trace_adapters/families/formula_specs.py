@@ -570,7 +570,7 @@ AVERAGE_SPEED = FormulaSpec(
 
 CELSIUS_TO_FAHRENHEIT = FormulaSpec(
     slug="celsius_to_fahrenheit", title="Celsius to Fahrenheit conversion", family="physics",
-    aliases=["celsius to fahrenheit", "fahrenheit"], priority=29,
+    aliases=["celsius to fahrenheit"], priority=29,
     problem_template="Convert C = {C} degrees Celsius to Fahrenheit.",
     givens=[Given("C", "deg C", 0, 40)],
     outputs=[Output("F", "F = (9*C)/5 + 32", "(9*C)/5 + 32", "deg F", "compute_fahrenheit", "temperature")],
@@ -704,6 +704,48 @@ OHMS_POWER = FormulaSpec(
     outputs=[Output("P", "P = V^2/R", "V**2/R", "W", "compute_power", "power")],
     conventions={"law": "P = V^2 / R"})
 
+KELVIN_CONVERSION = FormulaSpec(
+    slug="kelvin_conversion", title="Celsius to Kelvin conversion", family="physics",
+    aliases=["celsius to kelvin", "kelvin conversion"], priority=14,
+    problem_template="Convert C = {C} degrees Celsius to Kelvin.",
+    givens=[Given("C", "deg C", 0, 100)],
+    outputs=[Output("K", "K = C + 273", "C + 273", "K", "compute_kelvin", "temperature")],
+    conventions={"relation": "K = C + 273"})
+
+FAHRENHEIT_TO_CELSIUS = FormulaSpec(
+    slug="fahrenheit_to_celsius", title="Fahrenheit to Celsius conversion", family="physics",
+    aliases=["fahrenheit to celsius"], priority=13,
+    problem_template="Convert F = {F} degrees Fahrenheit to Celsius.",
+    givens=[Given("F", "deg F", 32, 212)],
+    outputs=[Output("C", "C = 5*(F - 32)/9", "5*(F - 32)/9", "deg C", "compute_celsius", "temperature")],
+    conventions={"relation": "C = 5(F - 32)/9"})
+
+SPRING_PERIOD = FormulaSpec(
+    slug="spring_period", title="period of a mass-spring oscillator", family="physics",
+    aliases=["period of a spring", "mass-spring period", "spring oscillation"], priority=12,
+    problem_template="A mass m = {m} kg hangs from a spring of stiffness k = {k} N/m. Find the period of "
+                     "oscillation.",
+    givens=[Given("m", "kg", 1, 10), Given("k", "N/m", 1, 20)],
+    outputs=[Output("T", "T = 2*pi*sqrt(m/k)", "2*pi*sqrt(m/k)", "s", "compute_period", "period")],
+    conventions={"formula": "T = 2*pi*sqrt(m/k)"})
+
+MOLES_IDEAL_GAS = FormulaSpec(
+    slug="moles_ideal_gas", title="moles of gas from the ideal gas law", family="chemistry",
+    aliases=["moles of gas", "moles from pv"], priority=11, constants={"R": 0.0821},
+    problem_template="A gas at P = {P} atm occupies V = {V} L at T = {T} K. Find the number of moles "
+                     "(R = 0.0821).",
+    givens=[Given("P", "atm", 1, 5), Given("V", "L", 1, 20), Given("T", "K", 200, 400)],
+    outputs=[Output("n", "n = (P*V)/(R*T)", "(P*V)/(R*T)", "mol", "compute_moles", "moles")],
+    conventions={"law": "PV = nRT"})
+
+FREQUENCY_FROM_PERIOD = FormulaSpec(
+    slug="frequency_from_period", title="frequency from period", family="physics",
+    aliases=["frequency from period", "frequency and period"], priority=9,
+    problem_template="A wave has period T = {T} s. Find its frequency.",
+    givens=[Given("T", "s", 1, 10)],
+    outputs=[Output("f", "f = 1/T", "1/T", "Hz", "compute_frequency", "frequency")],
+    conventions={"relation": "f = 1/T"})
+
 # --- the full concept set; ALL_SPECS drives the gate, the registry, the manifest, and routing ---------
 ALL_SPECS = [
     # physics / EE
@@ -731,4 +773,6 @@ ALL_SPECS = [
     SECTOR_AREA, ARC_LENGTH, SIMPLE_ROI,
     # probability / chemistry / EE
     PROBABILITY_SIMPLE, MOLE_FRACTION, OHMS_POWER,
+    # conversions / oscillation / gas
+    KELVIN_CONVERSION, FAHRENHEIT_TO_CELSIUS, SPRING_PERIOD, MOLES_IDEAL_GAS, FREQUENCY_FROM_PERIOD,
 ]
