@@ -113,6 +113,7 @@ DEFAULT_TEACHING_VALIDATION = TeachingValidationContract(
         "mislabeled_value",         # a named quantity stated with the WRONG value (typed claim ledger, §7)
         "forbidden_claim",          # a claim the adapter declared must never appear
         "code_comment_side_mismatch",  # a code line's // comment names the OPPOSITE run/side it operates on
+        "comparison_contradiction",    # a stated numeric comparison contradicts arithmetic ("23 not less than 36")
         "wrong_selected", "wrong_final_answer", "invented_transition", "missing_terminal",
     }),
     soft_codes=frozenset({
@@ -342,6 +343,25 @@ def _decision_contradiction(card: dict[str, Any], step, i: int) -> list[ProseVio
     return []
 
 
+_CMP_CLAIM = re.compile(
+    r"\((\d+)\)\s+is\s+(not\s+)?(less|smaller|greater|larger|bigger)\s+than\s+[^()]*?\((\d+)\)", re.I)
+
+
+def _comparison_contradictions(prose: str, i: int, step_id: str) -> list["ProseViolation"]:
+    """A stated numeric comparison must match arithmetic: "(23) is not less than (36)" is FALSE (23 < 36).
+    This catches the LLM mis-walking a scan/compare loop (the selection min-scan bug) — a wrong explanation
+    of HOW a step decides, even when the final value is right. Both operands must be PARENTHESISED so array
+    indices like arr[0] are never mistaken for the compared value; literal numbers make it unambiguous."""
+    out: list[ProseViolation] = []
+    for m in _CMP_CLAIM.finditer(prose):
+        a, neg, rel, b = int(m.group(1)), bool(m.group(2)), m.group(3).lower(), int(m.group(4))
+        holds = a < b if rel in ("less", "smaller") else a > b
+        if neg == holds:                                    # asserts the OPPOSITE of the truth -> contradiction
+            out.append(ProseViolation("comparison_contradiction", f"{a} {'not ' if neg else ''}{rel} than {b}",
+                                      i, step_id))
+    return out
+
+
 def validate_prose(cards: list[dict[str, Any]], trace: ContractTrace, adapter,
                    *, code_anchored: bool = False) -> list[ProseViolation]:
     """Generic guard: numbers in the prose must be in `allowed_values`, every `required_fact` must be
@@ -383,6 +403,7 @@ def validate_prose(cards: list[dict[str, Any]], trace: ContractTrace, adapter,
         for c in facts.get("forbidden_claims", []):
             if _states(prose, c):
                 out.append(ProseViolation("forbidden_claim", str(c), i, step.id))   # hard (default)
+        out += _comparison_contradictions(prose, i, step.id)                        # A1b (hard)
         out += _decision_contradiction(card, step, i)                               # A1 (hard)
         # TYPED claim ledger (§7): a named derived/output quantity must be stated with ITS value, not another
         # category's number. Opt-in — only steps that declare `facts["claims"]` (computation adapters).

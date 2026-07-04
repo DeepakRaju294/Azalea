@@ -250,5 +250,24 @@ class CodeCommentSideMismatch(unittest.TestCase):
         self.assertFalse(any(x.code == "code_comment_side_mismatch" for x in v))
 
 
+class ComparisonContradiction(unittest.TestCase):
+    """A stated numeric comparison must match arithmetic — the selection-scan bug where the walkthrough
+    said "arr[1] (23) is not less than arr[0] (36)" (23 < 36 is true). Hard; both operands parenthesised so
+    an array index like arr[0] is never read as the compared value."""
+    def test_false_not_less_than_is_flagged(self):
+        from app.services.examples.trace_contract import _comparison_contradictions
+        v = _comparison_contradictions("arr[1] (23) is not less than arr[0] (36)", 0, "s")
+        self.assertTrue(any(x.code == "comparison_contradiction" for x in v))
+
+    def test_true_comparisons_are_clean(self):
+        from app.services.examples.trace_contract import _comparison_contradictions
+        self.assertEqual(_comparison_contradictions("(23) is less than (36); (40) is not less than (36)", 0, "s"), [])
+
+    def test_index_digit_is_not_mistaken_for_the_value(self):
+        # the '0' in arr[0] must not be read as an operand — only parenthesised numbers are compared
+        from app.services.examples.trace_contract import _comparison_contradictions
+        self.assertEqual(_comparison_contradictions("(36) is greater than arr[0] (23)", 0, "s"), [])
+
+
 if __name__ == "__main__":
     unittest.main()
