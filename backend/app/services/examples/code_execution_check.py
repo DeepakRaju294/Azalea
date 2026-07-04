@@ -21,7 +21,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -454,10 +454,62 @@ import re as _re
 _INDEX_READ = _re.compile(r"\b([A-Za-z_]\w*)\s*\[\s*([A-Za-z_]\w*)\s*\]")
 
 
+def _exec_list_signatures(exec_steps: list) -> list:
+    """Per event: the set of canonical keys of every list-valued variable (deques coerced to list)."""
+    return [{json.dumps(list(v) if isinstance(v, deque) else v, default=str)
+             for v in (st.get("vars") or {}).values() if isinstance(v, (list, deque))}
+            for st in exec_steps]
+
+
+def map_step_regions(exec_steps: list, trace: Any) -> Optional[list]:
+    """CP10 region mapper (ACCURACY_SPEC §18.4) — segment the execution into one (start, end) slice per trace
+    step ROBUSTLY, so a deterministic coding walkthrough can read each step's real lines/values. The state-
+    first-match heuristic (`_step_regions`) collapses on a NO-OP step (an insertion element that stays put has
+    the SAME array as the previous step), which was the load-bearing blocker. This instead anchors on the
+    source line that runs exactly ONCE PER STEP — the outer loop's first body line (`key = arr[i]`, `pivot =
+    arr[hi]`) — so every step, no-op or not, gets its full slice. Cross-validated against the step states, and
+    returns None when no clean anchor exists (heap's two-phase build, graph shapes) so the caller falls back."""
+    steps = getattr(trace, "steps", [])
+    n = len(steps)
+    if n == 0 or not exec_steps:
+        return None
+    counts = Counter(e["line"] for e in exec_steps)
+    sigs = _exec_list_signatures(exec_steps)
+    step_sigs = [set(_list_keys(getattr(s, "state_after", None))) for s in steps]
+
+    def _valid(regions: list) -> bool:                       # every step's state must occur inside its slice
+        for (a, b), want in zip(regions, step_sigs):
+            if not want:
+                continue
+            region = set().union(*sigs[a:b + 1]) if sigs[a:b + 1] else set()
+            if not (want & region):
+                return False
+        return True
+
+    # A leading INIT/setup step (insertion's "prefix of length 1", merge's "initial runs") does no work — its
+    # prior state already equals its result. Detect it from the trace (never guess): the anchor line then runs
+    # once per OPERATION step, and the init gets the events before the first anchor.
+    first = steps[0]
+    has_init = getattr(first, "prior_state", object()) == getattr(first, "state_after", None)
+    n_ops = n - (1 if has_init else 0)
+    if n_ops <= 0:
+        return None
+    for anchor in sorted(ln for ln, c in counts.items() if c == n_ops):  # earliest once-per-step line = loop top
+        idxs = [i for i, e in enumerate(exec_steps) if e["line"] == anchor]
+        if len(idxs) != n_ops or (has_init and idxs[0] == 0):
+            continue
+        regions = ([(0, idxs[0] - 1)] if has_init else []) + \
+                  [(idxs[k], (idxs[k + 1] - 1) if k + 1 < len(idxs) else len(exec_steps) - 1)
+                   for k in range(len(idxs))]
+        if len(regions) == n and _valid(regions):
+            return regions
+    return None
+
+
 def _step_regions(exec_steps: list, trace: Any) -> Optional[list]:
     """Segment the execution into one (start, end) slice per trace step, by finding where each step's state
     first materializes in the run (in order). None if any step can't be located — the caller then SKIPS the
-    per-line check rather than guess a mapping (no false positives)."""
+    per-line check rather than guess a mapping (no false positives). Legacy fallback for `map_step_regions`."""
     exec_lists = [{json.dumps(list(v) if isinstance(v, deque) else v, default=str)
                    for v in (st.get("vars") or {}).values() if isinstance(v, (list, deque))}
                   for st in exec_steps]
@@ -483,7 +535,7 @@ def executed_reference_violations(cards: list, code: str, trace: Any) -> list:
     if run is None:
         return []
     exec_steps, _ = run
-    regions = _step_regions(exec_steps, trace)
+    regions = map_step_regions(exec_steps, trace) or _step_regions(exec_steps, trace)  # robust anchor, then legacy
     if regions is None:
         return []
     out: list = []

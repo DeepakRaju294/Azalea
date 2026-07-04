@@ -126,6 +126,50 @@ class WiredIntoPipeline(unittest.TestCase):
         gr.finish_and_persist()
 
 
+class RobustRegionMapping(unittest.TestCase):
+    """CP10 foundation (ACCURACY_SPEC §18.4): segment the execution into one slice per trace step ROBUSTLY.
+    The state-first-match heuristic collapsed on a NO-OP step (an insertion element that stays put shares the
+    previous array); the anchor-line mapper gives every step its full slice. This unblocks deterministic
+    coding generation."""
+    _SORTS = ["insertion_sort", "selection_sort", "quick_sort", "bubble_sort", "merge_sort"]
+
+    def _exec(self, slug, tr):
+        from app.services.examples.canonical_solutions import canonical_python
+        from app.services.visual_v2.simulators.code_tracer import trace_execution
+        init = tr.initial_state
+        arr = init.get("array") or [x for r in init["runs"] for x in r]
+        code = canonical_python(slug)
+        entry = [l for l in code.splitlines() if l.startswith("def ")][-1].split("def ")[1].split("(")[0]
+        return trace_execution(code, entry, {"array": list(arr)})[0]
+
+    def test_every_core_sort_maps_one_slice_per_step_with_no_degenerate_region(self):
+        from app.services.examples.code_execution_check import map_step_regions
+        for slug in self._SORTS:
+            a = ADAPTERS[slug]
+            for seed in range(25):
+                tr = tp.select_instance(a, seed=seed)
+                regions = map_step_regions(self._exec(slug, tr), tr)
+                with self.subTest(slug=slug, seed=seed):
+                    self.assertIsNotNone(regions, f"{slug}: no robust mapping")
+                    self.assertEqual(len(regions), len(tr.steps))
+                    # non-init operation slices must span real work, not collapse to a single event
+                    self.assertTrue(all(e - s + 1 >= 2 for s, e in regions[1:]), f"{slug}: degenerate region")
+
+    def test_insertion_no_op_step_is_no_longer_a_single_event(self):
+        # the exact regression: an insertion step whose element stays put must still get its full slice
+        from app.services.examples.code_execution_check import map_step_regions
+        a = ADAPTERS["insertion_sort"]
+        tr = a.reference({"array": [10, 20, 5, 30, 25]})     # 20 and 30 stay put -> no-op steps
+        regions = map_step_regions(self._exec("insertion_sort", tr), tr)
+        self.assertIsNotNone(regions)
+        noop = [k for k, s in enumerate(tr.steps)
+                if k > 0 and s.prior_state["array"] == s.state_after["array"]]
+        self.assertTrue(noop, "instance should have a no-op insertion step")
+        for k in noop:
+            a2, b2 = regions[k]
+            self.assertGreaterEqual(b2 - a2 + 1, 2, "a no-op step must still map to its full slice")
+
+
 class CoreDecisionShown(unittest.TestCase):
     """A coding walkthrough must step through the loop that drives the algorithm (selection's min-scan,
     quicksort's partition compare) — not jump from init to the outcome. A quality nudge (retry, never blocks)."""
