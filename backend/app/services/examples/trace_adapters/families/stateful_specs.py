@@ -1,0 +1,98 @@
+"""T10 stateful CONCEPT SPECS (CP12e) — stateful-structure concepts on the stateful engine. Each is DATA: build
+an instance (structure + operation script), apply the i-th operation, render the structure, the answer, and an
+independent oracle (replay). Adding a concept = add a `StatefulSpec` to `ALL_SPECS`."""
+from __future__ import annotations
+
+import random
+
+from .stateful_engine import StatefulSpec
+
+
+def _seq(xs: list) -> str:
+    return ", ".join(str(x) for x in xs) if xs else "empty"
+
+
+# --- stack (LIFO): push / pop -------------------------------------------------------------------------
+def _stack_setup(rng: random.Random) -> dict:
+    ops: list = []
+    model: list = []
+    for _ in range(rng.randint(5, 7)):
+        if model and rng.random() < 0.4:
+            ops.append(("pop", 0))
+            model.pop()
+        else:
+            v = rng.randint(1, 20)
+            ops.append(("push", v))
+            model.append(v)
+    return {"ops": ops, "stack": []}
+
+
+def _stack_apply(s: dict, i: int) -> tuple:
+    kind, v = s["ops"][i]
+    if kind == "push":
+        return {**s, "stack": s["stack"] + [v]}, f"push {v}: place it on top"
+    top = s["stack"][-1]
+    return {**s, "stack": s["stack"][:-1]}, f"pop: remove the top element {top}"
+
+
+def _stack_oracle(s0: dict) -> dict:
+    stack: list = []
+    for kind, v in s0["ops"]:
+        stack.append(v) if kind == "push" else stack.pop()
+    return {"final_stack": _seq(list(reversed(stack)))}         # top-first, to match the "top -> …" render
+
+
+STACK_OPERATIONS = StatefulSpec(
+    slug="stack_operations", title="a sequence of stack (LIFO) operations", family="structures",
+    aliases=["stack operations", "push and pop", "lifo", "stack push pop"], priority=69, op_word="operation",
+    problem_template="Apply the given push/pop operations to a stack and give the final stack.",
+    setup=_stack_setup, ops_count=lambda s: len(s["ops"]), apply=_stack_apply,
+    render=lambda s: f"top -> {_seq(list(reversed(s['stack'])))}",
+    answer=lambda s: {"final_stack": _seq(list(reversed(s["stack"])))},
+    oracle=_stack_oracle,
+    target="every push and pop has been applied")
+
+
+# --- queue (FIFO): enqueue / dequeue ------------------------------------------------------------------
+def _queue_setup(rng: random.Random) -> dict:
+    ops: list = []
+    model: list = []
+    for _ in range(rng.randint(5, 7)):
+        if model and rng.random() < 0.4:
+            ops.append(("dequeue", 0))
+            model.pop(0)
+        else:
+            v = rng.randint(1, 20)
+            ops.append(("enqueue", v))
+            model.append(v)
+    return {"ops": ops, "queue": []}
+
+
+def _queue_apply(s: dict, i: int) -> tuple:
+    kind, v = s["ops"][i]
+    if kind == "enqueue":
+        return {**s, "queue": s["queue"] + [v]}, f"enqueue {v}: add it at the back"
+    front = s["queue"][0]
+    return {**s, "queue": s["queue"][1:]}, f"dequeue: remove the front element {front}"
+
+
+def _queue_oracle(s0: dict) -> dict:
+    queue: list = []
+    for kind, v in s0["ops"]:
+        queue.append(v) if kind == "enqueue" else queue.pop(0)
+    return {"final_queue": _seq(queue)}
+
+
+QUEUE_OPERATIONS = StatefulSpec(
+    slug="queue_operations", title="a sequence of queue (FIFO) operations", family="structures",
+    aliases=["queue operations", "enqueue and dequeue", "fifo", "queue enqueue dequeue"], priority=68,
+    op_word="operation",
+    problem_template="Apply the given enqueue/dequeue operations to a queue and give the final queue.",
+    setup=_queue_setup, ops_count=lambda s: len(s["ops"]), apply=_queue_apply,
+    render=lambda s: f"front -> {_seq(s['queue'])}",
+    answer=lambda s: {"final_queue": _seq(s["queue"])},
+    oracle=_queue_oracle,
+    target="every enqueue and dequeue has been applied")
+
+
+ALL_SPECS = [STACK_OPERATIONS, QUEUE_OPERATIONS]

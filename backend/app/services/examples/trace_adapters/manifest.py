@@ -255,7 +255,8 @@ def _inject_formula_specs() -> None:
     from .families import derivation_engine as de
     from .families import formula_engine as fe
     from .families import rewrite_engine as re_
-    for mod in (fe, re_, ce, de):
+    from .families import stateful_engine as se
+    for mod in (fe, re_, ce, de, se):
         for spec in mod.registered_specs():
             MANIFEST.setdefault(spec.slug, mod.manifest_entry(spec))
             ROUTING_RULES.setdefault(spec.slug, mod.routing_rule(spec))
