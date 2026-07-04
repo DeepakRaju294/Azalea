@@ -975,3 +975,77 @@ same hard guarantee. The adapter stored none of it.
 instances + prose, no *canned learner* text (internal fixtures OK, §4) · withhold-but-don't-fake · illustra-
 tive separated from soft fallback · provenance/telemetry per treatment · model-owned step counts removed as
 a correctness source · Tier-1 reference trace as the source of required cases.
+
+---
+
+## 18. Deterministic-first authorship + the executed-reference referee (v5 — implemented, then Tier 2c)
+
+§4/§6 framed the split as **"adapter referees, LLM authors ALL prose."** Live content review across the sort
+family showed that split leaks: the LLM, re-authoring a verified trace, garbles faithful data — leaked
+grammar labels (`decision:` as card text), "no values less than 50" (false), "shift smaller (24,18)" (they
+were larger), a dropped shift, an inverted comparison ("33 not smaller than 34"), variant-mismatched code.
+Each was correct *underneath* and wrong on the *surface*. The fix moves authorship of the deterministic part
+from the LLM **to the adapter**, and makes the referee **execute the code**, not just grade prose.
+
+### 18.1 Deterministic-first narration — the walkthrough IS the content (implemented)
+For a **walkthrough** (non-code) of an adapter-backed topic the trace already carries learner-quality
+`decision`/`reason`/`expected_visible_result` (adapters compute the true smaller/larger sets, shifts,
+subarrays, recursion context). The pipeline **ships those cards straight from the trace** — the LLM
+re-author step is skipped. The whole class of formatter defects is now **structurally impossible** for
+walkthroughs.
+- `FamilyAdapterBase.provides_narration` (per-adapter; `trace_adapters.NARRATION_SLUGS` = single source of
+  truth) → `_format_validate_ship` builds `_deterministic_narration`, validates fidelity + hard-prose, ships
+  it; the LLM path is a fallback only if the deterministic cards fail their own gate.
+- **Gate to enable:** an adapter must pass fidelity + hard-prose on its OWN narration across seeds
+  (`test_deterministic_narration_primary`) before it may set the flag.
+- **Pedagogy the LLM kept dropping is now owned by the adapter** (Tier 3): e.g. the quicksort walkthrough
+  narrates the recursion descent ("Now the RIGHT side of pivot 9…"), names a no-op partition ("already in
+  order, nothing moves — 55 confirmed in place"), and carries an active-slice `window` in `visual_state`.
+- **Consequence for §4:** the "all learner-facing prose → LLM" row becomes **walkthrough prose → ADAPTER
+  (deterministic); coding prose → LLM (gated, §18.2)**. The LLM's latitude is a *liability* on a structured
+  trace, not an asset; keep it only where the trace can't supply per-line code.
+
+### 18.2 The executed-reference referee — run the code, don't just read it (implemented)
+Coding topics stay LLM-annotated, so they get an **executed** referee (reuses the Visual-V2
+`trace_execution` recorder; `code_execution_check.py`):
+- **Variant gate** (`code_reproduces_trace`): run the canonical code on the trace's own instance; require the
+  same final answer AND every trace step's state among the code's real intermediate states — catches
+  code/trace *variant drift* (top-down merge shown beside a bottom-up-queue trace) that final-answer/value
+  checks pass. Drift → withhold (backend defect, same policy as a fidelity fail).
+- **Per-line value check** (`executed_reference_violations`): segment the execution per trace step; a `//`
+  comment may not attribute a value an indexed expression never held there (the `append(left[i]) // 9` bug).
+- **Core-decision nudge**: a coding card must step through the loop that decides the step (`if arr[j] <
+  arr[min_idx]`) — retry with targeted feedback, but NEVER block shipping (the full code is displayed
+  regardless; ship as-is on the final attempt).
+- **Displayed-code fallback**: the display strips imports (design), so a `deque`/`heapq` solution can't run
+  as shown → execute the CANONICAL source (imports intact) for the same adapter; skip only if neither runs
+  (never a false withhold).
+
+### 18.3 Per-adapter semantic guards are STOPGAPS, not the scaling mechanism
+Several guards are per-algorithm: `false_no_smaller_values`/`larger_value_called_smaller` (quicksort),
+`insertion_comparison_contradiction`, `code_comment_side_mismatch` (merge), plus the general
+`comparison_contradiction` ("(23) is not less than (36)"). They are correct and precise, but they are
+**patches on the LLM coding path** — one per way the LLM can mis-state a step. They do NOT scale to the full
+catalog. "Add another guard" is not the coding-correctness strategy.
+
+### 18.4 Tier 2c — deterministic coding generation (PLANNED; the foundation before breadth)
+The durable fix mirrors §18.1: for a coding topic of a `provides_narration` adapter, **generate the code
+walkthrough deterministically from the executed reference** instead of the LLM. Each card's work = the source
+lines that actually ran for that trace step, with value-annotated comments from the real `vars` (loops
+collapsed after their first appearance). This makes the min-scan *correct by construction* rather than
+*nudged-then-guarded*, and retires §18.3's per-adapter coding guards.
+- **Blocker (the real work):** a robust per-step **region mapping** — segment the execution into one slice
+  per trace step. The naive "first state match" mis-segments stateful loops (insertion step 4). Robust
+  segmentation is the load-bearing task, not the annotation.
+- **Scope:** array-shaped sorts + search first (runnable, where the bugs are); graph/tree keep the LLM path
+  until their execution shapes are mapped.
+
+### 18.5 Sequencing — reliability foundation before adapter breadth (binding)
+Walkthroughs are now correct-by-construction; coding is not (LLM + stopgap guards). **Scaling the catalog
+(§15) multiplies the coding surface, not the walkthrough surface.** Therefore Tier 2c (§18.4) is a HARD
+prerequisite to the breadth build: finish deterministic coding **once**, then replicate a two-sided
+structural guarantee across the catalog — never replicate the half-reliable coding path hundreds of times and
+guard it forever. This extends the Definition-of-Done rule ("do not scale to more adapters until CP0–7 pass")
+with: **and until coding is deterministic (Tier 2c), not LLM-authored.** Adding a few new adapter *types*
+(new structural shapes) before Tier 2c is fine when the goal is to stress-test that the deterministic
+architecture generalizes; the bulk *instance* build waits for Tier 2c.

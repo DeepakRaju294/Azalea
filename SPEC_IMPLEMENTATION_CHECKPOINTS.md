@@ -5,13 +5,16 @@
 > coverage until all preceding BLOCKING checkpoints pass.** Independent safety, observability, and regression
 > work may proceed in parallel — but must not be treated as proof that an earlier blocking checkpoint is done.
 >
-> **Current rollout blocker: CP3 — grouped checkpoint/artifact acceptance wiring.** CP3a (default checkpoint
-> emission) has LANDED: `_attach_checkpoints` puts a `checkpoint_id` + contiguous source-transition provenance on
-> every card in both ship paths, tested across all 8 adapters. CP1/CP2/CP4/CP5/CP6 already reduce risk; the
-> remaining P0-tier work is accepting GROUPED LLM artifacts under the checkpoint contract (relax the strict 1:1
-> in `_normalize_and_attach` behind the checkpoint-aware `coverage_complete`).
+> **Current load-bearing item: CP10 — Tier 2c deterministic coding generation (Phase 2, ACCURACY_SPEC §18.4).**
+> Phase 1 (CP0–7) is done/backstopped and Phase 2's authorship shift has landed for WALKTHROUGHS (CP8, 30
+> adapters ship from the trace) and the coding REFEREE (CP9, executed-reference gates). The remaining
+> blocker before scaling the catalog (CP11) is making the coding walkthrough itself deterministic (CP10) — the
+> LLM still authors coding annotations and errs one algorithm at a time; the per-adapter guards in CP9 are
+> stopgaps, not the scaling mechanism. **Do not begin the bulk adapter-breadth build (CP11) until CP10 passes**
+> (§18.5). *(Historical: the old CP3 grouped-artifact wiring remains deferred — held back to protect 1:1
+> reliability — but is no longer the critical path.)*
 >
-> **Status legend:** ✅ done & tested · 🟡 partial · ❌ not started.
+> **Status legend:** ✅ done & tested · 🟡 partial · 🔴 planned/blocking · ❌ not started.
 
 ## Status at a glance (updated as work lands)
 | CP | Title | Status | Where |
@@ -27,6 +30,11 @@
 | 6 | Generation-report invariants | ✅ | `invariant_violations` (§1.2 + `verification_level`) + `_coverage_fields` (`trace_ids_rendered`/`required_transition_ids`/`missing_required_transition_ids`/`terminal_rendered`); tests in `test_generation_report.py` |
 | 6b | Checkpoint provenance + structured `prose_validation` in the report | ✅ | checkpoint fields (`checkpoint_ids_rendered`/`required_checkpoint_ids`/`missing_required_checkpoint_ids`) + nested `prose_validation{hard_failures,soft_warnings}` now recorded on both ship paths; invariants flag a missing required checkpoint AND a shipped hard prose failure (`test_generation_report.py`) |
 | 7 | Manual product QA | 🟡 | **automated backstop ✅** (`test_cp7_end_to_end_net.py` drives all 6 topics end-to-end in BOTH normal + forced-fallback modes: adapter selected · trace_verified · no from-scratch source · checkpoint_id + source range per card · required transitions/checkpoints covered · terminal rendered · no raw-dict leak · invariants clean). The **human** sweep (visual match, "feels useful") remains |
+| **Phase 2 — deterministic authorship (ACCURACY_SPEC §18)** | | | |
+| 8 | Deterministic-first narration — walkthroughs ship from the trace, not the LLM | ✅ | `provides_narration`/`NARRATION_SLUGS` → `_format_validate_ship` ships `_deterministic_narration` (LLM = fallback only); 30 adapters gated by `test_deterministic_narration_primary`; includes Tier-3 quicksort recursion narration + no-op naming + visual `window` (§18.1) |
+| 9 | Executed-reference referee — coding correctness by execution | ✅ | `code_execution_check.py`: variant gate (`code_reproduces_trace`) · per-line value check (`executed_reference_violations`) · core-decision nudge · canonical-import fallback · general `comparison_contradiction` guard; `test_code_reproduces_trace.py` (§18.2–18.3) |
+| 10 | **Tier 2c — deterministic coding generation** | 🔴 | **the load-bearing next piece.** Generate coding cards from the executed reference (not the LLM); blocker = robust per-step region mapping (§18.4). Retires the per-adapter coding guards (CP9 stopgaps). **Prerequisite to CP11.** |
+| 11 | Adapter breadth / full catalog (§15) | 🔴 | scale the taxonomy/instances. **Blocked on CP10** — do not start the bulk instance build until coding is deterministic (§18.5). A few new *types* to stress-test generality are allowed earlier. |
 
 ---
 
@@ -286,12 +294,59 @@ confirmed); the full 6-topic matrix above is not yet swept.
 
 ---
 
+# Phase 2 — Deterministic authorship (WORKED_EXAMPLE_ACCURACY_SPEC §18)
+
+Phase 1 (CP0–7) made the adapter the *referee* and the LLM the *author* of all prose. Live content review of
+the sort family showed the LLM garbles a verified trace on the surface (leaked grammar labels, false value
+claims, dropped/inverted steps, variant-mismatched code). Phase 2 moves authorship of the deterministic part
+to the adapter and makes the referee **execute the code**.
+
+## Checkpoint 8 — Deterministic-first narration (walkthroughs) ✅
+### Rule
+A WALKTHROUGH of a `provides_narration` adapter ships its cards straight from the verified trace; the LLM
+re-author step is skipped (fallback only if the deterministic cards fail fidelity/hard-prose).
+### Done
+`NARRATION_SLUGS` (30 adapters), `_deterministic_narration` primary in `_format_validate_ship`, each adapter
+gated by `test_deterministic_narration_primary`. Tier-3 pedagogy the LLM kept dropping is now adapter-owned
+(quicksort recursion descent, no-op partition naming, active-slice `window`).
+
+## Checkpoint 9 — Executed-reference referee (coding) ✅
+### Rule
+A coding topic's code is verified by RUNNING it on the trace's instance, not by grading prose.
+### Done
+`code_execution_check.py`: variant gate · per-line value check · core-decision nudge (retry, never blocks) ·
+canonical-import fallback · general `comparison_contradiction` guard. `test_code_reproduces_trace.py`,
+`test_trace_prose_adversarial.py`. **The per-adapter guards here are explicit STOPGAPS (§18.3) — retired by CP10.**
+
+## Checkpoint 10 — Tier 2c: deterministic coding generation 🔴 (LOAD-BEARING)
+### Rule
+For a coding topic of a `provides_narration` adapter, GENERATE the code walkthrough deterministically from the
+executed reference (source lines that actually ran per step + value-annotated comments from real `vars`,
+loops collapsed after first appearance) — the LLM no longer authors coding annotations.
+### Accept only if
+- the algorithm's decision loop is shown on its first appearance for EVERY enabled adapter (no more omission/
+  nudge), and every comment value matches the real execution (no per-line/`comparison_contradiction` firing);
+- a robust per-step **region mapping** segments the execution correctly for stateful loops (insertion), gated
+  by a test that the naive first-match failure case now maps 1:1;
+- scoped to array sorts + search first; graph/tree explicitly deferred.
+### Why here
+Retires the CP9 per-adapter coding guards. **Prerequisite to CP11** (§18.5): scaling the catalog multiplies
+the *coding* surface, so finish coding-by-construction before breadth.
+
+## Checkpoint 11 — Adapter breadth / full catalog 🔴 (AFTER CP10)
+Scale the taxonomy/instances (§15). **Blocked on CP10.** A few new adapter *types* (new structural shapes) to
+stress-test that the deterministic architecture generalizes are allowed earlier; the bulk instance build waits.
+
+---
+
 ## Final Definition of Done
 Done only when: adapter-supported topics cannot fall back to from-scratch generation · trace-preserving fallback
 exists · `count_mismatch` is coverage-based (not count-only) · hard vs soft prose failures are separated ·
 regression fixtures cover known failures · generation reports expose final source + verification level · manual QA
-passes for core algorithm topics. **Do not scale to more adapters until these pass.**
+passes for core algorithm topics · **walkthroughs ship deterministically (CP8) and coding is deterministic, not
+LLM-authored (CP10)**. **Do not scale to more adapters (CP11) until these — including CP10 — pass.**
 
 This matches the main spec invariant (§1.2): *adapter-supported topics must use the adapter trace as the only
-executable truth, never a from-scratch fallback.*
+executable truth, never a from-scratch fallback* — extended in §18.5: **the trace, not the LLM, authors both the
+walkthrough and the coding walkthrough.**
 
