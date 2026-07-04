@@ -594,6 +594,61 @@ GEOMETRIC_SEQUENCE_TERM = FormulaSpec(
     outputs=[Output("a_n", "a_n = a1 * r^(n-1)", "a1 * r**(n-1)", "", "compute_term", "nth term")],
     conventions={"formula": "a_n = a1 * r^(n-1)"})
 
+# ======================================================================================================
+# TRIGONOMETRY / BUSINESS MATH / MORE PHYSICS
+# ======================================================================================================
+TANGENT_RATIO = FormulaSpec(
+    slug="tangent_ratio", title="tangent ratio in a right triangle", family="geometry",
+    aliases=["tangent ratio", "tangent of the angle", "opposite over adjacent"], priority=26,
+    problem_template="In a right triangle the side opposite the angle is opp = {opp} and the adjacent side is "
+                     "adj = {adj}. Find the tangent of the angle.",
+    givens=[Given("opp", "", 1, 20), Given("adj", "", 1, 20)],
+    outputs=[Output("tan", "tan = opp/adj", "opp/adj", "", "compute_tangent", "tangent")],
+    conventions={"definition": "tangent = opposite / adjacent"})
+
+PERCENT_OF = FormulaSpec(
+    slug="percent_of", title="percent of a number", family="algebra",
+    aliases=["percent of", "percentage of a number"], not_aliases=["change", "yield", "composition"], priority=25,
+    problem_template="What is percent = {percent}% of whole = {whole}?",
+    givens=[Given("percent", "%", 5, 95), Given("whole", "", 20, 200)],
+    outputs=[Output("result", "result = (percent*whole)/100", "(percent*whole)/100", "", "compute_result",
+                    "the amount")],
+    conventions={"definition": "percent of a whole = percent/100 x whole"})
+
+DISCOUNT_PRICE = FormulaSpec(
+    slug="discount_price", title="discounted sale price", family="finance",
+    aliases=["discount", "sale price", "discounted price"], priority=24,
+    problem_template="An item priced price = ${price} is discounted disc = {disc}%. Find the sale price.",
+    givens=[Given("price", "$", 20, 200), Given("disc", "%", 5, 50)],
+    outputs=[Output("sale", "sale = price*(1 - disc/100)", "price*(1 - disc/100)", "$", "compute_sale_price",
+                    "sale price")],
+    conventions={"definition": "sale price = price x (1 - discount)"})
+
+SALES_TAX_TOTAL = FormulaSpec(
+    slug="sales_tax_total", title="total price with sales tax", family="finance",
+    aliases=["sales tax", "total with tax", "price with tax"], priority=23,
+    problem_template="An item priced price = ${price} has sales tax tax = {tax}%. Find the total price.",
+    givens=[Given("price", "$", 10, 200), Given("tax", "%", 4, 15)],
+    outputs=[Output("total", "total = price*(1 + tax/100)", "price*(1 + tax/100)", "$", "compute_total",
+                    "total price")],
+    conventions={"definition": "total = price x (1 + tax rate)"})
+
+POWER_FROM_CURRENT = FormulaSpec(
+    slug="power_from_current", title="power dissipated from current and resistance", family="physics",
+    aliases=["power from current", "i squared r", "power dissipated"], priority=22,
+    problem_template="A current I = {I} A flows through a resistor R = {R} ohm. Find the power dissipated.",
+    givens=[Given("I", "A", 1, 10), Given("R", "ohm", 1, 20)],
+    outputs=[Output("P", "P = I^2 * R", "I**2 * R", "W", "compute_power", "power dissipated")],
+    conventions={"law": "P = I^2 R", "units": "SI"})
+
+PENDULUM_PERIOD = FormulaSpec(
+    slug="pendulum_period", title="period of a simple pendulum", family="physics",
+    aliases=["pendulum", "period of a pendulum"], priority=21, constants={"g": 9.8},
+    problem_template="A simple pendulum has length L = {L} m. Find its period (g = 9.8 m/s^2).",
+    givens=[Given("L", "m", 1, 10)],
+    outputs=[Output("T", "T = 2*pi*sqrt(L/g)", "2*pi*sqrt(L/g)", "s", "compute_period", "period")],
+    conventions={"g": "9.8 m/s^2", "formula": "T = 2*pi*sqrt(L/g)"})
+
 # --- the full concept set; ALL_SPECS drives the gate, the registry, the manifest, and routing ---------
 ALL_SPECS = [
     # physics / EE
@@ -615,4 +670,6 @@ ALL_SPECS = [
     DESCRIPTIVE_STATS, MEDIAN_RANGE, Z_SCORE, COEFF_OF_VARIATION, MEAN_ABS_DEVIATION,
     # rates / sequences / conversions
     DISTANCE_RATE_TIME, AVERAGE_SPEED, CELSIUS_TO_FAHRENHEIT, ARITHMETIC_SEQUENCE_TERM, GEOMETRIC_SEQUENCE_TERM,
+    # trig / business math / more physics
+    TANGENT_RATIO, PERCENT_OF, DISCOUNT_PRICE, SALES_TAX_TOTAL, POWER_FROM_CURRENT, PENDULUM_PERIOD,
 ]

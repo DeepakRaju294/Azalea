@@ -170,4 +170,36 @@ LOG_QUOTIENT_LAW = DerivationSpec(
     preserved="the value of the logarithm is fixed throughout")
 
 
-ALL_SPECS = [EXPONENT_LAWS, POWER_OF_POWER, LOG_EVALUATION, LOG_PRODUCT_LAW, LOG_QUOTIENT_LAW]
+# --- FOIL: (x + a)(x + b) = x^2 + (a+b)x + ab --------------------------------------------------------
+def _foil_setup(rng: random.Random) -> dict:
+    return {"a": rng.randint(1, 6), "b": rng.randint(1, 6), "phase": 0}
+
+
+def _foil_render(s: dict) -> str:
+    a, b, p = s["a"], s["b"], s["phase"]
+    if p == 0:
+        return f"(x + {a})(x + {b})"
+    if p == 1:
+        return f"x^2 + {b}x + {a}x + {a * b}"
+    return f"x^2 + {a + b}x + {a * b}"
+
+
+FOIL_EXPANSION = DerivationSpec(
+    slug="foil_expansion", title="expanding two binomials (FOIL)", family="algebra",
+    aliases=["foil", "multiply two binomials", "expand the binomials", "product of binomials"], priority=84,
+    problem_template="Expand {start} using FOIL.",
+    setup=_foil_setup, render=_foil_render,
+    steps=[
+        DerivationStep("foil", "distributive property (FOIL)", lambda s: {**s, "phase": 1},
+                       lambda s: f"multiply first, outer, inner, last: x*x + {s['b']}x + {s['a']}x + "
+                                 f"{s['a']}*{s['b']}"),
+        DerivationStep("combine_middle", "combine like terms", lambda s: {**s, "phase": 2},
+                       lambda s: f"combine the like middle terms: {s['a']}x + {s['b']}x = {s['a'] + s['b']}x")],
+    conclusion=lambda s: f"x^2 + {s['a'] + s['b']}x + {s['a'] * s['b']}",
+    answer=lambda s: {"linear_coefficient": s["a"] + s["b"], "constant": s["a"] * s["b"]},
+    oracle=lambda s0: {"linear_coefficient": s0["a"] + s0["b"], "constant": s0["a"] * s0["b"]},
+    invariant=lambda s: (2 + s["a"]) * (2 + s["b"]) == 4 + (s["a"] + s["b"]) * 2 + s["a"] * s["b"],
+    preserved="the expression keeps the same value for every x")
+
+
+ALL_SPECS = [EXPONENT_LAWS, POWER_OF_POWER, LOG_EVALUATION, LOG_PRODUCT_LAW, LOG_QUOTIENT_LAW, FOIL_EXPANSION]

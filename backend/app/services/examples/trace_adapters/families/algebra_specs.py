@@ -48,7 +48,8 @@ def _describe_div(s: dict) -> str:
 
 LINEAR_EQUATION = RewriteSpec(
     slug="linear_equation", title="solving a two-step linear equation", family="algebra",
-    aliases=["linear equation", "solve for x", "two-step equation", "one variable equation"], priority=95,
+    aliases=["linear equation", "solve for x", "two-step equation", "one variable equation"],
+    not_aliases=["one-step", "one step", "both sides"], priority=95,
     problem_template="Solve the equation {eqn} for {var}.",
     setup=_linear_setup, render=_render_linear,
     steps=[
@@ -162,7 +163,7 @@ def _distribute_setup(rng: random.Random) -> dict:
 
 DISTRIBUTE = RewriteSpec(
     slug="distribute", title="distributing over a sum", family="algebra", task="simplify",
-    aliases=["distribute", "distributive property", "expand the expression"], priority=92,
+    aliases=["distribute", "distributing", "distributive property", "expand the expression"], priority=92,
     problem_template="Simplify {eqn}.",
     setup=_distribute_setup,
     render=lambda s: (f"{s['a'] * s['b']}{s.get('var', 'x')} + {s['a'] * s['c']}" if s["done"]
@@ -178,4 +179,23 @@ DISTRIBUTE = RewriteSpec(
     preserved="the expression has the same value for every x", goal="the product is expanded")
 
 
-ALL_SPECS = [LINEAR_EQUATION, EQUATION_BOTH_SIDES, COMBINE_LIKE_TERMS, DISTRIBUTE]
+# --- one-step equation:  x + b = c  ->  x = c - b -----------------------------------------------------
+def _one_step_setup(rng: random.Random) -> dict:
+    x = rng.randint(1, 15)
+    b = rng.choice([n for n in range(-9, 10) if n != 0])
+    return {"coef": 1, "const": b, "rhs": x + b, "var": "x", "sol": x}
+
+
+ONE_STEP_EQUATION = RewriteSpec(
+    slug="one_step_equation", title="solving a one-step linear equation", family="algebra",
+    aliases=["one-step equation", "one step equation"], priority=91,
+    problem_template="Solve the equation {eqn} for {var}.",
+    setup=_one_step_setup, render=_render_linear,
+    steps=[RewriteStep("solve_for_variable", "undo the constant", _sub_const, _describe_sub)],
+    answer=lambda s: {s.get("var", "x"): s["rhs"]},
+    oracle=lambda s0: {s0.get("var", "x"): s0["rhs"] - s0["const"]},
+    invariant=lambda s: s["coef"] * s["sol"] + s["const"] == s["rhs"],
+    preserved="every step keeps the same solution x", goal="the variable is alone on one side")
+
+
+ALL_SPECS = [LINEAR_EQUATION, EQUATION_BOTH_SIDES, COMBINE_LIKE_TERMS, DISTRIBUTE, ONE_STEP_EQUATION]

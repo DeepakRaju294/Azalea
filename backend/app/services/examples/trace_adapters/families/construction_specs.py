@@ -3,6 +3,7 @@ DATA: build an instance, the piece count, how to add the i-th piece, render the 
 predicate, the answer, and an independent oracle. Adding a concept = add a `ConstructSpec` to `ALL_SPECS`."""
 from __future__ import annotations
 
+import math
 import random
 
 from .construct_engine import ConstructSpec
@@ -126,7 +127,8 @@ def _deriv_step(s: dict, i: int) -> tuple:
 
 POLYNOMIAL_DERIVATIVE = ConstructSpec(
     slug="polynomial_derivative", title="differentiating a polynomial (power rule)", family="calculus",
-    aliases=["differentiate a polynomial", "polynomial derivative", "power rule derivative", "find the derivative"],
+    aliases=["differentiate a polynomial", "differentiating a polynomial", "polynomial derivative",
+             "power rule derivative", "find the derivative"],
     priority=56, piece_word="derivative term",
     problem_template="Differentiate f(x) = {input_poly} term by term.",
     setup=_deriv_setup, pieces=lambda s: len(s["input_terms"]), step=_deriv_step,
@@ -153,7 +155,8 @@ def _integ_step(s: dict, i: int) -> tuple:
 
 POLYNOMIAL_INTEGRAL = ConstructSpec(
     slug="polynomial_integral", title="integrating a polynomial (reverse power rule)", family="calculus",
-    aliases=["integrate a polynomial", "polynomial integral", "antiderivative", "indefinite integral"],
+    aliases=["integrate a polynomial", "integrating a polynomial", "polynomial integral", "antiderivative",
+             "indefinite integral"],
     priority=55, piece_word="integrated term",
     problem_template="Find the indefinite integral of f(x) = {input_poly} term by term.",
     setup=_integ_setup, pieces=lambda s: len(s["input_terms"]), step=_integ_step,
@@ -189,5 +192,55 @@ FIBONACCI_SEQUENCE = ConstructSpec(
     target="the requested Fibonacci numbers are listed")
 
 
+# --- Pascal's triangle row ----------------------------------------------------------------------------
+def _pascal_setup(rng: random.Random) -> dict:
+    return {"n": rng.randint(3, 6), "output": []}
+
+
+def _pascal_step(s: dict, k: int) -> tuple:
+    n = s["n"]
+    val = math.comb(n, k)
+    rule = (f"the row starts with 1 (C({n},0))" if k == 0
+            else f"C({n},{k}) = {val}")
+    return {**s, "output": s["output"] + [val]}, rule
+
+
+PASCALS_TRIANGLE_ROW = ConstructSpec(
+    slug="pascals_triangle_row", title="a row of Pascal's triangle", family="discrete",
+    aliases=["pascal's triangle", "pascals triangle", "pascal triangle"], priority=53, piece_word="entry",
+    problem_template="Build row n = {n} of Pascal's triangle (the binomial coefficients).",
+    setup=_pascal_setup, pieces=lambda s: s["n"] + 1, step=_pascal_step,
+    render=lambda s: _seq(s["output"]),
+    valid=lambda s: s["output"] == [math.comb(s["n"], k) for k in range(len(s["output"]))],
+    answer=lambda s: {"row": _seq(s["output"])},
+    oracle=lambda s0: {"row": _seq([math.comb(s0["n"], k) for k in range(s0["n"] + 1)])},
+    target="the whole row of binomial coefficients is listed")
+
+
+# --- powers of two ------------------------------------------------------------------------------------
+def _pow2_setup(rng: random.Random) -> dict:
+    return {"count": rng.randint(5, 8), "output": []}
+
+
+def _pow2_step(s: dict, k: int) -> tuple:
+    o = s["output"]
+    val = 1 if k == 0 else o[-1] * 2
+    rule = (f"2^0 = 1" if k == 0 else f"double the previous: {o[-1]} x 2 = {val}  (2^{k})")
+    return {**s, "output": o + [val]}, rule
+
+
+POWERS_OF_TWO = ConstructSpec(
+    slug="powers_of_two", title="powers of two", family="discrete",
+    aliases=["powers of two", "powers of 2"], priority=52, piece_word="power",
+    problem_template="Build the first {count} powers of two (starting at 2^0).",
+    setup=_pow2_setup, pieces=lambda s: s["count"], step=_pow2_step,
+    render=lambda s: _seq(s["output"]),
+    valid=lambda s: s["output"] == [2 ** k for k in range(len(s["output"]))],
+    answer=lambda s: {"powers": _seq(s["output"])},
+    oracle=lambda s0: {"powers": _seq([2 ** k for k in range(s0["count"])])},
+    target="the requested powers of two are listed")
+
+
 ALL_SPECS = [PREFIX_SUMS, RUNNING_MAXIMUM, DEPRECIATION_SCHEDULE,
-             POLYNOMIAL_DERIVATIVE, POLYNOMIAL_INTEGRAL, FIBONACCI_SEQUENCE]
+             POLYNOMIAL_DERIVATIVE, POLYNOMIAL_INTEGRAL, FIBONACCI_SEQUENCE,
+             PASCALS_TRIANGLE_ROW, POWERS_OF_TWO]
