@@ -824,6 +824,23 @@ ROOT_MEAN_SQUARE = FormulaSpec(
                     show=[("sum of the squares", "sum(x**2 for x in xs)"), ("n", "n")])],
     conventions={"definition": "RMS = sqrt(mean of the squares)"})
 
+POLYGON_INTERIOR_ANGLE = FormulaSpec(
+    slug="polygon_interior_angle", title="interior angle of a regular polygon", family="geometry",
+    aliases=["interior angle of a polygon", "interior angle", "polygon interior angle"], priority=30,
+    problem_template="Find the measure of each interior angle of a regular polygon with n = {n} sides.",
+    givens=[Given("n", "sides", 3, 12)],
+    outputs=[Output("angle", "angle = (n - 2)*180/n", "(n - 2)*180/n", "deg", "compute_angle",
+                    "interior angle")],
+    conventions={"formula": "interior angle = (n-2)*180/n"})
+
+POLYGON_EXTERIOR_ANGLE = FormulaSpec(
+    slug="polygon_exterior_angle", title="exterior angle of a regular polygon", family="geometry",
+    aliases=["exterior angle of a polygon", "exterior angle", "polygon exterior angle"], priority=28,
+    problem_template="Find the measure of each exterior angle of a regular polygon with n = {n} sides.",
+    givens=[Given("n", "sides", 3, 12)],
+    outputs=[Output("angle", "angle = 360/n", "360/n", "deg", "compute_angle", "exterior angle")],
+    conventions={"formula": "exterior angle = 360/n"})
+
 # --- the full concept set; ALL_SPECS drives the gate, the registry, the manifest, and routing ---------
 ALL_SPECS = [
     # physics / EE
@@ -857,4 +874,6 @@ ALL_SPECS = [
     BOYLES_LAW, CHARLES_LAW, OHMS_RESISTANCE, HEAT_ENERGY, FLUID_PRESSURE,
     # solids / hooke / rms
     CUBE_VOLUME, CUBE_SURFACE_AREA, HOOKES_FORCE, ROOT_MEAN_SQUARE,
+    # polygon angles
+    POLYGON_INTERIOR_ANGLE, POLYGON_EXTERIOR_ANGLE,
 ]

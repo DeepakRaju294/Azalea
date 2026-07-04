@@ -461,7 +461,43 @@ CUMULATIVE_PRODUCT = ConstructSpec(
     target="every running product is listed")
 
 
+# --- savings account growth (compound interest with annual deposits) ----------------------------------
+def _sav_seq(P0: int, r: int, deposit: int, years: int) -> list:
+    seq: list = []
+    bal = P0
+    for _ in range(years):
+        bal = round(bal * (1 + r / 100) + deposit, 2)
+        seq.append(bal)
+    return seq
+
+
+def _sav_setup(rng: random.Random) -> dict:
+    return {"P0": rng.randint(100, 1000), "r": rng.randint(3, 8), "deposit": rng.randint(50, 200),
+            "years": 5, "output": []}
+
+
+def _sav_step(s: dict, i: int) -> tuple:
+    prev = s["output"][-1] if s["output"] else s["P0"]
+    new = round(prev * (1 + s["r"] / 100) + s["deposit"], 2)
+    return {**s, "output": s["output"] + [new]}, \
+        f"year {i + 1}: {prev} x {1 + s['r'] / 100} + {s['deposit']} = {new}"
+
+
+SAVINGS_GROWTH = ConstructSpec(
+    slug="savings_growth", title="savings account growth with annual deposits", family="finance",
+    aliases=["savings account growth", "savings schedule", "savings with deposits"], priority=45,
+    piece_word="year",
+    problem_template="A savings account starts with ${P0}, earns {r}% per year, and gets a ${deposit} deposit "
+                     "each year. Build the 5-year balance schedule.",
+    setup=_sav_setup, pieces=lambda s: s["years"], step=_sav_step,
+    render=lambda s: _seq(s["output"]),
+    valid=lambda s: s["output"] == _sav_seq(s["P0"], s["r"], s["deposit"], len(s["output"])),
+    answer=lambda s: {"balances": _seq(s["output"])},
+    oracle=lambda s0: {"balances": _seq(_sav_seq(s0["P0"], s0["r"], s0["deposit"], s0["years"]))},
+    target="the balance is projected for every year")
+
+
 ALL_SPECS = [PREFIX_SUMS, RUNNING_MAXIMUM, DEPRECIATION_SCHEDULE,
              POLYNOMIAL_DERIVATIVE, POLYNOMIAL_INTEGRAL, FIBONACCI_SEQUENCE,
              PASCALS_TRIANGLE_ROW, POWERS_OF_TWO, BABYLONIAN_SQRT, COLLATZ_SEQUENCE, GRADIENT_DESCENT,
-             PRIME_FACTORIZATION, TRIANGULAR_NUMBERS, CUMULATIVE_PRODUCT]
+             PRIME_FACTORIZATION, TRIANGULAR_NUMBERS, CUMULATIVE_PRODUCT, SAVINGS_GROWTH]
