@@ -390,6 +390,64 @@ SUM_GEOMETRIC_SERIES = DerivationSpec(
     preserved="the value of the sum is fixed")
 
 
+# --- difference of cubes:  x^3 - a^3 = (x - a)(x^2 + ax + a^2) ---------------------------------------
+def _doc_setup(rng: random.Random) -> dict:
+    return {"a": rng.randint(2, 5), "phase": 0}
+
+
+def _doc_render(s: dict) -> str:
+    a, p = s["a"], s["phase"]
+    if p == 0:
+        return f"x^3 - {a ** 3}"
+    if p == 1:
+        return f"x^3 - {a}^3"
+    return f"(x - {a})(x^2 + {a}x + {a * a})"
+
+
+DIFFERENCE_OF_CUBES = DerivationSpec(
+    slug="difference_of_cubes", title="factoring a difference of cubes", family="algebra",
+    aliases=["difference of cubes"], priority=77,
+    problem_template="Factor {start}.",
+    setup=_doc_setup, render=_doc_render,
+    steps=[
+        DerivationStep("recognize_cubes", "recognizing perfect cubes", lambda s: {**s, "phase": 1},
+                       lambda s: f"write {s['a'] ** 3} as {s['a']}^3, giving a difference of two cubes"),
+        DerivationStep("apply_pattern", "difference-of-cubes pattern", lambda s: {**s, "phase": 2},
+                       lambda s: f"a^3 - b^3 = (a - b)(a^2 + ab + b^2), so it factors as "
+                                 f"(x - {s['a']})(x^2 + {s['a']}x + {s['a'] * s['a']})")],
+    conclusion=lambda s: f"(x - {s['a']})(x^2 + {s['a']}x + {s['a'] * s['a']})",
+    answer=lambda s: {"root": s["a"]},
+    oracle=lambda s0: {"root": s0["a"]},
+    invariant=lambda s: 10 ** 3 - s["a"] ** 3 == (10 - s["a"]) * (100 + 10 * s["a"] + s["a"] ** 2),
+    preserved="the expression keeps the same value for every x")
+
+
+# --- cube of a binomial:  (x + a)^3 = x^3 + 3ax^2 + 3a^2 x + a^3 -------------------------------------
+def _cub_setup(rng: random.Random) -> dict:
+    return {"a": rng.randint(1, 5), "phase": 0}
+
+
+def _cub_render(s: dict) -> str:
+    a, p = s["a"], s["phase"]
+    return (f"(x + {a})^3" if p == 0
+            else f"x^3 + {3 * a}x^2 + {3 * a * a}x + {a ** 3}")
+
+
+CUBE_OF_BINOMIAL = DerivationSpec(
+    slug="cube_of_binomial", title="expanding the cube of a binomial", family="algebra",
+    aliases=["cube of a binomial", "cube a binomial", "binomial cubed"], priority=76,
+    problem_template="Expand {start}.",
+    setup=_cub_setup, render=_cub_render,
+    steps=[DerivationStep("cube_binomial", "binomial-cube rule", lambda s: {**s, "phase": 1},
+                          lambda s: f"(x + a)^3 = x^3 + 3ax^2 + 3a^2x + a^3 with a = {s['a']}: "
+                                    f"x^3 + {3 * s['a']}x^2 + {3 * s['a'] * s['a']}x + {s['a'] ** 3}")],
+    conclusion=lambda s: f"x^3 + {3 * s['a']}x^2 + {3 * s['a'] * s['a']}x + {s['a'] ** 3}",
+    answer=lambda s: {"a_cubed": s["a"] ** 3},
+    oracle=lambda s0: {"a_cubed": s0["a"] ** 3},
+    invariant=lambda s: (2 + s["a"]) ** 3 == 8 + 3 * s["a"] * 4 + 3 * s["a"] ** 2 * 2 + s["a"] ** 3,
+    preserved="the expression keeps the same value for every x")
+
+
 ALL_SPECS = [EXPONENT_LAWS, POWER_OF_POWER, LOG_EVALUATION, LOG_PRODUCT_LAW, LOG_QUOTIENT_LAW, FOIL_EXPANSION,
              DIFFERENCE_OF_SQUARES, PERFECT_SQUARE, FACTOR_GCF, SUM_ARITHMETIC_SERIES,
-             COMPLETE_THE_SQUARE, SUM_GEOMETRIC_SERIES]
+             COMPLETE_THE_SQUARE, SUM_GEOMETRIC_SERIES, DIFFERENCE_OF_CUBES, CUBE_OF_BINOMIAL]

@@ -746,6 +746,50 @@ FREQUENCY_FROM_PERIOD = FormulaSpec(
     outputs=[Output("f", "f = 1/T", "1/T", "Hz", "compute_frequency", "frequency")],
     conventions={"relation": "f = 1/T"})
 
+BOYLES_LAW = FormulaSpec(
+    slug="boyles_law", title="Boyle's law (solve for the new volume)", family="chemistry",
+    aliases=["boyle's law", "boyles law"], priority=8,
+    problem_template="A gas at P1 = {P1} atm, V1 = {V1} L is compressed to P2 = {P2} atm at constant "
+                     "temperature. Find the new volume V2.",
+    givens=[Given("P1", "atm", 1, 5), Given("V1", "L", 1, 10), Given("P2", "atm", 1, 5)],
+    outputs=[Output("V2", "V2 = (P1*V1)/P2", "(P1*V1)/P2", "L", "compute_volume", "new volume")],
+    conventions={"law": "P1*V1 = P2*V2"})
+
+CHARLES_LAW = FormulaSpec(
+    slug="charles_law", title="Charles's law (solve for the new volume)", family="chemistry",
+    aliases=["charles's law", "charles law"], priority=7,
+    problem_template="A gas at V1 = {V1} L, T1 = {T1} K is heated to T2 = {T2} K at constant pressure. "
+                     "Find the new volume V2.",
+    givens=[Given("V1", "L", 1, 10), Given("T1", "K", 200, 400), Given("T2", "K", 200, 400)],
+    outputs=[Output("V2", "V2 = (V1*T2)/T1", "(V1*T2)/T1", "L", "compute_volume", "new volume")],
+    conventions={"law": "V1/T1 = V2/T2"})
+
+OHMS_RESISTANCE = FormulaSpec(
+    slug="ohms_resistance", title="resistance from voltage and current", family="physics",
+    aliases=["find the resistance", "resistance from voltage"], priority=6,
+    problem_template="A resistor carries current I = {I} A under voltage V = {V} V. Find its resistance.",
+    givens=[Given("V", "V", 2, 24), Given("I", "A", 1, 12)],
+    outputs=[Output("R", "R = V/I", "V/I", "ohm", "compute_resistance", "resistance")],
+    conventions={"law": "Ohm's law R = V/I"})
+
+HEAT_ENERGY = FormulaSpec(
+    slug="heat_energy", title="heat energy from specific heat", family="physics",
+    aliases=["heat energy", "specific heat", "q = mc"], priority=5,
+    problem_template="A mass m = {m} g of a substance with specific heat c = {c} is heated by dT = {dT} "
+                     "degrees. Find the heat energy.",
+    givens=[Given("m", "g", 1, 50), Given("c", "J/g/deg", 1, 5), Given("dT", "deg", 1, 50)],
+    outputs=[Output("Q", "Q = m*c*dT", "m*c*dT", "J", "compute_heat", "heat energy")],
+    conventions={"formula": "Q = m*c*dT"})
+
+FLUID_PRESSURE = FormulaSpec(
+    slug="fluid_pressure", title="hydrostatic pressure at depth", family="physics",
+    aliases=["fluid pressure", "pressure at depth", "hydrostatic pressure"], priority=4, constants={"g": 9.8},
+    problem_template="Find the pressure at depth h = {h} m in a fluid of density rho = {rho} kg/m^3 "
+                     "(g = 9.8 m/s^2).",
+    givens=[Given("rho", "kg/m^3", 800, 1200), Given("h", "m", 1, 20)],
+    outputs=[Output("P", "P = rho*g*h", "rho*g*h", "Pa", "compute_pressure", "pressure")],
+    conventions={"formula": "P = rho*g*h"})
+
 # --- the full concept set; ALL_SPECS drives the gate, the registry, the manifest, and routing ---------
 ALL_SPECS = [
     # physics / EE
@@ -775,4 +819,6 @@ ALL_SPECS = [
     PROBABILITY_SIMPLE, MOLE_FRACTION, OHMS_POWER,
     # conversions / oscillation / gas
     KELVIN_CONVERSION, FAHRENHEIT_TO_CELSIUS, SPRING_PERIOD, MOLES_IDEAL_GAS, FREQUENCY_FROM_PERIOD,
+    # gas laws / circuits / thermo
+    BOYLES_LAW, CHARLES_LAW, OHMS_RESISTANCE, HEAT_ENERGY, FLUID_PRESSURE,
 ]
