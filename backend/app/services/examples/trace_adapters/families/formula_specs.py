@@ -878,6 +878,34 @@ IMPULSE = FormulaSpec(
     outputs=[Output("J", "J = F*t", "F*t", "N*s", "compute_impulse", "impulse")],
     conventions={"formula": "impulse = force x time"})
 
+FREE_FALL_VELOCITY = FormulaSpec(
+    slug="free_fall_velocity", title="velocity of a freely falling object", family="physics",
+    aliases=["free fall velocity", "velocity in free fall", "falling object velocity"], priority=44,
+    constants={"g": 9.8},
+    problem_template="An object is dropped and falls for t = {t} s. Find its velocity (g = 9.8 m/s^2).",
+    givens=[Given("t", "s", 1, 10)],
+    outputs=[Output("v", "v = g*t", "g*t", "m/s", "compute_velocity", "velocity")],
+    conventions={"g": "9.8 m/s^2"})
+
+FREE_FALL_DISTANCE = FormulaSpec(
+    slug="free_fall_distance", title="distance a freely falling object drops", family="physics",
+    aliases=["free fall distance", "distance fallen", "falling object distance"], priority=38,
+    constants={"g": 9.8},
+    problem_template="An object is dropped and falls for t = {t} s. Find the distance fallen (g = 9.8 m/s^2).",
+    givens=[Given("t", "s", 1, 10)],
+    outputs=[Output("d", "d = (g*t^2)/2", "(g*t**2)/2", "m", "compute_distance", "distance")],
+    conventions={"g": "9.8 m/s^2"})
+
+POTENTIAL_TO_KINETIC = FormulaSpec(
+    slug="potential_to_kinetic", title="speed from a height drop (energy conservation)", family="physics",
+    aliases=["speed from height", "velocity from height", "energy conservation speed"], priority=37,
+    constants={"g": 9.8},
+    problem_template="An object falls from rest through height h = {h} m. Find its speed at the bottom "
+                     "(g = 9.8 m/s^2).",
+    givens=[Given("h", "m", 1, 30)],
+    outputs=[Output("v", "v = sqrt(2*g*h)", "sqrt(2*g*h)", "m/s", "compute_speed", "speed")],
+    conventions={"principle": "1/2 m v^2 = m g h"})
+
 # --- the full concept set; ALL_SPECS drives the gate, the registry, the manifest, and routing ---------
 ALL_SPECS = [
     # physics / EE
@@ -915,4 +943,6 @@ ALL_SPECS = [
     POLYGON_INTERIOR_ANGLE, POLYGON_EXTERIOR_ANGLE,
     # efficiency / error / pricing / impulse
     EFFICIENCY, PERCENT_ERROR, UNIT_PRICE, IMPULSE,
+    # free fall / energy
+    FREE_FALL_VELOCITY, FREE_FALL_DISTANCE, POTENTIAL_TO_KINETIC,
 ]

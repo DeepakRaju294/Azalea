@@ -497,7 +497,33 @@ SAVINGS_GROWTH = ConstructSpec(
     target="the balance is projected for every year")
 
 
+# --- digit sum (running total of the digits) ----------------------------------------------------------
+def _digit_setup(rng: random.Random) -> dict:
+    n = rng.randint(100, 99999)
+    return {"n": n, "digits": [int(c) for c in str(n)], "output": []}
+
+
+def _digit_step(s: dict, i: int) -> tuple:
+    d = s["digits"][i]
+    prev = s["output"][-1] if s["output"] else 0
+    val = prev + d
+    rule = f"add the first digit {d}" if i == 0 else f"add digit {d}: {prev} + {d} = {val}"
+    return {**s, "output": s["output"] + [val]}, rule
+
+
+DIGIT_SUM = ConstructSpec(
+    slug="digit_sum", title="sum of the digits of a number", family="number_theory",
+    aliases=["digit sum", "sum of the digits", "sum of digits"], priority=44, piece_word="digit",
+    problem_template="Find the sum of the digits of {n}, one digit at a time.",
+    setup=_digit_setup, pieces=lambda s: len(s["digits"]), step=_digit_step,
+    render=lambda s: _seq(s["output"]),
+    valid=lambda s: s["output"] == [sum(s["digits"][: k + 1]) for k in range(len(s["output"]))],
+    answer=lambda s: {"digit_sum": str(s["output"][-1]) if s["output"] else "0"},
+    oracle=lambda s0: {"digit_sum": str(sum(s0["digits"]))},
+    target="every digit has been added")
+
+
 ALL_SPECS = [PREFIX_SUMS, RUNNING_MAXIMUM, DEPRECIATION_SCHEDULE,
              POLYNOMIAL_DERIVATIVE, POLYNOMIAL_INTEGRAL, FIBONACCI_SEQUENCE,
              PASCALS_TRIANGLE_ROW, POWERS_OF_TWO, BABYLONIAN_SQRT, COLLATZ_SEQUENCE, GRADIENT_DESCENT,
-             PRIME_FACTORIZATION, TRIANGULAR_NUMBERS, CUMULATIVE_PRODUCT, SAVINGS_GROWTH]
+             PRIME_FACTORIZATION, TRIANGULAR_NUMBERS, CUMULATIVE_PRODUCT, SAVINGS_GROWTH, DIGIT_SUM]

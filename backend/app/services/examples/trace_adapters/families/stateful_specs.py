@@ -261,4 +261,47 @@ SET_OPERATIONS = StatefulSpec(
     target="every add and remove has been applied")
 
 
-ALL_SPECS = [STACK_OPERATIONS, QUEUE_OPERATIONS, HASH_TABLE_INSERT, LRU_CACHE, MODULAR_COUNTER, SET_OPERATIONS]
+# --- min-stack: push/pop while tracking the current minimum ------------------------------------------
+def _minstk_setup(rng: random.Random) -> dict:
+    ops: list = []
+    model: list = []
+    for _ in range(rng.randint(5, 7)):
+        if model and rng.random() < 0.35:
+            ops.append(("pop", 0)); model.pop()
+        else:
+            v = rng.randint(1, 20); ops.append(("push", v)); model.append(v)
+    return {"ops": ops, "stack": []}
+
+
+def _minstk_apply(s: dict, i: int) -> tuple:
+    kind, v = s["ops"][i]
+    if kind == "push":
+        st = s["stack"] + [v]
+        return {**s, "stack": st}, f"push {v}: the minimum is now {min(st)}"
+    top = s["stack"][-1]
+    return {**s, "stack": s["stack"][:-1]}, f"pop the top element {top}"
+
+
+def _minstk_render(s: dict) -> str:
+    st = s["stack"]
+    return f"top -> {_seq(list(reversed(st)))}; min = {min(st)}" if st else "empty"
+
+
+def _minstk_oracle(s0: dict) -> dict:
+    st: list = []
+    for kind, v in s0["ops"]:
+        st.append(v) if kind == "push" else st.pop()
+    return {"final_min": str(min(st)) if st else "empty"}
+
+
+MIN_STACK = StatefulSpec(
+    slug="min_stack", title="a min-stack tracking the running minimum", family="structures",
+    aliases=["min stack", "minimum stack", "stack with minimum"], priority=63, op_word="operation",
+    problem_template="Apply the push/pop operations to a min-stack; give the minimum of the final stack.",
+    setup=_minstk_setup, ops_count=lambda s: len(s["ops"]), apply=_minstk_apply,
+    render=_minstk_render, answer=lambda s: {"final_min": str(min(s["stack"])) if s["stack"] else "empty"},
+    oracle=_minstk_oracle, target="every push and pop has been processed")
+
+
+ALL_SPECS = [STACK_OPERATIONS, QUEUE_OPERATIONS, HASH_TABLE_INSERT, LRU_CACHE, MODULAR_COUNTER, SET_OPERATIONS,
+             MIN_STACK]
