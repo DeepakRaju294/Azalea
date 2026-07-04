@@ -41,7 +41,7 @@ NEWTONS_SECOND_LAW = FormulaSpec(
 
 WEIGHT_FORCE = FormulaSpec(
     slug="weight_force", title="weight from mass", family="physics",
-    aliases=["weight of an object", "weight force", "w = mg"], priority=77, constants={"g": 9.8},
+    aliases=["weight of an object", "weight force", "weight from mass", "w = mg"], priority=77, constants={"g": 9.8},
     problem_template="An object has mass m = {m} kg. Find its weight (g = 9.8 m/s^2).",
     givens=[Given("m", "kg", 1, 50)],
     outputs=[Output("W", "W = m*g", "m*g", "N", "compute_weight", "weight")],
@@ -67,7 +67,7 @@ WORK_DONE = FormulaSpec(
 
 GRAVITATIONAL_PE = FormulaSpec(
     slug="gravitational_pe", title="gravitational potential energy", family="physics",
-    aliases=["potential energy", "gravitational potential"], priority=74, constants={"g": 9.8},
+    aliases=["gravitational potential energy", "gravitational potential"], priority=74, constants={"g": 9.8},
     problem_template="A mass m = {m} kg is raised to height h = {h} m. Find its gravitational potential energy "
                      "(g = 9.8 m/s^2).",
     givens=[Given("m", "kg", 1, 20), Given("h", "m", 1, 30)],
@@ -207,7 +207,7 @@ DENSITY = FormulaSpec(
 
 IDEAL_GAS_PRESSURE = FormulaSpec(
     slug="ideal_gas_pressure", title="ideal gas law (solve for pressure)", family="chemistry",
-    aliases=["ideal gas", "gas law"], priority=62, constants={"R": 0.0821},
+    aliases=["ideal gas", "gas law"], not_aliases=["combined"], priority=62, constants={"R": 0.0821},
     problem_template="n = {n} mol of an ideal gas occupies V = {V} L at T = {T} K. Find the pressure "
                      "(R = 0.0821 L*atm/mol/K).",
     givens=[Given("n", "mol", 1, 10), Given("T", "K", 200, 500), Given("V", "L", 1, 20)],
@@ -272,16 +272,300 @@ Z_SCORE = FormulaSpec(
     outputs=[Output("z", "z = (x - mean)/sd", "(x - mean)/sd", "", "compute_z_score", "z-score")],
     conventions={"definition": "z = (x - mean) / standard deviation"})
 
+# ======================================================================================================
+# PHYSICS — second wave — family "physics"
+# ======================================================================================================
+PROJECTILE_RANGE = FormulaSpec(
+    slug="projectile_range", title="projectile range", family="physics",
+    aliases=["projectile range", "range of a projectile"], priority=59, constants={"g": 9.8},
+    problem_template="A projectile is launched at v = {v} m/s at angle theta = {theta} degrees. Find its range "
+                     "on level ground (g = 9.8 m/s^2).",
+    givens=[Given("v", "m/s", 5, 40), Given("theta", "deg", 15, 75)],
+    outputs=[Output("R", "R = v^2 * sin(2*theta) / g", "v**2 * sin(radians(2*theta)) / g", "m",
+                    "compute_range", "range")],
+    conventions={"model": "level-ground projectile", "g": "9.8 m/s^2"})
+
+CENTRIPETAL_ACCEL = FormulaSpec(
+    slug="centripetal_acceleration", title="centripetal acceleration", family="physics",
+    aliases=["centripetal acceleration", "centripetal"], priority=58,
+    problem_template="An object moves at v = {v} m/s in a circle of radius r = {r} m. Find its centripetal "
+                     "acceleration.",
+    givens=[Given("v", "m/s", 1, 30), Given("r", "m", 1, 20)],
+    outputs=[Output("a", "a = v^2/r", "v**2/r", "m/s^2", "compute_acceleration", "centripetal acceleration")],
+    conventions={"units": "SI"})
+
+WAVE_SPEED = FormulaSpec(
+    slug="wave_speed", title="wave speed", family="physics",
+    aliases=["wave speed", "wave velocity"], priority=57,
+    problem_template="A wave has frequency f = {f} Hz and wavelength lambda = {lam} m. Find its speed.",
+    givens=[Given("f", "Hz", 1, 50), Given("lam", "m", 1, 20)],
+    outputs=[Output("v", "v = f*lambda", "f*lam", "m/s", "compute_wave_speed", "wave speed")],
+    conventions={"relation": "v = f * lambda"})
+
+PRESSURE = FormulaSpec(
+    slug="pressure", title="pressure from force and area", family="physics",
+    aliases=["pressure from force", "pressure force area"], priority=56,
+    problem_template="A force F = {F} N is applied over an area A = {A} m^2. Find the pressure.",
+    givens=[Given("F", "N", 1, 100), Given("A", "m^2", 1, 20)],
+    outputs=[Output("P", "P = F/A", "F/A", "Pa", "compute_pressure", "pressure")],
+    conventions={"units": "SI (N, m^2, Pa)"})
+
+MECHANICAL_POWER = FormulaSpec(
+    slug="mechanical_power", title="mechanical power", family="physics",
+    aliases=["mechanical power", "power from work", "average power"], priority=55,
+    problem_template="Work W = {W} J is done in time t = {t} s. Find the average power.",
+    givens=[Given("W", "J", 1, 500), Given("t", "s", 1, 20)],
+    outputs=[Output("P", "P = W/t", "W/t", "W", "compute_power", "power")],
+    conventions={"units": "SI (J, s, W)"})
+
+SPRING_PE = FormulaSpec(
+    slug="spring_pe", title="elastic potential energy of a spring", family="physics",
+    aliases=["elastic potential energy", "spring potential energy", "hooke"], priority=54,
+    problem_template="A spring of stiffness k = {k} N/m is stretched by x = {x} m. Find its elastic potential "
+                     "energy.",
+    givens=[Given("k", "N/m", 1, 50), Given("x", "m", 1, 10)],
+    outputs=[Output("PE", "PE = (k*x^2)/2", "(k*x**2)/2", "J", "compute_elastic_energy", "elastic potential energy")],
+    conventions={"law": "Hooke's law spring energy"})
+
+# ======================================================================================================
+# GEOMETRY — second wave — family "geometry"
+# ======================================================================================================
+COORDINATE_DISTANCE = FormulaSpec(
+    slug="coordinate_distance", title="distance between two points", family="geometry",
+    aliases=["distance between two points", "coordinate distance", "distance formula"], priority=53,
+    problem_template="Find the distance between the points ({x1}, {y1}) and ({x2}, {y2}).",
+    givens=[Given("x1", "", 0, 10), Given("y1", "", 0, 10), Given("x2", "", 0, 10), Given("y2", "", 0, 10)],
+    outputs=[Output("d", "d = sqrt((x2-x1)^2 + (y2-y1)^2)", "sqrt((x2-x1)**2 + (y2-y1)**2)", "units",
+                    "compute_distance", "distance")],
+    conventions={"formula": "distance formula"})
+
+MIDPOINT = FormulaSpec(
+    slug="midpoint", title="midpoint of a segment", family="geometry",
+    aliases=["midpoint"], priority=52,
+    problem_template="Find the midpoint of the segment from ({x1}, {y1}) to ({x2}, {y2}).",
+    givens=[Given("x1", "", 0, 20), Given("y1", "", 0, 20), Given("x2", "", 0, 20), Given("y2", "", 0, 20)],
+    outputs=[Output("mx", "mx = (x1 + x2)/2", "(x1 + x2)/2", "", "compute_midpoint_x", "midpoint x"),
+             Output("my", "my = (y1 + y2)/2", "(y1 + y2)/2", "", "compute_midpoint_y", "midpoint y")],
+    conventions={"formula": "midpoint = average of the endpoints"})
+
+SLOPE = FormulaSpec(
+    slug="slope", title="slope of a line through two points", family="geometry",
+    aliases=["slope of a line", "slope between"], priority=51,
+    problem_template="Find the slope of the line through ({x1}, {y1}) and ({x2}, {y2}).",
+    givens=[Given("x1", "", 0, 5), Given("y1", "", 0, 20), Given("x2", "", 6, 15), Given("y2", "", 0, 20)],
+    outputs=[Output("m", "m = (y2 - y1)/(x2 - x1)", "(y2 - y1)/(x2 - x1)", "", "compute_slope", "slope")],
+    conventions={"formula": "rise over run"})
+
+TRAPEZOID_AREA = FormulaSpec(
+    slug="trapezoid_area", title="area of a trapezoid", family="geometry",
+    aliases=["area of a trapezoid", "trapezoid area"], priority=50,
+    problem_template="A trapezoid has parallel sides a = {a} and b = {b} and height h = {h}. Find its area.",
+    givens=[Given("a", "", 1, 20), Given("b", "", 1, 20), Given("h", "", 1, 20)],
+    outputs=[Output("A", "A = (a + b)/2 * h", "(a + b)/2 * h", "sq units", "compute_area", "area")],
+    conventions={"units": "square units"})
+
+PARALLELOGRAM_AREA = FormulaSpec(
+    slug="parallelogram_area", title="area of a parallelogram", family="geometry",
+    aliases=["area of a parallelogram", "parallelogram area"], priority=49,
+    problem_template="A parallelogram has base b = {b} and height h = {h}. Find its area.",
+    givens=[Given("b", "", 1, 30), Given("h", "", 1, 30)],
+    outputs=[Output("A", "A = b*h", "b*h", "sq units", "compute_area", "area")],
+    conventions={"units": "square units"})
+
+CONE_VOLUME = FormulaSpec(
+    slug="cone_volume", title="volume of a cone", family="geometry",
+    aliases=["volume of a cone", "cone volume"], priority=48,
+    problem_template="A cone has radius r = {r} and height h = {h}. Find its volume.",
+    givens=[Given("r", "", 1, 12), Given("h", "", 1, 20)],
+    outputs=[Output("V", "V = (1/3)*pi*r^2*h", "(1/3)*pi*r**2*h", "cubic units", "compute_volume", "volume")],
+    conventions={"pi": "3.14159..."})
+
+RECTANGLE_PERIMETER = FormulaSpec(
+    slug="rectangle_perimeter", title="perimeter of a rectangle", family="geometry",
+    aliases=["perimeter of a rectangle", "rectangle perimeter"], priority=47,
+    problem_template="A rectangle is l = {l} by w = {w}. Find its perimeter.",
+    givens=[Given("l", "", 1, 30), Given("w", "", 1, 30)],
+    outputs=[Output("P", "P = 2*(l + w)", "2*(l + w)", "units", "compute_perimeter", "perimeter")],
+    conventions={"units": "linear units"})
+
+# ======================================================================================================
+# FINANCE — second wave — family "finance"
+# ======================================================================================================
+FUTURE_VALUE = FormulaSpec(
+    slug="future_value", title="future value (compound growth)", family="finance",
+    aliases=["future value"], priority=46,
+    problem_template="A present amount PV = ${PV} grows at r = {r}% per year for t = {t} years. Find its future "
+                     "value.",
+    givens=[Given("PV", "$", 100, 5000), Given("r", "%", 1, 12), Given("t", "yr", 1, 8)],
+    outputs=[Output("FV", "FV = PV*(1 + r/100)^t", "PV*(1 + r/100)**t", "$", "compute_future_value",
+                    "future value")],
+    conventions={"model": "annual compounding"})
+
+BREAK_EVEN = FormulaSpec(
+    slug="break_even", title="break-even quantity", family="finance",
+    aliases=["break-even", "break even"], priority=45,
+    problem_template="Fixed costs are F = ${F}, the price per unit is p = ${p}, and the variable cost per unit "
+                     "is c = ${c}. Find the break-even quantity.",
+    givens=[Given("F", "$", 100, 2000), Given("p", "$", 10, 50), Given("c", "$", 1, 9)],
+    outputs=[Output("q", "q = F/(p - c)", "F/(p - c)", "units", "compute_break_even", "break-even quantity")],
+    conventions={"definition": "break-even = fixed cost / contribution margin"})
+
+PROFIT_MARGIN = FormulaSpec(
+    slug="profit_margin", title="profit margin", family="finance",
+    aliases=["profit margin"], priority=44,
+    problem_template="A product sells for revenue = ${revenue} and costs cost = ${cost}. Find the profit margin.",
+    givens=[Given("revenue", "$", 50, 500), Given("cost", "$", 10, 45)],
+    outputs=[Output("margin", "margin = (revenue - cost)/revenue * 100", "(revenue - cost)/revenue * 100", "%",
+                    "compute_margin", "profit margin")],
+    conventions={"definition": "margin = (revenue - cost) / revenue * 100"})
+
+# ======================================================================================================
+# CHEMISTRY — second wave — family "chemistry"
+# ======================================================================================================
+MOLES_FROM_MASS = FormulaSpec(
+    slug="moles_from_mass", title="moles from mass", family="chemistry",
+    aliases=["moles from mass", "mole conversion", "number of moles"], priority=43,
+    problem_template="A sample has mass m = {m} g and molar mass M = {M} g/mol. Find the number of moles.",
+    givens=[Given("m", "g", 5, 200), Given("M", "g/mol", 10, 100)],
+    outputs=[Output("n", "n = m/M", "m/M", "mol", "compute_moles", "moles")],
+    conventions={"definition": "moles = mass / molar mass"})
+
+COMBINED_GAS_LAW = FormulaSpec(
+    slug="combined_gas_law", title="combined gas law (solve for V2)", family="chemistry",
+    aliases=["combined gas law"], priority=42,
+    problem_template="A gas at P1 = {P1} atm, V1 = {V1} L, T1 = {T1} K changes to P2 = {P2} atm, T2 = {T2} K. "
+                     "Find the new volume V2.",
+    givens=[Given("P1", "atm", 1, 5), Given("V1", "L", 1, 10), Given("T1", "K", 200, 400),
+            Given("P2", "atm", 1, 5), Given("T2", "K", 200, 400)],
+    outputs=[Output("V2", "V2 = P1*V1*T2/(T1*P2)", "P1*V1*T2/(T1*P2)", "L", "compute_volume", "new volume")],
+    conventions={"law": "P1*V1/T1 = P2*V2/T2"})
+
+PH_POH = FormulaSpec(
+    slug="ph_poh", title="pH and pOH", family="chemistry",
+    aliases=["ph and poh", "poh", "ph of"], priority=41,
+    problem_template="A solution has pH = {pH}. Find its pOH.",
+    givens=[Given("pH", "", 1, 13)],
+    outputs=[Output("pOH", "pOH = 14 - pH", "14 - pH", "", "compute_poh", "pOH")],
+    conventions={"relation": "pH + pOH = 14 at 25 C"})
+
+PERCENT_COMPOSITION = FormulaSpec(
+    slug="percent_composition", title="percent composition by mass", family="chemistry",
+    aliases=["percent composition", "mass percent"], priority=40,
+    problem_template="An element contributes element_mass = {element_mass} g of a compound with total mass "
+                     "total = {total} g. Find the percent composition.",
+    givens=[Given("element_mass", "g", 1, 80), Given("total", "g", 90, 200)],
+    outputs=[Output("pct", "pct = element_mass/total * 100", "element_mass/total * 100", "%",
+                    "compute_percent", "percent composition")],
+    conventions={"definition": "mass percent = part / whole * 100"})
+
+# ======================================================================================================
+# DISCRETE / COMBINATORICS (B6) — family "discrete"
+# ======================================================================================================
+FACTORIAL = FormulaSpec(
+    slug="factorial", title="factorial", family="discrete",
+    aliases=["factorial"], priority=39,
+    problem_template="Compute n! for n = {n}.",
+    givens=[Given("n", "", 3, 9)],
+    outputs=[Output("result", "n! = product of 1..n", "factorial(n)", "", "compute_factorial", "factorial")],
+    conventions={"definition": "n! = 1*2*...*n"})
+
+PERMUTATIONS = FormulaSpec(
+    slug="permutations", title="permutations P(n, r)", family="discrete",
+    aliases=["permutations", "number of permutations", "arrangements"], priority=38,
+    problem_template="Find the number of ordered arrangements of r = {r} items chosen from n = {n}.",
+    givens=[Given("n", "", 5, 10), Given("r", "", 1, 4)],
+    outputs=[Output("P", "P(n,r) = n!/(n-r)!", "factorial(n)/factorial(n-r)", "", "compute_permutations",
+                    "permutations")],
+    conventions={"formula": "P(n,r) = n! / (n-r)!"})
+
+COMBINATIONS = FormulaSpec(
+    slug="combinations", title="combinations C(n, r)", family="discrete",
+    aliases=["combinations", "number of combinations", "binomial coefficient", "n choose"], priority=37,
+    problem_template="Find the number of unordered selections of r = {r} items chosen from n = {n}.",
+    givens=[Given("n", "", 5, 10), Given("r", "", 1, 4)],
+    outputs=[Output("C", "C(n,r) = n!/(r!*(n-r)!)", "factorial(n)/(factorial(r)*factorial(n-r))", "",
+                    "compute_combinations", "combinations")],
+    conventions={"formula": "C(n,r) = n! / (r! (n-r)!)"})
+
+# ======================================================================================================
+# LINEAR ALGEBRA (B5) — family "linear_algebra"
+# ======================================================================================================
+DETERMINANT_2X2 = FormulaSpec(
+    slug="determinant_2x2", title="determinant of a 2x2 matrix", family="linear_algebra",
+    aliases=["determinant", "2x2 determinant"], priority=36,
+    problem_template="Find the determinant of the 2x2 matrix with first row ({a}, {b}) and second row ({c}, {d}).",
+    givens=[Given("a", "", 1, 12), Given("b", "", 1, 12), Given("c", "", 1, 12), Given("d", "", 1, 12)],
+    outputs=[Output("det", "det = a*d - b*c", "a*d - b*c", "", "compute_determinant", "determinant")],
+    conventions={"formula": "det([[a,b],[c,d]]) = ad - bc"})
+
+VECTOR_MAGNITUDE = FormulaSpec(
+    slug="vector_magnitude", title="magnitude of a 3D vector", family="linear_algebra",
+    aliases=["vector magnitude", "magnitude of a vector", "magnitude of a 3d vector", "length of a vector"],
+    priority=35,
+    problem_template="Find the magnitude of the vector ({x}, {y}, {z}).",
+    givens=[Given("x", "", 0, 10), Given("y", "", 0, 10), Given("z", "", 0, 10)],
+    outputs=[Output("mag", "|v| = sqrt(x^2 + y^2 + z^2)", "sqrt(x**2 + y**2 + z**2)", "", "compute_magnitude",
+                    "magnitude")],
+    conventions={"formula": "Euclidean norm"})
+
+DOT_PRODUCT_3D = FormulaSpec(
+    slug="dot_product_3d", title="dot product of two 3D vectors", family="linear_algebra",
+    aliases=["dot product", "scalar product"], priority=34,
+    problem_template="Find the dot product of ({ax}, {ay}, {az}) and ({bx}, {by}, {bz}).",
+    givens=[Given("ax", "", 0, 8), Given("ay", "", 0, 8), Given("az", "", 0, 8),
+            Given("bx", "", 0, 8), Given("by", "", 0, 8), Given("bz", "", 0, 8)],
+    outputs=[Output("dot", "a.b = ax*bx + ay*by + az*bz", "ax*bx + ay*by + az*bz", "", "compute_dot_product",
+                    "dot product")],
+    conventions={"formula": "component-wise product summed"})
+
+# ======================================================================================================
+# STATISTICS — second wave — dataset (list-input) — family "statistics"
+# ======================================================================================================
+COEFF_OF_VARIATION = FormulaSpec(
+    slug="coefficient_of_variation", title="coefficient of variation of a dataset", family="statistics",
+    aliases=["coefficient of variation"], priority=33,
+    problem_template="For the dataset {xs}, find the coefficient of variation (population).",
+    givens=[], dataset=Dataset("xs", size_lo=5, size_hi=8, val_lo=2, val_hi=20),
+    outputs=[
+        Output("mean", "mean = (sum of the values) / n", "sum(xs)/n", "", "compute_mean", "mean",
+               show=[("sum of the values", "sum(xs)"), ("n", "n")]),
+        Output("sd", "sd = sqrt((sum of squared deviations)/n)", "sqrt(sum((x-mean)**2 for x in xs)/n)", "",
+               "compute_std_dev", "standard deviation",
+               show=[("sum of squared deviations", "sum((x-mean)**2 for x in xs)"), ("n", "n")]),
+        Output("cv", "cv = sd/mean * 100", "sd/mean * 100", "%", "compute_cv", "coefficient of variation",
+               show=[("sd", "sd"), ("mean", "mean")])],
+    conventions={"model": "population; cv = sd/mean * 100"})
+
+MEAN_ABS_DEVIATION = FormulaSpec(
+    slug="mean_absolute_deviation", title="mean absolute deviation of a dataset", family="statistics",
+    aliases=["mean absolute deviation"], priority=32,
+    problem_template="For the dataset {xs}, find the mean absolute deviation.",
+    givens=[], dataset=Dataset("xs", size_lo=5, size_hi=8, val_lo=1, val_hi=20),
+    outputs=[
+        Output("mean", "mean = (sum of the values) / n", "sum(xs)/n", "", "compute_mean", "mean",
+               show=[("sum of the values", "sum(xs)"), ("n", "n")]),
+        Output("mad", "mad = (sum of |x - mean|) / n", "sum(abs(x-mean) for x in xs)/n", "",
+               "compute_mad", "mean absolute deviation",
+               show=[("sum of |x - mean|", "sum(abs(x-mean) for x in xs)"), ("n", "n")])],
+    conventions={"definition": "average absolute distance from the mean"})
+
 # --- the full concept set; ALL_SPECS drives the gate, the registry, the manifest, and routing ---------
 ALL_SPECS = [
     # physics / EE
     KINEMATICS, KINETIC_ENERGY, NEWTONS_SECOND_LAW, WEIGHT_FORCE, MOMENTUM, WORK_DONE, GRAVITATIONAL_PE, OHMS_LAW,
+    PROJECTILE_RANGE, CENTRIPETAL_ACCEL, WAVE_SPEED, PRESSURE, MECHANICAL_POWER, SPRING_PE,
     # finance
-    SIMPLE_INTEREST, COMPOUND_INTEREST, PRESENT_VALUE, PERCENT_CHANGE,
+    SIMPLE_INTEREST, COMPOUND_INTEREST, PRESENT_VALUE, PERCENT_CHANGE, FUTURE_VALUE, BREAK_EVEN, PROFIT_MARGIN,
     # geometry
     CIRCLE_AREA, CIRCLE_CIRCUMFERENCE, RECTANGLE_AREA, TRIANGLE_AREA, PYTHAGOREAN, SPHERE_VOLUME, CYLINDER_VOLUME,
+    COORDINATE_DISTANCE, MIDPOINT, SLOPE, TRAPEZOID_AREA, PARALLELOGRAM_AREA, CONE_VOLUME, RECTANGLE_PERIMETER,
     # chemistry
     MOLARITY, DENSITY, IDEAL_GAS_PRESSURE, DILUTION, PERCENT_YIELD,
+    MOLES_FROM_MASS, COMBINED_GAS_LAW, PH_POH, PERCENT_COMPOSITION,
+    # discrete / combinatorics
+    FACTORIAL, PERMUTATIONS, COMBINATIONS,
+    # linear algebra
+    DETERMINANT_2X2, VECTOR_MAGNITUDE, DOT_PRODUCT_3D,
     # statistics
-    DESCRIPTIVE_STATS, MEDIAN_RANGE, Z_SCORE,
+    DESCRIPTIVE_STATS, MEDIAN_RANGE, Z_SCORE, COEFF_OF_VARIATION, MEAN_ABS_DEVIATION,
 ]
