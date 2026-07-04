@@ -15,12 +15,13 @@
 > adjacency, tree adjacency, and two-phase call-stack shapes, plus a language guard for translated displays.
 > *(Historical: the old CP3 grouped-artifact wiring stays deferred, not on the critical path.)*
 >
-> **CP12 (complete the catalog) is committed scope.** The non-CS domains (math / physics / chemistry / finance,
-> catalog B0–B11) are now planned, not demand-only — the goal is a system complete across curricula. The plan
-> hinges on one insight: those ~600 rows collapse onto ~4 trace grammars (T6 formula, T7 rewrite, T8a
-> construction, T8b derivation), so the build is "turn each dominant type into a declarative ENGINE, then add
-> each concept as a gated DATA SPEC" — bounded new code, large row count. See Checkpoint 12; **12a (the T6
-> formula engine) is the single highest-leverage task in the roadmap.**
+> **CP12 (complete the catalog) — ALL FOUR ENGINES LIVE, now DATA authoring.** The non-CS domains (catalog
+> B0–B11) are committed scope. The ~600 rows collapse onto 4 trace grammars, and all four are built and live:
+> **T6 formula, T7 rewrite, T8a construction, T8b derivation.** As of this writing the catalog is at **104
+> adapters** (was 30 pre-CP12) spanning physics, geometry, chemistry, finance, algebra, statistics, discrete,
+> linear algebra, calculus. Each engine shares one auto-registration pattern — adding a concept in any grammar
+> is a one-file edit to `families/*_specs.py`, verified by that grammar's gate. Remaining work is DATA authoring
+> + the long-tail T9/T10/◇ pilots. See Checkpoint 12.
 >
 > **Status legend:** ✅ done & tested · 🟡 partial · 🔴 planned/blocking · ❌ not started.
 
