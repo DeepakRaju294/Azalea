@@ -336,23 +336,22 @@ class GraphFamilyDeterministicCoding(unittest.TestCase):
                                       format_fn=boom, code=display_solution("bfs"), seed=3)
         self.assertIsNotNone(res)
 
-    def test_dfs_iterative_code_matches_its_trace_and_generates(self):
-        # dfs_iter's canonical code was RECURSIVE while its trace is iterative (stack pop/push) — a code-vs-
-        # walkthrough variant mismatch. Fixed: the canonical code is now the iterative stack DFS, so it maps
-        # cleanly and ships deterministic coding (stack.pop / stack.append, mark-on-pop, duplicates skipped).
+    def test_recursive_dfs_walkthrough_narrates_recursion_and_falls_back_for_coding(self):
+        # DFS is presented RECURSIVELY (more intuitive than an explicit stack): the adapter's trace narrates
+        # the depth-first descent + backtracking, and the canonical code is recursive. Recursive accumulation
+        # (order += dfs(...)) does not map to one slice per step, so coding falls back to the LLM (not on the
+        # deterministic whitelist) — and the code/walkthrough are both recursive, so they no longer conflict.
         from app.services.examples.canonical_solutions import display_solution, canonical_python
         from app.services.examples.coding_narration import generate_coding_cards
-        self.assertIn("stack", canonical_python("dfs_iter"))
-        self.assertNotIn("order += dfs", canonical_python("dfs_iter"))          # no longer recursive
+        from app.services.examples.trace_adapters import DETERMINISTIC_CODING_SLUGS
+        self.assertNotIn("dfs_iter", DETERMINISTIC_CODING_SLUGS)
+        self.assertIn("order += dfs", canonical_python("dfs_iter"))             # recursive code
         a = ADAPTERS["dfs_iter"]
-        for seed in range(10):
-            tr = tp.select_instance(a, seed=seed)
-            cards = generate_coding_cards(tr, display_solution("dfs_iter"), tp._deterministic_narration(tr, a))
-            with self.subTest(seed=seed):
-                self.assertIsNotNone(cards)
-                for c in cards:
-                    for w in c["work"]:
-                        self.assertNotIn("carry out this step", w)
+        tr = tp.select_instance(a, seed=3)
+        prose = " ".join(s.decision + " " + s.reason for s in tr.steps).lower()
+        self.assertIn("recurse", prose)                                        # recursion narrated
+        self.assertIn("backtrack", prose)                                      # and backtracking (is_teaching_trace)
+        self.assertIsNone(generate_coding_cards(tr, display_solution("dfs_iter"), tp._deterministic_narration(tr, a)))
 
 
 class DeterministicCodingIsWhitelisted(unittest.TestCase):

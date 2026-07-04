@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import random
 import re
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 from ...state_normalizers import canon_components, components_equal, states_equal
 from ...trace_contract import ContractTrace, Step, fact
@@ -213,12 +213,13 @@ class BFSAdapter(FamilyAdapterBase):
 # SCOPE: GRAPH iterative depth-first search (undirected, may contain CYCLES → needs a visited-set +
 # revisit-prevention). NOT tree traversal (pre/in/post-order on a parent/child tree has no visited-set and
 # is a different algorithm → a separate adapter). Routing must keep tree topics out (§17).
-_DFS_CONV = {"algorithm_variant": "iterative_dfs", "domain": "undirected_graph",
-             "neighbor_order": "alphabetical", "push_order": "reverse_alphabetical", "visited_when": "on_pop",
-             "duplicate_stack_entries": "allowed", "trace_granularity": "one_pop"}
-_DFS_REQ = ["push_neighbors", "revisit_prevention", "completion"]
+_DFS_CONV = {"algorithm_variant": "recursive_dfs", "domain": "undirected_graph",
+             "neighbor_order": "alphabetical", "visit_when": "on_entry", "trace_granularity": "one_visit"}
+# required_cases hold for EVERY trace (structural gate); "backtrack" only occurs on a branching graph, so it
+# is a teaching-quality must_exercise (instance selection via is_teaching_trace), NOT a required case.
+_DFS_REQ = ["deep_recursion", "completion"]
 _DFS_INV = [{"id": "order_subset_visited", "scope": "every_step", "statement": "order ⊆ visited"},
-            {"id": "stack_empty_at_end", "scope": "final_only", "statement": "stack empty"}]
+            {"id": "order_equals_visited", "scope": "every_step", "statement": "visit-on-entry: order == visited"}]
 
 
 class DFSIterativeAdapter(FamilyAdapterBase):
@@ -227,22 +228,19 @@ class DFSIterativeAdapter(FamilyAdapterBase):
     example_spec = ExampleSpec(
         input=InstanceShape("letters", count=(5, 7), structure=["connected", "undirected", "has_extra_edge"]),
         stages={
-            "setup_start": StageSpec(
-                "setup_start", "choose the start node and push it onto the stack",
-                teaching_focus="DFS dives as deep as possible from a start node, using a LIFO stack",
-                cardinality="exactly_once", contains={"seed_stack": "required"},
-                state_effects=["the stack holds only the start node; nothing visited yet"]),
-            "pop": StageSpec(
-                "pop", "pop one node: visit it and push its unvisited neighbors (or skip if already visited)",
-                teaching_focus="pop a node, visit it, and push its neighbors for later",
-                contains={"pop_node": "required", "push_neighbor": "aggregated_supporting",
-                          "skip_revisit": "optional_supporting"},
-                state_effects=["node popped from stack", "visited+order updated if newly visited"]),
+            "visit": StageSpec(
+                "visit", "recurse into a node, visit it, then dive into its first unvisited neighbour",
+                teaching_focus="DFS goes as DEEP as possible before backtracking; the call stack is the path "
+                               "from the start node down to the one being explored",
+                contains={"visit_node": "required", "recurse_or_backtrack": "aggregated_supporting"},
+                state_effects=["the node is visited and pushed onto the call-stack path"]),
         },
-        structure="setup_start, then pop+ until stack empty",
-        must_exercise=["push_neighbors", "revisit_prevention", "completion"],
-        must_avoid=["no_revisit_so_no_skip"],
-        terminal="stack empty; every node visited", output_shape="visit order of all nodes")
+        structure="visit the start, recurse depth-first, backtrack when a branch is exhausted",
+        # must_exercise ⊆ required_cases (structural). Backtracking is a teaching-QUALITY requirement enforced
+        # by is_teaching_trace (a branching instance), not a case every graph must structurally exhibit.
+        must_exercise=["deep_recursion", "completion"],
+        terminal="every reachable node visited; the recursion has fully unwound",
+        output_shape="the pre-order visit sequence")
 
     def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
         rng = random.Random(seed)
@@ -251,104 +249,105 @@ class DFSIterativeAdapter(FamilyAdapterBase):
 
     def is_teaching_trace(self, trace: ContractTrace) -> bool:
         ev = trace.case_evidence
-        return len(trace.steps) >= 4 and bool(ev.get("push_neighbors")) and bool(ev.get("revisit_prevention"))
+        return len(trace.steps) >= 4 and bool(ev.get("backtrack")) and bool(ev.get("deep_recursion"))
 
     def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
                   attempt: int = 1, seed: int = 0) -> ContractTrace:
         graph: dict[str, list[str]] = example_input["graph"]
         start: str = example_input["start"]
-        stack, visited, order = [start], set(), []
+        visited: set = set()
+        order: list[str] = []
+        path: list[str] = []                              # the CALL STACK — the recursion path start..current
         steps: list[Step] = []
         evidence: dict[str, list[str]] = {}
-        i = 0
-        # setup_start stage (multi-stage grammar §0): push the start node onto the stack.
-        _init = {"stack": [start], "visited": [], "order": []}
-        steps.append(Step(
-            id="s0", operation="setup_start", prior_state=_init, state_after=_init, inputs={"start": start},
-            decision="seed the stack with the start node",
-            reason="DFS dives as deep as possible from the start node, using a last-in-first-out stack.",
-            visual_state={"kind": "stack_graph", "stack": [start], "stack_top": "right", "visited": [], "active": start},
-            visual_delta={"start": start},
-            expected_visible_result=f"Start DFS from {start}: the stack holds [{start}], nothing visited yet.",
-            facts={"allowed_values": sorted(graph), "required_facts": [], "forbidden_claims": []}))
-        while stack:
-            i += 1
-            sid = f"s{i}"
-            prior = {"stack": list(stack), "visited": sorted(visited), "order": list(order)}
-            node = stack.pop()
-            if node in visited:
-                after = {"stack": list(stack), "visited": sorted(visited), "order": list(order)}
-                decision = f"pop {node} — already visited, skip"
-                pushed: list[str] = []
-                evidence.setdefault("revisit_prevention", []).append(sid)
+        counter = {"i": 0}
+
+        def emit(node: str, parent: Optional[str], backtrack_from: Optional[str]) -> None:
+            counter["i"] += 1
+            sid = f"s{counter['i']}"
+            # The CHAINED state is {visited, order} only — both grow monotonically, so consecutive steps chain
+            # even across a backtrack. The call-stack `path` shrinks on backtrack (breaking a linear chain), so
+            # it lives in visual_state + inputs, not in the equivalence-checked state.
+            prior = {"visited": sorted(visited), "order": list(order)}
+            visited.add(node); order.append(node); path.append(node)
+            after = {"visited": sorted(visited), "order": list(order)}
+            if parent is None:
+                decision = f"start the recursion at {node}; visit it"
+                reason = (f"Depth-first search explores as deep as possible before backtracking. Begin the "
+                          f"recursion at {node} and visit it.")
+            elif backtrack_from is not None:
+                decision = f"backtrack to {parent}, then recurse into {node}; visit it"
+                reason = (f"{backtrack_from}'s branch is fully explored, so the recursion returns to {parent} "
+                          f"and dives into its next unvisited neighbour {node}.")
+                evidence.setdefault("backtrack", []).append(sid)
             else:
-                visited.add(node); order.append(node)
-                pushed = []
-                for nb in sorted(graph.get(node, []), reverse=True):
-                    if nb not in visited:
-                        stack.append(nb); pushed.append(nb)
-                after = {"stack": list(stack), "visited": sorted(visited), "order": list(order)}
-                decision = f"visit {node}; push {fmt_nodes(list(reversed(pushed))) if pushed else 'nothing'}"
-                if pushed:
-                    evidence.setdefault("push_neighbors", []).append(sid)
+                decision = f"recurse from {parent} into {node}; visit it"
+                reason = f"From {parent}, dive into its first unvisited neighbour {node}, going one level deeper."
+                evidence.setdefault("deep_recursion", []).append(sid)
             steps.append(Step(
-                id=sid, operation="pop", prior_state=prior, state_after=after,
-                inputs={"node": node, "pushed": pushed, "skipped": node in visited and not pushed},
-                decision=decision,
-                reason=(f"pop {node} — already visited, so skip it (revisit prevention)"
-                        if node in visited and sid in evidence.get("revisit_prevention", []) else
-                        f"pop and visit {node}" + (f"; push its unvisited neighbours {fmt_nodes(list(reversed(pushed)))}"
-                                                   if pushed else "")),
-                visual_state={"kind": "stack_graph", "stack": list(stack), "stack_top": "right",
+                id=sid, operation="visit", prior_state=prior, state_after=after,
+                inputs={"node": node, "parent": parent, "path": list(path)},
+                decision=decision, reason=reason,
+                # the "stack" IS the call stack: the path from the start node down to the one just visited
+                visual_state={"kind": "stack_graph", "stack": list(path), "stack_top": "right",
                               "visited": sorted(visited), "active": node},
-                visual_delta={"popped": node, "pushed": pushed},
-                expected_visible_result=f"Pop {node}; stack: {fmt_nodes(stack)}; visited: {fmt_nodes(sorted(visited))}",
+                visual_delta={"visited": node, "depth": len(path)},
+                expected_visible_result=(f"Visit {node}; order so far {fmt_nodes(order)}; "
+                                         f"the call stack is {fmt_nodes(path)}."),
                 facts={"allowed_values": sorted(graph),
-                       "required_facts": [fact("pop", f"pop {node}")], "forbidden_claims": []}))
+                       "required_facts": [fact("visit", f"visit {node}")], "forbidden_claims": []}))
+
+        def dfs(node: str, parent: Optional[str], backtrack_from: Optional[str]) -> None:
+            emit(node, parent, backtrack_from)
+            prev_child: Optional[str] = None              # the last child whose subtree we just finished
+            for nb in sorted(graph.get(node, [])):
+                if nb not in visited:
+                    dfs(nb, node, prev_child)             # prev_child None on the FIRST recurse, set on backtracks
+                    prev_child = nb
+            path.pop()                                    # this call returns — pop it off the call stack
+
+        dfs(start, None, None)
         if steps:
             evidence.setdefault("completion", []).append(steps[-1].id)
         return ContractTrace(
-            problem=f"Run iterative depth-first search from {start} on the graph where {fmt_adjacency(graph)}. Give the visit order.",
-            conventions=dict(_DFS_CONV), initial_state={"stack": [start], "visited": [], "order": []},
+            problem=(f"Run recursive depth-first search from {start} on the graph where {fmt_adjacency(graph)}. "
+                     f"Give the visit order."),
+            conventions=dict(_DFS_CONV), initial_state={"visited": [], "order": []},
             final_answer={"visit_order": list(order)}, steps=steps,
             invariants=[dict(x) for x in _DFS_INV], required_cases=list(_DFS_REQ), case_evidence=evidence,
             provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input, attempt=attempt))
 
     def states_equivalent(self, a, b):
-        return states_equal(a, b, ordered=["stack", "order"], as_set=["visited"])
+        return states_equal(a, b, ordered=["order"], as_set=["visited"])
 
     def final_answer_entails(self, state, answer):
-        return list(state.get("order") or []) == list((answer or {}).get("visit_order") or []) \
-            and not state.get("stack")
+        # visit-on-entry ⇒ order == visited throughout; the answer is the full pre-order sequence. The call
+        # stack is NON-empty at the last visit step (the deepest node) — the unwinding emits no further visits.
+        return list(state.get("order") or []) == list((answer or {}).get("visit_order") or [])
 
     def invariant_holds(self, inv, state):
+        o, v = set(state.get("order") or []), set(state.get("visited") or [])
         if inv.get("id") == "order_subset_visited":
-            return set(state.get("order") or []) <= set(state.get("visited") or [])
-        if inv.get("id") == "stack_empty_at_end":
-            return not state.get("stack")
+            return o <= v
+        if inv.get("id") == "order_equals_visited":
+            return o == v
         return True
 
     def validate_step_shape(self, step):
         errs = []
-        if step.operation == "setup_start":              # multi-stage: the seed-the-stack step
-            if "start" not in step.inputs:
-                errs.append("setup missing inputs.start")
-            return errs
-        if step.operation != "pop":
+        if step.operation != "visit":
             errs.append(f"unexpected operation {step.operation!r}")
         if "node" not in step.inputs:
             errs.append("missing inputs.node")
-        for k in ("stack", "visited"):
+        for k in ("visited", "order"):
             if k not in step.prior_state:
                 errs.append(f"prior missing {k}")
         return errs
 
     def validate_prose_claims(self, card, step):
-        if step.operation == "setup_start":              # seeds the frontier; no node-visit to check
-            return []
         prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
                           str(card.get("result", ""))]).lower()
-        return [] if step.inputs["node"].lower() in prose else [("node_not_discussed", step.inputs["node"])]
+        return [] if str(step.inputs["node"]).lower() in prose else [("node_not_discussed", step.inputs["node"])]
 
 
 # ===================================================================================================
