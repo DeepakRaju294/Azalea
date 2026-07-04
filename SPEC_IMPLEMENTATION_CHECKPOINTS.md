@@ -493,7 +493,11 @@ scale to a domain. The declaration infra already exists (`types/tN_*.py` → `DE
 
 > **FIVE declarative engines now live** (T6 formula, T7 rewrite, T8a construction, T8b derivation, T10
 > stateful), covering formula / rewrite / grow / derive / mutate trace shapes + iterative refinement. Adding a
-> concept in any is a one-file edit to `families/*_specs.py`, gate-verified. ~120 adapters (was 30 pre-CP12).
+> concept in any is a one-file edit to `families/*_specs.py`, gate-verified. **~164 adapters (was 30 pre-CP12)**
+> spanning physics (29), algebra (28), geometry (21), chemistry+finance (13 each), sequence (11), statistics
+> (8), structures (7), discrete (6), plus CS. By type: T6 93, T8a 19, T8b 16, T7 9, T10 7. Basic calculus
+> (poly derivative/integral), numerical methods (Newton/gradient), and stateful structures (stack/queue/hash/
+> LRU/set/counter) are all covered as data. Remaining is long-tail data + optional CAS-backed symbolic calculus.
 
 ### Guardrails (unchanged from CP8/10, applied per type-engine)
 - **Two-sided guarantee still applies:** a formula/rewrite topic ships its walkthrough deterministically (the
