@@ -456,10 +456,15 @@ scale to a domain. The declaration infra already exists (`types/tN_*.py` → `DE
   `families/formula_specs.py` — **adding a concept is now a one-file edit** (append a spec to `ALL_SPECS`).
   T6 is engine-complete; remaining T6 work is pure data authoring (more of each domain, e.g. correlation/
   regression, projectile, annuities, gas-law variants) as demand warrants — no engine changes.
-- **12c — T7 Rewrite Engine.** Generic rewrite adapter driven by `{ start expression, allowed rule set, goal /
-  normal-form predicate, per-rule narration }`; each step applies exactly one allowed rule and the gate proves
-  every step is rule-justified and the goal is reached. Unlocks algebra (B1), symbolic calculus (B3/B4), row
-  reduction (B5), boolean simplification (B6).
+- **12c — T7 Rewrite Engine ✅ STARTED (`a6dc85f`).** `families/rewrite_engine.py`: a `RewriteSpec` (build an
+  instance, render its equation, ordered rewrite steps = transform + rule description, extracted answer, and an
+  INDEPENDENT `oracle`) hydrates into a T7 adapter. The engine applies each rule for real, so every step shows
+  before → after ("5x − 6 = 9 → 5x = 15"); gate `test_rewrite_engine` checks the answer vs the oracle and that
+  the solution satisfies the original. Declares the T7 value-preservation invariant as SOLUTION preservation.
+  **Pilot live: linear_equation** (85 adapters), registered via the same auto-registration as T6 (add a
+  `RewriteSpec` to `algebra_specs.py` = one-file edit). Remaining T7 data: multi-step/variable-both-sides
+  equations, simplify, power-rule differentiation, integrals, row reduction, boolean simplification — each a
+  spec (some, like symbolic calculus, may lean on a CAS for the rule transforms).
 - **12d — T8a construction + T8b derivation engines.** Declarative construction (each piece keeps the partial
   output valid → target) and rule-justified derivation (each step cites an allowed rule → conclusion). Unlocks
   truth tables, matrix mult, accounting schedules (T8a) and proofs, equation balancing, limits (T8b).
