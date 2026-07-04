@@ -429,7 +429,39 @@ TRIANGULAR_NUMBERS = ConstructSpec(
     target="the requested triangular numbers are listed")
 
 
+# --- cumulative product of a list ---------------------------------------------------------------------
+def _cumprod_setup(rng: random.Random) -> dict:
+    return {"input": [rng.randint(2, 5) for _ in range(rng.randint(4, 5))], "output": []}
+
+
+def _cumprod_step(s: dict, i: int) -> tuple:
+    prev = s["output"][-1] if s["output"] else 1
+    val = prev * s["input"][i]
+    rule = (f"the first product is {s['input'][i]}" if i == 0
+            else f"multiply by {s['input'][i]}: {prev} x {s['input'][i]} = {val}")
+    return {**s, "output": s["output"] + [val]}, rule
+
+
+def _prod(xs: list) -> int:
+    r = 1
+    for x in xs:
+        r *= x
+    return r
+
+
+CUMULATIVE_PRODUCT = ConstructSpec(
+    slug="cumulative_product", title="cumulative product of a list", family="sequence",
+    aliases=["cumulative product", "running product"], priority=46, piece_word="running product",
+    problem_template="Build the cumulative products of the list {input}.",
+    setup=_cumprod_setup, pieces=lambda s: len(s["input"]), step=_cumprod_step,
+    render=lambda s: _seq(s["output"]),
+    valid=lambda s: s["output"] == [_prod(s["input"][: k + 1]) for k in range(len(s["output"]))],
+    answer=lambda s: {"products": _seq(s["output"])},
+    oracle=lambda s0: {"products": _seq([_prod(s0["input"][: k + 1]) for k in range(len(s0["input"]))])},
+    target="every running product is listed")
+
+
 ALL_SPECS = [PREFIX_SUMS, RUNNING_MAXIMUM, DEPRECIATION_SCHEDULE,
              POLYNOMIAL_DERIVATIVE, POLYNOMIAL_INTEGRAL, FIBONACCI_SEQUENCE,
              PASCALS_TRIANGLE_ROW, POWERS_OF_TWO, BABYLONIAN_SQRT, COLLATZ_SEQUENCE, GRADIENT_DESCENT,
-             PRIME_FACTORIZATION, TRIANGULAR_NUMBERS]
+             PRIME_FACTORIZATION, TRIANGULAR_NUMBERS, CUMULATIVE_PRODUCT]

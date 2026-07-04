@@ -320,7 +320,7 @@ MECHANICAL_POWER = FormulaSpec(
 
 SPRING_PE = FormulaSpec(
     slug="spring_pe", title="elastic potential energy of a spring", family="physics",
-    aliases=["elastic potential energy", "spring potential energy", "hooke"], priority=54,
+    aliases=["elastic potential energy", "spring potential energy"], priority=54,
     problem_template="A spring of stiffness k = {k} N/m is stretched by x = {x} m. Find its elastic potential "
                      "energy.",
     givens=[Given("k", "N/m", 1, 50), Given("x", "m", 1, 10)],
@@ -790,6 +790,40 @@ FLUID_PRESSURE = FormulaSpec(
     outputs=[Output("P", "P = rho*g*h", "rho*g*h", "Pa", "compute_pressure", "pressure")],
     conventions={"formula": "P = rho*g*h"})
 
+CUBE_VOLUME = FormulaSpec(
+    slug="cube_volume", title="volume of a cube", family="geometry",
+    aliases=["volume of a cube", "cube volume"], priority=3,
+    problem_template="A cube has side s = {s}. Find its volume.",
+    givens=[Given("s", "", 1, 12)],
+    outputs=[Output("V", "V = s^3", "s**3", "cubic units", "compute_volume", "volume")],
+    conventions={"formula": "V = s^3"})
+
+CUBE_SURFACE_AREA = FormulaSpec(
+    slug="cube_surface_area", title="surface area of a cube", family="geometry",
+    aliases=["surface area of a cube", "cube surface area"], priority=2,
+    problem_template="A cube has side s = {s}. Find its surface area.",
+    givens=[Given("s", "", 1, 12)],
+    outputs=[Output("A", "A = 6*s^2", "6*s**2", "sq units", "compute_area", "surface area")],
+    conventions={"formula": "A = 6*s^2"})
+
+HOOKES_FORCE = FormulaSpec(
+    slug="hookes_force", title="spring force (Hooke's law)", family="physics",
+    aliases=["hooke's law", "hookes law", "spring force"], priority=1,
+    problem_template="A spring of stiffness k = {k} N/m is stretched by x = {x} m. Find the restoring force.",
+    givens=[Given("k", "N/m", 1, 50), Given("x", "m", 1, 10)],
+    outputs=[Output("F", "F = k*x", "k*x", "N", "compute_force", "spring force")],
+    conventions={"law": "F = kx"})
+
+ROOT_MEAN_SQUARE = FormulaSpec(
+    slug="root_mean_square", title="root mean square of a dataset", family="statistics",
+    aliases=["root mean square", "rms"], priority=31,
+    problem_template="For the dataset {xs}, find the root mean square (RMS).",
+    givens=[], dataset=Dataset("xs", size_lo=4, size_hi=6, val_lo=1, val_hi=12),
+    outputs=[Output("rms", "rms = sqrt((sum of the squares)/n)", "sqrt(sum(x**2 for x in xs)/n)", "",
+                    "compute_rms", "root mean square",
+                    show=[("sum of the squares", "sum(x**2 for x in xs)"), ("n", "n")])],
+    conventions={"definition": "RMS = sqrt(mean of the squares)"})
+
 # --- the full concept set; ALL_SPECS drives the gate, the registry, the manifest, and routing ---------
 ALL_SPECS = [
     # physics / EE
@@ -821,4 +855,6 @@ ALL_SPECS = [
     KELVIN_CONVERSION, FAHRENHEIT_TO_CELSIUS, SPRING_PERIOD, MOLES_IDEAL_GAS, FREQUENCY_FROM_PERIOD,
     # gas laws / circuits / thermo
     BOYLES_LAW, CHARLES_LAW, OHMS_RESISTANCE, HEAT_ENERGY, FLUID_PRESSURE,
+    # solids / hooke / rms
+    CUBE_VOLUME, CUBE_SURFACE_AREA, HOOKES_FORCE, ROOT_MEAN_SQUARE,
 ]
