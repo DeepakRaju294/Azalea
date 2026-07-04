@@ -42,4 +42,15 @@ for _slug in NARRATION_SLUGS:
     if _slug in ADAPTERS:
         type(ADAPTERS[_slug]).provides_narration = True
 
-__all__ = ["ADAPTERS", "DECLARATIONS", "NARRATION_SLUGS"]
+# CP10/CP11a — deterministic CODING generation (`coding_narration`) is enabled per-family only AFTER its code
+# shape is verified to map cleanly AND its annotation templates give correct, non-robotic output (hand-checked
+# + gated). Gate-passing is necessary but NOT sufficient: a spurious region mapping (LIS's pre-allocated dp) or
+# a missing template can still ship misaligned/robotic content. So this is an explicit VERIFIED whitelist, grown
+# one family at a time; every other narration adapter keeps the LLM coding path. (Walkthroughs use the full
+# NARRATION_SLUGS set — only the coding walkthrough is gated here.)
+DETERMINISTIC_CODING_SLUGS = frozenset({
+    "bubble_sort", "selection_sort", "insertion_sort", "merge_sort", "quick_sort",  # arrays (CP10)
+    "bfs",                                                                          # graph traversal (CP11a)
+})
+
+__all__ = ["ADAPTERS", "DECLARATIONS", "NARRATION_SLUGS", "DETERMINISTIC_CODING_SLUGS"]

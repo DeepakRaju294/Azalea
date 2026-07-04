@@ -273,4 +273,8 @@ def generate_coding_cards(trace: Any, code: Optional[str], base_cards: list) -> 
         if not work:
             return None                                                      # empty slice -> don't ship a blank card
         out.append({**card, "work": work, "code_lines": code_lines})
+    # Content-quality backstop: a weak fallback annotation means this code shape isn't fully templated — don't
+    # ship robotic content, fall back to the LLM (defends future whitelist additions, not just the current set).
+    if any("carry out this step" in w for c in out for w in (c.get("work") or [])):
+        return None
     return _collapse_repeated_structure(out)

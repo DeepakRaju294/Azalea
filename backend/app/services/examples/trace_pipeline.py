@@ -623,7 +623,8 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
     # of the LLM: the decision loop is always shown and every value is correct by construction, so none of the
     # LLM defects (omission, wrong value, inverted comparison) can occur. Falls through to the LLM path when
     # generation is out of scope (graph/tree — `map_step_regions` returns None) or fails its own gate.
-    if getattr(adapter, "provides_narration", False) and code:
+    from .trace_adapters import DETERMINISTIC_CODING_SLUGS
+    if code and getattr(adapter, "slug", None) in DETERMINISTIC_CODING_SLUGS:
         from .coding_narration import generate_coding_cards
         from .code_execution_check import executed_reference_violations
         from .trace_contract import ProseViolation

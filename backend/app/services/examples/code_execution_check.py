@@ -501,6 +501,13 @@ def map_step_regions(exec_steps: list, trace: Any) -> Optional[list]:
     counts = Counter(e["line"] for e in exec_steps)
     sigs = _exec_list_signatures(exec_steps)
     step_sigs = [set(_list_keys(getattr(s, "state_after", None))) for s in steps]
+    # A state list that is IDENTICAL across every step (e.g. LIS's input array `nums`, unchanged while the dp
+    # table fills) validates trivially and would let a WRONG mapping pass. Exclude it — validate only on the
+    # state that actually changes per step, so a shape whose real state (LIS's growing dp vs the code's
+    # pre-allocated dp) never materialises correctly returns None and falls back instead of shipping misaligned.
+    _nonempty = [s for s in step_sigs if s]
+    _constant = set.intersection(*_nonempty) if len(_nonempty) > 1 else set()
+    step_sigs = [s - _constant for s in step_sigs]
 
     def _valid(regions: list) -> bool:                       # every step's state must occur inside its slice
         for (a, b), want in zip(regions, step_sigs):

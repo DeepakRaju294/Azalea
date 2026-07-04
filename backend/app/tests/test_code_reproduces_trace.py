@@ -121,7 +121,8 @@ class WiredIntoPipeline(unittest.TestCase):
 
         topic = {"id": "t", "title": "Implementing Merge Sort", "topic_type": "coding_implementation"}
         gr.start(topic)
-        with mock.patch.object(type(ADAPTERS["merge_sort"]), "provides_narration", False):
+        # force the LLM coding path — merge is on the deterministic-coding whitelist (would bypass the formatter)
+        with mock.patch("app.services.examples.trace_adapters.DETERMINISTIC_CODING_SLUGS", frozenset()):
             res = tp.solve_trace_pipeline(topic, format_fn=bad, code=CANONICAL_SOLUTIONS["merge_sort"], seed=0)
         self.assertGreater(calls["n"], 1, "must retry on a value-mismatch comment, not ship it")
         self.assertIsNotNone(res)                                    # ships the trace-preserving narration
@@ -341,3 +342,35 @@ class GraphFamilyDeterministicCoding(unittest.TestCase):
         from app.services.examples.canonical_solutions import display_solution
         a = ADAPTERS["dfs_iter"]; tr = tp.select_instance(a, seed=3)
         self.assertIsNone(generate_coding_cards(tr, display_solution("dfs_iter"), tp._deterministic_narration(tr, a)))
+
+
+class DeterministicCodingIsWhitelisted(unittest.TestCase):
+    """Gate-passing is necessary but NOT sufficient — a spurious region mapping (LIS's pre-allocated dp) or a
+    missing template ships misaligned/robotic content. Deterministic coding is an explicit VERIFIED whitelist;
+    an un-verified narration adapter must fall back to the LLM, not ship generated cards."""
+    def test_whitelist_is_a_subset_of_narration_and_holds_the_verified_families(self):
+        from app.services.examples.trace_adapters import DETERMINISTIC_CODING_SLUGS, NARRATION_SLUGS
+        self.assertTrue(DETERMINISTIC_CODING_SLUGS <= NARRATION_SLUGS)
+        for s in ("bubble_sort", "selection_sort", "insertion_sort", "merge_sort", "quick_sort", "bfs"):
+            self.assertIn(s, DETERMINISTIC_CODING_SLUGS)
+
+    def test_unverified_adapters_do_not_ship_generated_coding(self):
+        # LIS (spurious dp mapping) and topological_sort / bst_search (missing templates -> weak fallback) must
+        # return None so the pipeline keeps the LLM coding path — never ship the misaligned/robotic content.
+        from app.services.examples.coding_narration import generate_coding_cards
+        from app.services.examples.canonical_solutions import display_solution
+        for slug in ("longest_increasing_subsequence", "topological_sort", "bst_search"):
+            a = ADAPTERS[slug]
+            tr = tp.select_instance(a, seed=3)
+            with self.subTest(slug=slug):
+                self.assertIsNone(generate_coding_cards(tr, display_solution(slug),
+                                                        tp._deterministic_narration(tr, a)))
+
+    def test_lis_constant_input_array_does_not_yield_a_spurious_mapping(self):
+        # the growing-dp trace never matches the code's pre-allocated dp; the unchanging input array must not
+        # let a wrong mapping validate.
+        from app.services.examples.code_execution_check import _execute_on_instance, map_step_regions
+        from app.services.examples.canonical_solutions import display_solution
+        a = ADAPTERS["longest_increasing_subsequence"]; tr = tp.select_instance(a, seed=3)
+        es, _, _ = _execute_on_instance(display_solution("longest_increasing_subsequence"), tr)
+        self.assertIsNone(map_step_regions(es, tr))
