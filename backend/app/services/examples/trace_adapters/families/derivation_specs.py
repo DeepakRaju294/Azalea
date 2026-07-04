@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import random
 
+from math import gcd
+
 from .derivation_engine import DerivationSpec, DerivationStep
 
 
@@ -258,5 +260,41 @@ PERFECT_SQUARE = DerivationSpec(
     preserved="the expression keeps the same value for every x")
 
 
+# --- factoring out the greatest common factor:  (g*p)x + (g*q) = g(px + q) ---------------------------
+def _gcf_setup(rng: random.Random) -> dict:
+    g = rng.randint(2, 6)
+    while True:
+        p, q = rng.randint(2, 6), rng.randint(2, 9)
+        if gcd(p, q) == 1:                                # so g is exactly the GCF
+            return {"g": g, "p": p, "q": q, "phase": 0}
+
+
+def _gcf_render(s: dict) -> str:
+    g, p, q, ph = s["g"], s["p"], s["q"], s["phase"]
+    if ph == 0:
+        return f"{g * p}x + {g * q}"
+    if ph == 1:
+        return f"{g}*{p}x + {g}*{q}"
+    return f"{g}({p}x + {q})"
+
+
+FACTOR_GCF = DerivationSpec(
+    slug="factor_gcf", title="factoring out the greatest common factor", family="algebra",
+    aliases=["factor out the gcf", "greatest common factor", "factoring gcf", "common factor"], priority=81,
+    problem_template="Factor {start} by taking out the greatest common factor.",
+    setup=_gcf_setup, render=_gcf_render,
+    steps=[
+        DerivationStep("find_gcf", "greatest common factor", lambda s: {**s, "phase": 1},
+                       lambda s: f"the GCF of {s['g'] * s['p']} and {s['g'] * s['q']} is {s['g']}"),
+        DerivationStep("factor_out", "distributive property (in reverse)", lambda s: {**s, "phase": 2},
+                       lambda s: f"divide each term by {s['g']} and write it outside: "
+                                 f"{s['g']}({s['p']}x + {s['q']})")],
+    conclusion=lambda s: f"{s['g']}({s['p']}x + {s['q']})",
+    answer=lambda s: {"gcf": s["g"]},
+    oracle=lambda s0: {"gcf": s0["g"]},
+    invariant=lambda s: s["g"] * s["p"] + s["g"] * s["q"] == s["g"] * (s["p"] + s["q"]),
+    preserved="the expression keeps the same value for every x")
+
+
 ALL_SPECS = [EXPONENT_LAWS, POWER_OF_POWER, LOG_EVALUATION, LOG_PRODUCT_LAW, LOG_QUOTIENT_LAW, FOIL_EXPANSION,
-             DIFFERENCE_OF_SQUARES, PERFECT_SQUARE]
+             DIFFERENCE_OF_SQUARES, PERFECT_SQUARE, FACTOR_GCF]

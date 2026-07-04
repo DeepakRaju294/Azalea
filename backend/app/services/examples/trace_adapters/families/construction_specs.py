@@ -52,6 +52,18 @@ def _collatz(n: int) -> list:
     return seq
 
 
+def _grad_seq(a: int, x0: int, n: int) -> list:
+    """Gradient descent on f(x) = (x - a)^2 with learning rate 0.1, rounded to 3 dp (deterministic)."""
+    seq: list = []
+    for i in range(n):
+        if i == 0:
+            seq.append(float(x0))
+        else:
+            p = seq[-1]
+            seq.append(round(p - 0.1 * 2 * (p - a), 3))
+    return seq
+
+
 # --- prefix sums / running total ----------------------------------------------------------------------
 def _prefix_setup(rng: random.Random) -> dict:
     return {"input": [rng.randint(1, 9) for _ in range(rng.randint(4, 6))], "output": []}
@@ -323,6 +335,36 @@ COLLATZ_SEQUENCE = ConstructSpec(
     target="the sequence reaches 1")
 
 
+# --- gradient descent on f(x) = (x - a)^2 (numerical optimization) -------------------------------------
+def _grad_setup(rng: random.Random) -> dict:
+    return {"a": rng.randint(3, 12), "x0": rng.randint(0, 20), "iters": 5, "output": []}
+
+
+def _grad_step(s: dict, i: int) -> tuple:
+    if i == 0:
+        val = float(s["x0"])
+        rule = f"start at x0 = {s['x0']}"
+    else:
+        p = s["output"][-1]
+        grad = round(2 * (p - s["a"]), 3)
+        val = round(p - 0.1 * grad, 3)
+        rule = f"gradient 2(x - {s['a']}) = {grad}; step x - 0.1*gradient = {val}"
+    return {**s, "output": s["output"] + [val]}, rule
+
+
+GRADIENT_DESCENT = ConstructSpec(
+    slug="gradient_descent", title="gradient descent on a quadratic", family="numerical",
+    aliases=["gradient descent", "descent step", "steepest descent"], priority=49, piece_word="estimate",
+    problem_template="Minimize f(x) = (x - {a})^2 by gradient descent from x0 = {x0} (learning rate 0.1, "
+                     "4 steps).",
+    setup=_grad_setup, pieces=lambda s: s["iters"], step=_grad_step,
+    render=lambda s: _seq(s["output"]),
+    valid=lambda s: s["output"] == _grad_seq(s["a"], s["x0"], len(s["output"])),
+    answer=lambda s: {"estimates": _seq(s["output"])},
+    oracle=lambda s0: {"estimates": _seq(_grad_seq(s0["a"], s0["x0"], s0["iters"]))},
+    target="the estimate approaches the minimum")
+
+
 ALL_SPECS = [PREFIX_SUMS, RUNNING_MAXIMUM, DEPRECIATION_SCHEDULE,
              POLYNOMIAL_DERIVATIVE, POLYNOMIAL_INTEGRAL, FIBONACCI_SEQUENCE,
-             PASCALS_TRIANGLE_ROW, POWERS_OF_TWO, BABYLONIAN_SQRT, COLLATZ_SEQUENCE]
+             PASCALS_TRIANGLE_ROW, POWERS_OF_TWO, BABYLONIAN_SQRT, COLLATZ_SEQUENCE, GRADIENT_DESCENT]

@@ -649,6 +649,34 @@ PENDULUM_PERIOD = FormulaSpec(
     outputs=[Output("T", "T = 2*pi*sqrt(L/g)", "2*pi*sqrt(L/g)", "s", "compute_period", "period")],
     conventions={"g": "9.8 m/s^2", "formula": "T = 2*pi*sqrt(L/g)"})
 
+SECTOR_AREA = FormulaSpec(
+    slug="sector_area", title="area of a circular sector", family="geometry",
+    aliases=["sector area", "area of a sector"], priority=20,
+    problem_template="A circular sector has radius r = {r} and central angle theta = {theta} degrees. "
+                     "Find its area.",
+    givens=[Given("r", "", 1, 15), Given("theta", "deg", 30, 300)],
+    outputs=[Output("A", "A = (theta/360)*pi*r^2", "(theta/360)*pi*r**2", "sq units", "compute_area", "sector area")],
+    conventions={"pi": "3.14159..."})
+
+ARC_LENGTH = FormulaSpec(
+    slug="arc_length", title="arc length of a circular sector", family="geometry",
+    aliases=["arc length"], priority=19,
+    problem_template="A circular arc has radius r = {r} and central angle theta = {theta} degrees. "
+                     "Find its length.",
+    givens=[Given("r", "", 1, 15), Given("theta", "deg", 30, 300)],
+    outputs=[Output("L", "L = (theta/360)*2*pi*r", "(theta/360)*2*pi*r", "units", "compute_length", "arc length")],
+    conventions={"pi": "3.14159..."})
+
+SIMPLE_ROI = FormulaSpec(
+    slug="simple_roi", title="return on investment", family="finance",
+    aliases=["return on investment", "roi"], priority=18,
+    problem_template="An investment costing cost = ${cost} returns gain = ${gain}. Find the return on "
+                     "investment (ROI).",
+    givens=[Given("cost", "$", 50, 500), Given("gain", "$", 60, 800)],
+    outputs=[Output("roi", "roi = (gain - cost)/cost * 100", "(gain - cost)/cost * 100", "%", "compute_roi",
+                    "ROI")],
+    conventions={"definition": "ROI = (gain - cost) / cost * 100"})
+
 # --- the full concept set; ALL_SPECS drives the gate, the registry, the manifest, and routing ---------
 ALL_SPECS = [
     # physics / EE
@@ -672,4 +700,6 @@ ALL_SPECS = [
     DISTANCE_RATE_TIME, AVERAGE_SPEED, CELSIUS_TO_FAHRENHEIT, ARITHMETIC_SEQUENCE_TERM, GEOMETRIC_SEQUENCE_TERM,
     # trig / business math / more physics
     TANGENT_RATIO, PERCENT_OF, DISCOUNT_PRICE, SALES_TAX_TOTAL, POWER_FROM_CURRENT, PENDULUM_PERIOD,
+    # more geometry / finance
+    SECTOR_AREA, ARC_LENGTH, SIMPLE_ROI,
 ]

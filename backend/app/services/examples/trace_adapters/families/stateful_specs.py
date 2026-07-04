@@ -95,4 +95,55 @@ QUEUE_OPERATIONS = StatefulSpec(
     target="every enqueue and dequeue has been applied")
 
 
-ALL_SPECS = [STACK_OPERATIONS, QUEUE_OPERATIONS]
+# --- hash table with linear probing -------------------------------------------------------------------
+def _hash_setup(rng: random.Random) -> dict:
+    m = 7
+    keys: list = []
+    while len(keys) < rng.randint(4, 5):
+        k = rng.randint(1, 40)
+        if k not in keys:
+            keys.append(k)
+    return {"m": m, "keys": keys, "table": [None] * m}
+
+
+def _hash_render(s: dict) -> str:
+    return "slots: " + ", ".join(str(x) if x is not None else "-" for x in s["table"])
+
+
+def _hash_apply(s: dict, i: int) -> tuple:
+    key, m = s["keys"][i], s["m"]
+    table = list(s["table"])
+    h = key % m
+    pos, probes = h, 0
+    while table[pos] is not None:
+        pos = (pos + 1) % m
+        probes += 1
+    table[pos] = key
+    op = (f"insert {key}: hash {key} mod {m} = {h}, place at slot {h}" if probes == 0
+          else f"insert {key}: hash {key} mod {m} = {h}; slot {h} full, linear-probe to slot {pos}")
+    return {**s, "table": table}, op
+
+
+def _hash_oracle(s0: dict) -> dict:
+    m = s0["m"]
+    table: list = [None] * m
+    for key in s0["keys"]:
+        pos = key % m
+        while table[pos] is not None:
+            pos = (pos + 1) % m
+        table[pos] = key
+    return {"final_table": "slots: " + ", ".join(str(x) if x is not None else "-" for x in table)}
+
+
+HASH_TABLE_INSERT = StatefulSpec(
+    slug="hash_table_insert", title="inserting into a hash table with linear probing", family="structures",
+    # narrow aliases: a bare "Hash Tables" topic is conceptual (defers); this adapter is the INSERTION trace.
+    aliases=["linear probing", "hash table insert", "insert into a hash table", "hash collision"],
+    priority=67, op_word="insertion",
+    problem_template="Insert the keys into a size-7 hash table using linear probing; give the final table.",
+    setup=_hash_setup, ops_count=lambda s: len(s["keys"]), apply=_hash_apply,
+    render=_hash_render, answer=lambda s: {"final_table": _hash_render(s)}, oracle=_hash_oracle,
+    target="every key has been inserted")
+
+
+ALL_SPECS = [STACK_OPERATIONS, QUEUE_OPERATIONS, HASH_TABLE_INSERT]
