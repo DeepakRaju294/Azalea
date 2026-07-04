@@ -25,6 +25,7 @@ _PLACE = re.compile(r"^(\w+)\[\s*([^\]]+?)\s*\]\s*=\s*(\w+)$")                 #
 _APPEND = re.compile(r"^(\w+)\.append\(\s*(\w+)\s*\[\s*([^\]]+?)\s*\]\s*\)$")  # merged.append(left[i])
 _LOOP = re.compile(r"^(for|while)\b.*:$")
 _COMMENT = re.compile(r"\s*#.*$")
+_DECISION_CMP = re.compile(r"(<=|>=|==|<|>)")
 
 # short bookkeeping lines with no data subscript — normalized (spaces removed) -> a plain-English note
 _BOOKKEEP = {
@@ -117,9 +118,20 @@ def _annotate(code: str, snaps: list, step: Any) -> str:
             return "sweep adjacent pairs left to right, swapping any that are out of order"
         return "scan the current range"
 
-    # comparison / condition body pieces get the outcome from the verified step, not a per-iteration replay
-    if code.startswith("if ") and step.operation == "select":
-        return f"track the smallest seen so far — it is {inp.get('position') is not None and step.expected_visible_result.split()[1] or 'found'}"
+    # A comparison INSIDE a loop runs once per iteration — summarize the loop's OUTCOME from the verified
+    # step, don't replay one snapshot ("arr[0]=3"). Polish item: loop-body comparison summary.
+    if code.startswith("if ") and "[" in code and _DECISION_CMP.search(code):
+        if "pivot" in inp:
+            sm = inp.get("smaller") or []
+            return (f"values below the pivot {inp['pivot']} ({', '.join(map(str, sm))}) move to the left"
+                    if sm else f"no value in this slice is below the pivot {inp['pivot']}")
+        if step.operation == "select":
+            parts = str(getattr(step, "decision", "")).split()          # "select X into position Y"
+            return f"keep the smallest seen so far — it turns out to be {parts[1] if len(parts) > 1 else 'the minimum'}"
+        if "left" in code and "right" in code:                          # merge front-of-run compare
+            return "compare the two front values and emit the smaller one"
+        if step.operation in ("bubble", "sweep") or "bubble" in str(getattr(step, "decision", "")):
+            return "swap this adjacent pair only when the left value is the larger"
 
     if code.startswith("return"):
         return "return the finished array"
@@ -178,6 +190,33 @@ def _work_from_slice(events: list, exec_lines: list, step: Any, line_map: dict) 
     return work, code_lines
 
 
+def _collapse_repeated_structure(cards: list) -> list:
+    """Polish item: after a loop has been shown IN FULL once, later cards that re-run it should not repeat the
+    unchanged bookkeeping. A work line whose // annotation is IDENTICAL to the first time that code line
+    appeared is structural (min_idx = i, i = lo, for j …) and is dropped on repeat; a line whose annotation
+    CHANGED carries this step's decision/values and is kept. Never drops a card's only content, and the FIRST
+    occurrence of every line stays — so the decision loop is always shown in full once (CP9 non-omission)."""
+    seen: dict = {}
+    for c in cards:
+        kept_w, kept_cl, dropped = [], [], False
+        for w, cl in zip(c.get("work") or [], c.get("code_lines") or [[]] * len(c.get("work") or [])):
+            code, _, ann = str(w).partition("//")
+            code, ann = code.strip(), ann.strip()
+            if code not in seen:
+                seen[code] = ann
+                kept_w.append(w); kept_cl.append(cl)
+            elif ann != seen[code]:                                       # value/decision line — keep
+                kept_w.append(w); kept_cl.append(cl)
+            else:                                                         # unchanged bookkeeping — drop on repeat
+                dropped = True
+        if kept_w and dropped:
+            kept_w = ["…the loop runs as shown above; this round:"] + kept_w
+            kept_cl = [[]] + kept_cl
+        if kept_w:
+            c["work"], c["code_lines"] = kept_w, kept_cl
+    return cards
+
+
 def generate_coding_cards(trace: Any, code: Optional[str], base_cards: list) -> Optional[list]:
     """Author each coding card's `work` + `code_lines` from the executed reference; reuse `base_cards`'
     (deterministic-narration) title/reason/result. None when the run can't be mapped — caller keeps the LLM."""
@@ -198,4 +237,4 @@ def generate_coding_cards(trace: Any, code: Optional[str], base_cards: list) -> 
         if not work:
             return None                                                      # empty slice -> don't ship a blank card
         out.append({**card, "work": work, "code_lines": code_lines})
-    return out
+    return _collapse_repeated_structure(out)

@@ -551,6 +551,9 @@ def executed_reference_violations(cards: list, code: str, trace: Any) -> list:
             code_part, _, comment = str(wline).partition("//")
             if re.match(r"^\s*(for|while)\b", code_part):    # a loop CONDITION describes the loop, not a value
                 continue                                     # attribution (its // may name the key/pivot bound)
+            if re.match(r"^\s*if\b", code_part) and _DECISION_CMP.search(code_part):
+                continue                                     # an `if` comparison names the bound (pivot/min), not
+                                                             # a value attributed to the indexed element it reads
             reads = _INDEX_READ.findall(code_part)
             if len(reads) != 1:                              # ambiguous (swap / compare) -> skip
                 continue

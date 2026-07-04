@@ -269,7 +269,9 @@ class DeterministicCodingGeneration(unittest.TestCase):
                     self.assertTrue(validate_fidelity(cards, tr, a, validate_visual_state=False).ok)
                     for c in cards:
                         for w in c["work"]:
-                            self.assertIn("//", w)                                # every line annotated
+                            if w.startswith("…"):                                 # the repeat-collapse note
+                                continue
+                            self.assertIn("//", w)                                # every code line annotated
                             self.assertNotIn("carry out this step", w)            # no weak fallback
 
     def test_ships_deterministically_without_the_llm(self):
