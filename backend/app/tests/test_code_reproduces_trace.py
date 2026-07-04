@@ -336,6 +336,26 @@ class GraphFamilyDeterministicCoding(unittest.TestCase):
                                       format_fn=boom, code=display_solution("bfs"), seed=3)
         self.assertIsNotNone(res)
 
+    def test_translated_language_coding_falls_back_to_llm(self):
+        # Deterministic coding annotates the EXECUTED (Python) canonical and anchors each work line to the
+        # DISPLAYED code by exact stripped-text match. When the display is a translation (java/cpp), nothing
+        # matches → empty `code_lines` → an unrenderable card (this is why "Implementing BFS" hung on a Java
+        # path). The path must DEFER to the LLM (which translates faithfully) for any non-Python display, while
+        # Python still ships deterministically.
+        from app.services.examples.canonical_solutions import display_solution
+        from app.services.examples.coding_narration import generate_coding_cards
+        for slug in ("bfs", "bubble_sort", "merge_sort"):
+            a = ADAPTERS[slug]
+            tr = tp.select_instance(a, seed=3)
+            base = tp._deterministic_narration(tr, a)
+            with self.subTest(slug=slug):
+                py = generate_coding_cards(tr, display_solution(slug, "python"), base)
+                self.assertIsNotNone(py, "Python display must still ship deterministically")
+                self.assertTrue(any(cl for c in py for cl in c["code_lines"]))   # real anchors
+                for lang in ("java", "cpp"):
+                    self.assertIsNone(generate_coding_cards(tr, display_solution(slug, lang), base),
+                                      f"{slug} {lang}: translated display must fall back to the LLM")
+
     def test_recursive_dfs_walkthrough_narrates_recursion_and_falls_back_for_coding(self):
         # DFS is presented RECURSIVELY (more intuitive than an explicit stack): the adapter's trace narrates
         # the depth-first descent + backtracking, and the canonical code is recursive. Recursive accumulation

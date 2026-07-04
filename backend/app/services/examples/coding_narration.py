@@ -274,6 +274,13 @@ def generate_coding_cards(trace: Any, code: Optional[str], base_cards: list) -> 
         return None
     exec_lines = exec_src.splitlines()
     line_map = _line_map(exec_src, code)                                      # runtime line -> displayed line
+    # Language guard: this path annotates the EXECUTED (Python) canonical and anchors each work line to the
+    # DISPLAYED code by exact stripped-text match. When the display is a translation (java/cpp), no executed
+    # line matches any displayed line, so `line_map` is empty — every `code_lines` would be `[]`, an
+    # unrenderable card with no anchors. An empty map means the display isn't the Python we ran: defer to the
+    # LLM path, which translates faithfully. (A real Python display always matches its own body lines.)
+    if not line_map:
+        return None
     out = []
     for card, (a, b), step in zip(base_cards, regions, getattr(trace, "steps", [])):
         work, code_lines = _work_from_slice(exec_steps[a:b + 1], exec_lines, step, line_map)
