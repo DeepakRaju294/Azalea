@@ -241,41 +241,20 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "coding": False, "canonical_solution": None,
         "routing_aliases": ["kinematic", "constant acceleration", "uniform acceleration"],
         "negative_guards": [], "fixtures": ["zero_initial_velocity", "nonzero_initial_velocity"]},
-    # T6 Formula Engine concepts (CP12b) — declarative FormulaSpec rows in families/formula_specs.py; verified
-    # by test_formula_engine (each output re-evaluated independently). Non-coding computation topics.
-    "kinetic_energy": {
-        "type": "T6", "family": "physics", "status": "experimental", "verification_level": "trace_verified",
-        "coding": False, "canonical_solution": None,
-        "routing_aliases": ["kinetic energy"], "negative_guards": [], "fixtures": []},
-    "ohms_law": {
-        "type": "T6", "family": "physics", "status": "experimental", "verification_level": "trace_verified",
-        "coding": False, "canonical_solution": None,
-        "routing_aliases": ["ohm's law", "ohms law"], "negative_guards": [], "fixtures": []},
-    "simple_interest": {
-        "type": "T6", "family": "finance", "status": "experimental", "verification_level": "trace_verified",
-        "coding": False, "canonical_solution": None,
-        "routing_aliases": ["simple interest"], "negative_guards": ["compound"], "fixtures": []},
-    "compound_interest": {
-        "type": "T6", "family": "finance", "status": "experimental", "verification_level": "trace_verified",
-        "coding": False, "canonical_solution": None,
-        "routing_aliases": ["compound interest"], "negative_guards": [], "fixtures": []},
-    "molarity": {
-        "type": "T6", "family": "chemistry", "status": "experimental", "verification_level": "trace_verified",
-        "coding": False, "canonical_solution": None,
-        "routing_aliases": ["molarity"], "negative_guards": [], "fixtures": []},
-    "density": {
-        "type": "T6", "family": "chemistry", "status": "experimental", "verification_level": "trace_verified",
-        "coding": False, "canonical_solution": None,
-        "routing_aliases": ["density"], "negative_guards": [], "fixtures": []},
-    "descriptive_stats": {
-        "type": "T6", "family": "statistics", "status": "experimental", "verification_level": "trace_verified",
-        "coding": False, "canonical_solution": None,
-        "routing_aliases": ["mean", "variance", "standard deviation"], "negative_guards": [], "fixtures": []},
-    "median_range": {
-        "type": "T6", "family": "statistics", "status": "experimental", "verification_level": "trace_verified",
-        "coding": False, "canonical_solution": None,
-        "routing_aliases": ["median", "range of"], "negative_guards": [], "fixtures": []},
+    # T6 Formula Engine concepts (CP12b) are injected below from families/formula_specs.py — each FormulaSpec
+    # carries its own family + aliases + priority, so the manifest, routing table, and registry are all derived
+    # from ONE source (adding a concept is a one-file edit). See _inject_formula_specs().
 }
+
+
+def _inject_formula_specs() -> None:
+    """Derive the manifest entry + routing rule for every registered FormulaSpec from the spec itself, so the
+    formula concepts have exactly ONE source of truth (families/formula_specs.py). Imported lazily to avoid an
+    import cycle at module load (formula_engine imports decl/example_spec, not this module)."""
+    from .families.formula_engine import manifest_entry, registered_specs, routing_rule
+    for spec in registered_specs():
+        MANIFEST.setdefault(spec.slug, manifest_entry(spec))
+        ROUTING_RULES.setdefault(spec.slug, routing_rule(spec))
 
 
 def _fill_defaults() -> None:
@@ -288,7 +267,8 @@ def _fill_defaults() -> None:
         entry.setdefault("visual_contract", f"{entry.get('family', 'generic')}_state_v1")
 
 
-_fill_defaults()
+# NOTE: _inject_formula_specs() + _fill_defaults() are invoked at the BOTTOM of the module, after ROUTING_RULES
+# is defined (injection writes into it) and so the injected entries also receive the schema defaults.
 
 
 def manifest_gaps() -> list[str]:
@@ -415,12 +395,13 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
     "ohms_law": {"any": ["ohm's law", "ohms law", "ohm law"], "priority": 95},
     "compound_interest": {"any": ["compound interest"], "priority": 94},
     "simple_interest": {"any": ["simple interest"], "not": ["compound"], "priority": 93},
-    "molarity": {"any": ["molarity", "molar concentration"], "priority": 92},
-    "density": {"any": ["density"], "priority": 91},
-    "descriptive_stats": {"any": ["mean, variance", "mean and variance", "standard deviation", "variance and"],
-                          "priority": 89},
-    "median_range": {"any": ["median"], "priority": 88},
+    # T6 Formula Engine routing rules (CP12b) are injected below from families/formula_specs.py.
 }
+
+# Now that both MANIFEST and ROUTING_RULES exist, derive the formula-concept entries from their specs, then
+# fill schema defaults across ALL entries (static + injected).
+_inject_formula_specs()
+_fill_defaults()
 
 
 def _rule_hits(text: str, rule: dict[str, Any]) -> bool:

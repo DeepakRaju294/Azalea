@@ -37,9 +37,11 @@ NARRATION_SLUGS = frozenset({
     "coin_change", "longest_increasing_subsequence", "n_queens", "union_find",
     "sieve_of_eratosthenes", "euclid_gcd", "bst_search", "binary_search",
     "quadratic", "kinematics", "arithmetic_eval", "induction_proof",
-    "kinetic_energy", "ohms_law", "simple_interest", "compound_interest", "molarity", "density",  # T6 formula (CP12b)
-    "descriptive_stats", "median_range",                                                          # T6 statistics (CP12b)
 })
+# T6 Formula Engine concepts (CP12b) also ship their walkthrough from the trace — fold in every registered
+# FormulaSpec slug so a new concept needs no edit here (single source of truth = families/formula_specs.py).
+from .families.formula_engine import registered_specs as _registered_specs  # noqa: E402
+NARRATION_SLUGS = NARRATION_SLUGS | frozenset(s.slug for s in _registered_specs())
 for _slug in NARRATION_SLUGS:
     if _slug in ADAPTERS:
         type(ADAPTERS[_slug]).provides_narration = True

@@ -119,19 +119,27 @@ class FormulaSpec:
     givens: list[Given]
     outputs: list[Output]
     dataset: Optional[Dataset] = None           # set for list-input (statistics) concepts; givens then usually []
+    constants: dict[str, float] = field(default_factory=dict)   # named constants merged into env (e.g. g=9.8)
     conventions: dict[str, str] = field(default_factory=dict)
     cases: list[Case] = field(default_factory=list)          # optional coverage cases keyed on the givens
     must_avoid: list[str] = field(default_factory=list)
     n_candidates: int = 80
     label_convention: str = "ints"
+    # --- registration metadata (so a spec auto-wires its manifest + routing; adding a concept = one edit) ---
+    family: str = "formula"                     # manifest family / domain (physics, finance, chemistry, ...)
+    aliases: list[str] = field(default_factory=list)         # routing `any` substrings (title -> this adapter)
+    not_aliases: list[str] = field(default_factory=list)     # routing `not` guards (blocking substrings)
+    priority: int = 50                          # routing precedence (higher wins on overlap)
+    register: bool = True                       # False = gate-only (e.g. a migration proof), not a live adapter
 
     # ------- derived -------------------------------------------------------------------------------
     def base_env(self, example_input: dict[str, Any]) -> dict[str, Any]:
-        """The starting evaluation environment for an instance: scalar givens, or the dataset + its count `n`."""
+        """The starting evaluation environment for an instance: scalar givens, or the dataset + its count `n`,
+        plus any named constants (g, ...)."""
         if self.dataset is not None:
             data = list(example_input[self.dataset.name])
-            return {self.dataset.name: data, "n": len(data)}
-        return {g.name: example_input[g.name] for g in self.givens}
+            return {self.dataset.name: data, "n": len(data), **self.constants}
+        return {**{g.name: example_input[g.name] for g in self.givens}, **self.constants}
 
     def compute(self, example_input: dict[str, Any]) -> dict[str, Any]:
         """The real arithmetic: each output in order, later outputs may read earlier ones."""
@@ -326,7 +334,28 @@ def formula_decl(spec: FormulaSpec, *, routing: Optional[dict[str, Any]] = None)
     """A formula concept -> a hydratable AdapterDecl. `provides_narration=True` (the step prose is
     learner-quality by construction, so the walkthrough ships from the trace, like the other T6 adapters)."""
     return AdapterDecl(
-        slug=spec.slug, type="T6", family=routing.get("family", "formula") if routing else "formula",
+        slug=spec.slug, type="T6", family=(routing or {}).get("family", spec.family),
         example_spec=build_example_spec(spec), methods=dict(_METHODS),
-        label_convention=spec.label_convention, routing=routing or {},
+        label_convention=spec.label_convention, routing=routing or routing_rule(spec),
         class_attrs={"_formula_spec": spec, "provides_narration": True})
+
+
+# --- auto-registration: a spec carries everything its manifest entry + routing rule need, so the registry,
+# manifest, and routing table are all DERIVED from ALL_SPECS (single source of truth; no per-row hand editing) ---
+def manifest_entry(spec: FormulaSpec) -> dict[str, Any]:
+    return {"type": "T6", "family": spec.family, "status": "experimental",
+            "verification_level": "trace_verified", "coding": False, "canonical_solution": None,
+            "routing_aliases": list(spec.aliases), "negative_guards": list(spec.not_aliases), "fixtures": []}
+
+
+def routing_rule(spec: FormulaSpec) -> dict[str, Any]:
+    rule: dict[str, Any] = {"any": list(spec.aliases), "priority": spec.priority}
+    if spec.not_aliases:
+        rule["not"] = list(spec.not_aliases)
+    return rule
+
+
+def registered_specs() -> list[FormulaSpec]:
+    """The specs that become LIVE adapters (register=True). Imported lazily by manifest/type modules."""
+    from . import formula_specs
+    return [s for s in formula_specs.ALL_SPECS if s.register]
