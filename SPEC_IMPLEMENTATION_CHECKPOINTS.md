@@ -465,9 +465,15 @@ scale to a domain. The declaration infra already exists (`types/tN_*.py` → `DE
   `RewriteSpec` to `algebra_specs.py` = one-file edit). Remaining T7 data: multi-step/variable-both-sides
   equations, simplify, power-rule differentiation, integrals, row reduction, boolean simplification — each a
   spec (some, like symbolic calculus, may lean on a CAS for the rule transforms).
-- **12d — T8a construction + T8b derivation engines.** Declarative construction (each piece keeps the partial
-  output valid → target) and rule-justified derivation (each step cites an allowed rule → conclusion). Unlocks
-  truth tables, matrix mult, accounting schedules (T8a) and proofs, equation balancing, limits (T8b).
+- **12d — T8a Construction Engine ✅ STARTED (`66eec0d`).** `families/construct_engine.py`: a `ConstructSpec`
+  (build instance, piece count, add the i-th piece + rule prose, render partial output, a **validity predicate**,
+  answer, independent oracle) hydrates into a T8a adapter. The engine builds the target one piece at a time;
+  every step shows the growing result, and the gate `test_construct_engine` checks the answer vs the oracle AND
+  that `spec.valid` holds after every piece. **Pilots live (91 adapters):** prefix_sums, running_maximum
+  (sequence), depreciation_schedule (finance — book value → salvage). Remaining T8a data: truth tables, matrix
+  multiplication, loan amortization, Pascal's triangle, etc. — each a spec.
+- **12d (cont.) — T8b Derivation Engine (NOT STARTED).** Rule-justified derivation (each step cites an allowed
+  rule → conclusion): proofs, equation balancing, limits by argument. The last of the four engines.
 - **12e — Long tail + ◇ items.** T9 (Newton/Euler/gradient descent), T10 (FSM/flip-flop/simplex), remaining
   ◇-marked rows — piloted individually as they each introduce a genuinely new trace shape, not engine data.
 
