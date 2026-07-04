@@ -472,8 +472,17 @@ scale to a domain. The declaration infra already exists (`types/tN_*.py` → `DE
   that `spec.valid` holds after every piece. **Pilots live (91 adapters):** prefix_sums, running_maximum
   (sequence), depreciation_schedule (finance — book value → salvage). Remaining T8a data: truth tables, matrix
   multiplication, loan amortization, Pascal's triangle, etc. — each a spec.
-- **12d (cont.) — T8b Derivation Engine (NOT STARTED).** Rule-justified derivation (each step cites an allowed
-  rule → conclusion): proofs, equation balancing, limits by argument. The last of the four engines.
+- **12d (cont.) — T8b Derivation Engine ✅ STARTED (`8e6fa9d`).** `families/derivation_engine.py`: a
+  `DerivationSpec` (build instance, render, ordered steps each citing a NAMED rule + transform, conclusion,
+  answer, independent oracle) hydrates into a T8b adapter. Every step names its law; the gate
+  `test_derivation_engine` checks the answer vs the oracle with value preserved at each step. **Pilots live (94
+  adapters):** exponent_laws, power_of_power, log_evaluation (algebra laws). Remaining T8b data: rule-justified
+  proofs, chemical-equation balancing, limits by argument.
+
+> **ALL FOUR trace grammars are now live:** T6 formula (56), T7 rewrite (5), T8a construction (8), T8b
+> derivation (4). Each shares one auto-registration pattern — adding a concept in any grammar is a one-file edit
+> to the relevant `families/*_specs.py`. The catalog build is now DATA authoring (+ the deferred CAS-backed
+> symbolic-calculus variant and the long-tail T9/T10/◇ pilots).
 - **12e — Long tail + ◇ items.** T9 (Newton/Euler/gradient descent), T10 (FSM/flip-flop/simplex), remaining
   ◇-marked rows — piloted individually as they each introduce a genuinely new trace shape, not engine data.
 
