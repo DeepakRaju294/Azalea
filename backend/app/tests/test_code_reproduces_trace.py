@@ -126,6 +126,32 @@ class WiredIntoPipeline(unittest.TestCase):
         gr.finish_and_persist()
 
 
+class CoreDecisionShown(unittest.TestCase):
+    """A coding walkthrough must step through the loop that drives the algorithm (selection's min-scan,
+    quicksort's partition compare) — not jump from init to the outcome. A quality nudge (retry, never blocks)."""
+    def test_selection_omitting_the_min_scan_is_detected(self):
+        from app.services.examples.code_execution_check import coding_omits_core_decision
+        code = CANONICAL_SOLUTIONS["selection_sort"]
+        skipped = [{"work": ["min_idx = i  // init", "arr[i], arr[min_idx] = arr[min_idx], arr[i]  // swap"]}]
+        self.assertTrue(coding_omits_core_decision(skipped, code))
+        shown = [{"work": ["for j in range(i+1, len(arr)):  // scan",
+                           "if arr[j] < arr[min_idx]:  // found a smaller value"]}]
+        self.assertFalse(coding_omits_core_decision(shown, code))
+
+    def test_bare_control_flow_if_is_not_the_decision(self):
+        # quicksort's `if lo < hi:` (no index) is control flow, not the decision — showing only it still omits
+        from app.services.examples.code_execution_check import coding_omits_core_decision
+        code = CANONICAL_SOLUTIONS["quick_sort"]
+        only_control = [{"work": ["if lo < hi:  // recurse while the slice has 2+ elements"]}]
+        self.assertTrue(coding_omits_core_decision(only_control, code))
+        with_compare = [{"work": ["if arr[j] < pivot:  // arr[j] is below the pivot"]}]
+        self.assertFalse(coding_omits_core_decision(with_compare, code))
+
+    def test_no_decision_line_in_code_never_flags(self):
+        from app.services.examples.code_execution_check import coding_omits_core_decision
+        self.assertFalse(coding_omits_core_decision([{"work": ["x = 1  // set"]}], "def f(a):\n    return a\n"))
+
+
 class PerLineValueAttribution(unittest.TestCase):
     """The finer executed-reference check: a card's // comment must not attribute a value an indexed
     expression never held at that step (the merge `append(left[i]) // value 9` bug where left[i] is 30)."""

@@ -144,6 +144,11 @@ def _retry_feedback(reason: str, detail: list[str], n_steps: int) -> str:
                 "Line 1 = the single decision (the required op, naming the entity/values). Line 2 (only if "
                 "needed) = ALL supporting operations combined into ONE phrase. Drop internal machinery "
                 "entirely. Do NOT emit a separate work line per operation.")
+    if reason == "core_decision_not_shown":
+        return ("Your walkthrough SKIPPED the loop that does the real work — it jumped to the outcome without "
+                "ever showing the comparison the algorithm makes. " + "; ".join(detail) + ". On the card where "
+                "that loop FIRST runs, include its condition line and the comparison it tests (quoted from the "
+                "CODE, with a // note of the concrete values), so the learner sees HOW the step is decided.")
     return ""
 
 
@@ -668,6 +673,16 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
                 detail = [f"{over} step(s) have > {_MAX_WORK_LINES} work lines"]
                 feedback = _retry_feedback(reason, detail, n_steps)
                 continue
+            # CODING quality nudge: no card steps through the algorithm's DECISION loop (selection's min-scan,
+            # quicksort's partition compare). Retry to annotate it — but NEVER block shipping over it (the full
+            # code is shown regardless; on the final attempt ship what we have rather than lose line anchors).
+            if code and attempts < _MAX_FORMAT_ATTEMPTS:
+                from .code_execution_check import coding_omits_core_decision, core_decision_lines
+                if coding_omits_core_decision(cards, code):
+                    reason = "core_decision_not_shown"
+                    detail = [f"walk through the loop that drives the algorithm, e.g. `{core_decision_lines(code)[0]}`"]
+                    feedback = _retry_feedback(reason, detail, n_steps)
+                    continue
             checkpoints = _attach_checkpoints(cards, trace, adapter)   # CP3a: one checkpoint_id per card
             _retain_debug(topic, trace, raw, cards, fid, prose, shipped=True)
             _gr.we(tp_shipped=True, tp_reason="shipped", verified_steps=n_steps,

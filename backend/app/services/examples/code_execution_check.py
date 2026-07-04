@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -345,6 +346,36 @@ def _list_keys(state: Optional[dict]) -> list:
 def reproduces_trace_applies(trace: Any, code: Optional[str]) -> bool:
     """True when the executed-reference trace-reproduction gate can run (array-shaped topic + code present)."""
     return bool(code) and find_entry_function(code or "") is not None and _input_array(trace) is not None
+
+
+_DECISION_CMP = re.compile(r"(<=|>=|==|<|>)")
+
+
+def core_decision_lines(code: Optional[str]) -> list:
+    """The algorithm's DECISION lines — an `if`/`while` whose condition compares INDEXED elements (arr[j] <
+    pivot, arr[j] < arr[min_idx], left[i] <= right[j], arr[j] > key). These are the mechanism a learner must
+    see stepped through. A bare `if lo < hi:` (no index) is control-flow, not the decision, and is excluded."""
+    out = []
+    for line in (code or "").splitlines():
+        s = line.strip()
+        if (s.startswith("if ") or s.startswith("while ")) and "[" in s and _DECISION_CMP.search(s):
+            out.append(s)
+    return out
+
+
+def coding_omits_core_decision(cards: list, code: Optional[str]) -> bool:
+    """True when the code HAS a core decision line but NO card's work annotates one — the walkthrough skips
+    the defining loop (selection's min-scan, quicksort's partition compare) and jumps straight to the outcome.
+    A quality nudge, not a correctness blocker: the full code is shown regardless (this only affects whether a
+    card steps through it)."""
+    if not core_decision_lines(code):
+        return False
+    for c in cards:
+        for w in (c.get("work") or []):
+            code_part = str(w).split("//", 1)[0]
+            if ("if " in code_part or "while " in code_part) and "[" in code_part and _DECISION_CMP.search(code_part):
+                return False
+    return True
 
 
 def _execute_on_instance(code: Optional[str], trace: Any):
