@@ -181,6 +181,29 @@ class CodeAnchoredAllowlist(unittest.TestCase):
                              for x in validate_prose([card], tr, _StubAdapter(), code_anchored=True)))
 
 
+class InsertionComparisonContradiction(unittest.TestCase):
+    """A coding card that says the key is 'not smaller than X' while X was actually shifted (X > key)
+    inverts the comparison — the observed insertion-sort coding bug ('33 ... not smaller than 34')."""
+    def _step_key(self, key):
+        a = ADAPTERS["insertion_sort"]
+        tr = a.reference({"array": [34, 50, 43, 54, 30, 1, 33, 28]})   # inserting 33 shifts 54,50,43,34
+        return a, next(s for s in tr.steps if s.inputs.get("key") == key)
+
+    def test_not_smaller_than_a_shifted_value_is_flagged(self):
+        a, s = self._step_key(33)
+        self.assertIn(34, s.inputs["shifted"])                          # 34 really moved (34 > 33)
+        bug = {"reasoning": "inserting 33: smaller than 54, 50, and 43, but not smaller than 34, so shift",
+               "work": [], "result": ""}
+        self.assertTrue(any(c == "insertion_comparison_contradiction" for c, _ in a.validate_prose_claims(bug, s)))
+
+    def test_correct_comparison_is_clean(self):
+        a, s = self._step_key(33)
+        good = {"reasoning": "inserting 33: smaller than 54, 50, 43, and 34, so shift them right and insert 33",
+                "work": [], "result": ""}
+        self.assertEqual([c for c, _ in a.validate_prose_claims(good, s)
+                          if c == "insertion_comparison_contradiction"], [])
+
+
 class OrdinalTitleIsNotADataValue(unittest.TestCase):
     """A card titled 'Step 2: Insert 29' must NOT flag the ordinal 2 as an out-of-vocabulary value — the
     false positive was demoting insertion sort to the deterministic narration path."""

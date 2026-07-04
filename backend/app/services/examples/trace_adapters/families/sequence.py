@@ -467,8 +467,19 @@ class InsertionSortAdapter(FamilyAdapterBase):
         # (the observed bug: reasoning described key 14 while the step inserted 57). Requiring the key in the
         # reasoning makes a card whose explanation is about the wrong step a HARD violation -> reformat/retry.
         prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or [])]).lower()
-        key = str(step.inputs["key"])
-        return [] if key in prose else [("key_not_stated_in_reasoning", key)]
+        key = step.inputs["key"]
+        out = []
+        if str(key) not in prose:
+            out.append(("key_not_stated_in_reasoning", str(key)))
+        # Every SHIFTED element moved because it is LARGER than the key (key < it). A claim that the key is
+        # "not smaller than" / "at least as large as" / "not less than" a shifted value INVERTS that
+        # comparison (the observed coding bug: "33 ... not smaller than 34" while 34 was shifted — and its
+        # work omitted 34's shift). Flag the contradiction so the card re-formats instead of misleading.
+        for x in step.inputs.get("shifted") or []:
+            if re.search(rf"(?:not smaller than|at least as large as|not less than|no smaller than|>=\s*)\s*{x}\b",
+                         prose):
+                out.append(("insertion_comparison_contradiction", f"key {key} is smaller than shifted {x}"))
+        return out
 
 
 # ===================================================================================================
