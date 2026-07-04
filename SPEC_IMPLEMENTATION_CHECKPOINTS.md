@@ -436,18 +436,23 @@ scale to a domain. The declaration infra already exists (`types/tN_*.py` → `DE
 *behavior* into the type template so a row is data, not code.
 
 ### Sub-steps
-- **12a — T6 Formula Engine (biggest single unlock; do first).** One generic formula adapter whose behavior is
-  driven by a **concept spec**: `{ vars (+units+ranges), formula(s), given-set / solve-for policy, step
-  narration templates, answer + tolerance }`. The engine provides all the boilerplate methods (`candidates`,
-  `is_teaching_trace`, `states_equivalent`, `final_answer_entails`, invariants, prose validation) generically;
-  each concept is ~15 lines of spec. **Gate:** a `TypeFormulaGate` test that, for every declared spec, checks
-  the trace's computed answer against an independent evaluation of the formula across seeded inputs (units +
-  tolerance) — the T6 analogue of `test_code_reproduces_trace`. Migrate quadratic + kinematics onto it first
-  (byte-compatible), then it is pure data authoring.
-- **12b — Domain data-row waves on the T6 engine** (each wave = a family + its gate green, demand-ordered
-  within): **finance (B11)** → **statistics (B7)** → **physics mechanics + Ohm/series/parallel (B9)** →
-  **chemistry stoichiometry/gas/pH (B10)** → **geometry formulas (B2)**. These are the highest-value, purest
-  plug-in rows and share the one engine.
+- **12a — T6 Formula Engine ✅ (DONE, `3154af8`).** `families/formula_engine.py`: a `FormulaSpec` (givens
+  +units+ranges, outputs = formula+equation+stage, conventions, coverage cases) hydrates via `formula_decl`
+  into a normal `FamilyAdapterBase`; the 8 contract methods are generic (read `self._formula_spec`). `reference`
+  computes the real arithmetic (sealed eval, whitelisted math ns) and shows each substituted equation
+  ("v = u + a*t = 3 + 5*5 = 28 m/s"). **Gate `test_formula_engine` ✅** re-evaluates every output independently
+  and compares (gate-passing != authored-correct). The engine reproduces kinematics (gate-only spec, to avoid a
+  duplicate of the hand-coded slug); quadratic (discriminant branching) stays hand-coded — a T6b variant later.
+- **12b — first data wave LIVE ✅ (DONE, `0b15607`, 30→36 adapters).** Six concept rows registered end-to-end
+  (DECLARATIONS + manifest + routing + narration): **kinetic_energy, ohms_law** (physics/EE), **simple_interest,
+  compound_interest** (finance), **molarity, density** (chemistry). All route from their natural titles and ship
+  the walkthrough deterministically (no LLM); `manifest_gaps()` clean; full suite green. Remaining 12b waves
+  (more finance/statistics/physics/chemistry/geometry rows) are now pure spec authoring on this engine.
+- **12b (cont.) — Domain data-row waves on the T6 engine** (each wave = a family + its gate green, demand-ordered
+  within): first wave (physics/EE/finance/chemistry seed rows) is LIVE; continue with **more finance (B11)** →
+  **statistics (B7)** → **physics mechanics + series/parallel (B9)** → **chemistry stoichiometry/gas/pH (B10)**
+  → **geometry formulas (B2)**. Pure spec authoring — add a `FormulaSpec` + manifest + routing per concept.
+  *(Note: list-input stats like mean/variance need a list-given variant of the engine — a small 12b extension.)*
 - **12c — T7 Rewrite Engine.** Generic rewrite adapter driven by `{ start expression, allowed rule set, goal /
   normal-form predicate, per-rule narration }`; each step applies exactly one allowed rule and the gate proves
   every step is rule-justified and the goal is reached. Unlocks algebra (B1), symbolic calculus (B3/B4), row
