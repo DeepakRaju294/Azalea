@@ -339,13 +339,20 @@ Scale the taxonomy/instances (§15) — but as **incremental family rollouts**, 
 family proves the two-sided deterministic guarantee (walkthrough CP8 + coding CP10) generalizes to its
 execution shape before its instances count as reuse. Sub-steps:
 
-- **11a — Generalize the narrator (the coding-narration polish folds in here).** Extend `coding_narration`
-  + `map_step_regions` to the NEXT family's code shape (graph traversal or tree, then DP), and — designed
-  ONCE across families here, not patched per-adapter — settle the two open core-sort refinements:
-  (1) **repeat-collapse policy** — later cards that re-run an already-shown loop should abbreviate the
-  UNCHANGED bookkeeping while keeping the decision line + this step's values (never hide the loop, the CP9
-  omission we fixed); (2) a **loop-body comparison line** should summarize its iterations' outcome, not show
-  only the first snapshot. This first family doubles as the "does the architecture hold" stress-test.
+- **11a — Generalize the narrator.**
+  - **Polish items ✅ (done, `coding_narration`):** (1) repeat-collapse — after a loop is shown in full once,
+    later cards drop the UNCHANGED bookkeeping and keep the value/decision lines ("…the loop runs as shown
+    above; this round:"); (2) loop-body comparison summary — an `if` in a loop summarizes its outcome
+    ("values below the pivot 31 (9, 24) move to the left") not one snapshot. Both verified across 5 sorts ×
+    40 seeds; the per-line check now also skips `if`-comparison lines (a condition names the bound, not an
+    attribution). Designed ONCE, so new families inherit them.
+  - **Next family 🔴 (graph traversal BFS/DFS):** the code shape is tractable (`node = queue.popleft()` is a
+    clean once-per-step anchor) BUT the **blocker is instance recovery** — the graph is NOT on the trace
+    (initial_state has only queue/visited/order; provenance has the seed/candidate_id; the graph lives only in
+    the problem TEXT). `_execute_on_instance` must recover the graph (re-run `adapter.candidates(seed)` to the
+    matching candidate_id, OR parse the problem) and `trace_execution`'s `_build_args` must accept a graph
+    input, before the region mapper + new annotation templates (popleft/enqueue/visit) apply. This is the real
+    per-family generalization work the stress-test exists to surface.
 - **11b — Roll the deterministic path out family by family** (memory-layout, formula/geometric, …), each with
   its region-mapper shape + annotation templates + visual kind, gated by the CP10 generation test extended to
   that family.
