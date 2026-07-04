@@ -61,7 +61,10 @@ class LyingFormatterIsCaught(unittest.TestCase):
                          fromlist=["registered_specs"]).registered_specs()   # every live FormulaSpec (CP12b)
                      ] + [s.slug for s in __import__(
                          "app.services.examples.trace_adapters.families.rewrite_engine",
-                         fromlist=["registered_specs"]).registered_specs()]   # every live RewriteSpec (CP12c)
+                         fromlist=["registered_specs"]).registered_specs()   # every live RewriteSpec (CP12c)
+                     ] + [s.slug for s in __import__(
+                         "app.services.examples.trace_adapters.families.construct_engine",
+                         fromlist=["registered_specs"]).registered_specs()]   # every live ConstructSpec (CP12d)
 
     def _trace(self, slug):
         a = ADAPTERS[slug]

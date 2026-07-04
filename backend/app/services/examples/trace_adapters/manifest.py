@@ -251,14 +251,13 @@ def _inject_formula_specs() -> None:
     """Derive the manifest entry + routing rule for every registered FormulaSpec (T6) and RewriteSpec (T7) from
     the spec itself, so those concepts have exactly ONE source of truth (families/*_specs.py). Imported lazily
     to avoid an import cycle at module load (the engines import decl/example_spec, not this module)."""
+    from .families import construct_engine as ce
     from .families import formula_engine as fe
     from .families import rewrite_engine as re_
-    for spec in fe.registered_specs():
-        MANIFEST.setdefault(spec.slug, fe.manifest_entry(spec))
-        ROUTING_RULES.setdefault(spec.slug, fe.routing_rule(spec))
-    for spec in re_.registered_specs():
-        MANIFEST.setdefault(spec.slug, re_.manifest_entry(spec))
-        ROUTING_RULES.setdefault(spec.slug, re_.routing_rule(spec))
+    for mod in (fe, re_, ce):
+        for spec in mod.registered_specs():
+            MANIFEST.setdefault(spec.slug, mod.manifest_entry(spec))
+            ROUTING_RULES.setdefault(spec.slug, mod.routing_rule(spec))
 
 
 def _fill_defaults() -> None:
