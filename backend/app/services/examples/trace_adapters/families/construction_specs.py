@@ -31,6 +31,27 @@ def _fib_list(n: int) -> list:
     return f
 
 
+def _bab_seq(a: int, n: int) -> list:
+    """The first n Babylonian (Newton) square-root estimates, rounded to 3 dp so the sequence is
+    deterministic. n == 0 -> [] (so partial-validity holds on the empty starting state)."""
+    seq: list = []
+    for i in range(n):
+        if i == 0:
+            seq.append(float(a))
+        else:
+            p = seq[-1]
+            seq.append(round((p + a / p) / 2, 3))
+    return seq
+
+
+def _collatz(n: int) -> list:
+    seq = [n]
+    while n != 1:
+        n = n // 2 if n % 2 == 0 else 3 * n + 1
+        seq.append(n)
+    return seq
+
+
 # --- prefix sums / running total ----------------------------------------------------------------------
 def _prefix_setup(rng: random.Random) -> dict:
     return {"input": [rng.randint(1, 9) for _ in range(rng.randint(4, 6))], "output": []}
@@ -241,6 +262,67 @@ POWERS_OF_TWO = ConstructSpec(
     target="the requested powers of two are listed")
 
 
+# --- Babylonian square root (iterative refinement / Newton's method) ----------------------------------
+def _bab_setup(rng: random.Random) -> dict:
+    return {"a": rng.randint(10, 99), "iters": 5, "output": []}
+
+
+def _bab_step(s: dict, i: int) -> tuple:
+    if i == 0:
+        val = float(s["a"])
+        rule = f"start with the initial guess x0 = {s['a']}"
+    else:
+        p = s["output"][-1]
+        val = round((p + s["a"] / p) / 2, 3)
+        rule = f"refine: (x + a/x)/2 = ({p} + {s['a']}/{p})/2 = {val}"
+    return {**s, "output": s["output"] + [val]}, rule
+
+
+BABYLONIAN_SQRT = ConstructSpec(
+    slug="babylonian_sqrt", title="estimating a square root (Babylonian method)", family="numerical",
+    aliases=["babylonian method", "estimate a square root", "iterative square root",
+             "newton's method for a square root"], priority=51, piece_word="estimate",
+    problem_template="Estimate sqrt({a}) with the Babylonian method (4 refinements from the initial guess).",
+    setup=_bab_setup, pieces=lambda s: s["iters"], step=_bab_step,
+    render=lambda s: _seq(s["output"]),
+    valid=lambda s: s["output"] == _bab_seq(s["a"], len(s["output"])),
+    answer=lambda s: {"estimates": _seq(s["output"])},
+    oracle=lambda s0: {"estimates": _seq(_bab_seq(s0["a"], s0["iters"]))},
+    target="the estimate has converged toward the square root")
+
+
+# --- Collatz (3n+1) sequence --------------------------------------------------------------------------
+def _collatz_setup(rng: random.Random) -> dict:
+    return {"start": rng.randint(5, 20), "output": []}
+
+
+def _collatz_step(s: dict, i: int) -> tuple:
+    if i == 0:
+        val = s["start"]
+        rule = f"start at {s['start']}"
+    else:
+        prev = s["output"][-1]
+        val = prev // 2 if prev % 2 == 0 else 3 * prev + 1
+        rule = (f"{prev} is even, so halve it: {prev}/2 = {val}" if prev % 2 == 0
+                else f"{prev} is odd, so 3n+1: 3*{prev}+1 = {val}")
+    return {**s, "output": s["output"] + [val]}, rule
+
+
+COLLATZ_SEQUENCE = ConstructSpec(
+    # register=False: Collatz length is unbounded (exceeds the T8a trace budget for larger starts) and the
+    # sequence ends in a bare "1" (the terminal-formatting contract rejects a lone-digit ending). Kept as a
+    # documented spec; a capped/rephrased version can be enabled later.
+    slug="collatz_sequence", title="the Collatz (3n+1) sequence", family="discrete", register=False,
+    aliases=["collatz", "3n+1", "hailstone sequence"], priority=50, piece_word="term",
+    problem_template="Build the Collatz sequence starting from {start} until it reaches 1.",
+    setup=_collatz_setup, pieces=lambda s: len(_collatz(s["start"])), step=_collatz_step,
+    render=lambda s: _seq(s["output"]),
+    valid=lambda s: s["output"] == _collatz(s["start"])[: len(s["output"])],
+    answer=lambda s: {"sequence": _seq(s["output"])},
+    oracle=lambda s0: {"sequence": _seq(_collatz(s0["start"]))},
+    target="the sequence reaches 1")
+
+
 ALL_SPECS = [PREFIX_SUMS, RUNNING_MAXIMUM, DEPRECIATION_SCHEDULE,
              POLYNOMIAL_DERIVATIVE, POLYNOMIAL_INTEGRAL, FIBONACCI_SEQUENCE,
-             PASCALS_TRIANGLE_ROW, POWERS_OF_TWO]
+             PASCALS_TRIANGLE_ROW, POWERS_OF_TWO, BABYLONIAN_SQRT, COLLATZ_SEQUENCE]

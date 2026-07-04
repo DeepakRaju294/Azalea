@@ -202,4 +202,61 @@ FOIL_EXPANSION = DerivationSpec(
     preserved="the expression keeps the same value for every x")
 
 
-ALL_SPECS = [EXPONENT_LAWS, POWER_OF_POWER, LOG_EVALUATION, LOG_PRODUCT_LAW, LOG_QUOTIENT_LAW, FOIL_EXPANSION]
+# --- difference of squares:  x^2 - a^2 = (x - a)(x + a) ----------------------------------------------
+def _dos_setup(rng: random.Random) -> dict:
+    return {"a": rng.randint(2, 9), "phase": 0}
+
+
+def _dos_render(s: dict) -> str:
+    a, p = s["a"], s["phase"]
+    if p == 0:
+        return f"x^2 - {a * a}"
+    if p == 1:
+        return f"x^2 - {a}^2"
+    return f"(x - {a})(x + {a})"
+
+
+DIFFERENCE_OF_SQUARES = DerivationSpec(
+    slug="difference_of_squares", title="factoring a difference of squares", family="algebra",
+    aliases=["difference of squares", "factor the difference"], priority=83,
+    problem_template="Factor {start}.",
+    setup=_dos_setup, render=_dos_render,
+    steps=[
+        DerivationStep("recognize_squares", "recognizing perfect squares", lambda s: {**s, "phase": 1},
+                       lambda s: f"write {s['a'] * s['a']} as {s['a']}^2, giving a difference of two squares"),
+        DerivationStep("apply_pattern", "difference-of-squares pattern", lambda s: {**s, "phase": 2},
+                       lambda s: f"a^2 - b^2 = (a - b)(a + b), so it factors as (x - {s['a']})(x + {s['a']})")],
+    conclusion=lambda s: f"(x - {s['a']})(x + {s['a']})",
+    answer=lambda s: {"root": s["a"]},
+    oracle=lambda s0: {"root": s0["a"]},
+    invariant=lambda s: 10 ** 2 - s["a"] ** 2 == (10 - s["a"]) * (10 + s["a"]),
+    preserved="the expression keeps the same value for every x")
+
+
+# --- perfect square of a binomial:  (x + a)^2 = x^2 + 2ax + a^2 --------------------------------------
+def _psq_setup(rng: random.Random) -> dict:
+    return {"a": rng.randint(1, 7), "phase": 0}
+
+
+def _psq_render(s: dict) -> str:
+    a, p = s["a"], s["phase"]
+    return f"(x + {a})^2" if p == 0 else f"x^2 + {2 * a}x + {a * a}"
+
+
+PERFECT_SQUARE = DerivationSpec(
+    slug="perfect_square_expansion", title="expanding a perfect-square binomial", family="algebra",
+    aliases=["perfect square", "square a binomial", "perfect square trinomial"], priority=82,
+    problem_template="Expand {start}.",
+    setup=_psq_setup, render=_psq_render,
+    steps=[DerivationStep("square_binomial", "perfect-square rule", lambda s: {**s, "phase": 1},
+                          lambda s: f"(x + a)^2 = x^2 + 2ax + a^2 with a = {s['a']}: "
+                                    f"x^2 + {2 * s['a']}x + {s['a'] * s['a']}")],
+    conclusion=lambda s: f"x^2 + {2 * s['a']}x + {s['a'] * s['a']}",
+    answer=lambda s: {"linear_coefficient": 2 * s["a"], "constant": s["a"] * s["a"]},
+    oracle=lambda s0: {"linear_coefficient": 2 * s0["a"], "constant": s0["a"] * s0["a"]},
+    invariant=lambda s: (2 + s["a"]) ** 2 == 4 + 2 * s["a"] * 2 + s["a"] * s["a"],
+    preserved="the expression keeps the same value for every x")
+
+
+ALL_SPECS = [EXPONENT_LAWS, POWER_OF_POWER, LOG_EVALUATION, LOG_PRODUCT_LAW, LOG_QUOTIENT_LAW, FOIL_EXPANSION,
+             DIFFERENCE_OF_SQUARES, PERFECT_SQUARE]

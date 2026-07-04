@@ -198,4 +198,40 @@ ONE_STEP_EQUATION = RewriteSpec(
     preserved="every step keeps the same solution x", goal="the variable is alone on one side")
 
 
-ALL_SPECS = [LINEAR_EQUATION, EQUATION_BOTH_SIDES, COMBINE_LIKE_TERMS, DISTRIBUTE, ONE_STEP_EQUATION]
+# --- proportion:  a/b = x/c  ->  cross-multiply  ->  x = a*c/b ---------------------------------------
+def _prop_setup(rng: random.Random) -> dict:
+    b = rng.randint(2, 5)
+    k = rng.randint(2, 6)
+    c = rng.randint(2, 6)
+    a = b * k                                            # a/b = k is exact; x = a*c/b = k*c is an integer
+    return {"a": a, "b": b, "c": c, "sol": k * c, "phase": 0, "var": "x"}
+
+
+def _prop_render(s: dict) -> str:
+    a, b, c, p = s["a"], s["b"], s["c"], s["phase"]
+    if p == 0:
+        return f"{a}/{b} = x/{c}"
+    if p == 1:
+        return f"{a} * {c} = {b} * x"
+    return f"x = {a * c // b}"
+
+
+SOLVE_PROPORTION = RewriteSpec(
+    slug="solve_proportion", title="solving a proportion by cross-multiplication", family="algebra",
+    aliases=["proportion", "cross-multiply", "cross multiplication", "solve the proportion"], priority=90,
+    problem_template="Solve the proportion {eqn} for {var}.",
+    setup=_prop_setup, render=_prop_render,
+    steps=[
+        RewriteStep("cross_multiply", "cross-multiply", lambda s: {**s, "phase": 1},
+                    lambda s: f"cross-multiply: {s['a']} x {s['c']} = {s['b']} x x"),
+        RewriteStep("solve_for_variable", "divide to isolate the variable", lambda s: {**s, "phase": 2},
+                    lambda s: f"compute {s['a']} x {s['c']} = {s['a'] * s['c']} and divide by {s['b']}: "
+                              f"{s['a'] * s['c']} / {s['b']} = {s['a'] * s['c'] // s['b']}")],
+    answer=lambda s: {s.get("var", "x"): s["a"] * s["c"] // s["b"]},
+    oracle=lambda s0: {s0.get("var", "x"): s0["a"] * s0["c"] // s0["b"]},
+    invariant=lambda s: s["a"] * s["c"] == s["b"] * s["sol"],
+    preserved="every step keeps the same solution x", goal="the variable is isolated")
+
+
+ALL_SPECS = [LINEAR_EQUATION, EQUATION_BOTH_SIDES, COMBINE_LIKE_TERMS, DISTRIBUTE, ONE_STEP_EQUATION,
+             SOLVE_PROPORTION]
