@@ -328,6 +328,41 @@ class GraphFamilyDeterministicCoding(unittest.TestCase):
                         self.assertNotIn("merged run", w)                     # no leaked SORT template
                         self.assertNotIn("front of the queue", w)             # no borrowed BFS wording
 
+    def test_heap_sort_coding_generates_cleanly_across_seeds(self):
+        # CP11c — heap_sort is two-phase (build heap, then repeatedly extract the max), and each step is a
+        # sift_down CALL made from one of two sites, so no single line runs once-per-step. map_step_regions'
+        # multi-anchor fallback segments on the call stack (each excursion above base depth = one call = one
+        # step); heap templates give the sift-down body its vocabulary, gated on "heapify"/"extract" decisions.
+        from app.services.examples.trace_contract import (validate_prose, hard_prose_violations,
+                                                          validate_fidelity)
+        from app.services.examples.code_execution_check import executed_reference_violations
+        from app.services.examples.canonical_solutions import display_solution
+        from app.services.examples.trace_adapters import DETERMINISTIC_CODING_SLUGS
+        self.assertIn("heap_sort", DETERMINISTIC_CODING_SLUGS)
+        code = display_solution("heap_sort")
+        for seed in range(20):
+            a, tr, cards = self._cards("heap_sort", seed)
+            with self.subTest(seed=seed):
+                self.assertIsNotNone(cards, "heap_sort should generate deterministically (multi-anchor mapper)")
+                self.assertEqual(hard_prose_violations(validate_prose(cards, tr, a, code_anchored=True)), [])
+                self.assertTrue(validate_fidelity(cards, tr, a, validate_visual_state=False).ok)
+                self.assertEqual(executed_reference_violations(cards, code, tr), [])
+                for c in cards:
+                    for w in c["work"]:
+                        self.assertNotIn("carry out this step", w)            # no weak fallback
+                        self.assertNotIn("sorted prefix", w)                  # inner while != insertion's walk-left
+
+    def test_multi_anchor_only_engages_after_single_anchor_fails(self):
+        # The heap multi-anchor fallback must be strictly ADDITIVE: the single-anchor families still map exactly
+        # as before (a once-per-step line), so the fallback never gets a chance to remap them.
+        from app.services.examples.canonical_solutions import display_solution
+        from app.services.examples.code_execution_check import map_step_regions, _execute_on_instance
+        for slug in ("bubble_sort", "merge_sort", "bfs", "topological_sort", "tree_levelorder"):
+            a = ADAPTERS[slug]; tr = tp.select_instance(a, seed=3)
+            es, _, _ = _execute_on_instance(display_solution(slug), tr)
+            with self.subTest(slug=slug):
+                self.assertIsNotNone(map_step_regions(es, tr))                # still maps via single anchor
+
     def test_tree_levelorder_coding_generates_cleanly_across_seeds(self):
         # CP11b — level-order is BFS over a binary tree. Two fixes make it map: (1) the code-tracer builds the
         # tree from the adapter's adjacency dict + root (not by packing values into a complete tree), so the code

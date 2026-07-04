@@ -535,6 +535,23 @@ def map_step_regions(exec_steps: list, trace: Any) -> Optional[list]:
                    for k in range(len(idxs))]
         if len(regions) == n and _valid(regions):
             return regions
+    # Multi-phase fallback (heap-style): the once-per-step anchor above fails when a step is a HELPER CALL made
+    # from more than one site (heap_sort's sift_down: once in the build loop, once per extract) — no single
+    # source line then runs exactly n_ops times. Segment on the CALL STRUCTURE instead: each maximal excursion
+    # of the call stack ABOVE its base depth is one helper invocation = one step, and the region also carries the
+    # base-level lines just before it (the extract's swap before sift_down). Only reached after the single-anchor
+    # families have already returned, needs per-event call_stack, and is still cross-validated against the step
+    # states — so it cannot remap a single-anchor shape, and a shape it can't segment cleanly returns None.
+    depths = [len(e.get("call_stack") or []) for e in exec_steps]
+    if not has_init and depths and any(d > min(depths) for d in depths):
+        base = min(depths)
+        ends = [i for i in range(len(exec_steps))
+                if depths[i] > base and (i + 1 == len(exec_steps) or depths[i + 1] <= base)]
+        if len(ends) == n_ops == n:
+            starts = [0] + [e + 1 for e in ends[:-1]]
+            regions = [(s, e) for s, e in zip(starts, ends)]
+            if _valid(regions):
+                return regions
     return None
 
 

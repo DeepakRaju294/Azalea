@@ -102,6 +102,36 @@ def _annotate(code: str, snaps: list, step: Any) -> str:
         if code.startswith("while "):                                        # while ready:
             return "keep going while there are still ready nodes"
 
+    # --- HEAP SORT — sift-down body + the two phase drivers, in heap vocabulary. Gated on the step decision
+    # ("heapify index N" / "extract max V to position P"), and checked before the sort-loop templates so the
+    # inner `while 2*root+1 < size` isn't mistaken for insertion's walk-left. Comparisons summarize the outcome. ---
+    if _dec.startswith(("heapify", "extract")):
+        if code.startswith("n ="):                                           # n = len(arr)
+            return "n is the number of elements to heap-sort"
+        if _LOOP.match(code) and "n // 2" in code:                           # for i in range(n//2-1, -1, -1)
+            return "build a max-heap: sift every internal node down, last one first"
+        if _LOOP.match(code) and re.search(r"range\(\s*n\s*-\s*1", code):     # for end in range(n-1, 0, -1)
+            return "repeatedly move the largest to the end, shrinking the heap"
+        if re.match(r"^sift_down\(", code):                                   # sift_down(i, n) / sift_down(0, end)
+            return "sift this node down until the max-heap property holds again"
+        if code.startswith("while ") and "root" in code:                     # while 2*root+1 < size:
+            return "while this node still has at least a left child"
+        if re.match(r"^child\s*=\s*2\s*\*\s*root", code):                     # child = 2*root+1
+            return "the left child sits at index 2*root+1"
+        if code.startswith("if ") and "child + 1" in code:                    # if right child is larger
+            return "of the node's two children, take the larger one"
+        if re.match(r"^child\s*\+=\s*1", code):                               # child += 1
+            return "the right child is the larger — compare against it"
+        if code.startswith("if ") and ">=" in code and "root" in code:        # if arr[root] >= arr[child]:
+            return "if the parent already outranks its largest child, the heap is restored — stop"
+        if re.match(r"^root\s*=\s*child", code):                              # root = child
+            return "descend to that child and keep sifting"
+        m0 = re.match(r"^arr\[0\]\s*,\s*arr\[(\w+)\]\s*=", code)              # arr[0], arr[end] = arr[end], arr[0]
+        if m0:
+            a0 = _read("arr", "0", v0)
+            return (f"move the current max {a0} out to the sorted tail, and bring the last heap value up to the root"
+                    if a0 is not None else "move the current max out to the sorted tail")
+
     # --- BINARY TREE TRAVERSAL (level-order/BFS over node.left/node.right). The queue holds TreeNode OBJECTS,
     # so child values aren't scalars in the snapshots; name the current node from the verified "visit N" step and
     # describe the child links structurally. Checked before the graph block (whose queue templates assume an
@@ -274,7 +304,7 @@ def _work_from_slice(events: list, exec_lines: list, step: Any, line_map: dict) 
     work, code_lines = [], []
     for ln, snaps in lines:
         code = _COMMENT.sub("", exec_lines[ln - 1]).strip()
-        if not code:
+        if not code or code.startswith("def "):                              # a `def` line is not executable work
             continue
         work.append(f"{code}  // {_annotate(code, snaps, step)}")
         code_lines.append([line_map[ln]] if ln in line_map else [])

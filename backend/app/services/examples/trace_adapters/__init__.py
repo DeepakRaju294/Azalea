@@ -53,6 +53,7 @@ DETERMINISTIC_CODING_SLUGS = frozenset({
     "bfs",                                                                         # graph traversal (CP11a)
     "topological_sort",                                                            # Kahn's in-degree queue (CP11b)
     "tree_levelorder",                                                             # BFS over a binary tree (CP11b)
+    "heap_sort",                                                                   # two-phase heapify+extract (CP11c)
 })
 
 __all__ = ["ADAPTERS", "DECLARATIONS", "NARRATION_SLUGS", "DETERMINISTIC_CODING_SLUGS"]
