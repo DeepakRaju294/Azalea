@@ -346,13 +346,15 @@ execution shape before its instances count as reuse. Sub-steps:
     ("values below the pivot 31 (9, 24) move to the left") not one snapshot. Both verified across 5 sorts ×
     40 seeds; the per-line check now also skips `if`-comparison lines (a condition names the bound, not an
     attribution). Designed ONCE, so new families inherit them.
-  - **Next family 🔴 (graph traversal BFS/DFS):** the code shape is tractable (`node = queue.popleft()` is a
-    clean once-per-step anchor) BUT the **blocker is instance recovery** — the graph is NOT on the trace
-    (initial_state has only queue/visited/order; provenance has the seed/candidate_id; the graph lives only in
-    the problem TEXT). `_execute_on_instance` must recover the graph (re-run `adapter.candidates(seed)` to the
-    matching candidate_id, OR parse the problem) and `trace_execution`'s `_build_args` must accept a graph
-    input, before the region mapper + new annotation templates (popleft/enqueue/visit) apply. This is the real
-    per-family generalization work the stress-test exists to surface.
+  - **Graph traversal — BFS ✅ (done):** the generalization proof. Instance recovery landed
+    (`_recover_input_spec` re-runs the adapter's seeded candidate pool to the provenance `candidate_id` — the
+    graph is not on the trace); `_build_args` learned graph+start; graph annotation templates author the visit
+    body from the verified step ("take A from the front of the queue", "mark B, E visited"). BFS ships
+    deterministically end-to-end, clean across seeds (`test_code_reproduces_trace.GraphFamilyDeterministicCoding`).
+  - **Still LLM (fall back gracefully):** RECURSIVE traversals (DFS `order += dfs(...)`) don't map to one slice
+    per step → `map_step_regions` returns None → LLM path. Recursion is the next mapper shape to add (quicksort
+    maps only because each partition's array state materializes in order; a recursion that accumulates a return
+    value does not). Weighted-graph families (Dijkstra/Prim/Kruskal) also fall back until their state shapes map.
 - **11b — Roll the deterministic path out family by family** (memory-layout, formula/geometric, …), each with
   its region-mapper shape + annotation templates + visual kind, gated by the CP10 generation test extended to
   that family.
