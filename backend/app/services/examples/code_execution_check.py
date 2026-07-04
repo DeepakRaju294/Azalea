@@ -347,22 +347,49 @@ def reproduces_trace_applies(trace: Any, code: Optional[str]) -> bool:
     return bool(code) and find_entry_function(code or "") is not None and _input_array(trace) is not None
 
 
+def _execute_on_instance(code: Optional[str], trace: Any):
+    """Run the coding topic on the trace's own array and return (raw_steps, result), or None when it can't be
+    run. The DISPLAYED code has imports stripped (design choice), so a `deque`/`heapq` solution won't run as
+    shown — fall back to the CANONICAL source (imports intact) for the same adapter, which is the same
+    algorithm the display was derived from. Line numbers may differ, but the checks compare values/states,
+    not line numbers, so the canonical run is an exact stand-in. None only if neither form runs."""
+    arr = _input_array(trace)
+    if arr is None:
+        return None
+    from app.services.visual_v2.simulators.code_tracer import trace_execution
+    candidates = []
+    if code and find_entry_function(code):
+        candidates.append(code)
+    slug = (getattr(trace, "provenance", None) or {}).get("adapter")
+    if slug:
+        try:
+            from .canonical_solutions import canonical_python
+            canon = canonical_python(slug)
+        except Exception:  # noqa: BLE001
+            canon = None
+        if canon and canon not in candidates and find_entry_function(canon):
+            candidates.append(canon)
+    for src in candidates:
+        try:
+            return trace_execution(src, find_entry_function(src), {"array": list(arr)})
+        except Exception:  # noqa: BLE001 — try the next candidate (e.g. canonical with imports)
+            continue
+    return None
+
+
 def code_reproduces_trace(code: str, trace: Any) -> list:
     """[] when the canonical code, run on the trace's own instance, reproduces the trace — same final answer
     AND every trace step's state occurs among the code's real intermediate states (proving the code is the
     SAME variant as the walkthrough, not a lookalike whose per-line annotations would contradict it).
     Non-empty = variant drift or a broken solution; the code must not be shown beside this walkthrough. SKIPS
     non-array shapes (returns [] — never a false positive)."""
-    entry = find_entry_function(code)
     arr = _input_array(trace)
-    if not entry or arr is None:
+    if arr is None:
         return []
-    try:
-        from app.services.visual_v2.simulators.code_tracer import trace_execution
-        steps, result = trace_execution(code, entry, {"array": list(arr)})
-    except Exception:  # noqa: BLE001 — the DISPLAYED code may be a snippet (missing imports / free names), so it
-        return []      # cannot be run here: SKIP rather than withhold a valid topic. A genuinely broken canonical
-                       # solution is caught at build time (test_canonical_solutions), not by a false runtime withhold.
+    run = _execute_on_instance(code, trace)
+    if run is None:                                          # cannot run either form -> unverifiable, skip
+        return []
+    steps, result = run
     out: list = []
     expected = (getattr(trace, "final_answer", None) or {}).get("sorted")
     if expected is not None and result != expected:
@@ -419,15 +446,12 @@ def executed_reference_violations(cards: list, code: str, trace: Any) -> list:
     """Per-line value check (see block comment). Returns (code, detail) tuples for hard violations — a card's
     // comment attributing a value an indexed expression never held at that step. [] when out of scope or the
     execution can't be mapped (never a false positive)."""
-    entry = find_entry_function(code or "")
-    arr = _input_array(trace)
-    if not entry or arr is None:
+    if _input_array(trace) is None:
         return []
-    try:
-        from app.services.visual_v2.simulators.code_tracer import trace_execution
-        exec_steps, _ = trace_execution(code, entry, {"array": list(arr)})
-    except Exception:  # noqa: BLE001 — execution defects are the reproduction gate's job, not this one
+    run = _execute_on_instance(code, trace)      # displayed code (imports stripped) or the canonical fallback
+    if run is None:
         return []
+    exec_steps, _ = run
     regions = _step_regions(exec_steps, trace)
     if regions is None:
         return []

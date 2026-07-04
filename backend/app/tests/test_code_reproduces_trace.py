@@ -57,15 +57,27 @@ class DriftIsCaught(unittest.TestCase):
         self.assertFalse(reproduces_trace_applies(tr, CANONICAL_SOLUTIONS["kruskal"]))
         self.assertEqual(code_reproduces_trace(CANONICAL_SOLUTIONS["kruskal"], tr), [])
 
-    def test_unrunnable_snippet_skips_not_withholds(self):
-        # the DISPLAYED code strips imports (design choice) -> merge's `deque` is undefined and the code
-        # cannot run. The gate must SKIP (return []), never treat an execution failure as drift and withhold
-        # a valid topic. (Regression: importless merge code was wrongly withholding.)
+    def test_importless_displayed_code_verifies_via_canonical_fallback(self):
+        # the DISPLAYED code strips imports (design choice) -> merge's `deque` is undefined and the displayed
+        # form cannot run. Rather than skip (which would blind the check for merge/heap), the gate falls back
+        # to the CANONICAL source (imports intact) for the same adapter and still verifies. It must never
+        # WITHHOLD over the stripped import (regression), but it must still catch a real merge bug.
         tr = tp.select_instance(ADAPTERS["merge_sort"], seed=0)
         importless = "\n".join(l for l in CANONICAL_SOLUTIONS["merge_sort"].splitlines() if "import" not in l)
-        self.assertIn("deque", importless)                          # uses deque
-        self.assertNotIn("import", importless)                      # but cannot resolve it
-        self.assertEqual(code_reproduces_trace(importless, tr), [])
+        self.assertIn("deque", importless)
+        self.assertNotIn("import", importless)
+        self.assertEqual(code_reproduces_trace(importless, tr), [])   # verified via canonical, not a withhold
+
+    def test_merge_append_misattribution_caught_despite_stripped_import(self):
+        # #375: `merged.append(left[i]) // append 20` where left[i] is 26 — the per-line check must catch it
+        # even though the DISPLAYED merge code (stripped `deque`) can't run, via the canonical fallback.
+        a = ADAPTERS["merge_sort"]
+        tr = a.reference({"array": [26, 20, 49, 16, 35]})             # first merge: left=[26], right=[20]
+        importless = "\n".join(l for l in CANONICAL_SOLUTIONS["merge_sort"].splitlines() if "import" not in l)
+        cards = [{"work": ["x"], "code_lines": [[1]]} for _ in tr.steps]
+        cards[1] = {"work": ["merged.append(left[i])  // append 20 to the merged run"], "code_lines": [[1]]}
+        v = executed_reference_violations(cards, importless, tr)
+        self.assertTrue(any(c == "code_comment_value_mismatch" for c, _ in v))
 
 
 class WiredIntoPipeline(unittest.TestCase):
