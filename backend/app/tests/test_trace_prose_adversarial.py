@@ -58,7 +58,10 @@ class LyingFormatterIsCaught(unittest.TestCase):
                      "tree_levelorder", "quadratic", "kinematics", "bst_search", "longest_increasing_subsequence", "coin_change", "n_queens", "bellman_ford", "union_find", "euclid_gcd", "induction_proof", "floyd_warshall", "sieve_of_eratosthenes", "topological_sort",
                      ] + [s.slug for s in __import__(
                          "app.services.examples.trace_adapters.families.formula_engine",
-                         fromlist=["registered_specs"]).registered_specs()]   # every live FormulaSpec (CP12b)
+                         fromlist=["registered_specs"]).registered_specs()   # every live FormulaSpec (CP12b)
+                     ] + [s.slug for s in __import__(
+                         "app.services.examples.trace_adapters.families.rewrite_engine",
+                         fromlist=["registered_specs"]).registered_specs()]   # every live RewriteSpec (CP12c)
 
     def _trace(self, slug):
         a = ADAPTERS[slug]

@@ -248,13 +248,17 @@ MANIFEST: dict[str, dict[str, Any]] = {
 
 
 def _inject_formula_specs() -> None:
-    """Derive the manifest entry + routing rule for every registered FormulaSpec from the spec itself, so the
-    formula concepts have exactly ONE source of truth (families/formula_specs.py). Imported lazily to avoid an
-    import cycle at module load (formula_engine imports decl/example_spec, not this module)."""
-    from .families.formula_engine import manifest_entry, registered_specs, routing_rule
-    for spec in registered_specs():
-        MANIFEST.setdefault(spec.slug, manifest_entry(spec))
-        ROUTING_RULES.setdefault(spec.slug, routing_rule(spec))
+    """Derive the manifest entry + routing rule for every registered FormulaSpec (T6) and RewriteSpec (T7) from
+    the spec itself, so those concepts have exactly ONE source of truth (families/*_specs.py). Imported lazily
+    to avoid an import cycle at module load (the engines import decl/example_spec, not this module)."""
+    from .families import formula_engine as fe
+    from .families import rewrite_engine as re_
+    for spec in fe.registered_specs():
+        MANIFEST.setdefault(spec.slug, fe.manifest_entry(spec))
+        ROUTING_RULES.setdefault(spec.slug, fe.routing_rule(spec))
+    for spec in re_.registered_specs():
+        MANIFEST.setdefault(spec.slug, re_.manifest_entry(spec))
+        ROUTING_RULES.setdefault(spec.slug, re_.routing_rule(spec))
 
 
 def _fill_defaults() -> None:
