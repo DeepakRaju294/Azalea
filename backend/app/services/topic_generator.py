@@ -310,8 +310,13 @@ def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> l
     # Coding members are left as their auto-titled "Implementing <Canonical>".
     canon = {slug: name for name, slug in fam["members"]}
     for t in fam_block:
-        if _ttype(t) == "algorithm_walkthrough" and _slug(t) in canon:
-            t["title"] = f"{canon[_slug(t)]} Algorithm Walkthrough"
+        s = _slug(t)
+        if s not in canon:
+            continue
+        if _ttype(t) == "algorithm_walkthrough":
+            t["title"] = f"{canon[s]} Algorithm Walkthrough"
+        elif _ttype(t) == "coding_implementation":
+            t["title"] = f"Implementing {canon[s]}"     # consistent — never "…in Code" on some, bare on others
     first, famset = fam_positions[0], set(fam_positions)
     result: list[dict[str, Any]] = []
     for i, t in enumerate(topics):
