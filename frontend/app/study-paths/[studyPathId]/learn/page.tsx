@@ -6379,6 +6379,17 @@ const MATH_FUNCTION_WORDS = new Set([
   "pi", "mu", "sigma", "theta", "alpha", "beta", "lambda", "frac", "int", "sum", "prod",
 ]);
 
+// The generator sometimes stored a meta-sentence ("No example role is necessary for this overview.") in a
+// card's example field instead of leaving it blank, which renders as an empty "Example" box. Suppress those
+// (new lessons already drop them server-side; this hides them in already-generated lessons). Kept NARROW so
+// real illustrative examples are never hidden.
+const NO_EXAMPLE_FILLER =
+  /^\s*(?:no|an?)\s+example\b[^.]*\b(?:necessary|needed|required|applicable|provided)\b|^\s*example\b[^.]*\b(?:is|are)\s+not\s+(?:necessary|needed|required|applicable)\b|^\s*not\s+applicable\.?\s*$|^\s*n\/?a\.?\s*$/i;
+
+function isNoExampleFiller(text?: string | null): boolean {
+  return NO_EXAMPLE_FILLER.test(String(text || "").trim());
+}
+
 function shouldAutoRenderAsMathStrict(text: string) {
   const cleaned = String(text || "").replace(/^\s*-\s*/, "").trim();
   if (!cleaned || cleaned.length > 220) {
@@ -7079,7 +7090,7 @@ function LearningCard({
           </div>
         )}
 
-        {!guidanceMode && card?.example && (
+        {!guidanceMode && card?.example && !isNoExampleFiller(card.example) && (
           <div className="mt-5 rounded-2xl border border-border bg-background p-4">
             <p className="text-sm font-bold text-foreground">Example</p>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">

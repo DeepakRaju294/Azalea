@@ -70,6 +70,21 @@ _EMPTY_VISUAL_PLAN: dict[str, Any] = {
 
 _EMPTY_MICRO_CHECK: dict[str, str] = {"type": "", "prompt": "", "answer": ""}
 
+# The LLM sometimes fills a card's `example` field with a meta-sentence saying no example is needed
+# ("No example role is necessary for this overview.") instead of leaving it blank — which renders as an empty
+# "Example" box on the card. Treat these as no example. Kept NARROW so real illustrative examples (code
+# snippets, "inorder(root) on a BST...", "A -> B -> C") are never suppressed.
+_NO_EXAMPLE_FILLER = re.compile(
+    r"^\s*(?:no|an?)\s+example\b[^.]*\b(?:necessary|needed|required|applicable|provided)\b"
+    r"|^\s*example\b[^.]*\b(?:is|are)\s+not\s+(?:necessary|needed|required|applicable)\b"
+    r"|^\s*not\s+applicable\.?\s*$|^\s*n/?a\.?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_no_example_filler(text: str) -> bool:
+    return bool(_NO_EXAMPLE_FILLER.search(str(text or "").strip()))
+
 _VISUAL_TYPE_ALIASES: dict[str, str] = {
     "comparison_table": "comparison_table",
     "state_change": "state_change",
@@ -542,6 +557,8 @@ def _lean_card_to_legacy(
         or lean_card.get("example_text")
         or ""
     ).strip()
+    if _is_no_example_filler(example_text):
+        example_text = ""  # drop "no example needed" meta-filler so no empty Example box renders
     explanation = str(lean_card.get("explanation") or "").strip()
     visual_description = str(lean_card.get("visual_description") or "").strip()
     visual_type = _normalize_visual_type(lean_card.get("visual_type"))
