@@ -113,6 +113,11 @@ _SUBJECT_FRAMING_WORDS: frozenset[str] = frozenset({
     # (not "Implementing Analyzing Quick Sort") AND the same-subject dedup collapses the duplicate.
     "analyzing", "analyze", "analysis", "examining", "examine", "learning", "learn", "mastering", "master",
     "discovering", "discover", "investigating", "investigate", "applying",
+    # PEDAGOGICAL-ROLE framing: these name a topic's teaching role (worked examples / practice / application),
+    # not its subject. Stripping them lets "Completing the Square: Example Problems" reduce to the bare subject
+    # so it collapses with the "...Process" walkthrough of the same subject (they generate the same lesson).
+    "example", "examples", "problem", "problems", "practice", "exercise", "exercises", "application",
+    "applications", "applied", "worked", "solving", "solve", "solution", "solutions",
 })
 
 
@@ -176,6 +181,59 @@ def _drop_same_type_subject_duplicates(topics: list[dict[str, Any]]) -> list[dic
                 seen.append((ttype, tset, despaced))
         kept.append(topic)
     return kept or topics  # never drop everything
+
+
+# Full "method lesson" types — each independently emits a background + process + worked-example + practice
+# lesson. Two of these for the SAME subject duplicate each other: a process_walkthrough AND a
+# problem_solving_application of "completing the square" produce the same steps AND the same worked example, so
+# the learner reads the lesson twice ("topics other than intro feel very similar"). coding_implementation
+# (a legit teach-then-code follow-up) and concept_intuition (intuition before mechanics) are deliberately NOT
+# in this set — those are valid same-subject companions, not duplicates.
+_METHOD_LESSON_TYPES = frozenset({
+    "process_walkthrough", "algorithm_walkthrough", "data_structure_operation", "problem_solving_application",
+})
+# When several method lessons share a subject, keep the one that TEACHES the method (a walkthrough) over one
+# that merely applies/examples it; ties keep the earlier topic.
+_METHOD_LESSON_PRIORITY = {
+    "algorithm_walkthrough": 3, "data_structure_operation": 3, "process_walkthrough": 3,
+    "problem_solving_application": 1,
+}
+
+
+def _collapse_same_subject_method_topics(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A single simple procedure often gets decomposed into TWO full method lessons of DIFFERENT types (e.g. a
+    process_walkthrough AND a problem_solving_application of the same subject). Both regenerate the same
+    background, steps, and worked example — pure duplication. Keep the method-teaching topic per subject
+    (walkthrough > application; ties keep the earlier), drop the same-subject duplicates. Complements
+    _drop_same_type_subject_duplicates, which only collapses SAME-type pairs. Never empties the path."""
+    domain = _path_domain_tokens(topics)
+
+    def _tt(t: dict[str, Any]) -> str:
+        return str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
+
+    winner_by_subject: dict[str, int] = {}  # subject-key -> index of the topic kept so far
+    drop_idx: set[int] = set()
+    for idx, t in enumerate(topics):
+        if _tt(t) not in _METHOD_LESSON_TYPES:
+            continue
+        _, subj = _subject_tokens(t.get("title"), domain)
+        if not subj:
+            continue
+        prev = winner_by_subject.get(subj)
+        if prev is None:
+            winner_by_subject[subj] = idx
+            continue
+        cur_pri = _METHOD_LESSON_PRIORITY.get(_tt(t), 2)
+        prev_pri = _METHOD_LESSON_PRIORITY.get(_tt(topics[prev]), 2)
+        loser, keeper = (prev, idx) if cur_pri > prev_pri else (idx, prev)
+        drop_idx.add(loser)
+        winner_by_subject[subj] = keeper
+        _log.info("topic_generator: collapsed same-subject method topic %r (kept %r)",
+                  topics[loser].get("title"), topics[keeper].get("title"))
+    if not drop_idx:
+        return topics
+    kept = [t for i, t in enumerate(topics) if i not in drop_idx]
+    return kept or topics
 
 
 _CODE_ABLE_TYPES = frozenset({"algorithm_walkthrough", "data_structure_operation"})
@@ -884,6 +942,10 @@ Chunk index: {chunk.chunk_index}
     # same-type topic for the same subject (e.g. a "Process Overview" walkthrough next to a
     # "Step by Step" walkthrough for quick sort) before it becomes a duplicate lesson.
     cleaned_topics = _drop_same_type_subject_duplicates(cleaned_topics)
+    # Also collapse DIFFERENT-type method lessons of the same subject (e.g. a process_walkthrough AND a
+    # problem_solving_application of "completing the square") — both regenerate the same steps + worked example,
+    # so keep the teaching walkthrough and drop the duplicate application.
+    cleaned_topics = _collapse_same_subject_method_topics(cleaned_topics)
     # Deterministically fill in a FAMILY SURVEY's canonical members (e.g. sorting -> all five sorts) that the
     # decomposition LLM under-generated. The pipeline is otherwise subtractive, so this is the only place the
     # canonical set is guaranteed. Runs BEFORE the coding backfill so injected walkthroughs get coding topics.
