@@ -336,8 +336,8 @@ def _cts_render(s: dict) -> str:
     h, p = s["h"], s["phase"]
     if p == 0:
         return f"x^2 + {2 * h}x"
-    if p == 1:
-        return f"(x + {h})^2 - {h}^2"
+    if p == 1:                                            # add AND subtract (b/2)^2 -- the load-bearing step
+        return f"x^2 + {2 * h}x + {h * h} - {h * h}"
     return f"(x + {h})^2 - {h * h}"
 
 
@@ -347,11 +347,12 @@ COMPLETE_THE_SQUARE = DerivationSpec(
     problem_template="Complete the square for {start}.",
     setup=_cts_setup, render=_cts_render,
     steps=[
-        DerivationStep("add_square", "completing-the-square rule", lambda s: {**s, "phase": 1},
-                       lambda s: f"half the x-coefficient is {s['h']}; add and subtract {s['h']}^2 to form "
-                                 f"(x + {s['h']})^2 - {s['h']}^2"),
-        DerivationStep("evaluate", "arithmetic", lambda s: {**s, "phase": 2},
-                       lambda s: f"{s['h']}^2 = {s['h'] * s['h']}")],
+        DerivationStep("add_and_subtract_square", "completing-the-square rule", lambda s: {**s, "phase": 1},
+                       lambda s: f"half of {2 * s['h']} is {s['h']}, and {s['h']}^2 = {s['h'] * s['h']}; add and "
+                                 f"subtract {s['h'] * s['h']} so the value is unchanged"),
+        DerivationStep("factor_the_trinomial", "perfect-square pattern", lambda s: {**s, "phase": 2},
+                       lambda s: f"the first three terms x^2 + {2 * s['h']}x + {s['h'] * s['h']} are the perfect "
+                                 f"square (x + {s['h']})^2")],
     conclusion=lambda s: f"(x + {s['h']})^2 - {s['h'] * s['h']}",
     answer=lambda s: {"h": s["h"]},
     oracle=lambda s0: {"h": s0["h"]},

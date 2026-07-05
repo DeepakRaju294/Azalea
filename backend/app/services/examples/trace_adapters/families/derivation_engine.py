@@ -76,9 +76,11 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
     state = {k: v for k, v in example_input.items() if k != "_id"}
     start = spec.render(state)
 
-    d1 = f"derive: simplify {start}"
-    r1 = f"start from {start} and apply one algebra rule at a time"
-    e1 = f"Start: {start}."
+    # Transformational framing (NOT "state update"): begin with the expression, then apply one NAMED rule per
+    # step, before -> after. No data-structure state, no repeated action.
+    d1 = f"begin with {start}"
+    r1 = f"we start from {start} and apply one rule per step until we reach the result"
+    e1 = f"We begin with {start}."
     steps = [Step(id="s1", operation="state_claim", prior_state={"problem": spec.title},
                   state_after={**state, "expr": start}, inputs=dict(state), decision=d1, reason=r1,
                   visual_state={"kind": "equation", "expr": start}, expected_visible_result=e1,
