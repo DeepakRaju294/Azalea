@@ -343,7 +343,11 @@ def _cts_render(s: dict) -> str:
 
 COMPLETE_THE_SQUARE = DerivationSpec(
     slug="complete_the_square", title="completing the square", family="algebra",
-    aliases=["complete the square", "completing the square"], priority=79,
+    # Keep the no-"the" variants: topic titles like "Implementing Completing Square Worked Examples" drop
+    # "the" as a framing word, and without these aliases they route to None — which slips the non-coding
+    # guard in topic_generator._fix_noncoding_coding_topics (it only acts on subjects that route somewhere).
+    aliases=["complete the square", "completing the square", "complete square", "completing square"],
+    priority=79,
     problem_template="Complete the square for {start}.",
     setup=_cts_setup, render=_cts_render,
     steps=[
