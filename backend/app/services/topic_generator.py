@@ -182,6 +182,54 @@ _CODE_ABLE_TYPES = frozenset({"algorithm_walkthrough", "data_structure_operation
 _NO_CODE_GOAL_MARKERS = ("no code", "without code", "no coding", "conceptual only", "concept only",
                          "theory only", "no programming")
 
+# Topic types that concretely TEACH a subject (so its concept is a target of the path, not a prerequisite).
+_TEACHING_TYPES = frozenset({"algorithm_walkthrough", "data_structure_operation", "coding_implementation",
+                             "process_walkthrough", "worked_example"})
+# Prerequisite classification (intro consolidation). A prereq is ASSUMED (a whole skill/topic — silent now,
+# linked to its own study path later) or GLOSSED (a single statement — a fact/definition/notation/formula —
+# stated in one intro line). The test is STRUCTURAL ("is P a statement or a skill/topic?"), not a fuzzy guess
+# about what the learner knows. `_ASSUMED_FOUNDATIONS` = broad upstream skills we always assume; a title naming
+# a specific form/notation/theorem is a STATEMENT -> gloss; the safe default is gloss.
+_ASSUMED_FOUNDATIONS = frozenset({
+    "arithmetic", "algebra", "algebraic", "quadratic", "quadratics", "factoring", "factorization",
+    "exponent", "exponents", "fraction", "fractions", "polynomial", "polynomials", "function", "functions",
+    "variable", "variables", "equation", "equations", "expression", "expressions", "inequality", "inequalities",
+    "integer", "integers", "ratio", "ratios", "proportion", "proportions", "logarithm", "logarithms",
+    "trigonometry", "geometry", "coordinate", "coordinates", "vector", "vectors", "matrix", "matrices",
+    "probability", "statistics", "graph", "graphs", "array", "arrays", "loop", "loops", "recursion",
+})
+_STATEMENT_MARKERS = ("form", "formula", "notation", "convention", "theorem", "identity", "coefficient",
+                      "property", " rule", "definition of", "law of")
+
+
+def _stem(tok: str) -> str:
+    """Light stemmer so "completing"/"complete" and "equations"/"equation" collapse to one subject key."""
+    for suf in ("ing", "ed", "es"):
+        if len(tok) > len(suf) + 2 and tok.endswith(suf):
+            tok = tok[: -len(suf)]
+            break
+    if len(tok) > 3 and tok.endswith("s"):
+        tok = tok[:-1]
+    if len(tok) > 3 and tok.endswith("e"):
+        tok = tok[:-1]
+    return tok
+
+
+def _stem_subject_set(title: str, domain: frozenset[str]) -> frozenset[str]:
+    return frozenset(_stem(t) for t in _subject_tokens(title, domain)[0])
+
+
+def _classify_prerequisite(title: str) -> str:
+    """ASSUME (a whole skill/topic) vs GLOSS (a single statement). Structural, not a knowledge guess: a title
+    naming a specific form / notation / theorem / coefficient convention is a statement -> gloss; a broad
+    foundation skill -> assume; default gloss (a stray line never hurts; a wrongly-assumed skill strands a
+    learner, and assumed skills are linked out anyway)."""
+    t = str(title or "").lower()
+    if any(m in t for m in _STATEMENT_MARKERS):
+        return "gloss"
+    words = set(_re.findall(r"[a-z]+", t))
+    return "assume" if (words & _ASSUMED_FOUNDATIONS) else "gloss"
+
 
 def _subject_phrase(title: str) -> str:
     """A readable subject from a title (framing words removed) — e.g. 'Trace Quick Sort Algorithm
@@ -367,6 +415,60 @@ def _fix_noncoding_coding_topics(topics: list[dict[str, Any]]) -> list[dict[str,
                           "process_walkthrough (adapter %s is coding:False)", title, slug)
         out.append(t)
     return out
+
+
+def _fold_prereqs_into_intro(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Prereqs live in the INTRO; every other topic teaches ONLY its own concept. A `concept_intuition` whose
+    subject is NOT taught on the path (no walkthrough/process/coding of it) is a prerequisite, not the target —
+    remove it from the body and record it on the intro: ASSUMED foundations are listed (linked to their own path
+    later), GLOSSED statements get a one-line mention. Every body topic is annotated with `assumed_prerequisites`
+    so its generation does not re-explain prereq material. Off via AZALEA_FOLD_PREREQS=0."""
+    if os.getenv("AZALEA_FOLD_PREREQS", "1") == "0":
+        return topics
+
+    def _tt(t: dict[str, Any]) -> str:
+        return str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
+
+    intro = next((t for t in topics if _tt(t) == "study_path_introduction"), None)
+    if intro is None:
+        return topics  # nowhere to fold prereqs -> leave the path unchanged
+
+    domain = _path_domain_tokens(topics)
+    taught_sets = [_stem_subject_set(t.get("title"), domain) for t in topics if _tt(t) in _TEACHING_TYPES]
+
+    def _is_taught(concept: frozenset[str]) -> bool:
+        # taught if a majority of the concept's (stemmed) subject tokens appear in some taught topic's subject
+        return bool(concept) and any(len(concept & ts) / len(concept) >= 0.5 for ts in taught_sets)
+
+    kept: list[dict[str, Any]] = []
+    assumed: list[str] = []
+    glossed: list[dict[str, str]] = []
+    for t in topics:
+        if _tt(t) == "concept_intuition":
+            subj = _stem_subject_set(t.get("title"), domain)
+            if subj and not _is_taught(subj):                    # a prerequisite, not a taught target concept
+                cls = _classify_prerequisite(t.get("title"))
+                phrase = _subject_phrase(t.get("title"))
+                if cls == "assume":
+                    assumed.append(phrase)
+                else:
+                    glossed.append({"concept": phrase, "purpose": str(t.get("purpose") or "")})
+                _log.info("topic_generator: folded prerequisite %r into intro (%s)", t.get("title"), cls)
+                continue
+        kept.append(t)
+
+    if not (assumed or glossed):
+        return topics
+    if not any(_tt(t) not in ("study_path_introduction",) for t in kept):
+        return topics  # never leave a path with only the intro
+
+    intro["assumed_prerequisites"] = sorted(set(assumed))
+    intro["glossed_prerequisites"] = glossed
+    all_names = sorted(set(assumed) | {g["concept"] for g in glossed})
+    for t in kept:
+        if _tt(t) != "study_path_introduction":
+            t["assumed_prerequisites"] = all_names               # body: assume these; do not re-explain
+    return kept
 
 
 def _append_missing_coding_topics(topics: list[dict[str, Any]], goal: str) -> list[dict[str, Any]]:
@@ -774,6 +876,10 @@ Chunk index: {chunk.chunk_index}
     # Guarantee a coding_implementation follow-up exists for each algorithm/data-structure subject
     # (the blueprint rule was prompt-only, so the model often dropped it -> "coding never generated").
     cleaned_topics = _append_missing_coding_topics(cleaned_topics, goal)
+    # Prereqs live in the intro; every other topic teaches only its own concept. Fold prerequisite
+    # concept_intuition topics (subject not taught on the path) into the intro (assume vs gloss), and mark body
+    # topics with the prereqs to assume — runs after the teaching topics are finalized, before ordering.
+    cleaned_topics = _fold_prereqs_into_intro(cleaned_topics)
     # Consolidate a family survey into canonical order, each walkthrough next to its coding follow-up
     # (runs AFTER the coding backfill so both halves of each member are present to group).
     cleaned_topics = _order_canonical_family(cleaned_topics, goal)
