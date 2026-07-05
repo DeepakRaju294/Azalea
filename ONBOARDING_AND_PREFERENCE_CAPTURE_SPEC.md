@@ -153,12 +153,38 @@ can then honestly say "Examples are shown in Python for this path" without false
 - Python applied because **no explicit request** was made and it is the only/default route → `default_applied`;
 - Python applied after a **different requested language** couldn't be honored → `fallback_applied`.
 
+**Migration — do not overload `StudyPath.language`.** The existing column is non-null and defaults to `"python"`
+for **every** path, which contradicts the honest-language model. Persist the new fields as **distinct** columns
+(`requested_language · applied_language · language_status · language_selector_status`); migrate the old
+`StudyPath.language` → `requested_language` **for coding paths only**, inactive elsewhere, and **never** display
+"shown in Python" on a math/science/concept path.
+
 **Compact-confirm provenance.** When the compact confirmation (Q8) is shown and the learner proceeds **without
 edits**: visible **inferred** values become `user_confirmed`; visible **saved** values stay `saved_default`
 unless changed; values **not shown** stay `inferred`/`system_default`. A user action on a *visible* confirmation
 counts as confirmation; an invisible default does not. This lets later logic distinguish "accepted Math after
 seeing it" from "inferred Math, never seen" — which matters for override precedence and classifier-quality
 telemetry.
+
+### 3.1 Path lifecycle (provisional → confirmed → generated)
+```
+1. user submits prompt
+2. backend classifies → persists provisional StudyPath.domain + classification_status (Phase 0)
+3. backend returns a lightweight PlanPreview (§5)
+4. onboarding shows confirmation / preferences
+5. user confirms or overrides
+6. backend persists path override + provenance
+7. topic generation runs from the EFFECTIVE domain + effective preferences
+8. already-generated content is NEVER silently replaced
+```
+Domain changed **before** generation → use the new domain immediately. Domain changed **after** topics/cards
+exist → keep the current path stable and offer an **explicit regenerate** (never silent).
+
+> **⚠ OPEN DECISION — `StudyPathPreference` mutability (not baked in here).** Is `StudyPathPreference` a
+> **mutable "current settings"** record, or an **immutable per-generation snapshot** (with `StudyPath` pointing
+> at the active revision)? Immutable snapshots make reproducibility + "why did this path look like this?"
+> cleaner; mutable is simpler for v1. Lean noted but **undecided**: v1 mutable + a `contract_version` stamp,
+> revisit for v2. Resolve before building the persistence layer.
 
 ---
 

@@ -217,13 +217,20 @@ language · a compatible quantitative adapter family.
   migration, since `create_all` won't ALTER a live Postgres; a `provenance` field travels with it). Thread:
   `classify_domain` at path-creation → `StudyPath.domain` → `generate_topics_from_chunks(domain=…)` → gate.
   Lesson generation needs no new signal (it reads the now-gated `topic.course_type`).
-- **Q33 — pipeline order (resolved).** `classify → enrich_topic_with_course_type → _gate_topic_types_by_domain →
-  (domain-gated) _append_missing_coding_topics → _collapse_same_subject_method_topics → _fold_prereqs_into_intro
-  → native-domain coverage validation (§4.2) → blueprint resolution → domain card-safety validation`. Coverage is
-  validated on the **final** set so the coding append can still repair a coding path.
-- **Q34 — transform changes (resolved).** **Retire** `_fix_noncoding_coding_topics` (a special case of the gate);
-  **domain-gate** `_append_missing_coding_topics` (never add coding on math/science paths); **keep**
-  `_collapse_same_subject_method_topics` and `_fold_prereqs_into_intro` (both domain-orthogonal).
+- **Q33 — pipeline order (resolved).** `classify → generate raw decomposition → enrich_topic_with_course_type
+  (+ annotate quantitative_center) → two-pass _gate_topic_types_by_domain **+ full-contract rewrite (§5.1)** →
+  (domain-gated) _expand_canonical_family / _order_canonical_family / _append_missing_coding_topics →
+  _collapse_same_subject_method_topics → _fold_prereqs_into_intro → native-domain coverage validation (§4.2) →
+  persist → blueprint resolution → domain card-safety validation`. **Invariant:** no transform after the gate may
+  create a forbidden topic type, coding-only relationship, or coding-only title without **re-entering domain
+  validation.** Coverage is validated on the **final** post-transform set.
+- **Q34 — transform changes (resolved).** **Retire** `_fix_noncoding_coding_topics` (a special case of the gate).
+  **All coding-only transforms run iff `domain == coding`** — one **shared predicate**, not scattered `if`s:
+  `_append_missing_coding_topics` · `_expand_canonical_family` · `_order_canonical_family` · coding
+  implementation-title synthesis · coding-family adapter backfills. (`_expand_canonical_family` deterministically
+  injects sort/graph walkthroughs — it must **never** fire because a math/science prompt shares a word.) **Keep**
+  `_collapse_same_subject_method_topics` and `_fold_prereqs_into_intro` (domain-orthogonal) — but they must use
+  `DOMAIN_TEACHING_TYPES` (§5.2), not the coding-only sets they use today.
 - **Classifier home.** New `app/services/domain_classifier.py`, called from the study-path creation route.
 - **Gate mechanism.** Post-classification remap is the hard guarantee; **also** make the
   `enrich_topic_with_course_type` prompt domain-aware to reduce remaps (lean: do both).
@@ -237,6 +244,39 @@ language · a compatible quantitative adapter family.
   (3) if a forbidden card still appears, **fail with `domain_card_safety_validation`**; (4) log the forbidden
   card type, source topic type, blueprint key, flag state. **No** frontend repair, card deletion, or fallback to
   an out-of-domain blueprint.
+
+### 5.1 Full-contract rewrite — `rewrite_topic_contract` (required on every remap)
+
+A remap that changes only `course_type` leaves a **structurally inconsistent** topic (`content_role=implementation`
+· `title="Implementing …"` · `practice_format=coding` · a coding follow-up) that either fails the
+`content_role`↔`topic_type` validator (`app/core/topic_decomposition.py` `resolve_topic_type`) or leaks coding
+wording back into a math card. So every remap calls **`rewrite_topic_contract(topic, target_type, domain)`**,
+rewriting: `course_type/topic_type · content_role · secondary_course_types · title framing · learner_outcome ·
+purpose · in_scope/out_of_scope · practice_format · any coding follow-up relationship · decomposition_metadata`
+(the fields that drive blueprint resolution). Target → required normalized `content_role`:
+
+| target type | required role |
+|---|---|
+| `math_formula_method` | `calculation` |
+| `proof_reasoning` | `proof` |
+| `science_mechanism` | `mechanism` (scientific=true) |
+| `algorithm_walkthrough` | `algorithm_trace` |
+| `data_structure_operation` | `operation` |
+| `coding_implementation` | `implementation` |
+| `concept_intuition` | `foundation` |
+| `process_walkthrough` | `mechanism` (scientific=false) |
+
+### 5.2 `DOMAIN_TEACHING_TYPES` — a fix to already-merged code
+
+Today `_TEACHING_TYPES` / `_MEMBER_TEACHING_TYPES` (`topic_generator.py`) are coding/process-only and **omit**
+`math_formula_method` · `proof_reasoning` · `science_mechanism`. So the moment the gate routes math to
+`math_formula_method`, `_fold_prereqs_into_intro` treats the *actual taught topic* as an untaught prerequisite
+(and canonical-family/coverage checks misjudge it too). Replace both with **one authoritative per-domain set**
+consumed by prereq-folding, native-coverage, same-subject dedup, ordering, and completion checks:
+- coding → `{algorithm_walkthrough, data_structure_operation, coding_implementation, process_walkthrough}`
+- math → `{math_formula_method, proof_reasoning}`
+- science → `{science_mechanism, math_formula_method when quantitative_center}`
+- concept → `{concept_intuition, compare_distinguish, process_walkthrough when genuinely procedural}`
 
 ---
 
@@ -305,7 +345,9 @@ comparable). Validate on completing-the-square + a coding + a physics goal befor
 remap count, gate drop count, paths left with zero teaching topics, `classifier_failed_legacy_route` count
 (§3.2), general legacy-path usage, feature-flag error rate, and (when available later) inferred-vs-user-confirmed
 domain divergence. This tells us the classifier is broadly
-sane *before* onboarding exists.
+sane *before* onboarding exists. **Launch gate:** a **high `classifier_failed_legacy_route` rate means the gate is
+mostly not running** (failed paths bypass it, §3.2) — its guarantees only hold at high classifier confidence, so
+classifier precision on math/science is doing more load-bearing work than the allow-list table implies.
 
 **Still open (non-blocking):** exact heuristic keyword lists & weights (tune), the escalation + auto-apply
 thresholds (tune), the `science_quantitative` alias (defer).

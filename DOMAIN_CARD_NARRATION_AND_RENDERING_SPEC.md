@@ -111,8 +111,17 @@ introduce a term outside `assumed_prerequisites` + what's taught; (3) practice s
 "Completing-the-square rule"); (5) **result lines are terminal, not narrated** (drop "Complete: the conclusion is
 reached. Final result: …").
 
-- **Q39 — injection point.** Framing lives in the **trace/solver narration** (`solver.py` / `trace_pipeline.py`),
-  which has no domain input today. Pass `topic_type` (→ domain) + approved templates into narration; branch there.
+- **Q39 — injection point (TWO paths, not just the trace pipeline).** The loop scaffold that produced the
+  awkward math reads ("Starting state / Repeated action / State update") lives in the **blueprint/prompt layer**
+  (`course_blueprints.py` · `course_stage_rules.py` · `lean_lesson_prompt.py`) — the **general card path** — not
+  in the trace pipeline. So passing `domain` only into `trace_pipeline.py` leaves the process card loop-framed.
+  Phase 2 branches **both**:
+  - **(A) general card narration** — background · terms · process · formula_breakdown · proof_plan · edge_case ·
+    practice · roadmap/prereqs — injected at the **blueprint/prompt layer**;
+  - **(B) verified worked-example narration** — the trace-backed step formatter (`solver.py` / `trace_pipeline.py`),
+    per-domain (coding / math / science / concept).
+  The trace pipeline's formatter contract is currently coding-oriented (code lines, variables, branches, loops,
+  runtime state); (B) adds math/science/concept formatters. **(A) is where most cross-domain leakage is fixed.**
 
 ---
 
@@ -175,6 +184,14 @@ Rules: a narrator/renderer may read **only registered** sources; a missing **req
 type** from the initial rollout; **optional** unsupported fields are **omitted, never free-generated**. (Closes
 the loophole where an LLM writes something that *sounds like* a rule identifier / unit interpretation /
 justification but isn't grounded in metadata.)
+
+**This registry IS the adapter-capability registry — one artifact, not two.** Key it by adapter slug; the trace
+routing already defers unsupported/meta topics, so Phase 2 cannot assume every requested math/science topic has a
+verified trace + units + rule tags + calculation-status + quantity-kind + assumptions. Per adapter, record what
+it can actually supply — `supported_domains · supports_verified_worked_example · supports_rule_identifier ·
+supports_units · supports_quantity_kind · supports_sign_or_direction · supports_assumption_metadata ·
+supports_final_result_status · supported_languages · supported_card_types` — so the fact-source rules above are
+**enforced, not aspirational**. (Produced in Phase 2A; don't build a second capability object.)
 
 ---
 
