@@ -797,6 +797,21 @@ def build_lean_user_prompt(
             f"Assumed prerequisites: {'; '.join(str(x) for x in topic.assumed_prerequisites)}"
         )
 
+    # Prereqs folded into the intro (topic_generator._fold_prereqs_into_intro) list their glossed statements
+    # here (they ride in decomposition_metadata since the Topic model has no such column). The intro GLOSSES
+    # each in 1-3 lines — just enough to name it and give the shape — and never fully teaches it; deep coverage
+    # lives in a separate study path linked later. Body topics get these on `assumed_prerequisites` instead.
+    _decomp_meta = getattr(topic, "decomposition_metadata", None)
+    _brief_refresh = (
+        _decomp_meta.get("brief_refresh_prerequisites") if isinstance(_decomp_meta, dict) else None
+    )
+    if _brief_refresh:
+        parts.append(
+            "Briefly refresh (1-3 lines each — name it and give the shape, do NOT fully teach; a later "
+            "study path will cover it in depth): "
+            + "; ".join(str(x) for x in _brief_refresh)
+        )
+
     study_path_topics = _format_study_path_topics(topic=topic)
     if study_path_topics:
         parts.append(f"Study path topics: {study_path_topics}")

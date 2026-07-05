@@ -265,7 +265,23 @@ def build_topic_scope_contract(
     explicit_out_of_scope = normalize_list_field(getattr(topic, "out_of_scope", None))
     explicit_assumed = normalize_list_field(getattr(topic, "assumed_prerequisites", None))
 
+    # Prereqs folded into the intro (topic_generator._fold_prereqs_into_intro) record their glossed statements
+    # on `brief_refresh_prerequisites`. There is no such Topic column, so they ride in decomposition_metadata;
+    # read them back here so the intro's contract asks the prompt for a 1-3 line refresh of each.
+    decomposition_metadata = getattr(topic, "decomposition_metadata", None)
+    if isinstance(decomposition_metadata, dict):
+        explicit_brief_refresh = normalize_list_field(
+            decomposition_metadata.get("brief_refresh_prerequisites")
+        )
+        brief_refresh_prerequisites = dedupe_keep_order(
+            explicit_brief_refresh + brief_refresh_prerequisites
+        )
+
     assumed_prerequisites = dedupe_keep_order(explicit_assumed + assumed_prerequisites)
+    # A concept can be assumed OR briefly refreshed, never both — assumption wins (silent).
+    brief_refresh_prerequisites = [
+        item for item in brief_refresh_prerequisites if item not in assumed_prerequisites
+    ]
     out_of_scope_content = dedupe_keep_order(explicit_out_of_scope + out_of_scope_content)
     must_not_teach = derive_must_not_teach(out_of_scope_content)
 

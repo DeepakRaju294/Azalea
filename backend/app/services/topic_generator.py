@@ -462,12 +462,27 @@ def _fold_prereqs_into_intro(topics: list[dict[str, Any]]) -> list[dict[str, Any
     if not any(_tt(t) not in ("study_path_introduction",) for t in kept):
         return topics  # never leave a path with only the intro
 
-    intro["assumed_prerequisites"] = sorted(set(assumed))
-    intro["glossed_prerequisites"] = glossed
-    all_names = sorted(set(assumed) | {g["concept"] for g in glossed})
+    # The intro carries the prereqs. ASSUMED ones go on `assumed_prerequisites` (a first-class Topic field the
+    # assumption ledger reads to build `do_not_reteach`). GLOSSED ones go on the intro's
+    # `brief_refresh_prerequisites`, which the scope contract feeds to the prompt as a 1-3 line refresh; since the
+    # Topic model has no such column, they ride along in the persisted `decomposition_metadata` blob (read back in
+    # topic_scope_service.build_topic_scope_contract). MERGE everywhere (never clobber existing values).
+    def _merge_assumed(t: dict[str, Any], names: list[str]) -> None:
+        merged = list(dict.fromkeys([*(t.get("assumed_prerequisites") or []), *names]))
+        t["assumed_prerequisites"] = merged
+
+    gloss_names = [g["concept"] for g in glossed]
+    if gloss_names:
+        meta = intro.get("decomposition_metadata")
+        meta = dict(meta) if isinstance(meta, dict) else {}
+        existing = meta.get("brief_refresh_prerequisites") or []
+        meta["brief_refresh_prerequisites"] = list(dict.fromkeys([*existing, *gloss_names]))
+        intro["decomposition_metadata"] = meta
+    _merge_assumed(intro, assumed)                                # intro assumes the foundational ones silently
+    all_names = [*assumed, *gloss_names]
     for t in kept:
         if _tt(t) != "study_path_introduction":
-            t["assumed_prerequisites"] = all_names               # body: assume these; do not re-explain
+            _merge_assumed(t, all_names)                          # body: assume ALL of them; do not re-explain
     return kept
 
 

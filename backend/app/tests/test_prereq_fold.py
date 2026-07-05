@@ -4,10 +4,12 @@ assume-not-explain it. The assume-vs-gloss rule is STRUCTURAL: a whole skill/top
 statement (form/notation/formula) glosses; default gloss."""
 import os
 import unittest
+from types import SimpleNamespace
 
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.topic_generator import _classify_prerequisite, _fold_prereqs_into_intro
+from app.services.topic_scope_service import build_topic_scope_contract
 
 
 class ClassifyPrerequisite(unittest.TestCase):
@@ -42,7 +44,11 @@ class FoldPrereqsIntoIntro(unittest.TestCase):
         self.assertNotIn("concept_intuition", types)                       # both prereqs folded out of the body
         intro = next(t for t in res if t["topic_type"] == "study_path_introduction")
         self.assertEqual(intro["assumed_prerequisites"], ["Quadratic Equations"])
-        self.assertEqual([g["concept"] for g in intro["glossed_prerequisites"]], ["Vertex Form Parabola"])
+        # glossed statements ride in decomposition_metadata (no Topic column) as brief_refresh_prerequisites,
+        # which the scope contract feeds to the intro prompt as a 1-3 line refresh
+        self.assertEqual(
+            intro["decomposition_metadata"]["brief_refresh_prerequisites"], ["Vertex Form Parabola"]
+        )
 
     def test_body_topics_are_told_to_assume_not_explain(self):
         res = _fold_prereqs_into_intro([dict(t) for t in self._path()])
@@ -64,6 +70,58 @@ class FoldPrereqsIntoIntro(unittest.TestCase):
         path = [{"title": "Understanding Quadratics", "topic_type": "concept_intuition"},
                 {"title": "Steps to Complete the Square", "topic_type": "process_walkthrough"}]
         self.assertEqual(len(_fold_prereqs_into_intro([dict(t) for t in path])), 2)
+
+
+class GlossedPrereqsReachTheScopeContract(unittest.TestCase):
+    """The intro's folded gloss (stashed in decomposition_metadata) surfaces as the contract's
+    brief_refresh_prerequisites, which the prompt renders as a 1-3 line refresh."""
+
+    def _intro(self, **kw):
+        return SimpleNamespace(
+            id="t1", title="Introduction to Completing the Square",
+            topic_type="study_path_introduction", purpose="", learner_outcome="",
+            prerequisite_topics=None, in_scope=None, out_of_scope=None,
+            secondary_course_types=[], **kw,
+        )
+
+    def test_brief_refresh_flows_from_decomposition_metadata(self):
+        topic = self._intro(
+            assumed_prerequisites=["Quadratic Equations"],
+            decomposition_metadata={"brief_refresh_prerequisites": ["Vertex Form Parabola"]},
+        )
+        contract = build_topic_scope_contract(topic, study_path=None)
+        self.assertIn("Vertex Form Parabola", contract["brief_refresh_prerequisites"])
+        self.assertIn("Quadratic Equations", contract["assumed_prerequisites"])
+
+    def test_assumed_wins_over_brief_refresh(self):
+        # a concept that is both assumed and glossed is assumed silently, never double-listed
+        topic = self._intro(
+            assumed_prerequisites=["Vertex Form Parabola"],
+            decomposition_metadata={"brief_refresh_prerequisites": ["Vertex Form Parabola"]},
+        )
+        contract = build_topic_scope_contract(topic, study_path=None)
+        self.assertNotIn("Vertex Form Parabola", contract["brief_refresh_prerequisites"])
+        self.assertIn("Vertex Form Parabola", contract["assumed_prerequisites"])
+
+
+class GlossedPrereqsReachTheLeanPrompt(unittest.TestCase):
+    """The live (lean) generation path emits the intro's folded gloss as a 'Briefly refresh' instruction."""
+
+    def test_lean_prompt_includes_brief_refresh_block(self):
+        from app.prompts.lean_lesson_prompt import build_lean_user_prompt
+
+        topic = SimpleNamespace(
+            id="t1", study_path=None, title="Introduction to Completing the Square",
+            purpose="Orient the learner.", topic_type="study_path_introduction", course_type="study_path_introduction",
+            secondary_course_types=[], modifiers=[], in_scope=None, out_of_scope=None,
+            prerequisite_topics=None, assumed_prerequisites=["Quadratic Equations"], practice_target=None,
+            practice_format=None,
+            decomposition_metadata={"brief_refresh_prerequisites": ["Vertex Form Parabola"]},
+        )
+        prompt = build_lean_user_prompt(topic=topic, chunks=[])
+        self.assertIn("Briefly refresh", prompt)
+        self.assertIn("Vertex Form Parabola", prompt)
+        self.assertIn("Assumed prerequisites: Quadratic Equations", prompt)
 
 
 if __name__ == "__main__":
