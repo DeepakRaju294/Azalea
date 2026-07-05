@@ -206,8 +206,15 @@ TopicRoutingMetadata { course_type, quantitative_center: bool, quantitative_conf
 Deterministic rule on a science path: `science_mechanism` always allowed; `math_formula_method` allowed **only
 when `quantitative_center == true`**; if the classifier suggests `math_formula_method` but `quantitative_center
 != true`, **remap → `science_mechanism`**. The prompt may *suggest* `quantitative_center`, but the backend
-**validates** it from signals: explicit formula/law · a target numeric quantity · units · calculation/solve
-language · a compatible quantitative adapter family.
+**validates** it (D-b confirmed — v1 heuristic, **no LLM**, conservative: a false negative is safer than forcing a
+conceptual lesson into calculation-first). `true` **only when all** hold: (1) a **computable relation** exists
+(formula/law/equation/numerical procedure); (2) a **quantitative target** (solve/calculate/determine/compute/
+find-a-value/evaluate); (3) **quantitative operands** (numbers, valued variables, units, measurements,
+coefficients, dimensions); (4) a **compatible adapter family** exists. **Numeric values/units are a *strong*
+signal but NOT required** when the topic clearly invokes a **supported computational law/method** ("Apply Ohm's
+Law to determine current" → true if a calc adapter exists; "Understand Ohm's Law" → false). Emit **reason codes,
+not just a bool**: `formula_detected · quantitative_verb_detected · numeric_or_unit_signal_detected ·
+adapter_compatible · decision`.
 
 ---
 
@@ -234,6 +241,10 @@ language · a compatible quantitative adapter family.
   `_collapse_same_subject_method_topics` and `_fold_prereqs_into_intro` (domain-orthogonal) — but they must use
   `DOMAIN_TEACHING_TYPES` (§5.2), not the coding-only sets they use today.
 - **Classifier home.** New `app/services/domain_classifier.py`, called from the study-path creation route.
+- **Gate home (D-c confirmed).** Hook **only the live `topic_generator.generate_topics_from_chunks` path** in v1
+  (`course_type` always resolved; `content_role` populated where the topic object supports it). The
+  `topic_decomposition_pipeline` path is **unchanged** and **explicitly a parity follow-up** — until then it may
+  produce inconsistent role semantics; don't assume both paths share the gate.
 - **Gate mechanism.** Post-classification remap is the hard guarantee; **also** make the
   `enrich_topic_with_course_type` prompt domain-aware to reduce remaps (lean: do both).
 - **Domain card-safety assertion (backstop, not a renderer rewrite).** The gate restricts *topic types*, but a
@@ -267,6 +278,17 @@ purpose · in_scope/out_of_scope · practice_format · any coding follow-up rela
 | `coding_implementation` | `implementation` |
 | `concept_intuition` | `foundation` |
 | `process_walkthrough` | `mechanism` (scientific=false) |
+
+**Deterministic, no LLM (D-a confirmed).** Title normalization uses an **explicit, ordered set of known framing
+patterns** — *not* "strip the first gerund" (which would turn "Finding the Shortest Path" → "the Shortest Path"
+and drop the action). E.g. `Implementing BFS → Breadth-First Search` · `Solving Systems of Linear Equations →
+Systems of Linear Equations` · `Calculating Electric Field Strength → Electric Field Strength`. Clear the coding
+follow-up **only** when the rewritten target is no longer coding. **Preserve the original** for audit. Contract
+shape: `{ original_title · normalized_title · course_type · content_role · practice_format · rewrite_reason ·
+rewrite_version }`.
+
+**Invariant:** no live generated topic may enter card planning with an **unresolved `course_type`** after the
+gate/rewrite step (gives the renderer a dependable contract even before `content_role` is universal).
 
 ### 5.2 `DOMAIN_TEACHING_TYPES` — a fix to already-merged code
 
@@ -350,6 +372,11 @@ domain divergence. This tells us the classifier is broadly
 sane *before* onboarding exists. **Launch gate:** a **high `classifier_failed_legacy_route` rate means the gate is
 mostly not running** (failed paths bypass it, §3.2) — its guarantees only hold at high classifier confidence, so
 classifier precision on math/science is doing more load-bearing work than the allow-list table implies.
+**Sink (D-d confirmed): structured logs + fields on the existing M7 generation report — no new table in v1.**
+Per topic: `topic_contract_rewritten · rewrite_reason · original_course_type · final_course_type ·
+original_content_role · final_content_role · quantitative_center · quantitative_center_signals · gate_version ·
+adapter_family_selected · fallback_reason`. Per generation (aggregate): `topics_seen · topics_rewritten ·
+quantitative_center_true · gate_applied · adapter_selected · fallback_used · unresolved_contract_count`.
 
 **Still open (non-blocking):** exact heuristic keyword lists & weights (tune), the escalation + auto-apply
 thresholds (tune), the `science_quantitative` alias (defer).
