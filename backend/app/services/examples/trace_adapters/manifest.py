@@ -363,7 +363,9 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
     # stripping the structure name "binary search tree" (so the bare structure doesn't self-trigger).
     "bst_search": {"any": ["bst", "binary search tree"], "all": ["search"],
                    "strip": ["binary search tree", "binary-search tree"], "priority": 250},
-    "quadratic": {"any": ["quadratic"], "priority": 240},
+    # the quadratic adapter solves via the discriminant/quadratic formula; a topic that explicitly asks for
+    # "completing the square" wants that METHOD, so don't route it here (it falls to complete_the_square / legacy).
+    "quadratic": {"any": ["quadratic"], "not": ["completing the square", "complete the square"], "priority": 240},
     "kinematics": {"any": ["kinematic", "constant acceleration", "uniform acceleration"], "priority": 230},
     "binary_search": {"any": ["binary search", "binary_search"], "not": _IS_TREE, "priority": 220},
     "kruskal": {"any": ["kruskal"], "priority": 210},
