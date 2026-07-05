@@ -394,6 +394,8 @@ def _final_answer_text(trace: ContractTrace) -> str:
         # scalars render "v = 2"; a list renders comma-joined ("7, 21, 23") so brackets never leak to a learner.
         def _fmt(v: Any) -> str:
             return ", ".join(map(str, v)) if isinstance(v, (list, tuple)) else str(v)
+        if list(fa.keys()) == ["result"]:          # a derivation/rewrite conclusion IS the answer -> no "result =" prefix
+            return _fmt(fa["result"])
         return ", ".join(f"{k} = {_fmt(v)}" for k, v in fa.items())
     return str(fa)
 
