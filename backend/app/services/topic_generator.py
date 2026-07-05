@@ -330,6 +330,45 @@ def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> l
     return result
 
 
+def _fix_noncoding_coding_topics(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A coding_implementation topic whose SUBJECT routes to a NON-coding adapter (a math/derivation/formula/
+    stateful concept — manifest `coding: False`) is a decomposition slip: the model applied the generic
+    'algorithm -> walkthrough + coding' pattern to a concept you do NOT implement in code (e.g. 'Implementing
+    Completing the Square', which just dressed the derivation up as fake code). If a real walkthrough already
+    covers that concept (same adapter), DROP the coding twin; if it is the ONLY topic for the concept, relabel
+    it to a process_walkthrough (stripping the 'Implementing' framing) so the derivation is still taught."""
+    try:
+        from app.services.examples.trace_adapters.manifest import MANIFEST, match_routing_slug
+    except Exception:  # noqa: BLE001 — never break generation on an import hiccup
+        return topics
+
+    def _tt(t: dict[str, Any]) -> str:
+        return str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
+
+    def _slug(t: dict[str, Any]):
+        return match_routing_slug(str(t.get("title") or "").lower())
+
+    covered = {_slug(t) for t in topics if _tt(t) != "coding_implementation"}   # concepts a walkthrough teaches
+    out: list[dict[str, Any]] = []
+    for t in topics:
+        if _tt(t) == "coding_implementation":
+            slug = _slug(t)
+            if slug and MANIFEST.get(slug, {}).get("coding") is False:
+                if slug in covered:                     # a real walkthrough already teaches it -> drop the twin
+                    _log.info("topic_generator: dropped non-coding coding_implementation %r (adapter %s is "
+                              "coding:False; a walkthrough already covers it)", t.get("title"), slug)
+                    continue
+                title = str(t.get("title") or "")       # sole topic -> keep it, but as a walkthrough
+                t["course_type"] = t["topic_type"] = "process_walkthrough"
+                t["practice_format"] = ""
+                if title.lower().startswith("implementing "):
+                    t["title"] = title[len("implementing "):].strip()
+                _log.info("topic_generator: relabeled lone non-coding coding_implementation %r -> "
+                          "process_walkthrough (adapter %s is coding:False)", title, slug)
+        out.append(t)
+    return out
+
+
 def _append_missing_coding_topics(topics: list[dict[str, Any]], goal: str) -> list[dict[str, Any]]:
     """Deterministically guarantee the blueprint's 'append a coding_implementation after the
     walkthrough' rule (course_blueprints §combination_rules) — the rule was prompt-only, so the model
@@ -721,6 +760,9 @@ Chunk index: {chunk.chunk_index}
     # Drop auxiliary paradigm/methodology topics (e.g. "Understanding Divide and Conquer" on a
     # merge-sort path) that the concrete algorithm topics already teach by example.
     cleaned_topics = _drop_paradigm_only_topics(cleaned_topics, goal)
+    # A coding_implementation for a pure-math/derivation concept (routes to a coding:False adapter) is a
+    # decomposition slip — drop the twin if a walkthrough covers it, else relabel it to a walkthrough.
+    cleaned_topics = _fix_noncoding_coding_topics(cleaned_topics)
     # Backstop the "one walkthrough per algorithm" prompt rule deterministically: drop a second
     # same-type topic for the same subject (e.g. a "Process Overview" walkthrough next to a
     # "Step by Step" walkthrough for quick sort) before it becomes a duplicate lesson.
