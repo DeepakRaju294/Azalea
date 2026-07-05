@@ -6371,29 +6371,41 @@ function normalizeMathExpression(text: string) {
   return output;
 }
 
+// Multi-letter tokens that are legitimate MATH (function names / greek), so a line containing only these +
+// single-letter variables + numbers + operators is a pure expression. Any OTHER multi-letter word (a unit like
+// "kg", or prose like "begin"/"coefficient") means the line is prose and must NOT be auto-rendered as math.
+const MATH_FUNCTION_WORDS = new Set([
+  "sqrt", "sin", "cos", "tan", "cot", "sec", "csc", "log", "ln", "exp", "abs", "mod", "det", "lim",
+  "pi", "mu", "sigma", "theta", "alpha", "beta", "lambda", "frac", "int", "sum", "prod",
+]);
+
 function shouldAutoRenderAsMathStrict(text: string) {
   const cleaned = String(text || "").replace(/^\s*-\s*/, "").trim();
   if (!cleaned || cleaned.length > 220) {
     return false;
   }
 
-  const hasStrongMathSignal = /\\int|\u222b|\\frac|\\sqrt|\u221a|\^|_\{/.test(cleaned);
-  if (hasStrongMathSignal) {
+  // Narrow stats-formula allowlist (mu=, sigma=, mean=, ...) \u2014 unchanged.
+  if (/^(?:mu|sigma|mean|standard_deviation|variance)\s*(?:=|\()\s*[-+]?\d+(?:\.\d+)?\)?$/i.test(cleaned)) {
     return true;
   }
 
-  const phraseLikeMath = /\b(?:pdf|cdf|peak|area|right|left|probability|density|curve|decreases|increases|reflects|visualize|approaching|large|small|from|to|at)\b/i;
-  if (
-    phraseLikeMath.test(cleaned) &&
-    !/^(?:mu|sigma|mean|standard_deviation|variance)\s*(?:=|\()/i.test(cleaned)
-  ) {
+  // Otherwise, ONLY auto-render a COMPLETE, self-contained mathematical expression \u2014 never a prose line that
+  // merely contains a stray math token (e.g. "begin with x^2 + 12x"), and never a bare variable name (a, b, c).
+  //   (1) EVERY multi-letter word must be a known math function (sqrt, log, sin, ...); any other word (units,
+  //       prose like "begin", "coefficient", "cost") means it is NOT a pure expression.
+  //   (2) it must not be a single bare token.
+  //   (3) it must carry a math SIGNAL: an operator/relation/subscript, or a math function.
+  const words = cleaned.match(/[A-Za-z]{2,}/g) || [];
+  if (!words.every((w) => MATH_FUNCTION_WORDS.has(w.toLowerCase()))) {
     return false;
   }
-
-  // Only auto-promote known statistics formulas (mu=, sigma=, mean=, ...). A bare single-letter
-  // alternative ([a-zA-Z]) wrongly matched ordinary coding state lines like "i = -1" / "k = 0",
-  // rendering them as standalone equations \u2014 never treat those as math.
-  return /^(?:mu|sigma|mean|standard_deviation|variance)\s*(?:=|\()\s*[-+]?\d+(?:\.\d+)?\)?$/i.test(cleaned);
+  if (/^[A-Za-z]$/.test(cleaned)) {
+    return false;
+  }
+  const hasStructure = /[=<>+*/^_]|\u221a|\u222b/.test(cleaned);
+  const hasMathFunc = words.length > 0;
+  return hasStructure || hasMathFunc;
 }
 
 function normalizeMathExpressionStrict(text: string) {
