@@ -180,11 +180,21 @@ telemetry.
 Domain changed **before** generation → use the new domain immediately. Domain changed **after** topics/cards
 exist → keep the current path stable and offer an **explicit regenerate** (never silent).
 
-> **⚠ OPEN DECISION — `StudyPathPreference` mutability (not baked in here).** Is `StudyPathPreference` a
-> **mutable "current settings"** record, or an **immutable per-generation snapshot** (with `StudyPath` pointing
-> at the active revision)? Immutable snapshots make reproducibility + "why did this path look like this?"
-> cleaner; mutable is simpler for v1. Lean noted but **undecided**: v1 mutable + a `contract_version` stamp,
-> revisit for v2. Resolve before building the persistence layer.
+**DECIDED (D1) — mutable user defaults + immutable per-generation snapshot.** `UserPreference` = mutable
+defaults; **each generation writes an immutable `StudyPathGeneration` snapshot**; `StudyPath` points at the
+active generation revision. (Answers "why did this path generate Java / working depth / formula_breakdown-but-no-
+edge-case?" and "what changed on regenerate?" — a fully-mutable record loses that history.) v1 shape (no heavy
+revision system needed):
+```
+StudyPathGeneration {
+  id · study_path_id · generation_number · domain · classification_status
+  selected_preferences_json · effective_preferences_json · preference_provenance_json
+  contract_versions_json · created_at
+}
+```
+- changing user defaults affects only **future** generations;
+- changing a live path creates an **explicit regeneration revision** (never silent);
+- old generated content stays explainable.
 
 ---
 

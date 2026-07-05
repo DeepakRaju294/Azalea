@@ -213,10 +213,12 @@ language · a compatible quantitative adapter family.
 
 ## 5. Integration mechanics
 
-- **Q36 — storage + threading.** `StudyPath` has a `language` column but **no `domain`** — add one (a column +
-  migration, since `create_all` won't ALTER a live Postgres; a `provenance` field travels with it). Thread:
-  `classify_domain` at path-creation → `StudyPath.domain` → `generate_topics_from_chunks(domain=…)` → gate.
-  Lesson generation needs no new signal (it reads the now-gated `topic.course_type`).
+- **Q36 — storage + threading.** `StudyPath` has a `language` column but **no `domain`**. Add
+  `domain · domain_provenance · classification_status`. **Migration mechanism (DECIDED — repo has no alembic;
+  schema is `Base.metadata.create_all`):** ship an **idempotent startup migration helper** that runs
+  `ALTER TABLE study_paths ADD COLUMN IF NOT EXISTS …` (Postgres) right after `create_all` — do **not** introduce
+  alembic for v1. Thread: `classify_domain` at path-creation → `StudyPath.domain` → `generate_topics_from_chunks(
+  domain=…)` → gate. Lesson generation needs no new signal (it reads the now-gated `topic.course_type`).
 - **Q33 — pipeline order (resolved).** `classify → generate raw decomposition → enrich_topic_with_course_type
   (+ annotate quantitative_center) → two-pass _gate_topic_types_by_domain **+ full-contract rewrite (§5.1)** →
   (domain-gated) _expand_canonical_family / _order_canonical_family / _append_missing_coding_topics →

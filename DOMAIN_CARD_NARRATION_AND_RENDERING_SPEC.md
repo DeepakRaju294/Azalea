@@ -82,6 +82,20 @@ and is `deferred` above — so completing-the-square **cannot enter `on_enforced
 is `defined`.** Lean: define it first (it's central to *why* completing the square works); until then the math
 slice runs in `shadow_validate` / fixtures only.
 
+**DECIDED (D2) — first `on_enforced` family = `math` / `math_formula_method`, vertical slice = completing the
+square.** Best first target: it's the original visible failure, has a concrete non-coding scaffold, is
+checkable from expressions/transformations, and forces `formula_breakdown` (central, not optional). Rollout order:
+```
+1. math_formula_method   — completing the square, then quadratic formula / algebraic transforms (formula_breakdown incl.)
+2. coding walkthrough/impl — preserve existing verified-trace behavior as a REGRESSION baseline (not the initial bet)
+3. science_mechanism      — qualitative causal first; no unverified quantitative interpretation yet
+4. science quantitative   — only once units/assumptions/final-result metadata are proven
+5. proof_reasoning        — once proof_plan + step-justification contracts are defined
+6. concept / comparison / roadmap — once their deferred contracts are authored
+```
+Science calculation cards stay in `shadow_validate` until math works — their units/sign/assumptions/reference-frame/
+interpretation-eligibility demand more metadata.
+
 ---
 
 ## 3. The within-card catalog (per card × per domain)
@@ -192,6 +206,18 @@ it can actually supply — `supported_domains · supports_verified_worked_exampl
 supports_units · supports_quantity_kind · supports_sign_or_direction · supports_assumption_metadata ·
 supports_final_result_status · supported_languages · supported_card_types` — so the fact-source rules above are
 **enforced, not aspirational**. (Produced in Phase 2A; don't build a second capability object.)
+
+**Data shape (not just prose):**
+```
+FactSource {
+  card_type · field · domain
+  mode: direct | derived | validated_generated
+  direct_source?: trace/adapter field id
+  derived?: { template_id · input_field_ids[] · output_schema · validation_rule? }
+  required: bool | "when_quantitative"
+  fallback: block_card | omit | block_calculation_framing | defer_card
+}
+```
 
 ---
 
