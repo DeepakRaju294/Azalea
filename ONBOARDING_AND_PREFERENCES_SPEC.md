@@ -164,3 +164,15 @@ behavior.
 - The frontend renders compiled state; it does not repair or infer semantic state.
 - Existing blueprints are reused through routing and configuration, not rebuilt.
 - Every phase ships behind a feature flag with a defined rollback path.
+
+---
+
+## After these specs land — finish the adapter catalog
+
+This work makes the system **route and narrate** each domain correctly, but **verified worked examples still
+depend on the adapter catalog** — **~150 adapters today, and incomplete.** Phase 2's fact-source / coverage
+guarantees are only as broad as the adapters that back them: a math/science topic with no adapter falls to
+`deferred` / withheld (Phase 2 §2.1/§4), so **broad domain-native content requires the full catalog.** Once these
+specs are implemented, **resume CP12 (`SPEC_IMPLEMENTATION_CHECKPOINTS.md`) and complete the remaining adapters** —
+the full math / physics / chemistry / finance breadth via the declarative type-engines. Treat "finish the adapter
+catalog" as the committed follow-on to the content-adaptation program, not an afterthought.
