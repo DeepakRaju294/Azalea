@@ -33,8 +33,14 @@ class DerivationEngineGate(unittest.TestCase):
                 for seed in range(12):
                     tr = tp.select_instance(a, seed=seed)
                     state0 = {k: v for k, v in tr.steps[0].inputs.items()}
-                    self.assertEqual(tr.final_answer, spec.oracle(state0),
-                                     f"{spec.slug}: answer {tr.final_answer} != oracle {spec.oracle(state0)}")
+                    # replay to the final state; the checkable answer params must match the independent oracle
+                    st = dict(state0)
+                    for ds in spec.steps:
+                        st = ds.apply(st)
+                    self.assertEqual(spec.answer(st), spec.oracle(state0),
+                                     f"{spec.slug}: answer {spec.answer(st)} != oracle {spec.oracle(state0)}")
+                    # and the learner-facing final answer is the readable conclusion, not an internal param
+                    self.assertEqual(tr.final_answer, {"result": spec.conclusion(st)})
 
     def test_each_step_cites_a_named_rule(self):
         for spec in registered_specs():

@@ -103,7 +103,6 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
                                  "required_facts": [fact("derive", after)], "forbidden_claims": []}))
 
     concl = spec.conclusion(state)
-    ans = spec.answer(state)
     required = ["state_claim"] + [ds.stage_id for ds in spec.steps] + ["completion"]
     evidence: dict[str, list[str]] = {"state_claim": ["s1"], "completion": [f"s{len(steps)}"]}
     for k, ds in enumerate(spec.steps, start=2):
@@ -111,7 +110,9 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
     return ContractTrace(
         problem=spec.problem_template.format(start=start, **{k: v for k, v in state.items()}),
         conventions={"method": "each step cites an allowed rule", "conclusion": concl},
-        initial_state={"problem": spec.title}, final_answer=dict(ans), steps=steps,
+        # the learner-facing final answer is the CONCLUSION (the derived result), not the internal oracle param
+        # (spec.answer/oracle stay the checkable params the gate verifies). Fixes "Final result: h = 2".
+        initial_state={"problem": spec.title}, final_answer={"result": concl}, steps=steps,
         invariants=[{"id": f"{spec.slug}_value_preserved", "scope": "every_step", "statement": spec.preserved}],
         required_cases=list(required), case_evidence=evidence,
         provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
