@@ -33,12 +33,13 @@ the domain's allow-list.*
   |---|---|
   | `coding` | `coding` · `machine_learning` |
   | `math` | `math` · `logic` · `statistics` |
-  | `science` | `physics` · `chemistry` · `biology` · `electrical_engineering` |
-  | `expository` | `finance` · `economics` · `humanities` |
+  | `science` | `physics` · `chemistry` · `biology` · `electrical_engineering` · `astronomy` · `earth_science` · `medicine` |
+  | `expository` | `finance` · `economics` · `humanities` · `language_learning` |
   | *(none — non-gating)* | `mixed` · `unknown` |
-  Fine domains are open to extension (see the "candidate additions" note below). `mixed` (two comparably-strong
-  families) and `unknown` (nothing matched) are **non-gating** — the conservative fallback that preserves existing
-  behavior.
+  Engineering subfields (mechanical/civil/chemical) are **folded into `physics`/`chemistry`** (not a domain).
+  `language_learning` is expository for v1 — it's a *skill-acquisition* shape with **no verified adapters**, so it
+  never claims structured worked-example content. `mixed` (two comparably-strong families) and `unknown` (nothing
+  matched) are **non-gating** — the conservative fallback that preserves existing behavior.
 - **Q2 — `expository` family.** Content whose primary mode is **explanation, categorization, comparison, or
   historical/contextual understanding** — `finance`/`economics`/`humanities` in v1 (concept-family gate rules).
 - **Q4 — `mixed` is now a first-class outcome (non-gating).** A path still has ONE primary `domain`, but when two
@@ -47,11 +48,10 @@ the domain's allow-list.*
   law" → `physics`; "Ohm's law in a circuit" → `electrical_engineering`; "photosynthesis" → `biology`; "what is
   inflation" → `economics`; "themes in Hamlet" → `humanities`; "hypothesis testing" → `statistics`.
 
-> **Candidate fine-domain additions (cheap — keyword list + `FAMILY_OF` row, no architecture change):** the
-> strongest are `statistics` (done) and `machine_learning` (done). Also worth considering: `astronomy` /
-> `earth_science` (→ science), `medicine`/`health` (→ science), `language_learning` (→ expository, but a
-> different *skill*-acquisition shape — flag before adding). Humanities is deliberately kept coarse (not the
-> current focus).
+> **Fine-domain roster (each = a keyword list + a `FAMILY_OF` row, no architecture change).** Added:
+> `statistics`, `machine_learning`, `astronomy`, `earth_science`, `medicine`, `language_learning`. Humanities is
+> deliberately kept coarse (not the current focus). Further adds (e.g. a controlled sub-taxonomy under a fine
+> domain) remain cheap and deferred.
 
 ---
 

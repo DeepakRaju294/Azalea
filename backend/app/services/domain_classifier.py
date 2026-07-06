@@ -30,7 +30,9 @@ FAMILY_OF: dict[str, str] = {
     "coding": "coding", "machine_learning": "coding",
     "math": "math", "logic": "math", "statistics": "math",
     "physics": "science", "chemistry": "science", "biology": "science", "electrical_engineering": "science",
+    "astronomy": "science", "earth_science": "science", "medicine": "science",
     "finance": "expository", "economics": "expository", "humanities": "expository",
+    "language_learning": "expository",   # skill-acquisition shape, no verified adapters — expository gate for v1
 }
 _SCORED = tuple(FAMILY_OF.keys())
 
@@ -66,10 +68,29 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "physics": (
         "physics", "force", "velocity", "acceleration", "momentum", "energy", "gravity", "motion", "newton's",
         "kinematics", "thermodynamics", "wave", "optics", "quantum", "friction", "projectile", "torque",
+        # engineering folded in (mechanical/civil) rather than a separate domain
+        "engineering", "mechanical", "civil engineering", "structural", "stress", "strain", "fluid",
     ),
     "chemistry": (
         "chemistry", "chemical", "reaction", "molecule", "atom", "mole", "molar", "molarity", "stoichiometry",
         "bond", "acid", "base", "compound", "element", "periodic table", "solution", "titration",
+        "chemical engineering",
+    ),
+    "astronomy": (
+        "astronomy", "astrophysics", "planet", "star", "galaxy", "solar system", "orbit", "telescope",
+        "cosmology", "black hole", "nebula", "asteroid", "comet", "constellation", "universe", "celestial",
+    ),
+    "earth_science": (
+        "earth science", "geology", "geological", "plate tectonics", "rock", "mineral", "volcano", "earthquake",
+        "erosion", "sediment", "fossil", "atmosphere", "weather", "climate", "ocean", "glacier",
+    ),
+    "medicine": (
+        "medicine", "medical", "health", "physiology", "disease", "diagnosis", "symptom", "treatment",
+        "pharmacology", "immune", "cardiovascular", "nervous system", "organ", "clinical", "pathology",
+    ),
+    "language_learning": (
+        "spanish", "french", "german", "grammar", "vocabulary", "conjugation", "verb tense", "language learning",
+        "pronunciation", "fluency", "translation", "linguistics", "mandarin", "japanese",
     ),
     "biology": (
         "biology", "cell", "dna", "gene", "genetic", "photosynthesis", "evolution", "ecosystem", "organism",

@@ -29,6 +29,10 @@ class DomainClassifierFixtures(unittest.TestCase):
             "Teach me hypothesis testing and p-values.": "statistics",
             "Teach me propositional logic and truth tables.": "logic",
             "How do I calculate compound interest?": "finance",
+            "Teach me about black holes and galaxies.": "astronomy",
+            "Teach me about plate tectonics and earthquakes.": "earth_science",
+            "Teach me the cardiovascular system and its physiology.": "medicine",
+            "Teach me Spanish verb conjugation and grammar.": "language_learning",
         }
         for goal, expected in cases.items():
             self.assertEqual(classify_domain(goal).domain, expected, goal)
@@ -37,6 +41,8 @@ class DomainClassifierFixtures(unittest.TestCase):
         self.assertEqual(classify_domain("Teach me Newton's second law.").gate_family, "science")
         self.assertEqual(classify_domain("Teach me photosynthesis.").gate_family, "science")
         self.assertEqual(classify_domain("What is inflation?").gate_family, "expository")
+        self.assertEqual(classify_domain("Teach me about black holes.").gate_family, "science")
+        self.assertEqual(classify_domain("Teach me Spanish grammar.").gate_family, "expository")
         self.assertEqual(classify_domain("Teach me completing the square.").gate_family, "math")
         self.assertEqual(classify_domain("Teach me propositional logic.").gate_family, "math")
         self.assertEqual(classify_domain("Teach me DFS in Python.").gate_family, "coding")
