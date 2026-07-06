@@ -3076,6 +3076,15 @@ def _normalize_lean_card_order(
         others = [c for c in normalized if _lean_card_key(c) not in ("background", "roadmap")]
         normalized = [*backgrounds, *others, *roadmaps]
 
+    # Phase-2B shadow evaluation (AZALEA_DOMAIN_NARRATION_V2 shadow_validate). Strict no-op in the default
+    # off_legacy config and best-effort — emits narration eligibility/contract telemetry without touching output.
+    try:
+        from app.services.narration.shadow import evaluate_card_plan
+
+        evaluate_card_plan(topic_type, normalized)
+    except Exception:  # noqa: BLE001 — observability must never break generation
+        pass
+
     return normalized
 
 
