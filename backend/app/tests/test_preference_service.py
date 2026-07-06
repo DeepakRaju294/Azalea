@@ -14,7 +14,7 @@ import app.db.base  # noqa: F401 — register models before the lazy model impor
 
 from app.services.preference_service import (
     PROV_INFERRED, PROV_SAVED_DEFAULT, PROV_SYSTEM_DEFAULT, PROV_USER_SELECTED,
-    contract_versions, get_user_preference, resolve_preferences, upsert_user_preference,
+    contract_versions, get_user_preference, resolve_preferences, scope_directive, upsert_user_preference,
 )
 from app.models.preferences import PREFERENCE_SCHEMA_VERSION, UserPreference
 
@@ -105,6 +105,22 @@ class ResolvePreferences(unittest.TestCase):
             domain="coding", user_default_depth="working", selected={"depth_level": "deep"})
         self.assertEqual(eff["depth_level"], "deep")
         self.assertEqual(prov["depth_level"], PROV_USER_SELECTED)
+
+    def test_goal_scope_surfaced_from_override(self):
+        _, eff, prov = resolve_preferences(domain="math", selected={"goal_scope": "focus on recursion only"})
+        self.assertEqual(eff["goal_scope"], "focus on recursion only")
+        self.assertEqual(prov["goal_scope"], PROV_USER_SELECTED)
+
+    def test_goal_scope_absent_is_system_default(self):
+        _, eff, prov = resolve_preferences(domain="math")
+        self.assertIsNone(eff["goal_scope"])
+        self.assertEqual(prov["goal_scope"], PROV_SYSTEM_DEFAULT)
+
+    def test_scope_directive_pure(self):
+        self.assertIsNone(scope_directive(None))
+        self.assertIsNone(scope_directive("   "))
+        d = scope_directive("only cover DFS and BFS")
+        self.assertIn("only cover DFS and BFS", d)
 
     def test_knowledge_level_always_inactive(self):
         _, effective, prov = resolve_preferences(domain="coding", user_default_knowledge=3)

@@ -109,12 +109,16 @@ def resolve_preferences(
     else:
         eff_language, lang_prov, language_status = None, PROV_SYSTEM_DEFAULT, "inactive_non_coding"
 
+    # goal_scope — Phase-3 scope contract (free-text focus/boundaries); consumed as a generation steering hint.
+    goal_scope = selected.get("goal_scope") or None
+
     # knowledge_level — stored but INACTIVE until a Phase-2 consumer exists (§3 "stored without being active").
     effective = {
         "domain": eff_domain,
         "depth_level": eff_depth,
         "language": eff_language,
         "language_status": language_status,
+        "goal_scope": goal_scope,
         "knowledge_level": None,
         "inactive_fields": {"knowledge_level": {"reason": "phase_2_consumer_not_live"}},
     }
@@ -122,9 +126,21 @@ def resolve_preferences(
         "domain": domain_prov,
         "depth_level": depth_prov,
         "language": lang_prov,
+        "goal_scope": PROV_USER_SELECTED if goal_scope else PROV_SYSTEM_DEFAULT,
         "knowledge_level": "phase_2_consumer_not_live",
     }
     return selected, effective, provenance
+
+
+def scope_directive(goal_scope: str | None) -> str | None:
+    """Phase-3 scope-contract consumer (onboarding `goal`). Turn a learner's free-text focus/boundaries into a
+    normalized generation steering directive (or None). Pure; the caller folds it into the generation feedback
+    channel so topic selection honors the stated scope without changing adapter-computed truth."""
+    text = str(goal_scope or "").strip()
+    if not text:
+        return None
+    return ("Learner-specified scope for this path — keep topics within this focus and respect any stated "
+            f"boundaries: {text}")
 
 
 def write_generation_snapshot(

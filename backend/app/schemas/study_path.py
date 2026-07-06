@@ -28,11 +28,13 @@ class StudyPathLanguageUpdate(BaseModel):
 class StudyPathPreferenceUpdate(BaseModel):
     """A learner's per-path override (the top precedence tier, §3). All optional — only provided fields are
     applied; an explicit null clears that override. `domain` sets the effective routing domain
-    (status → user_selected); `depth_level`/`language` are stored in `StudyPath.selected_preferences`."""
+    (status → user_selected); `depth_level`/`language`/`goal_scope` are stored in `StudyPath.selected_preferences`.
+    `goal_scope` is the Phase-3 scope contract (free-text focus/boundaries) that steers generation."""
 
     domain: OverrideDomain | None = None
     depth_level: DepthLevel | None = None
     language: CodeLanguage | None = None
+    goal_scope: str | None = None
 
 
 class StudyPathRead(BaseModel):

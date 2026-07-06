@@ -46,7 +46,7 @@ from app.services.lean_lesson_generator import build_lean_lesson_from_topic_and_
 from app.services.legacy_v2_visual_bridge import attach_v2_visuals_to_legacy_lesson
 from app.services.topic_generator import generate_topics_from_chunks
 from app.services.domain_classifier import classify_domain, gate_family_of
-from app.services.preference_service import write_generation_snapshot
+from app.services.preference_service import scope_directive, write_generation_snapshot
 from app.services.llm_client import generate_title
 
 router = APIRouter()
@@ -87,6 +87,14 @@ def ensure_study_path_domain(study_path: StudyPath, db: Session, *, force: bool 
     db.commit()
     db.refresh(study_path)
     return study_path.domain
+
+
+def effective_generation_feedback(study_path: StudyPath, feedback: str | None = None) -> str | None:
+    """Fold the Phase-3 goal/scope contract into the generation feedback channel (§ onboarding `goal`). The
+    learner's stored scope steers topic selection without altering adapter-computed truth."""
+    scope = scope_directive((study_path.selected_preferences or {}).get("goal_scope"))
+    parts = [p for p in (feedback, scope) if p]
+    return "\n\n".join(parts) or None
 
 
 class StudyPathRegenerateRequest(BaseModel):
@@ -642,7 +650,7 @@ def update_study_path_preferences(
             study_path.domain_provenance = provenance
 
     selected = dict(study_path.selected_preferences or {})
-    for field in ("depth_level", "language"):
+    for field in ("depth_level", "language", "goal_scope"):
         if field in data:
             if data[field] is None:
                 selected.pop(field, None)
@@ -771,6 +779,7 @@ def generate_initial_study_path_content(
     generated_topic_data = generate_topics_from_chunks(
         chunks=chunks,
         goal=study_path.goal,
+        feedback=effective_generation_feedback(study_path),
         domain=ensure_study_path_domain(study_path, db),
     )
     # Phase-1 (D1): capture an immutable snapshot of the effective prefs this generation ran under.
@@ -1171,7 +1180,7 @@ def regenerate_study_path(
     generated_topic_data = generate_topics_from_chunks(
         chunks=chunks,
         goal=study_path.goal,
-        feedback=payload.feedback,
+        feedback=effective_generation_feedback(study_path, payload.feedback),
         domain=ensure_study_path_domain(study_path, db, force=True),
     )
     # Phase-1 (D1): a regeneration is a new generation event → a new immutable snapshot revision.
