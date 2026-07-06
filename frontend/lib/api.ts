@@ -21,6 +21,25 @@ export type ClassUpdatePayload = {
   weekly_goal_minutes?: number | null;
 };
 
+// Phase-1 onboarding preference vocabulary (ONBOARDING_AND_PREFERENCE_CAPTURE_SPEC §2–§4).
+export type OverrideDomain = "coding" | "math" | "science" | "concept";
+export type DepthLevel = "intuition" | "working" | "deep";
+
+// The effective preferences the active generation ran under (snapshot, surfaced on StudyPath). Loosely typed —
+// the backend owns the exact shape; the wizard reads depth_level / language / domain / depth_resolution.
+export type EffectivePreferences = {
+  domain?: string | null;
+  depth_level?: DepthLevel | null;
+  language?: string | null;
+  language_status?: string | null;
+  depth_resolution?: {
+    selected_depth?: string;
+    effective_depth?: string;
+    effective_depth_reason?: string;
+    deep_where_supported?: boolean;
+  } | null;
+} & Record<string, unknown>;
+
 export type StudyPath = {
   id: string;
   title: string;
@@ -29,6 +48,18 @@ export type StudyPath = {
   estimated_minutes_remaining: number | null;
   language?: string;
   created_at: string;
+  // Phase-0/1 routing + preferences (present once the backend has classified / generated).
+  domain?: string | null;
+  classification_status?: string | null;
+  effective_preferences?: EffectivePreferences | null;
+  preference_provenance?: Record<string, unknown> | null;
+};
+
+export type UserPreferences = {
+  default_depth_level: DepthLevel | null;
+  default_language: "python" | "cpp" | "java" | null;
+  default_knowledge_level: number | null;
+  schema_version: number;
 };
 
 export type TopicStatus =
@@ -1886,6 +1917,38 @@ export function updateStudyPathLanguage(
   return request<StudyPath>(`/study-paths/${studyPathId}/language`, {
     method: "PATCH",
     body: JSON.stringify({ language }),
+  });
+}
+
+// Phase-1 onboarding: apply the learner's per-path override BEFORE generation (§3). Any subset of fields;
+// domain becomes authoritative (never reclassified), depth/language stored as the path override.
+export function updateStudyPathPreferences(
+  studyPathId: string,
+  payload: {
+    domain?: OverrideDomain;
+    depth_level?: DepthLevel;
+    language?: "python" | "cpp" | "java";
+  },
+) {
+  return request<StudyPath>(`/study-paths/${studyPathId}/preferences`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+// Phase-1 user-level defaults (§3). GET returns all-null defaults for a user with no stored row.
+export function getUserPreferences() {
+  return request<UserPreferences>("/preferences/");
+}
+
+export function updateUserPreferences(payload: {
+  default_depth_level?: DepthLevel | null;
+  default_language?: "python" | "cpp" | "java" | null;
+  default_knowledge_level?: number | null;
+}) {
+  return request<UserPreferences>("/preferences/", {
+    method: "PUT",
+    body: JSON.stringify(payload),
   });
 }
 

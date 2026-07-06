@@ -417,7 +417,15 @@ export default function HomePage() {
       } else {
         setStatus("Study path created.");
         await refreshData();
-        router.push(`/study-paths/${createdPath.id}`);
+        // Phase-1 onboarding wizard (feature-flagged): confirm domain + depth before the study-path view.
+        // Disabled → unchanged behavior (straight to the path). Never affects Phase-0 routing either way.
+        const wizardEnabled =
+          process.env.NEXT_PUBLIC_ONBOARDING_WIZARD === "1";
+        router.push(
+          wizardEnabled
+            ? `/study-paths/${createdPath.id}/onboarding`
+            : `/study-paths/${createdPath.id}`,
+        );
       }
     } catch (err) {
       console.error(err);
