@@ -1,0 +1,111 @@
+"""Per-domain within-card narration contracts (DOMAIN_CARD_NARRATION_AND_RENDERING_SPEC §3).
+
+A *lens over existing config*, not a new build (Q38): declarative per-(domain × card) framing that the Phase-2B
+wiring injects at the blueprint/prompt layer (path A) and the trace-step formatter (path B). Two change kinds —
+**reframe** (labels/contract/order change; most cards) vs **restructure** (the `process` scaffold shape changes).
+
+Only PRESENTATION lives here (§4 adapter-neutral boundary): labels, field headings, prose ordering, action-
+oriented step titles. Truth-bearing values (units, rule identifiers, state deltas, interpretation) come from the
+fact-source registry — never from this module.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from app.services.narration.matrix import narration_domain_of
+
+# --- process card scaffold (RESTRUCTURE, §3) --------------------------------------------------------------
+# The core scaffold shape per domain — replaces the coding loop framing ("Starting state / Repeated action /
+# State update") that produced the awkward math reads. Injected at the blueprint/prompt layer (Q39 path A).
+PROCESS_SCAFFOLD: dict[str, tuple[str, ...]] = {
+    "coding":  ("Setup", "Loop / repeated action", "State update", "Termination"),
+    "math":    ("Setup", "Operation", "Result", "Why"),
+    "science": ("Principle", "Apply", "Interpret"),
+    "concept": ("Idea", "Structure", "Example"),
+}
+
+# --- worked-example step framing (REFRAME, §3 table) ------------------------------------------------------
+WORKED_EXAMPLE_FIELD_FRAMING: dict[str, dict[str, str]] = {
+    "coding": {
+        "goal": "what this line does",
+        "reasoning": "why (control / purpose)",
+        "work": "the code line (+ trace)",
+        "result": "variable state after",
+    },
+    "math": {
+        "goal": "what we transform, toward what",
+        "reasoning": "the rule / identity justifying it",
+        "work": "the rewritten expression",
+        "result": "the new form / running result",
+    },
+    "science": {
+        "goal": "what quantity we're finding",
+        "reasoning": "the law / principle invoked",
+        "work": "the substitution & solve",
+        "result": "value + units + interpretation",
+    },
+    "concept": {
+        "goal": "what idea / distinction is established",
+        "reasoning": "relation / definition / contextual basis",
+        "work": "example / comparison / evidence",
+        "result": "concise takeaway / classification",
+    },
+}
+
+# --- other cards (REFRAME, §3) ----------------------------------------------------------------------------
+BACKGROUND_FRAMING = {
+    "coding": "what it's for", "math": "where it applies",
+    "science": "the phenomenon", "concept": "the idea",
+}
+COMPONENTS_TERMS_FRAMING = {
+    "coding": "data structures", "math": "symbols + notation",
+    "science": "quantities + units", "concept": "key terms",
+}
+EDGE_CASE_FRAMING = {
+    "coding": "boundary input", "math": "degenerate case",
+    "science": "limiting assumption", "concept": "common misconception",
+}
+PRACTICE_FRAMING = {
+    "coding": "modify-code", "math": "solve",
+    "science": "predict", "concept": "classify-compare-explain",
+}
+
+# --- cross-cutting rules (all cards, §3) ------------------------------------------------------------------
+# (1) framing only — truth-bearing values come from the fact-source registry.
+# (2) never introduce a term outside assumed_prerequisites + what's taught.
+# (3) practice stays within the taught method (closes the a≠1 gap).
+# (4) step titles describe the ACTION, not the rule name.
+# (5) result lines are terminal, not narrated.
+STEP_TITLE_RULE = "action_not_rule_name"      # "Add and subtract (b/2)²", NOT "Completing-the-square rule"
+RESULT_LINE_RULE = "terminal_not_narrated"    # drop "Complete: the conclusion is reached. Final result: …"
+
+
+@dataclass(frozen=True)
+class NarrationContract:
+    """The resolved per-domain framing bundle handed to the narrator (path A) / step formatter (path B)."""
+    domain: str
+    process_scaffold: tuple[str, ...]
+    worked_example_fields: dict[str, str]
+    background: str
+    components_terms: str
+    edge_case: str
+    practice: str
+    step_title_rule: str = STEP_TITLE_RULE
+    result_line_rule: str = RESULT_LINE_RULE
+
+
+def narration_contract_for(domain: str | None) -> NarrationContract | None:
+    """Resolve the within-card narration contract for a fine/family/coarse `domain`. None for a non-gating domain
+    (mixed/unknown) — the caller then keeps the legacy framing (no domain contract to apply)."""
+    nd = narration_domain_of(domain)
+    if nd is None or nd not in PROCESS_SCAFFOLD:
+        return None
+    return NarrationContract(
+        domain=nd,
+        process_scaffold=PROCESS_SCAFFOLD[nd],
+        worked_example_fields=dict(WORKED_EXAMPLE_FIELD_FRAMING[nd]),
+        background=BACKGROUND_FRAMING[nd],
+        components_terms=COMPONENTS_TERMS_FRAMING[nd],
+        edge_case=EDGE_CASE_FRAMING[nd],
+        practice=PRACTICE_FRAMING[nd],
+    )
