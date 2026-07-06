@@ -49,7 +49,10 @@ useful for function calls. This always improves performance.") holds several cla
 Claim segmentation:
 - A free-text field is split into ordered claim spans BEFORE L1–L4.
 - Each span carries: claim_id · field · text_span · claim_class (factual | non_factual_framing | prompt |
-  unclassified) · its L1–L4 result · evidence_context · disposition.
+  unclassified) · content_ownership (free_text | trace_authoritative | trace_derivable |
+  deterministic_carried_elsewhere) · its L1–L4 result · evidence_context · disposition.
+  (claim_class = what the span MEANS; content_ownership = where its truth COMES FROM — a deterministic sentence can
+  be semantically factual yet not free-text truth this validator owns.)
 - Field disposition is COMPUTED from its claim dispositions:
     all claims ship            → ship field;
     only removable-claim fails → SOFTEN field by deleting/replacing ONLY those spans;
@@ -179,9 +182,9 @@ L4 verdict:  refuted | unsupported | no_objection   (+ states n/a · unavailable
 assertion → soften/withhold, never a clean pass; `unavailable` on non-factual framing may ship if L1–L3 pass.
 
 **`no_objection` cannot override a claim's class.** L4 may emit `no_objection` **only** for a span whose
-`claim_class` is `non_factual_framing`, `prompt`, or deterministic-content-carried-elsewhere. A span classified
-**factual** must resolve as `refuted | unsupported | unavailable` — `no_objection` can never make a bare factual
-assertion shippable (that removes the ambiguity of "the verifier didn't object, so ship it").
+`claim_class` is `non_factual_framing`/`prompt`, or whose `content_ownership == deterministic_carried_elsewhere`. A
+`factual`, free-text-owned span must resolve as `refuted | unsupported | unavailable` — `no_objection` can never
+make a bare factual assertion shippable (that removes the ambiguity of "the verifier didn't object, so ship it").
 
 **Version pinning + reproducibility.** Every L4 invocation records the exact evidence it ran against, so a verdict
 stays reproducible even after the fact-pack is later revised:
@@ -221,14 +224,38 @@ Ship rule — a claim_class==factual span may ship ONLY when:
 Passing L1/L2/L3 WITHOUT producing an establishment basis does NOT establish a free-text factual claim → it is
 unsupported (soften/withhold).
 ```
+**Establishment is set by a DETERMINISTIC resolver, never by L4.** (Otherwise L4 quietly becomes a certifier by
+"finding support" in the fact-pack.)
+```text
+Claim-establishment resolver — runs before/alongside L4, over the span + pinned EvidenceContext. May mark a
+factual span `established` ONLY via:
+  1. exact/normalized match to a registered definition;
+  2. deterministic match to a fact-pack rule;
+  3. a registered explicit source-span entailment/mapping for that claim type;
+  4. a deterministic L2 proof / registered transformation;
+  5. authoritative trace ownership (delegated to trace-to-teaching).
+It returns { basis, evidence_ids }; it NEVER uses an LLM verdict as establishment.
 
+L4's role: invoked only for spans not already deterministically established, refuted, or delegated. L4 may
+refute / mark unsupported / abstain — it can NEVER move ClaimEstablishment from not_established → established.
 ```
-field verdict:
+
+**Hard-fail span disposition** (a hard-fail/refutation is resolved at the SPAN, not by blanket field-withhold —
+consistent with the claim-span model):
+```text
+- Retry the span up to 2 times, then if it still fails/refutes:
+    optional / removable span            → deterministic DELETE; field_decision = soften;
+    required / field-or-card's-reason-to-exist span → WITHHOLD field/card.
+- In all cases NEVER retain or paraphrase the failed claim.
+```
+```
+field verdict (per span; field_decision computed from spans):
   L1–L3 pass, L4 == n/a                     → SHIP (no unresolved factual assertion exists)
-  L1–L3 pass, L4 == no_objection            → SHIP ONLY for non-factual framing / bounded prompt /
-                                              deterministic-content-carried-elsewhere; never a bare factual assertion
-  hard fail (L1 scope / L2 symbolic / L3)   → REPAIR (regenerate field, max 2) → still failing → WITHHOLD field
-  L4 refuted                                → REPAIR → still refuted → WITHHOLD field
+  L1–L3 pass, L4 == no_objection            → SHIP ONLY for non_factual_framing / prompt /
+                                              content_ownership==deterministic_carried_elsewhere; never a factual span
+  hard fail (L1 scope / L2 symbolic / L3)   → REPAIR (max 2) → still failing: optional span → DELETE/soften;
+                                              required/essential span → WITHHOLD field/card
+  L4 refuted                                → REPAIR (max 2) → still refuted: same span disposition as above
   L4 unsupported factual assertion          → SOFTEN (deterministically, below) or WITHHOLD
   L4 unavailable, factual assertion         → SOFTEN or WITHHOLD (verifier outage is NOT a clean pass)
   L4 unavailable, non-factual framing       → SHIP if L1–L3 pass
@@ -255,7 +282,8 @@ unsupported).
 FreeTextValidationResult {
   field
   claims: [ {
-    claim_id · span · claim_class: factual | non_factual_framing | prompt
+    claim_id · span · claim_class: factual | non_factual_framing | prompt | unclassified
+    content_ownership: free_text | trace_authoritative | trace_derivable | deterministic_carried_elsewhere
     deterministic: { l1_scope, l2_symbolic, l3_sibling: pass|fail|indeterminate,
                      out_of_scope_terms[], refuted_relations[], symbolic_domain }
     semantic:      { l4: refuted | unsupported | no_objection | n/a | unavailable, span?,
@@ -330,6 +358,9 @@ Expected:
 | `test_claim_segmentation_covers_entire_field` | "Stacks are LIFO, which always improves performance." | both the definition and the performance claim are spans; no factual residual left `unclassified` |
 | `test_unclassified_residual_fails_closed` | field with an unsegmented factual clause | `segmentation_coverage_gap` in shadow; repair/withhold in on_enforced |
 | `test_passing_checks_without_basis_is_unsupported` | factual claim passes L1/L2/L3 but has no establishment basis | not shipped; `establishment.status=not_established` → unsupported |
+| `test_l4_cannot_establish_factual_span` | factual free_text span, no deterministic basis, L4=no_objection | stays `not_established` → unsupported (L4 can't establish) |
+| `test_hardfail_optional_span_deleted_required_withholds` | invalid-transform span, failed repair | optional → deleted (siblings ship); required → field/card withheld |
+| `test_deterministic_carried_elsewhere_ships` | factual span with `content_ownership=deterministic_carried_elsewhere`, L4=no_objection | ships (truth owned by the deterministic source, not free-text) |
 | `test_l3_does_not_bind_general_rule_to_example_values` | general F=ma definition beside a 4 kg / 20 N example | no C1/C4 failure for not restating example values |
 | `test_l2_equivalence_transform_passes` | "x + 2 = 5, so x = 3" (subtract 2) | pass L2 (equivalence-preserving, registered op) |
 | `test_l1_does_not_reject_nontechnical_prose` | ordinary wording | not flagged as an out-of-scope technical term |
@@ -364,7 +395,10 @@ fixtures/free_text/
 Expected to change:
 - claim segmentation pass (field → ordered claim spans with claim_class, FULL non-whitespace coverage,
   unclassified-residual fail-closed, multi-proposition splitting) — the validation unit
-- claim-establishment resolver (status/basis/evidence_ids) — a factual span ships only when established
+- claim-establishment resolver (status/basis/evidence_ids) — DETERMINISTIC (definition/fact-pack/source/L2-proof/
+  trace); runs before/alongside L4; L4 can never mark established. A factual span ships only when established
+- content_ownership tagging (free_text | trace_authoritative | trace_derivable | deterministic_carried_elsewhere),
+  distinct from claim_class
 - sibling-trace binding resolver (explicit_example_reference | topic_general_rule | mixed) for L3
 - free_text validator module (L1–L4 per span + FreeTextValidationResult with per-claim results + field_decision)
 - topic-level vocabulary object (assumed_prerequisite_terms/introduced_terms/approved_operations/symbols/aliases)
@@ -394,8 +428,13 @@ MUST NOT become a source of truth:
 
 ## 10. Definition of done
 
-- [ ] The §6 false-symbolic-claim slice is caught by L2 and withheld after failed repair, end-to-end.
+- [ ] The §6 false-symbolic-claim span is rejected by L2; after failed repair it is deterministically DELETED when
+  optional (valid sibling spans survive), or WITHHOLDS the field/card when required — never retained/paraphrased.
 - [ ] L1 rejects an out-of-scope term against the Phase-0 topic contract.
+- [ ] `ClaimEstablishment` is set by the DETERMINISTIC resolver (definition/fact-pack/source/L2-proof/trace),
+  never by L4; L4 can never move a span from `not_established → established`.
+- [ ] `content_ownership` is distinct from `claim_class`; `no_objection` ships only `non_factual_framing`/`prompt`
+  or `content_ownership==deterministic_carried_elsewhere`, never a free-text `factual` span.
 - [ ] The validation unit is a **claim span**: a field is segmented before L1–L4; `field_decision` is computed
   from per-claim dispositions, so an unsupported span is softened/deleted without dropping valid sibling claims.
 - [ ] Claim spans **cover every non-whitespace character** (ordered, non-overlapping); `unclassified` residual
