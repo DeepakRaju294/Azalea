@@ -52,7 +52,10 @@ topic-level **vocabulary object**, so ordinary prose isn't mistaken for a techni
 ```json
 {
   "assumed_prerequisite_terms": ["variable", "equation", "force"],
-  "introduced_terms": ["net force", "Newton's second law"],
+  "introduced_terms": [
+    { "term_id": "net_force", "display": "net force", "intro_card_id": "concept_net_force_intro" },
+    { "term_id": "newtons_second_law", "display": "Newton's second law", "intro_card_id": "law_intro" }
+  ],
   "approved_operations": ["substitute", "compute"],
   "approved_symbols": ["F", "m", "a"],
   "term_aliases": { "net-force": "net force", "forces": "force" }
@@ -62,7 +65,9 @@ topic-level **vocabulary object**, so ordinary prose isn't mistaken for a techni
 L1 term handling:
 - Only tokens the domain tokenizer classifies as TECHNICAL are checked; ordinary words are never rejected merely
   for being absent. Aliases/plurals/hyphenation normalize before lookup.
-- A card may introduce a term only if it's a registered introduced_term AND the card is its designated intro point.
+- A card may introduce a term only if it's a registered introduced_term AND the card is its designated intro point,
+  matched by STABLE `intro_card_id` (never by card title/type/position — a reordered sequence must not change what
+  terminology is allowed).
 - Unknown candidate technical tokens are logged with tokenizer confidence: HIGH-confidence unknown ⇒ hard fail;
   LOW-confidence ⇒ proceed to L4 / a controlled review path (no unconditional hard-fail until the tokenizer is proven).
 ```
@@ -98,18 +103,27 @@ beside a substitute-into-F=ma example) even with no numeric/unit conflict. Contr
 
 ### L4 — bounded risk classifier (reject/downgrade-only, NEVER certifying)
 For claims unsettled by L1–L3 (definitions, attributions, "always/never"), a bounded verifier returns a **risk
-class**, not a truth certificate:
+class**, not a truth certificate. It operates **only over a supplied evidence package** — not "ask a model what it
+knows" (that would be an opaque source of truth):
 ```text
-L4 verdict:  refuted | unsupported | no_objection
-- refuted     — conflicts with established knowledge or the stated contract → repair, else withhold.
-- unsupported — a factual assertion that cannot be established from allowed evidence → soften or withhold.
-- no_objection— no detected contradiction, but NOT certified true → may ship ONLY if the claim is already
-                classified as non-factual framing, a bounded pedagogical prompt, or deterministic content whose
-                factual basis is carried elsewhere. `no_objection` NEVER promotes an unsupported factual assertion.
+L4 allowed evidence (the ONLY inputs the verifier may use):
+- the active topic vocabulary + registered definitions;
+- adapter/trace facts when present;
+- a VERSIONED domain fact-pack / rule registry;
+- explicitly supplied source excerpts/citations for the topic.
+
+L4 verdict:  refuted | unsupported | no_objection   (+ states n/a · unavailable)
+- refuted     — a conflicting rule/fact/source is identified → repair, else withhold. MUST carry evidence_ids.
+- unsupported — the supplied evidence does not establish the assertion → soften or withhold.
+- no_objection— no contradiction found, but NOT certified true → may ship ONLY for non-factual framing / a bounded
+                pedagogical prompt / deterministic content whose factual basis is carried elsewhere; NEVER promotes
+                a bare unsupported factual assertion.
+- n/a         — the field has NO unresolved factual assertion → L4 not needed (this is what allows a clean ship).
+- unavailable — L4 was REQUIRED for an unresolved factual assertion but could not run.
 ```
 "Supported" is deliberately **not** a verdict — L4 must never turn "the LLM believes this" into shippable fact.
-The verifier degrades safely (treated as unavailable) on error/malformed output; when unavailable, the
-deterministic rungs decide and any unsettled factual assertion is softened/withheld, not shipped.
+**`n/a` (no factual assertion) and `unavailable` (couldn't run) are different**: `unavailable` on a factual
+assertion → soften/withhold, never a clean pass; `unavailable` on non-factual framing may ship if L1–L3 pass.
 
 ---
 
@@ -117,11 +131,14 @@ deterministic rungs decide and any unsettled factual assertion is softened/withh
 
 ```
 field verdict:
-  L1–L3 pass, L4 ∈ {no_objection, n/a}     → SHIP (no_objection only for non-factual framing / bounded prompt /
-                                              deterministic-content-carried-elsewhere; never a bare factual assertion)
+  L1–L3 pass, L4 == n/a                     → SHIP (no unresolved factual assertion exists)
+  L1–L3 pass, L4 == no_objection            → SHIP ONLY for non-factual framing / bounded prompt /
+                                              deterministic-content-carried-elsewhere; never a bare factual assertion
   hard fail (L1 scope / L2 symbolic / L3)   → REPAIR (regenerate field, max 2) → still failing → WITHHOLD field
   L4 refuted                                → REPAIR → still refuted → WITHHOLD field
   L4 unsupported factual assertion          → SOFTEN (deterministically, below) or WITHHOLD
+  L4 unavailable, factual assertion         → SOFTEN or WITHHOLD (verifier outage is NOT a clean pass)
+  L4 unavailable, non-factual framing       → SHIP if L1–L3 pass
 ```
 
 **Softening is a deterministic operation, not open-ended rewriting** (v1):
@@ -145,7 +162,8 @@ unsupported).
 FreeTextValidationResult {
   deterministic: { l1_scope, l2_symbolic, l3_sibling: pass|fail|indeterminate,
                    out_of_scope_terms[], refuted_relations[], symbolic_domain }
-  semantic:      { l4: refuted | unsupported | no_objection | unavailable, span?, verifier_available }
+  semantic:      { l4: refuted | unsupported | no_objection | n/a | unavailable, span?, evidence_ids?[],
+                   verifier_available }   # evidence_ids REQUIRED on a refuted verdict
   decision:      ship | repair | soften | withhold
   failures:      [ typed, most-severe first ]
   telemetry:     { topic_id, card_type, field, rung, verdict, action, retry_count }
@@ -189,12 +207,15 @@ Expected:
 |---|---|---|
 | `test_l1_rejects_out_of_scope_term` | prose uses a term not assumed/taught | hard fail L1; term in `out_of_scope_terms` |
 | `test_l2_rejects_false_symbolic_claim` | "x² = −4 ⇒ (x)² = 0" | hard fail L2 (refuted relation) |
-| `test_l2_accepts_true_relation` | "since a = 2, a² = 4" | pass L2 |
+| `test_l2_accepts_true_symbolic_implication` | "If a = 2, then a² = 4." | pass L2 (class 2 implication under the declared domain) |
+| `test_l2_accepts_true_ground_relation` | known a=2 (authoritative); prose "a² = 4" | pass L2 (class 1 ground) |
 | `test_l2_skips_non_extractable` | prose with no clean relation | L2 pass; falls to L4 |
 | `test_l3_rejects_contradicting_sibling_example` | prose value conflicts with the topic's worked example | hard fail L3 |
 | `test_l4_downgrades_unverifiable_definition` | plausible but unverifiable definition asserted as fact | soften (sentence dropped/reduced) |
 | `test_l4_rejects_refuted_definition` | "a stack is FIFO" | repair → withhold field |
-| `test_l4_unavailable_degrades_safely` | verifier unavailable | deterministic rungs decide; L4 skipped, logged |
+| `test_l4_unavailable_factual_assertion_withholds` | factual assertion, verifier unavailable | soften/withhold — NOT a clean pass |
+| `test_l4_na_non_factual_framing_ships` | field has no unresolved factual assertion (L4=n/a) | ship |
+| `test_l4_refuted_carries_evidence_ids` | refuted definition | verdict includes `evidence_ids` |
 | `test_soften_never_produces_vaguer_falsehood` | refuted claim | output is dropped/scoped, not a hedged version of the false claim |
 | `test_soften_uses_only_registered_or_authoritative_replacement` | softened field | deleted or replaced deterministically; never newly-generated factual prose |
 | `test_l2_indeterminate_symbolic_relation_falls_to_l4` | parsed but underdetermined relation | not a hard fail for lacking bindings; → L4 |
@@ -233,7 +254,9 @@ Expected to change:
   + a domain tokenizer that classifies technical vs. ordinary tokens with confidence
 - L2 relation classifier + symbolic rule/algebra engine (or adapter transformation proof) with symbolic_domain
 - L3 reuse of trace-to-teaching C1/C2/C4 + C5 for action-bearing free-text
-- bounded verifier client returning refuted|unsupported|no_objection (reject/downgrade-only)
+- versioned domain fact-pack / rule registry (L4's allowed evidence) + registered definitions
+- bounded verifier client returning refuted|unsupported|no_objection|n/a|unavailable over the supplied evidence
+  ONLY (reject/downgrade-only; refuted carries evidence_ids)
 - deterministic softener (delete / registered-template / authoritative-sentence replacement only)
 - generation retry/soften coordinator
 - rollout gate integration + per-field telemetry emitter
@@ -257,10 +280,13 @@ MUST NOT become a source of truth:
   relations INDETERMINATE (→ L4, not hard-fail), and honors the declared `symbolic_domain` (complex-valid not rejected).
 - [ ] L3 rejects prose contradicting the topic's verified example — values/units (C1/C4) **and** a conflicting
   method/rule-order (C5 for action-bearing free-text).
-- [ ] L4 returns `refuted | unsupported | no_objection` only — **never certifies**; `no_objection` cannot promote
-  an unsupported factual assertion to shippable fact; degrades safely when the verifier is absent.
+- [ ] L4 operates only over the supplied evidence package (vocabulary/definitions · trace facts · versioned
+  fact-pack/rule registry · supplied sources); a `refuted` verdict carries `evidence_ids`; **never certifies**.
+- [ ] L4 `n/a` (no factual assertion) and `unavailable` (couldn't run) are distinct: a factual assertion with
+  `unavailable` is softened/withheld, never a clean pass; only `n/a`/`no_objection`-framing ships.
 - [ ] L1 checks only tokenizer-classified technical terms against the topic vocabulary object; ordinary prose is
-  never rejected; low-confidence unknowns go to L4/review, not an unconditional hard-fail.
+  never rejected; term introduction is matched by stable `intro_card_id`, not position; low-confidence unknowns go
+  to L4/review, not an unconditional hard-fail.
 - [ ] Softening is deterministic (delete / registered template / authoritative sentence); never LLM-authored
   replacement prose; never a vaguer falsehood; withholding is field-granular where possible.
 - [ ] `shadow_validate` logs verdicts without user impact; `on_enforced` enforces block/soften/withhold.
