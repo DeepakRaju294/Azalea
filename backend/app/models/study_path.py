@@ -44,6 +44,10 @@ class StudyPath(Base):
         String(20), nullable=False, default="pending", server_default="pending",
     )
 
+    # Phase-1 (D1): the active immutable StudyPathGeneration revision this path currently reflects. NULL until the
+    # first generation writes a snapshot; a regeneration repoints this at the newer revision.
+    active_generation_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
     progress_percent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     estimated_minutes_remaining: Mapped[int | None] = mapped_column(
         Integer,

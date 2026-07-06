@@ -70,6 +70,10 @@ def ensure_study_path_domain_columns() -> None:
                 "NOT NULL DEFAULT 'pending'"
             )
         )
+        # Phase-1 (D1): pointer to the active immutable StudyPathGeneration snapshot.
+        connection.execute(
+            text("ALTER TABLE study_paths ADD COLUMN IF NOT EXISTS active_generation_id VARCHAR")
+        )
 
 
 def ensure_quick_practice_schema() -> None:

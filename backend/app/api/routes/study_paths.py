@@ -41,6 +41,7 @@ from app.services.lean_lesson_generator import build_lean_lesson_from_topic_and_
 from app.services.legacy_v2_visual_bridge import attach_v2_visuals_to_legacy_lesson
 from app.services.topic_generator import generate_topics_from_chunks
 from app.services.domain_classifier import classify_domain
+from app.services.preference_service import write_generation_snapshot
 from app.services.llm_client import generate_title
 
 router = APIRouter()
@@ -720,6 +721,8 @@ def generate_initial_study_path_content(
         goal=study_path.goal,
         domain=ensure_study_path_domain(study_path, db),
     )
+    # Phase-1 (D1): capture an immutable snapshot of the effective prefs this generation ran under.
+    write_generation_snapshot(db, study_path)
 
     created_topics: list[Topic] = []
 
@@ -1119,6 +1122,8 @@ def regenerate_study_path(
         feedback=payload.feedback,
         domain=ensure_study_path_domain(study_path, db, force=True),
     )
+    # Phase-1 (D1): a regeneration is a new generation event → a new immutable snapshot revision.
+    write_generation_snapshot(db, study_path)
 
     created_topics: list[Topic] = []
 

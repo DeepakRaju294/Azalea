@@ -15,3 +15,4 @@ from app.models.content_chunk import ContentChunk
 from app.models.practice_attempt import PracticeAttempt
 from app.models.study_session import StudySession
 from app.models.quick_practice import QuickPracticeAttempt, QuickPracticeQuestion, QuickPracticeSession
+from app.models.preferences import UserPreference, StudyPathGeneration
