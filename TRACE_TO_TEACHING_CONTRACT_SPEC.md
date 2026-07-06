@@ -209,8 +209,11 @@ failure exists**. Each check names its authoritative basis:
 - **C2 — forbidden claims.** No `known_phrasings` hit whose `forbidden_when` holds (§7) ⇒ else **hard fail**.
 - **C3 — required facts.** Every `required_facts` entry matched in its `required_in_fields` (§6) ⇒ else
   **repairable fail** carrying the `fact_id`.
-- **C4 — unit fidelity.** Every unit token equals the relevant `Output.unit` (no invented/converted units) ⇒ else
-  **hard fail**.
+- **C4 — unit fidelity (per attributed quantity).** A step may carry **several** quantities
+  (`allowed_quantities: [{name, value, unit}]` — e.g. mass 4 kg + acceleration 5 m/s² + force 20 N in one step).
+  Each numeric quantity in prose is validated against **its own attributed output's** `unit`, not a single
+  step-wide unit. An invented/converted unit, or a value paired with the wrong unit, ⇒ **hard fail**. (Attribution
+  in §10.1.)
 - **C5 — operation/order fidelity.** Action maps to an allowed intent + order respects `required_operations`
   (§8) ⇒ else **hard fail**.
 - **C6 — semantic non-contradiction (bounded judge, reject-only, last).** Asked *only* "does this sentence
@@ -218,7 +221,7 @@ failure exists**. Each check names its authoritative basis:
 
 | C6 result | Behavior |
 |---|---|
-| ambiguous connective statement, no contradiction | allow, or drop the sentence |
+| ambiguous connective statement, no contradiction | **optional** field → drop the sentence + ship; **required** field → targeted retry. **Never RETAIN** an ambiguous sentence merely because it isn't provably false |
 | unsupported causal explanation | **repairable** (retry / remove) |
 | misleading interpretation of a verified value | **repairable** (retry) |
 | **direct contradiction of the trace** | **hard fail** (retry allowed, but must pass a second validation to ship) |
@@ -226,8 +229,11 @@ failure exists**. Each check names its authoritative basis:
 | judge malformed response | treat as unavailable; log separately |
 
 **Prose-vs-example contradiction** = any C1/C2/C4/C5 failure between a card's sentence and its step, OR two cards
-citing the same `operation` with different authoritative values (a cross-card C1/C4 check). C6 covers the residual
-"uses allowed numbers but still misleads" case.
+bound to the **same `trace_step_id`** surfacing conflicting authoritative values for the same
+`output_name`/`fact_id`. **Cross-card consistency keys on `(trace_id, trace_step_id, output_name|fact_id)`,
+never `operation` alone** — two *different* steps may share an `operation` tag (e.g. `substitute_known_values`)
+and legitimately produce different intermediate values (§10.1). C6 covers the residual "uses allowed numbers but
+still misleads" case.
 
 ---
 
@@ -242,14 +248,41 @@ TraceTeachingValidationResult {
                    operation_alignment }
   semantic:      { c6: pass|reject|unavailable, offending_span?, judge_available }
   decision:      pass | retry | withhold | shadow_log
-  failures:      [ typed failures, most-severe first ]   # ALL deterministic failures, not just the first
+  failures:      [ { check, class: primary | independent | suppressed, field, detail } ]   # ALL, not just first
   telemetry:     { trace_id, card_type, operation, rollout_mode, retry_count, primary_failure }
 }
 ```
 
-**Execution order:** run all of C1–C5 and collect every failure; do **not** run C6 if any hard deterministic
-failure exists; retry with the **complete** failure payload; persist the first failure as `primary_failure` for
-dashboards while retaining all in `telemetry`.
+**Execution order:** run all of C1–C5 and collect every failure; do **not** run C6 if any *unsuppressed* hard
+deterministic failure exists; retry with the **complete** failure payload; persist the first failure as
+`primary_failure` for dashboards while retaining all in `telemetry`.
+
+**Failure classification** (so cascading noise doesn't dominate retries):
+- **primary** — directly caused by the card text (e.g. an invented literal).
+- **independent** — a separately-observed direct violation (e.g. a wrong unit on a different quantity).
+- **suppressed** — a check that isn't meaningful because an upstream parse/source mapping failed (e.g. a field's
+  math won't parse ⇒ C1 is *primary*, and C3's "required fact missing" on that field is *suppressed*, not counted
+  as an independent omission). Suppressed failures don't drive retries and don't block C6 ordering.
+
+### 10.1 Failure precedence & field scope (closes the remaining ambiguity)
+
+**C1/C4 field scope.** Prose token-scanning applies to **prose-bearing** fields only; authoritative display fields
+are validated against their source mapping, not re-scanned:
+```text
+- Enforced (prose scan): goal · reasoning · why · transformation · parts · connective labels · a11y descriptions.
+- Authoritative (source-mapping check, not token scan): work · result · form (checked against Output/state_after).
+- Excluded entirely: internal ids · trace_step_id · UI step counters · source citations · approved card labels.
+- Coding cards: code blocks + line-number labels delegate to the coding-trace validator, not the math rules.
+```
+**Quantity attribution (C4).** A step exposes `allowed_quantities: [{name, value, unit}]`; each prose quantity is
+matched to one entry, and its unit checked against that entry — never against a single step-wide unit.
+**Required-field gating.** C3 runs only for fields the **active narration contract** marks required; C5 runs only
+on fields declared to communicate an action.
+**Cross-card identity.** Consistency keys on `(trace_id, trace_step_id, output_name|fact_id)`; a card citing
+multiple `trace_step_id`s must declare which value came from which step. Same-`operation`, different-step is **not**
+a conflict.
+**Optional vs. required connective.** An *optional* connective sentence failing C6-ambiguity is **removed**; a
+*required* connective field retries. Never retain an ambiguous sentence just because it isn't provably false.
 
 ---
 
@@ -331,6 +364,17 @@ Expected teaching output:
   - NO legacy narration path and NO frontend recovery path is used
 ```
 
+**"No legacy path" is instrumented, not code-reviewed.** Generation emits `GenerationPathTelemetry` so the golden
+test can assert it, not eyeball it:
+```text
+GenerationPathTelemetry { narration_path: trace_teaching_v1 | legacy_narration
+                          visual_path: compiled_visual_v1 | legacy_visual_repair
+                          frontend_recovery_used: bool
+                          fallback_reason: enum | null }
+golden assert: narration_path == trace_teaching_v1 · visual_path == compiled_visual_v1
+             · frontend_recovery_used is False · fallback_reason is null
+```
+
 ---
 
 ## 16. Acceptance-test table (executable contract)
@@ -344,6 +388,10 @@ Expected teaching output:
 | `test_c2_paraphrase_caught_by_c6` | forbidden claim paraphrased outside known_phrasings | reject C6 |
 | `test_c3_requires_named_law` | step requires fact_id force_law_newton | repairable; retry payload carries the fact_id; passes after repair |
 | `test_c4_rejects_unit_mutation` | Output 20 N; prose "20 kg" | reject C4 |
+| `test_c4_multi_quantity_step_accepts_each_unit` | one step with 4 kg + 5 m/s² + 20 N | pass (each quantity → its attributed unit) |
+| `test_c3_suppressed_when_field_unparsable` | field math won't parse | C1 primary; C3 marked suppressed, not independent |
+| `test_same_operation_different_step_not_conflict` | two steps, same operation, different values | pass (keyed on trace_step_id) |
+| `test_generation_path_telemetry_asserts_no_legacy` | valid slice | narration_path=trace_teaching_v1, frontend_recovery_used=False |
 | `test_c5_rejects_operation_mismatch` | operation substitute; prose "solve for acceleration" | reject C5 |
 | `test_c5_accepts_intent_synonym` | operation substitute; prose "plug in the knowns" | pass |
 | `test_c6_rejects_semantic_contradiction` | allowed values valid but causal claim contradicts trace | reject C6 (hard) |
@@ -386,7 +434,7 @@ Expected to change:
 - operation-contract registry + fact/forbidden-claim registries
 - generation retry coordinator (full-failure-payload retries, max 2)
 - rollout gate integration (AZALEA_DOMAIN_NARRATION_V2 shadow/enforced)
-- telemetry emitter (per-family validation outcomes)
+- telemetry emitter (per-family validation outcomes) + GenerationPathTelemetry (narration/visual/recovery path)
 - frontend topic-generation error state (§12)
 - unit/integration fixture directories (§17)
 
@@ -411,7 +459,13 @@ MUST NOT become a source of truth:
 - [ ] In `shadow_validate`, violations emit typed telemetry without changing the learner-visible path.
 - [ ] In `on_enforced`, a failed required card blocks the topic/family path and **never** invokes generic narration.
 - [ ] Frontend receives compiled authoritative fields only and does not repair missing trace semantics (§12).
-- [ ] Golden fixture tests prove no legacy narration or frontend recovery path is used for the vertical slice.
+- [ ] C4 validates each quantity against its **attributed** unit (multi-quantity step passes); C1/C4 field scope
+  (§10.1) is enforced — authoritative fields checked by source mapping, not prose token scan.
+- [ ] Failures are classed primary/independent/suppressed; a parse failure suppresses dependent checks.
+- [ ] Cross-card consistency keys on `(trace_id, trace_step_id, output_name|fact_id)` — same-operation/different-
+  step is not flagged.
+- [ ] `GenerationPathTelemetry` is emitted; the golden test asserts `narration_path == trace_teaching_v1`,
+  `frontend_recovery_used is False`, `fallback_reason is null` (no legacy path proven by instrumentation, not review).
 
 ## 20. Non-goals
 

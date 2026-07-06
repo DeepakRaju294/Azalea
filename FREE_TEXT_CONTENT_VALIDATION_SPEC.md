@@ -56,8 +56,10 @@ catching/softening one.
   **hard fail**. This rung catches `x² = −4 ⇒ (x)² = 0`. Fires **only** when a relation is cleanly extractable —
   never guesses; a non-extractable statement passes L2 and falls to L4.
 - **L3 — sibling-trace consistency (deterministic).** If the topic has a verified example trace, free-text prose
-  must not contradict its authoritative values/units/operations (reuse trace-to-teaching C1/C2/C4). Disagreeing
-  with the topic's own worked example ⇒ **hard fail**.
+  must not contradict its authoritative values/units/operations (reuse trace-to-teaching C1/C2/C4, **including its
+  §10.1 per-quantity unit attribution + `(trace_id, trace_step_id, output_name|fact_id)` identity** — a free-text
+  value only conflicts when it disagrees with the *same* step's authoritative value). Disagreeing with the topic's
+  own worked example ⇒ **hard fail**.
 - **L4 — definitional / claim check (bounded verifier, reject-biased).** For claims unsettled by L1–L3
   (definitions, attributions, "always/never" assertions), a bounded verifier returns
   `supported | refuted | unverifiable` + span, with a **conservative prior**: `unverifiable` is *not established*.
@@ -188,6 +190,8 @@ MUST NOT become a source of truth:
 - [ ] `shadow_validate` logs verdicts without user impact; `on_enforced` enforces block/soften/withhold.
 - [ ] A withheld required card blocks the topic/family and reuses the trace-to-teaching frontend contract.
 - [ ] A family's free-text false-claim rate is measured in `shadow_validate` before `on_enforced`.
+- [ ] `GenerationPathTelemetry` (shared with trace-to-teaching §15) shows no legacy/frontend-recovery path certified
+  a softened/withheld claim — asserted by instrumentation, not code review.
 
 ## 11. Non-goals & relationship
 
