@@ -11,7 +11,7 @@ import unittest
 
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
-from app.services.narration import contracts, fact_source, matrix, rollout
+from app.services.narration import audit, contracts, fact_source, matrix, rollout
 
 
 class Matrix(unittest.TestCase):
@@ -141,6 +141,23 @@ class Rollout(unittest.TestCase):
     def test_rollback_target_never_off_legacy(self):
         self.assertEqual(rollout.rollback_target(rollout.ON_ENFORCED), rollout.SHADOW_VALIDATE)
         self.assertEqual(rollout.rollback_target(rollout.SHADOW_VALIDATE), rollout.SHADOW_VALIDATE)
+
+
+class NarrationDataAudit(unittest.TestCase):
+    def test_formula_engine_supplies_units_and_rule_not_interpretation(self):
+        audit.register_audited_capabilities()
+        units = fact_source.get_fact_source("worked_example", "result_units", "science")
+        interp = fact_source.get_fact_source("worked_example", "interpretation", "science")
+        # units + rule identifier ARE supplied (calculation framing is allowed)…
+        self.assertTrue(fact_source.adapter_can_supply("t6_formula_engine", units, quantitative=True))
+        # …but interpretation is NOT (quantity_kind / final-status gaps) → correctly omitted, never invented
+        self.assertFalse(fact_source.adapter_can_supply("t6_formula_engine", interp))
+
+    def test_audit_summary_records_gaps(self):
+        s = audit.audit_summary()
+        self.assertFalse(s["science_interpretation_available"])
+        self.assertIn("trace.step.quantity_kind", s["gaps"])
+        self.assertTrue(s["supplies"]["units"])
 
 
 class Contracts(unittest.TestCase):
