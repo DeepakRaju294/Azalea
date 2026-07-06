@@ -43,28 +43,73 @@ field is never validated by both.
 ## 3. The validation ladder (cheapest, most-certain first)
 
 Each free-text field runs the applicable rungs; the **strongest applicable** verdict wins. L1–L3 are
-deterministic and preferred; L4 handles the residue and is **never the sole basis for shipping** a claim, only for
-catching/softening one.
+deterministic and preferred; L4 is a **risk classifier**, not a certifier — it may reject/downgrade but **never
+establishes a claim as true**.
 
-- **L1 — scope adherence (deterministic).** Every technical term used appears in `assumed_prerequisites` ∪ the
-  concepts taught on this topic (the Phase-0 topic contract). An out-of-scope term ⇒ **hard fail** (narration §3
-  "never introduce a term outside what's assumed/taught"). Term extraction uses the same tokenizer as the topic
-  contract; an unknown technical token fails closed rather than being ignored.
-- **L2 — extractable symbolic/numeric sanity (deterministic).** When a claim contains a checkable
-  equation/relation, extract it and **evaluate in the sealed namespace** used by the trace engines (`_eval`, no
-  `__builtins__`) with the **shared numeric-normalization contract** (trace-to-teaching §5). A refuted relation ⇒
-  **hard fail**. This rung catches `x² = −4 ⇒ (x)² = 0`. Fires **only** when a relation is cleanly extractable —
-  never guesses; a non-extractable statement passes L2 and falls to L4.
-- **L3 — sibling-trace consistency (deterministic).** If the topic has a verified example trace, free-text prose
-  must not contradict its authoritative values/units/operations (reuse trace-to-teaching C1/C2/C4, **including its
-  §10.1 per-quantity unit attribution + `(trace_id, trace_step_id, output_name|fact_id)` identity** — a free-text
-  value only conflicts when it disagrees with the *same* step's authoritative value). Disagreeing with the topic's
-  own worked example ⇒ **hard fail**.
-- **L4 — definitional / claim check (bounded verifier, reject-biased).** For claims unsettled by L1–L3
-  (definitions, attributions, "always/never" assertions), a bounded verifier returns
-  `supported | refuted | unverifiable` + span, with a **conservative prior**: `unverifiable` is *not established*.
-  The verifier may **reject or downgrade**, never upgrade an unverifiable claim to fact; degrades safely (treated
-  as unavailable) on error/malformed output.
+### L1 — scope adherence (deterministic)
+Do not introduce terminology outside prerequisites or what the topic teaches (narration §3). Enforced against a
+topic-level **vocabulary object**, so ordinary prose isn't mistaken for a technical term:
+```json
+{
+  "assumed_prerequisite_terms": ["variable", "equation", "force"],
+  "introduced_terms": ["net force", "Newton's second law"],
+  "approved_operations": ["substitute", "compute"],
+  "approved_symbols": ["F", "m", "a"],
+  "term_aliases": { "net-force": "net force", "forces": "force" }
+}
+```
+```text
+L1 term handling:
+- Only tokens the domain tokenizer classifies as TECHNICAL are checked; ordinary words are never rejected merely
+  for being absent. Aliases/plurals/hyphenation normalize before lookup.
+- A card may introduce a term only if it's a registered introduced_term AND the card is its designated intro point.
+- Unknown candidate technical tokens are logged with tokenizer confidence: HIGH-confidence unknown ⇒ hard fail;
+  LOW-confidence ⇒ proceed to L4 / a controlled review path (no unconditional hard-fail until the tokenizer is proven).
+```
+
+### L2 — symbolic/numeric sanity (deterministic, domain-aware)
+When a claim contains a checkable relation, classify it — evaluation alone is unsafe (`x² = −4` is false over ℝ,
+satisfiable over ℂ). Every relation declares or inherits a `symbolic_domain: real | complex | integer | natural |
+adapter_defined`:
+```text
+L2 relation classes:
+1. Ground relation — all symbols bound to authoritative values → evaluate in the sealed namespace
+   (_eval, no __builtins__) with the shared numeric normalization (trace-to-teaching §5). Refuted ⇒ hard fail.
+2. Symbolic identity / implication — variables free → validate ONLY via a deterministic symbolic rule / algebra
+   engine / adapter-provided transformation proof, under the declared symbolic_domain. Refuted ⇒ hard fail.
+3. Extractable but underdetermined — parses but cannot be proven/refuted under the declared domain → L2 returns
+   INDETERMINATE; the field falls to L4 (never a hard fail merely for lacking bindings).
+```
+So `x²=−4 ⇒ (x)²=0` is refuted by the symbolic rule (class 2), not by guessing a binding; a complex-valid relation
+under a `complex` domain is **not** rejected.
+
+### L3 — sibling-trace consistency (deterministic)
+If the topic has a verified example trace, free-text prose must not contradict it. Reuse the applicable
+trace-to-teaching checks (incl. §10.1 per-quantity attribution + `(trace_id, trace_step_id, output_name|fact_id)`
+identity):
+```text
+- C1 for values · C2 for forbidden claims · C4 for quantity↔unit pairings ·
+- C5 when the free-text field asserts an action / method / rule order.
+L3 does NOT require every free-text card to describe an operation; C5 applies only to action-bearing claims under
+the active narration contract.
+```
+This catches prose that teaches the wrong method next to a correct worked example ("first isolate acceleration"
+beside a substitute-into-F=ma example) even with no numeric/unit conflict. Contradiction ⇒ **hard fail**.
+
+### L4 — bounded risk classifier (reject/downgrade-only, NEVER certifying)
+For claims unsettled by L1–L3 (definitions, attributions, "always/never"), a bounded verifier returns a **risk
+class**, not a truth certificate:
+```text
+L4 verdict:  refuted | unsupported | no_objection
+- refuted     — conflicts with established knowledge or the stated contract → repair, else withhold.
+- unsupported — a factual assertion that cannot be established from allowed evidence → soften or withhold.
+- no_objection— no detected contradiction, but NOT certified true → may ship ONLY if the claim is already
+                classified as non-factual framing, a bounded pedagogical prompt, or deterministic content whose
+                factual basis is carried elsewhere. `no_objection` NEVER promotes an unsupported factual assertion.
+```
+"Supported" is deliberately **not** a verdict — L4 must never turn "the LLM believes this" into shippable fact.
+The verifier degrades safely (treated as unavailable) on error/malformed output; when unavailable, the
+deterministic rungs decide and any unsettled factual assertion is softened/withheld, not shipped.
 
 ---
 
@@ -72,14 +117,24 @@ catching/softening one.
 
 ```
 field verdict:
-  clean (L1–L3 pass, L4 not-refuted)        → SHIP
+  L1–L3 pass, L4 ∈ {no_objection, n/a}     → SHIP (no_objection only for non-factual framing / bounded prompt /
+                                              deterministic-content-carried-elsewhere; never a bare factual assertion)
   hard fail (L1 scope / L2 symbolic / L3)   → REPAIR (regenerate field, max 2) → still failing → WITHHOLD field
   L4 refuted                                → REPAIR → still refuted → WITHHOLD field
-  L4 unverifiable claim of fact             → SOFTEN: drop the sentence / reduce to a taught-scope statement
+  L4 unsupported factual assertion          → SOFTEN (deterministically, below) or WITHHOLD
 ```
 
-- **Soften** = remove the assertion-of-fact framing (drop the sentence, or reduce to a taught-scope statement) —
-  **never** rephrase a false claim into a vaguer false claim.
+**Softening is a deterministic operation, not open-ended rewriting** (v1):
+```text
+- Preferred action: DELETE the unsupported/refuted sentence.
+- Permitted replacement: an existing authoritative/derivable sentence from the card contract, OR a registered
+  deterministic template (e.g. one backed by a termination-proof field).
+- NOT permitted: an LLM-authored replacement factual sentence.
+- Optional framing may remain only if explicitly classified non-factual (no technical/causal assertion).
+Example — "This always terminates because the recursion reduces the problem size." → DELETE, or use a template
+backed by a termination proof. Do NOT replace with "This generally tends to finish efficiently" (softer, still
+unsupported).
+```
 - **Withhold at field granularity** where possible (drop the offending sentence/definition), escalating to the
   **card** only when the field is the card's reason to exist (e.g. an `edge_case` whose sole assertion is refuted).
 - A withheld **required** card follows the Phase-2 §2.1 rule (withholds the family from `on_enforced`, no generic
@@ -88,8 +143,9 @@ field verdict:
 **Layered result** (mirrors trace-to-teaching §10):
 ```text
 FreeTextValidationResult {
-  deterministic: { l1_scope, l2_symbolic, l3_sibling: pass|fail, out_of_scope_terms[], refuted_relations[] }
-  semantic:      { l4: supported|refuted|unverifiable, span?, verifier_available }
+  deterministic: { l1_scope, l2_symbolic, l3_sibling: pass|fail|indeterminate,
+                   out_of_scope_terms[], refuted_relations[], symbolic_domain }
+  semantic:      { l4: refuted | unsupported | no_objection | unavailable, span?, verifier_available }
   decision:      ship | repair | soften | withhold
   failures:      [ typed, most-severe first ]
   telemetry:     { topic_id, card_type, field, rung, verdict, action, retry_count }
@@ -118,10 +174,11 @@ be made outside verified adapter-backed examples.**
 Minimum vertical slice — a math concept card with a false symbolic claim
 Field:  concept_intuition body contains "since x² = −4, we get (x)² = 0"
 Expected:
-  - L2 extracts x² = −4 and (x)² = 0, evaluates in the sealed namespace, finds them inconsistent
-  - decision = repair; after 2 failed repairs → withhold the field (sentence dropped)
+  - L2 classifies this as a symbolic implication (class 2, variables free) under symbolic_domain=real and refutes
+    it via the deterministic symbolic rule — NOT by guessing a binding
+  - decision = repair; after 2 failed repairs → withhold the field (sentence deleted deterministically)
   - in shadow_validate: legacy display unchanged, verdict logged
-  - no legacy/frontend recovery path certifies the claim
+  - no legacy/frontend recovery path certifies the claim; L4 is not consulted to "support" it
 ```
 
 ---
@@ -139,6 +196,12 @@ Expected:
 | `test_l4_rejects_refuted_definition` | "a stack is FIFO" | repair → withhold field |
 | `test_l4_unavailable_degrades_safely` | verifier unavailable | deterministic rungs decide; L4 skipped, logged |
 | `test_soften_never_produces_vaguer_falsehood` | refuted claim | output is dropped/scoped, not a hedged version of the false claim |
+| `test_soften_uses_only_registered_or_authoritative_replacement` | softened field | deleted or replaced deterministically; never newly-generated factual prose |
+| `test_l2_indeterminate_symbolic_relation_falls_to_l4` | parsed but underdetermined relation | not a hard fail for lacking bindings; → L4 |
+| `test_l2_uses_declared_symbolic_domain` | relation valid over ℂ under a complex-domain contract | not rejected |
+| `test_l4_no_objection_does_not_certify_factual_claim` | unsupported factual claim, L4=no_objection | not shippable as fact (softened/withheld) |
+| `test_l1_does_not_reject_nontechnical_prose` | ordinary wording | not flagged as an out-of-scope technical term |
+| `test_l3_rejects_operation_conflict_with_sibling_trace` | prose method conflicts with the trace (no numeric conflict) | hard fail L3 via C5 |
 | `test_withhold_required_card_blocks_family` | required card, hard fail, on_enforced | topic/family path withheld; no generic fallback |
 | `test_shadow_logs_without_user_impact` | same failure, shadow_validate | legacy display remains; typed telemetry emitted |
 
@@ -152,8 +215,11 @@ fixtures/free_text/
   out_of_scope_term.json            # L1
   wrong_definition_stack_fifo.json  # L4 refuted
   overreaching_edge_case.json       # "this always terminates" (L4)
-  contradicts_sibling_example.json  # L3
-  unverifiable_asserted_as_fact.json# L4 soften
+  contradicts_sibling_example.json  # L3 (value/unit)
+  operation_conflict_sibling.json   # L3 via C5 (wrong method beside a correct example)
+  unsupported_asserted_as_fact.json # L4 soften
+  indeterminate_symbolic_relation.json # L2 class 3 → L4
+  complex_domain_relation_ok.json   # L2 class 2, symbolic_domain=complex, not rejected
 ```
 
 ---
@@ -163,17 +229,21 @@ fixtures/free_text/
 ```text
 Expected to change:
 - free_text validator module (L1–L4 + FreeTextValidationResult)
-- scope-adherence checker wired to the Phase-0 topic contract (assumed_prerequisites ∪ taught concepts)
-- extractable-relation checker reusing the sealed eval + shared numeric normalization (trace-to-teaching §5)
-- bounded verifier client (reject/downgrade-only)
+- topic-level vocabulary object (assumed_prerequisite_terms/introduced_terms/approved_operations/symbols/aliases)
+  + a domain tokenizer that classifies technical vs. ordinary tokens with confidence
+- L2 relation classifier + symbolic rule/algebra engine (or adapter transformation proof) with symbolic_domain
+- L3 reuse of trace-to-teaching C1/C2/C4 + C5 for action-bearing free-text
+- bounded verifier client returning refuted|unsupported|no_objection (reject/downgrade-only)
+- deterministic softener (delete / registered-template / authoritative-sentence replacement only)
 - generation retry/soften coordinator
 - rollout gate integration + per-field telemetry emitter
 - frontend field/card withhold state (shared with trace-to-teaching §12)
 - fixture directories (§8)
 
 MUST NOT become a source of truth:
-- the L4 verifier (reject/downgrade only; never certifies or authors a claim)
-- softening that produces a vaguer version of a false claim
+- the L4 verifier (reject/downgrade only; NEVER certifies or authors a claim; "supported" is not a verdict)
+- softening that produces a vaguer version of a false claim, or any LLM-authored replacement factual prose
+- sealed-eval "truth" for free-variable relations (those need the symbolic rule under a declared domain)
 - frontend recovery / legacy narration fallback in on_enforced mode
 ```
 
@@ -183,10 +253,16 @@ MUST NOT become a source of truth:
 
 - [ ] The §6 false-symbolic-claim slice is caught by L2 and withheld after failed repair, end-to-end.
 - [ ] L1 rejects an out-of-scope term against the Phase-0 topic contract.
-- [ ] L2 catches the `x²=−4` class and accepts true relations; non-extractable statements fall through cleanly.
-- [ ] L3 rejects prose contradicting the topic's own verified example (reusing trace-to-teaching C1/C2/C4).
-- [ ] L4 is reject/downgrade-only, conservative on `unverifiable`, and degrades safely when absent.
-- [ ] Softening never emits a vaguer falsehood; withholding is field-granular where possible.
+- [ ] L2 refutes `x²=−4 ⇒ (x)²=0` via the symbolic rule (class 2), accepts true relations, marks underdetermined
+  relations INDETERMINATE (→ L4, not hard-fail), and honors the declared `symbolic_domain` (complex-valid not rejected).
+- [ ] L3 rejects prose contradicting the topic's verified example — values/units (C1/C4) **and** a conflicting
+  method/rule-order (C5 for action-bearing free-text).
+- [ ] L4 returns `refuted | unsupported | no_objection` only — **never certifies**; `no_objection` cannot promote
+  an unsupported factual assertion to shippable fact; degrades safely when the verifier is absent.
+- [ ] L1 checks only tokenizer-classified technical terms against the topic vocabulary object; ordinary prose is
+  never rejected; low-confidence unknowns go to L4/review, not an unconditional hard-fail.
+- [ ] Softening is deterministic (delete / registered template / authoritative sentence); never LLM-authored
+  replacement prose; never a vaguer falsehood; withholding is field-granular where possible.
 - [ ] `shadow_validate` logs verdicts without user impact; `on_enforced` enforces block/soften/withhold.
 - [ ] A withheld required card blocks the topic/family and reuses the trace-to-teaching frontend contract.
 - [ ] A family's free-text false-claim rate is measured in `shadow_validate` before `on_enforced`.
