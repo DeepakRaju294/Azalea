@@ -7,8 +7,10 @@
 > ships.
 >
 > Companion to `DOMAIN_CARD_NARRATION_AND_RENDERING_SPEC.md` (§12). Sibling: `TRACE_TO_TEACHING_CONTRACT_SPEC.md`
-> (the trace-backed half). **Clean split:** a value/claim with a verified trace → trace-to-teaching; a claim with
-> **no** trace → here. A field is validated by exactly one of the two.
+> (the trace-backed half). **Clean split — assigned per CLAIM SPAN, not per field:** a trace-backed span → owned by
+> trace-to-teaching; a free-text span → owned by this contract; a deterministic-carried span → owned by its
+> registered source. A single UI field may contain spans from different ownership paths, but **no individual span
+> is validated by more than one truth-owning path** (§2).
 >
 > **Core stance:** conservative by construction. When a **factual** claim cannot be established, this layer
 > **withholds or softens** it — it never certifies. **Non-factual framing** may ship only when it passes scope
@@ -290,6 +292,10 @@ refute / mark unsupported / abstain — it can NEVER move ClaimEstablishment fro
     essential → WITHHOLD the card / topic family after failed repair.
 - In all cases NEVER retain or paraphrase the failed claim.
 ```
+**The SAME `span_requirement` disposition governs every non-shippable factual outcome** — refuted, unsupported,
+AND unavailable (verifier outage). A registered deterministic replacement may substitute ONLY when it already has
+an independent establishment basis and preserves the card contract. (So a *required* definition that is merely
+unsupported still withholds the field — it is not deleted just because it wasn't hard-refuted.)
 ```
 field verdict (per span; field_decision computed from spans):
   L1–L3 pass, L4 == n/a                     → SHIP (no unresolved factual assertion exists)
@@ -298,8 +304,9 @@ field verdict (per span; field_decision computed from spans):
   hard fail (L1 scope / L2 symbolic / L3)   → REPAIR (max 2) → still failing: optional span → DELETE/soften;
                                               required/essential span → WITHHOLD field/card
   L4 refuted                                → REPAIR (max 2) → still refuted: same span disposition as above
-  L4 unsupported factual assertion          → SOFTEN (deterministically, below) or WITHHOLD
-  L4 unavailable, factual assertion         → SOFTEN or WITHHOLD (verifier outage is NOT a clean pass)
+  L4 unsupported factual assertion          → by span_requirement: optional → SOFTEN/DELETE; required → WITHHOLD
+                                              field; essential → WITHHOLD card/family
+  L4 unavailable, factual assertion         → same span_requirement disposition (verifier outage is NOT a clean pass)
   L4 unavailable, non-factual framing       → SHIP if L1–L3 pass
 ```
 
@@ -327,6 +334,7 @@ FreeTextValidationResult {
     claim_id · span · claim_class: factual | non_factual_framing | prompt | unclassified
     content_ownership: free_text | trace_authoritative | trace_derivable | deterministic_carried_elsewhere
     span_requirement: optional | required | essential   # backend-derived; drives delete-vs-withhold
+    requirement_source: narration_contract | card_schema | registered_template
     ownership_provenance?: { deterministic_source_id, source_version, source_field }   # required if carried_elsewhere
     deterministic: { l1_scope, l2_symbolic, l3_sibling: pass|fail|indeterminate,
                      out_of_scope_terms[], refuted_relations[], symbolic_domain }
@@ -338,8 +346,9 @@ FreeTextValidationResult {
     failures:      [ typed, most-severe first ]
   } ]
   field_decision:  ship | repair | soften | withhold      # computed from the claim dispositions above
-  telemetry:       { topic_id, card_type, field, claim_id, rung, verdict, unsupported_reason?, action,
-                     retry_count, evidence_context }
+  telemetry:       { topic_id, card_type, field, claim_id, content_ownership, span_requirement, requirement_source,
+                     rung, verdict, unsupported_reason?, action, retry_count, evidence_context }
+                     # requirement_source lets you tell a correct contract-mapped withhold from a fallback default
 }
 ```
 
@@ -406,6 +415,7 @@ Expected:
 | `test_passing_checks_without_basis_is_unsupported` | factual claim passes L1/L2/L3 but has no establishment basis | not shipped; `establishment.status=not_established` → unsupported |
 | `test_l4_cannot_establish_factual_span` | factual free_text span, no deterministic basis, L4=no_objection | stays `not_established` → unsupported (L4 can't establish) |
 | `test_hardfail_optional_span_deleted_required_withholds` | invalid-transform span, failed repair | optional → deleted (siblings ship); required → field/card withheld |
+| `test_unsupported_required_span_withholds` | required components_terms def with no establishment basis (unsupported, not refuted) | required span → withhold field; not deleted just for being unsupported |
 | `test_deterministic_carried_elsewhere_ships` | factual span with backend `content_ownership=deterministic_carried_elsewhere` + provenance, L4=no_objection | ships (truth owned by the deterministic source, not free-text) |
 | `test_generator_ownership_labels_are_ignored` | generator emits `content_ownership=deterministic_carried_elsewhere`, no backend mapping | label discarded; backend routes independently → span is free_text and must establish normally |
 | `test_backend_deterministic_mapping_missing_provenance_fails_closed` | backend mapping selects deterministic_carried_elsewhere but provenance missing/invalid | hard routing failure; NO fallback to free_text (withhold per backend requirement) |
@@ -493,7 +503,9 @@ MUST NOT become a source of truth:
 - [ ] An `unclassified` span inherits its field/card requirement, defaults to **required** when unmapped, and is
   never eligible for optional deletion — a missed clause can't be dropped as "optional."
 - [ ] Span disposition is driven by backend `span_requirement`: optional → delete, required → withhold field,
-  essential → withhold card/family (not an implementation guess).
+  essential → withhold card/family — applied **uniformly** to refuted, unsupported, AND unavailable factual spans
+  (a required unsupported definition withholds, not deletes). `requirement_source` is carried in the result +
+  telemetry (a contract-mapped withhold is distinguishable from a fallback default).
 - [ ] A class-3 transformation is validated against a **surfaced/declared** operation (or registered metadata);
   an undeclared step is INDETERMINATE → L4, never an LLM-inferred operation.
 - [ ] The validation unit is a **claim span**: a field is segmented before L1–L4; `field_decision` is computed
