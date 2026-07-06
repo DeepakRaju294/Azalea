@@ -34,6 +34,7 @@ from app.services.course_type_classifier import classify_topic_course_type
 from app.services.knowledge_level_service import self_report_to_knowledge_level
 from app.services.topic_generator import generate_topics_from_chunks
 from app.services.topic_qa import answer_topic_question
+from app.api.routes.study_paths import ensure_study_path_domain
 
 router = APIRouter()
 
@@ -678,6 +679,7 @@ def generate_topics_for_study_path(
         generated_topic_data = generate_topics_from_chunks(
             chunks,
             goal=study_path.goal,
+            domain=ensure_study_path_domain(study_path, db),
         )
         existing_titles = {
             topic.title.strip().lower()
@@ -746,6 +748,7 @@ def generate_topics_for_study_path(
     generated_topic_data = generate_topics_from_chunks(
         chunks,
         goal=study_path.goal,
+        domain=ensure_study_path_domain(study_path, db),
     )
 
     created_topics: list[Topic] = []

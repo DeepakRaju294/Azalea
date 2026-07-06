@@ -54,6 +54,24 @@ def ensure_study_path_language_column() -> None:
         )
 
 
+def ensure_study_path_domain_columns() -> None:
+    # Phase-0 domain routing (DOMAIN_ROUTING_AND_TOPIC_GATE_SPEC §3). No alembic in this repo — idempotent ALTER.
+    with engine.begin() as connection:
+        connection.execute(
+            text("ALTER TABLE study_paths ADD COLUMN IF NOT EXISTS domain VARCHAR(40)")
+        )
+        connection.execute(
+            text("ALTER TABLE study_paths ADD COLUMN IF NOT EXISTS domain_provenance JSONB")
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE study_paths "
+                "ADD COLUMN IF NOT EXISTS classification_status VARCHAR(20) "
+                "NOT NULL DEFAULT 'pending'"
+            )
+        )
+
+
 def ensure_quick_practice_schema() -> None:
     with engine.begin() as connection:
         connection.execute(
@@ -206,6 +224,7 @@ def ensure_topic_course_type_schema() -> None:
 
 ensure_learning_material_scope_columns()
 ensure_study_path_language_column()
+ensure_study_path_domain_columns()
 ensure_quick_practice_schema()
 ensure_quick_practice_title_column()
 ensure_topic_course_type_schema()

@@ -1,17 +1,78 @@
 from __future__ import annotations
 
+import copy
+import json
 import logging
 import os
+import threading
 from typing import TYPE_CHECKING, Any
 
 from app.prompts.topic_prompt import SYSTEM_PROMPT, build_topic_prompt
 from app.services.course_type_classifier import enrich_topic_with_course_type
+from app.services.domain_classifier import FAMILY_OF
+from app.services.domain_gate import gate_topic_types_by_domain
 from app.services.llm_client import generate_structured_topics
 
 if TYPE_CHECKING:
     from app.models.content_chunk import ContentChunk
 
 _log = logging.getLogger(__name__)
+
+# --- Phase-0 domain routing gate (DOMAIN_ROUTING_AND_TOPIC_GATE_SPEC §4/§7) --------------------------------
+# AZALEA_DOMAIN_ROUTING_GATE: unset/"0" = SHADOW (compute + log what the gate WOULD change, emit unchanged
+# topics — existing behavior byte-for-byte); anything else = ENFORCED (emit the gated topics). The flag is read
+# per-call so it can be flipped without a process restart.
+_GATE_TELEMETRY_LOCK = threading.Lock()
+_GATE_TELEMETRY_PATH = os.getenv(
+    "AZALEA_DOMAIN_GATE_TELEMETRY_PATH", os.path.join("logs", "domain_gate.jsonl")
+)
+
+
+def _gate_enforced() -> bool:
+    return os.getenv("AZALEA_DOMAIN_ROUTING_GATE", "") not in ("", "0")
+
+
+def _coding_transforms_enabled(domain: str | None) -> bool:
+    """Whether the coding-family canonical backfills (_expand_canonical_family / _append_missing_coding_topics /
+    _order_canonical_family) should run. When the gate is ENFORCED and the path is a known NON-coding family,
+    skip them so we don't inject coding topics a math/science path would only have to drop. When the flag is off
+    (shadow) OR the domain is unknown/mixed/coding, they run exactly as before (§5, D-c)."""
+    if not _gate_enforced() or not domain:
+        return True
+    return FAMILY_OF.get(domain, "") in ("", "coding")
+
+
+def _record_gate_telemetry(payload: dict[str, Any]) -> None:
+    """Best-effort structured-log + JSONL sink for gate decisions (D-d). Never raises — observability must not
+    break generation."""
+    _log.info(
+        "domain_gate[%s] domain=%s family=%s seen=%d rewritten=%d dropped=%d recovered=%s validation=%s",
+        payload.get("mode"), payload.get("domain"), payload.get("gate_family"),
+        payload.get("topics_seen", 0), payload.get("topics_rewritten", 0), payload.get("topics_dropped", 0),
+        payload.get("coverage_recovered"), payload.get("routing_validation"),
+    )
+    try:
+        directory = os.path.dirname(_GATE_TELEMETRY_PATH)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        with _GATE_TELEMETRY_LOCK, open(_GATE_TELEMETRY_PATH, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, default=str) + "\n")
+    except Exception:  # noqa: BLE001 — telemetry is best-effort
+        pass
+
+
+def _apply_domain_gate(topics: list[dict[str, Any]], domain: str | None) -> list[dict[str, Any]]:
+    """Run the domain gate over the FINAL topic list and emit telemetry. Returns the gated list when ENFORCED,
+    the original (untouched) list in SHADOW mode. The gate mutates dicts in place, so shadow mode runs it on a
+    deep copy — the emitted topics stay byte-for-byte identical while telemetry still reflects real decisions."""
+    if not domain:
+        return topics
+    enforced = _gate_enforced()
+    working = [copy.deepcopy(t) for t in topics]
+    gated, tel = gate_topic_types_by_domain(working, domain)
+    tel["mode"] = "enforced" if enforced else "shadow"
+    _record_gate_telemetry(tel)
+    return gated if enforced else topics
 
 # Paradigms/methodologies that a concrete algorithm already teaches BY EXAMPLE. A standalone
 # "Understanding the X Strategy" / "What is X" topic for one of these — when the path's goal is
@@ -789,6 +850,7 @@ def generate_topics_from_chunks(
     chunks: list[ContentChunk],
     goal: str | None = None,
     feedback: str | None = None,
+    domain: str | None = None,
 ) -> list[dict[str, Any]]:
     chunk_sections: list[str] = []
 
@@ -828,6 +890,8 @@ Chunk index: {chunk.chunk_index}
             decomposed = generate_decomposed_topics(goal=goal, chunks_text=chunks_text, feedback=feedback)
             if decomposed:
                 _log.info("topic_generator: used capability-graph decomposition (%d topics)", len(decomposed))
+                # Gate BEFORE marking follow-ups so the marking reflects the final (possibly remapped) types.
+                decomposed = _apply_domain_gate(decomposed, domain)
                 _mark_coding_follow_ups(decomposed)
                 return decomposed
             _log.warning("topic_generator: decomposition produced nothing — falling back to legacy")
@@ -949,17 +1013,20 @@ Chunk index: {chunk.chunk_index}
     # Deterministically fill in a FAMILY SURVEY's canonical members (e.g. sorting -> all five sorts) that the
     # decomposition LLM under-generated. The pipeline is otherwise subtractive, so this is the only place the
     # canonical set is guaranteed. Runs BEFORE the coding backfill so injected walkthroughs get coding topics.
-    cleaned_topics = _expand_canonical_family(cleaned_topics, goal)
-    # Guarantee a coding_implementation follow-up exists for each algorithm/data-structure subject
-    # (the blueprint rule was prompt-only, so the model often dropped it -> "coding never generated").
-    cleaned_topics = _append_missing_coding_topics(cleaned_topics, goal)
+    # These are coding-family backfills — skipped when the gate is ENFORCED on a non-coding path (§5, D-c).
+    if _coding_transforms_enabled(domain):
+        cleaned_topics = _expand_canonical_family(cleaned_topics, goal)
+        # Guarantee a coding_implementation follow-up exists for each algorithm/data-structure subject
+        # (the blueprint rule was prompt-only, so the model often dropped it -> "coding never generated").
+        cleaned_topics = _append_missing_coding_topics(cleaned_topics, goal)
     # Prereqs live in the intro; every other topic teaches only its own concept. Fold prerequisite
     # concept_intuition topics (subject not taught on the path) into the intro (assume vs gloss), and mark body
     # topics with the prereqs to assume — runs after the teaching topics are finalized, before ordering.
     cleaned_topics = _fold_prereqs_into_intro(cleaned_topics)
     # Consolidate a family survey into canonical order, each walkthrough next to its coding follow-up
     # (runs AFTER the coding backfill so both halves of each member are present to group).
-    cleaned_topics = _order_canonical_family(cleaned_topics, goal)
+    if _coding_transforms_enabled(domain):
+        cleaned_topics = _order_canonical_family(cleaned_topics, goal)
 
     if not cleaned_topics:
         cleaned_topics.append(
@@ -986,6 +1053,11 @@ Chunk index: {chunk.chunk_index}
                 source_summary=fallback_source_refs,
             )
         )
+
+    # Domain gate — the final authority over topic types (§4). Shadow mode (flag off) leaves the list untouched
+    # and only records what it WOULD change; enforced mode returns the remapped/dropped list. Runs before the
+    # order-index/topic_type sync so re-numbering reflects any drops.
+    cleaned_topics = _apply_domain_gate(cleaned_topics, domain)
 
     for index, topic in enumerate(cleaned_topics, start=1):
         topic["order_index"] = index

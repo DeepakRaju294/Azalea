@@ -40,9 +40,43 @@ from app.services.lesson_generator import (
 from app.services.lean_lesson_generator import build_lean_lesson_from_topic_and_chunks
 from app.services.legacy_v2_visual_bridge import attach_v2_visuals_to_legacy_lesson
 from app.services.topic_generator import generate_topics_from_chunks
+from app.services.domain_classifier import classify_domain
 from app.services.llm_client import generate_title
 
 router = APIRouter()
+
+# Phase-0 classifier metadata version stamped into domain_provenance for audit/telemetry.
+_CLASSIFIER_VERSION = "v1"
+
+
+def ensure_study_path_domain(study_path: StudyPath, db: Session, *, force: bool = False) -> str | None:
+    """Classify the path's goal → fine domain and persist it (DOMAIN_ROUTING_AND_TOPIC_GATE_SPEC §3).
+
+    Idempotent: skips re-classification once a path has a settled status unless `force=True` (e.g. the goal
+    changed). Never raises — a classifier failure is recorded as `classification_status='failed'` (§3.2), which
+    the gate treats as non-gating. Returns the fine `domain` string (or None on failure)."""
+    already_classified = (
+        study_path.domain
+        and study_path.classification_status not in (None, "", "pending")
+    )
+    if already_classified and not force:
+        return study_path.domain
+    try:
+        sig = classify_domain(study_path.goal or "")
+        study_path.domain = sig.domain
+        study_path.classification_status = sig.classification_status
+        study_path.domain_provenance = {
+            "gate_family": sig.gate_family,
+            "confidence": sig.confidence,
+            "scores": sig.scores,
+            "classifier_version": _CLASSIFIER_VERSION,
+        }
+    except Exception:  # noqa: BLE001 — classification must never block path creation/generation (§3.2)
+        study_path.classification_status = "failed"
+        study_path.domain = None
+    db.commit()
+    db.refresh(study_path)
+    return study_path.domain
 
 
 class StudyPathRegenerateRequest(BaseModel):
@@ -516,6 +550,9 @@ def create_study_path(
     db.commit()
     db.refresh(study_path)
 
+    # Phase-0: classify the goal → domain at creation so the gate has it before any topic generation (§3).
+    ensure_study_path_domain(study_path, db)
+
     return study_path
 
 
@@ -681,6 +718,7 @@ def generate_initial_study_path_content(
     generated_topic_data = generate_topics_from_chunks(
         chunks=chunks,
         goal=study_path.goal,
+        domain=ensure_study_path_domain(study_path, db),
     )
 
     created_topics: list[Topic] = []
@@ -1079,6 +1117,7 @@ def regenerate_study_path(
         chunks=chunks,
         goal=study_path.goal,
         feedback=payload.feedback,
+        domain=ensure_study_path_domain(study_path, db, force=True),
     )
 
     created_topics: list[Topic] = []
