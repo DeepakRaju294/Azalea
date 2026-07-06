@@ -43,9 +43,24 @@ field is never validated by both.
 
 ## 3. The validation ladder (cheapest, most-certain first)
 
-Each free-text field runs the applicable rungs; the **strongest applicable** verdict wins. L1–L3 are
-deterministic and preferred; L4 is a **risk classifier**, not a certifier — it may reject/downgrade but **never
-establishes a claim as true**.
+**The validation unit is a CLAIM SPAN, not the whole field.** A single field ("A stack uses LIFO order. It is
+useful for function calls. This always improves performance.") holds several claims with different verdicts:
+```text
+Claim segmentation:
+- A free-text field is split into ordered claim spans BEFORE L1–L4.
+- Each span carries: claim_id · field · text_span · claim_class (factual | non_factual_framing | prompt) ·
+  its L1–L4 result · evidence_context · disposition.
+- Field disposition is COMPUTED from its claim dispositions:
+    all claims ship            → ship field;
+    only removable-claim fails → SOFTEN field by deleting/replacing ONLY those spans;
+    a required claim fails      → repair or withhold the field/card.
+```
+This keeps the validator from deleting a whole concept card because one sentence is unsupported, while still
+guaranteeing the unsupported sentence can't survive.
+
+Each claim span runs the applicable rungs; the **strongest applicable** verdict wins. L1–L3 are deterministic and
+preferred; L4 is a **risk classifier**, not a certifier — it may reject/downgrade but **never establishes a claim
+as true**.
 
 ### L1 — scope adherence (deterministic)
 Do not introduce terminology outside prerequisites or what the topic teaches (narration §3). Enforced against a
@@ -78,16 +93,31 @@ When a claim contains a checkable relation, classify it — evaluation alone is 
 satisfiable over ℂ). Every relation declares or inherits a `symbolic_domain: real | complex | integer | natural |
 adapter_defined`:
 ```text
-L2 relation classes:
+L2 relation / claim classes:
 1. Ground relation — all symbols bound to authoritative values → evaluate in the sealed namespace
    (_eval, no __builtins__) with the shared numeric normalization (trace-to-teaching §5). Refuted ⇒ hard fail.
-2. Symbolic identity / implication — variables free → validate ONLY via a deterministic symbolic rule / algebra
-   engine / adapter-provided transformation proof, under the declared symbolic_domain. Refuted ⇒ hard fail.
-3. Extractable but underdetermined — parses but cannot be proven/refuted under the declared domain → L2 returns
+2. Symbolic identity / implication — variables free, a genuine truth-conditional statement → validate ONLY via a
+   deterministic symbolic rule / algebra engine / adapter proof, under the declared symbolic_domain. Refuted ⇒ hard fail.
+3. Derivation / transformation claim — a source relation presented as transformed into a target ("since P, we get
+   Q" as a STEP). The validator must NOT read this as material implication (that would make an impossible-premise
+   step vacuously "true"); it checks whether the named/declared operation preserves the required relationship
+   (below). Unjustified transform ⇒ hard fail.
+4. Extractable but underdetermined — parses but cannot be proven/refuted under the declared domain → L2 returns
    INDETERMINATE; the field falls to L4 (never a hard fail merely for lacking bindings).
 ```
-So `x²=−4 ⇒ (x)²=0` is refuted by the symbolic rule (class 2), not by guessing a binding; a complex-valid relation
-under a `complex` domain is **not** rejected.
+**Transformation validation (class 3).** A step is judged by whether its operation preserves the declared relation
+under the domain — never by truth-table implication:
+```text
+- equivalence-preserving step  → source and target share the same solution set under the declared domain;
+- implication-preserving step  → every solution of source satisfies target, AND the named operation justifies the
+                                 directional loss of information;
+- contradiction / no-solution  → the target must EXPLICITLY communicate the contradiction / empty solution set;
+                                 it may not invent a new equation or conclusion.
+A transformation with no registered algebraic operation justifying source→target ⇒ REFUTED.
+```
+So `x² = −4 ⇒ x² = 0` is a **class-3 transformation** and is **refuted** because no registered operation rewrites
+`x²=−4` into `x²=0` and the (empty, over ℝ) solution set is not communicated — **not** treated as a vacuously-true
+implication. A complex-valid relation under a `complex` domain is **not** rejected.
 
 ### L3 — sibling-trace consistency (deterministic)
 If the topic has a verified example trace, free-text prose must not contradict it. Reuse the applicable
@@ -125,6 +155,11 @@ L4 verdict:  refuted | unsupported | no_objection   (+ states n/a · unavailable
 "Supported" is deliberately **not** a verdict — L4 must never turn "the LLM believes this" into shippable fact.
 **`n/a` (no factual assertion) and `unavailable` (couldn't run) are different**: `unavailable` on a factual
 assertion → soften/withhold, never a clean pass; `unavailable` on non-factual framing may ship if L1–L3 pass.
+
+**`no_objection` cannot override a claim's class.** L4 may emit `no_objection` **only** for a span whose
+`claim_class` is `non_factual_framing`, `prompt`, or deterministic-content-carried-elsewhere. A span classified
+**factual** must resolve as `refuted | unsupported | unavailable` — `no_objection` can never make a bare factual
+assertion shippable (that removes the ambiguity of "the verifier didn't object, so ship it").
 
 **Version pinning + reproducibility.** Every L4 invocation records the exact evidence it ran against, so a verdict
 stays reproducible even after the fact-pack is later revised:
@@ -176,18 +211,23 @@ unsupported).
 - A withheld **required** card follows the Phase-2 §2.1 rule (withholds the family from `on_enforced`, no generic
   fallback) and the trace-to-teaching §12 frontend contract (typed failure, no placeholder, not marked complete).
 
-**Layered result** (mirrors trace-to-teaching §10):
+**Layered result** — per claim span, with a computed field decision (mirrors trace-to-teaching §10):
 ```text
 FreeTextValidationResult {
-  deterministic: { l1_scope, l2_symbolic, l3_sibling: pass|fail|indeterminate,
-                   out_of_scope_terms[], refuted_relations[], symbolic_domain }
-  semantic:      { l4: refuted | unsupported | no_objection | n/a | unavailable, span?,
-                   unsupported_reason?, evidence_ids?[], evidence_context, verifier_available }
-                   # evidence_ids REQUIRED on refuted; unsupported_reason set when l4 == unsupported
-  decision:      ship | repair | soften | withhold
-  failures:      [ typed, most-severe first ]
-  telemetry:     { topic_id, card_type, field, rung, verdict, unsupported_reason?, action, retry_count,
-                   evidence_context }
+  field
+  claims: [ {
+    claim_id · span · claim_class: factual | non_factual_framing | prompt
+    deterministic: { l1_scope, l2_symbolic, l3_sibling: pass|fail|indeterminate,
+                     out_of_scope_terms[], refuted_relations[], symbolic_domain }
+    semantic:      { l4: refuted | unsupported | no_objection | n/a | unavailable, span?,
+                     unsupported_reason?, evidence_ids?[], evidence_context, verifier_available }
+                     # evidence_ids REQUIRED on refuted; unsupported_reason set when l4 == unsupported
+    decision:      ship | repair | soften | withhold
+    failures:      [ typed, most-severe first ]
+  } ]
+  field_decision:  ship | repair | soften | withhold      # computed from the claim dispositions above
+  telemetry:       { topic_id, card_type, field, claim_id, rung, verdict, unsupported_reason?, action,
+                     retry_count, evidence_context }
 }
 ```
 
@@ -211,11 +251,13 @@ be made outside verified adapter-backed examples.**
 
 ```text
 Minimum vertical slice — a math concept card with a false symbolic claim
-Field:  concept_intuition body contains "since x² = −4, we get (x)² = 0"
+Field:  concept_intuition body contains "since x² = −4, we get x² = 0"
 Expected:
-  - L2 classifies this as a symbolic implication (class 2, variables free) under symbolic_domain=real and refutes
-    it via the deterministic symbolic rule — NOT by guessing a binding
-  - decision = repair; after 2 failed repairs → withhold the field (sentence deleted deterministically)
+  - the field is segmented into claim spans; this span is classified a DERIVATION/TRANSFORMATION claim (L2 class 3)
+  - L2 refutes it: no registered algebraic operation transforms x²=−4 into x²=0 under symbolic_domain=real, and the
+    empty (over ℝ) solution set is not communicated — NOT read as a vacuously-true implication
+  - claim decision = repair; after 2 failed repairs → soften by deleting THAT span (valid sibling claims survive);
+    if the span is the field's reason to exist → withhold the field
   - in shadow_validate: legacy display unchanged, verdict logged
   - no legacy/frontend recovery path certifies the claim; L4 is not consulted to "support" it
 ```
@@ -227,7 +269,7 @@ Expected:
 | Test | Fixture | Expected assertion |
 |---|---|---|
 | `test_l1_rejects_out_of_scope_term` | prose uses a term not assumed/taught | hard fail L1; term in `out_of_scope_terms` |
-| `test_l2_rejects_false_symbolic_claim` | "x² = −4 ⇒ (x)² = 0" | hard fail L2 (refuted relation) |
+| `test_l2_rejects_invalid_symbolic_transformation` | "Since x² = −4, we get x² = 0." | hard fail L2 (class 3) — no registered algebraic rule justifies the transformation under the domain; not read as vacuous implication |
 | `test_l2_accepts_true_symbolic_implication` | "If a = 2, then a² = 4." | pass L2 (class 2 implication under the declared domain) |
 | `test_l2_accepts_true_ground_relation` | known a=2 (authoritative); prose "a² = 4" | pass L2 (class 1 ground) |
 | `test_l2_skips_non_extractable` | prose with no clean relation | L2 pass; falls to L4 |
@@ -243,7 +285,9 @@ Expected:
 | `test_soften_uses_only_registered_or_authoritative_replacement` | softened field | deleted or replaced deterministically; never newly-generated factual prose |
 | `test_l2_indeterminate_symbolic_relation_falls_to_l4` | parsed but underdetermined relation | not a hard fail for lacking bindings; → L4 |
 | `test_l2_uses_declared_symbolic_domain` | relation valid over ℂ under a complex-domain contract | not rejected |
-| `test_l4_no_objection_does_not_certify_factual_claim` | unsupported factual claim, L4=no_objection | not shippable as fact (softened/withheld) |
+| `test_l4_no_objection_cannot_override_claim_class` | span classified factual, verifier returns no_objection | not shipped as fact — resolved as unsupported unless deterministic/authoritative evidence establishes it |
+| `test_claim_span_soften_keeps_valid_siblings` | 3-claim field; only the performance claim unsupported | delete/soften only that span; the LIFO definition + framing ship |
+| `test_l2_equivalence_transform_passes` | "x + 2 = 5, so x = 3" (subtract 2) | pass L2 (equivalence-preserving, registered op) |
 | `test_l1_does_not_reject_nontechnical_prose` | ordinary wording | not flagged as an out-of-scope technical term |
 | `test_l3_rejects_operation_conflict_with_sibling_trace` | prose method conflicts with the trace (no numeric conflict) | hard fail L3 via C5 |
 | `test_withhold_required_card_blocks_family` | required card, hard fail, on_enforced | topic/family path withheld; no generic fallback |
@@ -255,7 +299,9 @@ Expected:
 
 ```text
 fixtures/free_text/
-  false_symbolic_claim.json         # x²=−4 ⇒ (x)²=0 (L2)
+  invalid_symbolic_transformation.json # "since x²=−4, we get x²=0" — L2 class 3, unjustified transform
+  valid_equivalence_transform.json  # "x+2=5, so x=3" — L2 class 3 equivalence-preserving, passes
+  multi_claim_field.json            # 3 claims, only one unsupported → span-level soften
   out_of_scope_term.json            # L1
   wrong_definition_stack_fifo.json  # L4 refuted
   overreaching_edge_case.json       # "this always terminates" (L4)
@@ -272,10 +318,13 @@ fixtures/free_text/
 
 ```text
 Expected to change:
-- free_text validator module (L1–L4 + FreeTextValidationResult)
+- claim segmentation pass (field → ordered claim spans with claim_class) — the validation unit
+- free_text validator module (L1–L4 per span + FreeTextValidationResult with per-claim results + field_decision)
 - topic-level vocabulary object (assumed_prerequisite_terms/introduced_terms/approved_operations/symbols/aliases)
   + a domain tokenizer that classifies technical vs. ordinary tokens with confidence
-- L2 relation classifier + symbolic rule/algebra engine (or adapter transformation proof) with symbolic_domain
+- L2 relation classifier (ground / symbolic-identity / DERIVATION-transformation / underdetermined) + symbolic
+  rule/algebra engine with registered algebraic operations + symbolic_domain (transformation preservation, not
+  material implication)
 - L3 reuse of trace-to-teaching C1/C2/C4 + C5 for action-bearing free-text
 - versioned domain fact-pack / rule registry (L4's allowed evidence) + registered definitions, with per-generation
   EvidenceContext pinning (fact_pack_version / definition_registry_version / source_excerpt_ids / trace_ids)
@@ -300,8 +349,13 @@ MUST NOT become a source of truth:
 
 - [ ] The §6 false-symbolic-claim slice is caught by L2 and withheld after failed repair, end-to-end.
 - [ ] L1 rejects an out-of-scope term against the Phase-0 topic contract.
-- [ ] L2 refutes `x²=−4 ⇒ (x)²=0` via the symbolic rule (class 2), accepts true relations, marks underdetermined
-  relations INDETERMINATE (→ L4, not hard-fail), and honors the declared `symbolic_domain` (complex-valid not rejected).
+- [ ] The validation unit is a **claim span**: a field is segmented before L1–L4; `field_decision` is computed
+  from per-claim dispositions, so an unsupported span is softened/deleted without dropping valid sibling claims.
+- [ ] L2 refutes `x²=−4 ⇒ x²=0` as a **class-3 transformation** (no registered algebraic operation justifies it;
+  empty solution set not communicated) — **not** as a vacuously-true material implication; accepts a valid
+  equivalence-preserving transform; marks underdetermined relations INDETERMINATE (→ L4); honors `symbolic_domain`.
+- [ ] `no_objection` never ships a span whose `claim_class` is `factual`; such a span resolves refuted/unsupported/
+  unavailable unless deterministic/authoritative evidence establishes it.
 - [ ] L3 rejects prose contradicting the topic's verified example — values/units (C1/C4) **and** a conflicting
   method/rule-order (C5 for action-bearing free-text).
 - [ ] L4 operates only over the supplied evidence package (vocabulary/definitions · trace facts · versioned
