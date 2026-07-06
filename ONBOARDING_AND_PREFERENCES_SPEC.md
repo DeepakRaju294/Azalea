@@ -29,8 +29,8 @@ domain/scaffold override is deferred **until Phase 2 at the earliest and is not 
 | [`DOMAIN_ROUTING_AND_TOPIC_GATE_SPEC.md`](DOMAIN_ROUTING_AND_TOPIC_GATE_SPEC.md) | domain classification + topic-type gate + pipeline wiring + migration + Phase-0 test | **Phase 0 (ship now)** |
 | [`ONBOARDING_AND_PREFERENCE_CAPTURE_SPEC.md`](ONBOARDING_AND_PREFERENCE_CAPTURE_SPEC.md) | wizard UX + question graph + preference schema/persistence + language (Option B) | Phase 1 |
 | [`DOMAIN_CARD_NARRATION_AND_RENDERING_SPEC.md`](DOMAIN_CARD_NARRATION_AND_RENDERING_SPEC.md) | per-domain within-card contracts + depth knobs + renderer spike | Phase 2 |
-| `TRACE_TO_TEACHING_CONTRACT_SPEC.md` *(write next — after Phase-0 first slice, **before** Phase 2A)* | trace↔prose consistency (Q23) | companion |
-| `FREE_TEXT_CONTENT_VALIDATION_SPEC.md` *(scope now, implement later)* | factual checking of free-text cards (Q24) | companion |
+| [`TRACE_TO_TEACHING_CONTRACT_SPEC.md`](TRACE_TO_TEACHING_CONTRACT_SPEC.md) *(written; implement before Phase-2 `on_enforced` prose)* | trace↔prose consistency (Q23) | companion |
+| [`FREE_TEXT_CONTENT_VALIDATION_SPEC.md`](FREE_TEXT_CONTENT_VALIDATION_SPEC.md) *(written; implement alongside `on_enforced`)* | factual checking of free-text cards (Q24) | companion |
 
 **Why the split matters:** onboarding, depth, language, and renderers are **not** prerequisites for the routing
 fix. Bundling them made all ~39 questions look like blockers. They aren't — see the phase gates below.
