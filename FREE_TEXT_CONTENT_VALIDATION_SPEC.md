@@ -51,14 +51,16 @@ span; do not route a whole field wholesale to one validator.)
 bypass: if the model could self-label a span `deterministic_carried_elsewhere` or `optional`, a false claim would
 dodge establishment / deletion):
 ```text
-- content_ownership is assigned ONLY by backend routing — the field ledger / registered source mapping /
-  deterministic template registry. The generator may not emit, override, or self-declare it.
-- A span with no resolvable backend ownership mapping defaults to `free_text` (must establish normally).
-- A `deterministic_carried_elsewhere` span MUST carry provenance { deterministic_source_id · source_version ·
-  source_field/path }. Missing/invalid provenance is a HARD ROUTING FAILURE (not a silent free_text downgrade of a
-  claim that asserted deterministic ownership).
-- span_requirement { optional | required | essential } comes from { narration_contract | card_schema |
-  registered_template } — never from the model.
+1. Generator-supplied content_ownership / span_requirement are NOT trusted payload — they are DISCARDED before
+   routing (a model label is never a routing instruction).
+2. Backend routing assigns ownership from registered mappings ONLY (field ledger / source mapping / deterministic
+   template registry); span_requirement { optional | required | essential } from { narration_contract | card_schema
+   | registered_template }.
+3. Backend routing selects `deterministic_carried_elsewhere` but provenance { deterministic_source_id ·
+   source_version · source_field } is missing/invalid → HARD ROUTING FAILURE: shadow_validate logs + retains the
+   approved path; on_enforced withholds the span/field per its backend requirement. NEVER a silent free_text downgrade.
+4. No backend mapping at all → the span is `free_text` and must establish normally (a discarded model label does
+   NOT make it deterministic).
 ```
 
 ---
@@ -69,7 +71,9 @@ dodge establishment / deletion):
 useful for function calls. This always improves performance.") holds several claims with different verdicts:
 ```text
 Claim segmentation:
-- A free-text field is split into ordered claim spans BEFORE L1–L4.
+- EVERY validated text field is split into ordered claim spans BEFORE ownership routing + validation; each span is
+  then dispatched to exactly ONE truth-owning path (trace-owned and deterministic spans are segmented too, not
+  only after being called free text).
 - Each span carries: claim_id · field · text_span · claim_class (factual | non_factual_framing | prompt |
   unclassified) · content_ownership (free_text | trace_authoritative | trace_derivable |
   deterministic_carried_elsewhere) · span_requirement (optional | required | essential) + requirement_source ·
@@ -90,6 +94,11 @@ Claim segmentation:
   or withholds that span/field.
 - A span may hold multiple atomic propositions ONLY when they share the same claim_class AND validation basis;
   otherwise it must be split (a definition + a performance assertion in one sentence → two spans).
+- **Unclassified-span requiredness**: an unclassified span INHERITS the backend requirement of its containing
+  field/card slot; if that has no explicit requirement mapping, it is treated as **required** (on_enforced →
+  withhold field; shadow → log `segmentation_coverage_gap`). An unclassified span is **never** eligible for
+  optional deletion merely because its class couldn't be determined (else a missed definition/constraint could be
+  dropped as "optional" precisely when segmentation failed).
 ```
 This keeps the validator from deleting a whole concept card because one sentence is unsupported, while still
 guaranteeing the unsupported sentence can't survive — and that no factual clause slips through as unvalidated residue.
@@ -393,11 +402,13 @@ Expected:
 | `test_claim_span_soften_keeps_valid_siblings` | 3-claim field; only the performance claim unsupported | delete/soften only that span; the LIFO definition + framing ship |
 | `test_claim_segmentation_covers_entire_field` | "Stacks are LIFO, which always improves performance." | both the definition and the performance claim are spans; no factual residual left `unclassified` |
 | `test_unclassified_residual_fails_closed` | field with an unsegmented factual clause | `segmentation_coverage_gap` in shadow; repair/withhold in on_enforced |
+| `test_unclassified_span_inherits_backend_field_requirement` | unclassified residual clause inside a required components_terms field | on_enforced withholds the field; not silently deleted as optional |
 | `test_passing_checks_without_basis_is_unsupported` | factual claim passes L1/L2/L3 but has no establishment basis | not shipped; `establishment.status=not_established` → unsupported |
 | `test_l4_cannot_establish_factual_span` | factual free_text span, no deterministic basis, L4=no_objection | stays `not_established` → unsupported (L4 can't establish) |
 | `test_hardfail_optional_span_deleted_required_withholds` | invalid-transform span, failed repair | optional → deleted (siblings ship); required → field/card withheld |
 | `test_deterministic_carried_elsewhere_ships` | factual span with backend `content_ownership=deterministic_carried_elsewhere` + provenance, L4=no_objection | ships (truth owned by the deterministic source, not free-text) |
-| `test_generator_cannot_self_tag_deterministic_ownership` | generated span self-labels deterministic_carried_elsewhere, no backend source mapping | hard routing failure; treated as free_text → must establish normally |
+| `test_generator_ownership_labels_are_ignored` | generator emits `content_ownership=deterministic_carried_elsewhere`, no backend mapping | label discarded; backend routes independently → span is free_text and must establish normally |
+| `test_backend_deterministic_mapping_missing_provenance_fails_closed` | backend mapping selects deterministic_carried_elsewhere but provenance missing/invalid | hard routing failure; NO fallback to free_text (withhold per backend requirement) |
 | `test_span_requirement_is_backend_derived` | same invalid claim in optional background vs required components_terms def | backend requirement → delete for background, withhold for the required def; model-provided labels ignored |
 | `test_l3_does_not_bind_general_rule_to_example_values` | general F=ma definition beside a 4 kg / 20 N example | no C1/C4 failure for not restating example values |
 | `test_l2_equivalence_transform_passes` | "x + 2 = 5. Subtract 2 from both sides: x = 3." | pass L2 (declared equivalence-preserving op) |
@@ -475,10 +486,12 @@ MUST NOT become a source of truth:
   never by L4; L4 can never move a span from `not_established → established`.
 - [ ] `content_ownership` is distinct from `claim_class`; `no_objection` ships only `non_factual_framing`/`prompt`
   or `content_ownership==deterministic_carried_elsewhere`, never a free-text `factual` span.
-- [ ] `content_ownership` and `span_requirement` are **backend-derived** (field ledger / source mapping /
-  card schema / registered template); the generator cannot self-declare either. A `deterministic_carried_elsewhere`
-  span without valid `ownership_provenance` is a hard routing failure (not a silent free_text downgrade); a span
-  with no ownership mapping defaults to `free_text`.
+- [ ] `content_ownership` and `span_requirement` are **backend-derived**; generator-supplied labels are DISCARDED
+  before routing (not a routing instruction). Backend-selected `deterministic_carried_elsewhere` with missing/invalid
+  `ownership_provenance` is a hard routing failure (never a free_text downgrade); a span with no backend mapping
+  defaults to `free_text`.
+- [ ] An `unclassified` span inherits its field/card requirement, defaults to **required** when unmapped, and is
+  never eligible for optional deletion — a missed clause can't be dropped as "optional."
 - [ ] Span disposition is driven by backend `span_requirement`: optional → delete, required → withhold field,
   essential → withhold card/family (not an implementation guess).
 - [ ] A class-3 transformation is validated against a **surfaced/declared** operation (or registered metadata);
