@@ -774,7 +774,7 @@ def generate_initial_study_path_content(
         domain=ensure_study_path_domain(study_path, db),
     )
     # Phase-1 (D1): capture an immutable snapshot of the effective prefs this generation ran under.
-    write_generation_snapshot(db, study_path)
+    write_generation_snapshot(db, study_path, topics=generated_topic_data)
 
     created_topics: list[Topic] = []
 
@@ -1175,7 +1175,7 @@ def regenerate_study_path(
         domain=ensure_study_path_domain(study_path, db, force=True),
     )
     # Phase-1 (D1): a regeneration is a new generation event → a new immutable snapshot revision.
-    write_generation_snapshot(db, study_path)
+    write_generation_snapshot(db, study_path, topics=generated_topic_data)
 
     created_topics: list[Topic] = []
 

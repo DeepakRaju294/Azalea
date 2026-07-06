@@ -682,7 +682,7 @@ def generate_topics_for_study_path(
             goal=study_path.goal,
             domain=ensure_study_path_domain(study_path, db),
         )
-        write_generation_snapshot(db, study_path)
+        write_generation_snapshot(db, study_path, topics=generated_topic_data)
         existing_titles = {
             topic.title.strip().lower()
             for topic in existing_topics
@@ -752,7 +752,7 @@ def generate_topics_for_study_path(
         goal=study_path.goal,
         domain=ensure_study_path_domain(study_path, db),
     )
-    write_generation_snapshot(db, study_path)
+    write_generation_snapshot(db, study_path, topics=generated_topic_data)
 
     created_topics: list[Topic] = []
 

@@ -128,10 +128,15 @@ def resolve_preferences(
 
 
 def write_generation_snapshot(
-    db: Session, study_path: Any, *, selected: Optional[dict[str, Any]] = None
+    db: Session,
+    study_path: Any,
+    *,
+    selected: Optional[dict[str, Any]] = None,
+    topics: Optional[list[dict[str, Any]]] = None,
 ) -> Optional[StudyPathGeneration]:
     """Write an immutable generation snapshot and repoint `study_path.active_generation_id`. Best-effort — logs
-    and returns None on failure without raising (must never block generation)."""
+    and returns None on failure without raising (must never block generation). When `topics` are supplied, the
+    honest path-level effective depth is computed + disclosed (§4.2)."""
     from app.models.preferences import StudyPathGeneration, UserPreference  # lazy — breaks the base import cycle
     try:
         # The per-path override (top precedence tier). Falls back to the path's stored selection; a
@@ -156,6 +161,11 @@ def write_generation_snapshot(
             user_default_knowledge=getattr(user_pref, "default_knowledge_level", None),
             selected=selected,
         )
+        # Honest path-level effective depth (§4.2) — deep is only material when a topic can actually expand.
+        if topics is not None:
+            from app.services.depth_profile import compute_effective_depth
+            topic_types = [t.get("topic_type") or t.get("course_type") for t in topics]
+            effective["depth_resolution"] = compute_effective_depth(effective.get("depth_level"), topic_types)
         next_number = (
             db.query(func.max(StudyPathGeneration.generation_number))
             .filter(StudyPathGeneration.study_path_id == study_path.id)
