@@ -35,7 +35,9 @@ CARD_CONTRACT_MATRIX: dict[str, dict[str, str]] = {
     "worked_example":        {"coding": _D,  "math": _D,  "science": _D,  "concept": _D},
     "edge_case":             {"coding": _D,  "math": _D,  "science": _D,  "concept": _D},
     "practice":              {"coding": _D,  "math": _D,  "science": _D,  "concept": _D},
-    "formula_breakdown":     {"coding": _NA, "math": _DEF, "science": _DEF, "concept": _NA},
+    # formula_breakdown(math) is now DEFINED (contract + fact-sources below) — it unblocks the completing-the-
+    # square on_enforced slice (§2.1 D2). science stays deferred (quantitative interpretation metadata gaps, §4).
+    "formula_breakdown":     {"coding": _NA, "math": _D, "science": _DEF, "concept": _NA},
     "proof_plan":            {"coding": _NA, "math": _DEF, "science": _NA, "concept": _NA},
     "code_walkthrough":      {"coding": _DEF, "math": _NA, "science": _NA, "concept": _NA},
     "complexity_analysis":   {"coding": _D,  "math": _NA, "science": _NA, "concept": _NA},

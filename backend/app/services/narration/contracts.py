@@ -52,6 +52,27 @@ WORKED_EXAMPLE_FIELD_FRAMING: dict[str, dict[str, str]] = {
     },
 }
 
+# --- formula_breakdown card (math; §2.1 D2 first slice) ---------------------------------------------------
+# Teaches WHY a formula/method works by decomposing it — central to completing-the-square (not optional). Fields
+# are REFRAME framing; the identity/rule labels + transformed forms are truth-bearing and come from the
+# derivation trace (fact_source.py), never free prose.
+FORMULA_BREAKDOWN_FRAMING: dict[str, dict[str, str]] = {
+    "math": {
+        "goal": "the identity/method and what it achieves",
+        "parts": "each component of the expression and the role it plays",
+        "transformation": "the rewrite that assembles the target form",
+        "why": "the algebraic rule that makes each step valid",
+    },
+    # science(quantitative) is DEFERRED in the matrix — no framing shipped until its metadata gaps close (§4).
+}
+
+
+def formula_breakdown_framing(domain: str | None) -> dict[str, str] | None:
+    """Framing for the formula_breakdown card, or None where it isn't `defined` (only math in v1)."""
+    nd = narration_domain_of(domain)
+    return dict(FORMULA_BREAKDOWN_FRAMING[nd]) if nd in FORMULA_BREAKDOWN_FRAMING else None
+
+
 # --- other cards (REFRAME, §3) ----------------------------------------------------------------------------
 BACKGROUND_FRAMING = {
     "coding": "what it's for", "math": "where it applies",

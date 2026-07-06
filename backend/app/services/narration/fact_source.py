@@ -87,6 +87,11 @@ for _fs in (
                derived=SCIENCE_QUANTITY_INTERPRETATION_V1),
     FactSource("worked_example", "result_state", "coding", DIRECT, True, FALLBACK_BLOCK_CARD,
                direct_source="execution_trace.state_delta"),
+    # formula_breakdown(math) — the derivation's rule labels + transformed forms are truth-bearing (§2.1 D2).
+    FactSource("formula_breakdown", "rule", "math", DIRECT, True, FALLBACK_BLOCK_CARD,
+               direct_source="trace.step.operation_tag"),
+    FactSource("formula_breakdown", "form", "math", DIRECT, True, FALLBACK_BLOCK_CARD,
+               direct_source="trace.step.result_expression"),
 ):
     _register(_fs)
 

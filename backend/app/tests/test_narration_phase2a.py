@@ -24,7 +24,8 @@ class Matrix(unittest.TestCase):
 
     def test_status_lookup(self):
         self.assertEqual(matrix.card_status("process", "math"), matrix.DEFINED)
-        self.assertEqual(matrix.card_status("formula_breakdown", "math"), matrix.DEFERRED)
+        self.assertEqual(matrix.card_status("formula_breakdown", "math"), matrix.DEFINED)   # now defined
+        self.assertEqual(matrix.card_status("formula_breakdown", "science"), matrix.DEFERRED)
         self.assertEqual(matrix.card_status("formula_breakdown", "coding"), matrix.NOT_APPLICABLE)
         self.assertEqual(matrix.card_status("complexity_analysis", "science"), matrix.NOT_APPLICABLE)
         self.assertEqual(matrix.card_status("code_walkthrough", "coding"), matrix.DEFERRED)
@@ -43,10 +44,11 @@ class Matrix(unittest.TestCase):
         self.assertEqual(d.reason, "not_applicable_card")
 
     def test_gate_deferred_optional_prunes_required_withholds(self):
-        opt = matrix.evaluate_card("formula_breakdown", "math", blueprint_optional=True)
+        # comparison is deferred for every domain — use it as the deferred exemplar
+        opt = matrix.evaluate_card("comparison", "math", blueprint_optional=True)
         self.assertEqual(opt.action, matrix.PRUNE)
         self.assertEqual(opt.reason, "deferred_card_pruned")
-        req = matrix.evaluate_card("formula_breakdown", "math", blueprint_optional=False)
+        req = matrix.evaluate_card("comparison", "math", blueprint_optional=False)
         self.assertEqual(req.action, matrix.WITHHOLD)
         self.assertEqual(req.reason, "deferred_required_blocks_rollout")
 
@@ -54,11 +56,21 @@ class Matrix(unittest.TestCase):
         self.assertEqual(matrix.evaluate_card("mystery", "math", blueprint_optional=True).action, matrix.WITHHOLD)
         self.assertEqual(matrix.evaluate_card("process", "mixed", blueprint_optional=True).action, matrix.WITHHOLD)
 
-    def test_first_math_slice_is_blocked_until_formula_breakdown_defined(self):
-        # completing-the-square cannot enter on_enforced while required formula_breakdown (math) is deferred
-        self.assertEqual(matrix.card_status("formula_breakdown", "math"), matrix.DEFERRED)
-        d = matrix.evaluate_card("formula_breakdown", "math", blueprint_optional=False)
+    def test_formula_breakdown_math_now_defined_and_gated_by_sources(self):
+        # completing-the-square's required formula_breakdown(math) is now `defined`: it PROCEEDS when its contract
+        # + fact-sources are ready, and WITHHOLDS (not deferred) when they are not — never generic fallback.
+        self.assertEqual(matrix.card_status("formula_breakdown", "math"), matrix.DEFINED)
+        ready = matrix.evaluate_card("formula_breakdown", "math", blueprint_optional=False,
+                                     contract_registered=True, fact_sources_ready=True)
+        self.assertEqual(ready.action, matrix.PROCEED)
+        missing = matrix.evaluate_card("formula_breakdown", "math", blueprint_optional=False)
+        self.assertEqual(missing.action, matrix.WITHHOLD)
+        self.assertEqual(missing.reason, "contract_or_fact_source_missing")
+
+    def test_formula_breakdown_science_still_deferred(self):
+        d = matrix.evaluate_card("formula_breakdown", "science", blueprint_optional=False)
         self.assertEqual(d.action, matrix.WITHHOLD)
+        self.assertEqual(d.reason, "deferred_required_blocks_rollout")
 
     def test_matrix_covers_live_blueprint_inventory(self):
         # §9 DoD: every card type the blueprints emit must appear in the matrix (no card silently omitted).
@@ -183,6 +195,18 @@ class Contracts(unittest.TestCase):
         c = contracts.narration_contract_for("coding")
         self.assertEqual(c.step_title_rule, "action_not_rule_name")
         self.assertEqual(c.result_line_rule, "terminal_not_narrated")
+
+    def test_formula_breakdown_framing_math_only(self):
+        self.assertIsNotNone(contracts.formula_breakdown_framing("math"))
+        self.assertIn("why", contracts.formula_breakdown_framing("math"))
+        self.assertIsNone(contracts.formula_breakdown_framing("physics"))   # science deferred
+        self.assertIsNone(contracts.formula_breakdown_framing("coding"))    # not_applicable
+
+    def test_formula_breakdown_fact_sources_registered(self):
+        self.assertIsNotNone(fact_source.get_fact_source("formula_breakdown", "rule", "math"))
+        self.assertIsNotNone(fact_source.get_fact_source("formula_breakdown", "form", "math"))
+        req = fact_source.required_sources_for("formula_breakdown", "math")
+        self.assertEqual({f.field for f in req}, {"rule", "form"})
 
 
 if __name__ == "__main__":
