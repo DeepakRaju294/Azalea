@@ -47,6 +47,20 @@ A single UI field may contain spans owned by DIFFERENT paths (a trace-backed res
 free-text explanation), but **no individual span is validated by two truth-owning paths.** (Field routing is per
 span; do not route a whole field wholesale to one validator.)
 
+**`content_ownership` and `span_requirement` are BACKEND-derived, never generator-authored** (this is the last
+bypass: if the model could self-label a span `deterministic_carried_elsewhere` or `optional`, a false claim would
+dodge establishment / deletion):
+```text
+- content_ownership is assigned ONLY by backend routing — the field ledger / registered source mapping /
+  deterministic template registry. The generator may not emit, override, or self-declare it.
+- A span with no resolvable backend ownership mapping defaults to `free_text` (must establish normally).
+- A `deterministic_carried_elsewhere` span MUST carry provenance { deterministic_source_id · source_version ·
+  source_field/path }. Missing/invalid provenance is a HARD ROUTING FAILURE (not a silent free_text downgrade of a
+  claim that asserted deterministic ownership).
+- span_requirement { optional | required | essential } comes from { narration_contract | card_schema |
+  registered_template } — never from the model.
+```
+
 ---
 
 ## 3. The validation ladder (cheapest, most-certain first)
@@ -58,9 +72,11 @@ Claim segmentation:
 - A free-text field is split into ordered claim spans BEFORE L1–L4.
 - Each span carries: claim_id · field · text_span · claim_class (factual | non_factual_framing | prompt |
   unclassified) · content_ownership (free_text | trace_authoritative | trace_derivable |
-  deterministic_carried_elsewhere) · its L1–L4 result · evidence_context · disposition.
-  (claim_class = what the span MEANS; content_ownership = where its truth COMES FROM — a deterministic sentence can
-  be semantically factual yet not free-text truth this validator owns.)
+  deterministic_carried_elsewhere) · span_requirement (optional | required | essential) + requirement_source ·
+  its L1–L4 result · evidence_context · disposition.
+  (claim_class = what the span MEANS; content_ownership = where its truth COMES FROM; span_requirement = whether
+  its failure deletes vs. withholds. All three are backend-derived — a deterministic sentence can be semantically
+  factual yet not free-text truth this validator owns.)
 - Field disposition is COMPUTED from its claim dispositions:
     all claims ship            → ship field;
     only removable-claim fails → SOFTEN field by deleting/replacing ONLY those spans;
@@ -134,6 +150,14 @@ under the domain — never by truth-table implication:
 - contradiction / no-solution  → the target must EXPLICITLY communicate the contradiction / empty solution set;
                                  it may not invent a new equation or conclusion.
 A transformation with no registered algebraic operation justifying source→target ⇒ REFUTED.
+```
+**Operation identification (v1 = surfaced/declared, never inferred by an LLM).**
+```text
+- v1: the operation must be SURFACED in the span ("Subtract 2 from both sides: x = 3") OR attached as registered
+  deterministic metadata on the span. If no operation is named/declared → INDETERMINATE (→ L4), not a guess.
+- later (optional): a DETERMINISTIC implicit-operation resolver may bind source→target ONLY when EXACTLY ONE
+  registered operation transforms source into target under the domain (zero or multiple fits → indeterminate /
+  reject per the card contract). Never inferred by an LLM.
 ```
 So `x² = −4 ⇒ x² = 0` is a **class-3 transformation** and is **refuted** because no registered operation rewrites
 `x²=−4` into `x²=0` and the (empty, over ℝ) solution set is not communicated — **not** treated as a vacuously-true
@@ -248,12 +272,13 @@ L4's role: invoked only for spans not already deterministically established, ref
 refute / mark unsupported / abstain — it can NEVER move ClaimEstablishment from not_established → established.
 ```
 
-**Hard-fail span disposition** (a hard-fail/refutation is resolved at the SPAN, not by blanket field-withhold —
-consistent with the claim-span model):
+**Hard-fail span disposition** (a hard-fail/refutation is resolved at the SPAN via its backend-derived
+`span_requirement` — mechanically evaluable, not an implementation guess):
 ```text
-- Retry the span up to 2 times, then if it still fails/refutes:
-    optional / removable span            → deterministic DELETE; field_decision = soften;
-    required / field-or-card's-reason-to-exist span → WITHHOLD field/card.
+- Retry the span up to 2 times, then if it still fails/refutes, by span_requirement:
+    optional  → deterministic DELETE; field_decision = soften;
+    required  → WITHHOLD the field after failed repair;
+    essential → WITHHOLD the card / topic family after failed repair.
 - In all cases NEVER retain or paraphrase the failed claim.
 ```
 ```
@@ -292,6 +317,8 @@ FreeTextValidationResult {
   claims: [ {
     claim_id · span · claim_class: factual | non_factual_framing | prompt | unclassified
     content_ownership: free_text | trace_authoritative | trace_derivable | deterministic_carried_elsewhere
+    span_requirement: optional | required | essential   # backend-derived; drives delete-vs-withhold
+    ownership_provenance?: { deterministic_source_id, source_version, source_field }   # required if carried_elsewhere
     deterministic: { l1_scope, l2_symbolic, l3_sibling: pass|fail|indeterminate,
                      out_of_scope_terms[], refuted_relations[], symbolic_domain }
     semantic:      { l4: refuted | unsupported | no_objection | n/a | unavailable, span?,
@@ -369,9 +396,12 @@ Expected:
 | `test_passing_checks_without_basis_is_unsupported` | factual claim passes L1/L2/L3 but has no establishment basis | not shipped; `establishment.status=not_established` → unsupported |
 | `test_l4_cannot_establish_factual_span` | factual free_text span, no deterministic basis, L4=no_objection | stays `not_established` → unsupported (L4 can't establish) |
 | `test_hardfail_optional_span_deleted_required_withholds` | invalid-transform span, failed repair | optional → deleted (siblings ship); required → field/card withheld |
-| `test_deterministic_carried_elsewhere_ships` | factual span with `content_ownership=deterministic_carried_elsewhere`, L4=no_objection | ships (truth owned by the deterministic source, not free-text) |
+| `test_deterministic_carried_elsewhere_ships` | factual span with backend `content_ownership=deterministic_carried_elsewhere` + provenance, L4=no_objection | ships (truth owned by the deterministic source, not free-text) |
+| `test_generator_cannot_self_tag_deterministic_ownership` | generated span self-labels deterministic_carried_elsewhere, no backend source mapping | hard routing failure; treated as free_text → must establish normally |
+| `test_span_requirement_is_backend_derived` | same invalid claim in optional background vs required components_terms def | backend requirement → delete for background, withhold for the required def; model-provided labels ignored |
 | `test_l3_does_not_bind_general_rule_to_example_values` | general F=ma definition beside a 4 kg / 20 N example | no C1/C4 failure for not restating example values |
-| `test_l2_equivalence_transform_passes` | "x + 2 = 5, so x = 3" (subtract 2) | pass L2 (equivalence-preserving, registered op) |
+| `test_l2_equivalence_transform_passes` | "x + 2 = 5. Subtract 2 from both sides: x = 3." | pass L2 (declared equivalence-preserving op) |
+| `test_l2_undeclared_operation_is_indeterminate` | "x + 2 = 5, so x = 3" (no operation surfaced/attached) | INDETERMINATE → L4 (no LLM guess of the step) |
 | `test_l1_does_not_reject_nontechnical_prose` | ordinary wording | not flagged as an out-of-scope technical term |
 | `test_l3_rejects_operation_conflict_with_sibling_trace` | prose method conflicts with the trace (no numeric conflict) | hard fail L3 via C5 |
 | `test_withhold_required_card_blocks_family` | required card, hard fail, on_enforced | topic/family path withheld; no generic fallback |
@@ -406,8 +436,9 @@ Expected to change:
   unclassified-residual fail-closed, multi-proposition splitting) — the validation unit
 - claim-establishment resolver (status/basis/evidence_ids) — DETERMINISTIC (definition/fact-pack/source/L2-proof/
   trace); runs before/alongside L4; L4 can never mark established. A factual span ships only when established
-- content_ownership tagging (free_text | trace_authoritative | trace_derivable | deterministic_carried_elsewhere),
-  distinct from claim_class
+- BACKEND ownership + requiredness router: content_ownership (free_text | trace_authoritative | trace_derivable |
+  deterministic_carried_elsewhere, with ownership_provenance) + span_requirement (optional | required | essential
+  from narration_contract | card_schema | registered_template) — generator-authored labels are rejected
 - sibling-trace binding resolver (explicit_example_reference | topic_general_rule | mixed) for L3
 - free_text validator module (L1–L4 per span + FreeTextValidationResult with per-claim results + field_decision)
 - topic-level vocabulary object (assumed_prerequisite_terms/introduced_terms/approved_operations/symbols/aliases)
@@ -444,6 +475,14 @@ MUST NOT become a source of truth:
   never by L4; L4 can never move a span from `not_established → established`.
 - [ ] `content_ownership` is distinct from `claim_class`; `no_objection` ships only `non_factual_framing`/`prompt`
   or `content_ownership==deterministic_carried_elsewhere`, never a free-text `factual` span.
+- [ ] `content_ownership` and `span_requirement` are **backend-derived** (field ledger / source mapping /
+  card schema / registered template); the generator cannot self-declare either. A `deterministic_carried_elsewhere`
+  span without valid `ownership_provenance` is a hard routing failure (not a silent free_text downgrade); a span
+  with no ownership mapping defaults to `free_text`.
+- [ ] Span disposition is driven by backend `span_requirement`: optional → delete, required → withhold field,
+  essential → withhold card/family (not an implementation guess).
+- [ ] A class-3 transformation is validated against a **surfaced/declared** operation (or registered metadata);
+  an undeclared step is INDETERMINATE → L4, never an LLM-inferred operation.
 - [ ] The validation unit is a **claim span**: a field is segmented before L1–L4; `field_decision` is computed
   from per-claim dispositions, so an unsupported span is softened/deleted without dropping valid sibling claims.
 - [ ] Claim spans **cover every non-whitespace character** (ordered, non-overlapping); `unclassified` residual
