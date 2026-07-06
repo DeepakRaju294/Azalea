@@ -44,7 +44,8 @@ Step {
   visual_state            # e.g. {"kind": "equation", "<name>": <value>}
   expected_visible_result # the visible result string of the step (e.g. "F = 20 N")
   facts {
-    allowed_values        # the ONLY literal numbers prose may use in this step
+    allowed_values        # the ONLY literal numbers prose may use in this step (C1)
+    allowed_quantities    # [{quantity_id, name, value, unit, output_name?, fact_id?, source_kind, source_path}]  (C4)
     required_facts        # facts the step's prose MUST state (see §6 schema)
     forbidden_claims      # claims the step's prose MUST NOT make (see §7 schema)
   }
@@ -209,11 +210,11 @@ failure exists**. Each check names its authoritative basis:
 - **C2 — forbidden claims.** No `known_phrasings` hit whose `forbidden_when` holds (§7) ⇒ else **hard fail**.
 - **C3 — required facts.** Every `required_facts` entry matched in its `required_in_fields` (§6) ⇒ else
   **repairable fail** carrying the `fact_id`.
-- **C4 — unit fidelity (per attributed quantity).** A step may carry **several** quantities
-  (`allowed_quantities: [{name, value, unit}]` — e.g. mass 4 kg + acceleration 5 m/s² + force 20 N in one step).
-  Each numeric quantity in prose is validated against **its own attributed output's** `unit`, not a single
-  step-wide unit. An invented/converted unit, or a value paired with the wrong unit, ⇒ **hard fail**. (Attribution
-  in §10.1.)
+- **C4 — unit fidelity (per attributed quantity).** A step may carry **several** `allowed_quantities` (each with a
+  stable `quantity_id`; e.g. mass 4 kg + acceleration 5 m/s² + force 20 N in one step). Each prose quantity is
+  bound to one entry by the deterministic tie-break (§10.1) and its unit checked against **that** entry, not a
+  single step-wide unit. An invented/converted unit, a wrong value↔unit pairing, or an **unresolvable** attribution
+  ⇒ **hard fail**.
 - **C5 — operation/order fidelity.** Action maps to an allowed intent + order respects `required_operations`
   (§8) ⇒ else **hard fail**.
 - **C6 — semantic non-contradiction (bounded judge, reject-only, last).** Asked *only* "does this sentence
@@ -274,10 +275,24 @@ are validated against their source mapping, not re-scanned:
 - Excluded entirely: internal ids · trace_step_id · UI step counters · source citations · approved card labels.
 - Coding cards: code blocks + line-number labels delegate to the coding-trace validator, not the math rules.
 ```
-**Quantity attribution (C4).** A step exposes `allowed_quantities: [{name, value, unit}]`; each prose quantity is
-matched to one entry, and its unit checked against that entry — never against a single step-wide unit.
-**Required-field gating.** C3 runs only for fields the **active narration contract** marks required; C5 runs only
-on fields declared to communicate an action.
+**Quantity attribution (C4).** A step exposes `allowed_quantities` each with a **stable `quantity_id`** (names can
+repeat in longer derivations, so `name` alone is not an identity). A prose quantity is bound by a **deterministic
+tie-break**, never a guess:
+```text
+Quantity attribution order:
+1. an explicit quantity name/symbol in the same clause/span → that quantity_id;
+2. else the field's registered source mapping resolves it;
+3. else if exactly ONE allowed_quantity has the normalized (value, unit) pair → that one;
+4. else AMBIGUOUS:
+   - authoritative display field → the source mapping MUST resolve it (else primary parse failure);
+   - connective prose field → C4 hard-fails with `quantity_attribution_ambiguous`.
+```
+(So "5 m/s" with both `initial_velocity=5 m/s` and `final_velocity=5 m/s` and no disambiguator is a hard fail, not
+a coin-flip.)
+**Required-field gating.** C3 runs only for fields the **active narration contract** marks required. **C5 runs
+only on fields the contract marks action-bearing** — a `goal`/step description is action-bearing; a **label title**
+("Substitution step") is exempt unless the contract registers the title as action-bearing (or it's an approved
+title rendering). C5 never forces a title to contain an action verb.
 **Cross-card identity.** Consistency keys on `(trace_id, trace_step_id, output_name|fact_id)`; a card citing
 multiple `trace_step_id`s must declare which value came from which step. Same-`operation`, different-step is **not**
 a conflict.
@@ -399,7 +414,8 @@ golden assert: narration_path == trace_teaching_v1 · visual_path == compiled_vi
 | `test_all_deterministic_failures_returned` | card fails C1+C4+C5 | failures list contains all three |
 | `test_enforced_withholds_required_card` | hard failure, on_enforced | topic/family path withheld; no generic narration |
 | `test_shadow_logs_without_user_impact` | same failure, shadow_validate | legacy display remains; typed telemetry emitted |
-| `test_conflicting_same_operation_cards` | two cards, same operation, different values | reject (cross-card C1/C4) |
+| `test_conflicting_same_trace_step_cards` | two cards bound to the same `trace_step_id` + `output_name`, conflicting values | reject (cross-card C1/C4) |
+| `test_quantity_attribution_ambiguous` | connective prose "5 m/s" with two allowed_quantities at 5 m/s and no disambiguator | reject C4 `quantity_attribution_ambiguous` |
 
 ---
 
@@ -414,7 +430,9 @@ fixtures/trace_teaching/
   direction_reversal_claim.json         # C2 / C6
   operation_mismatch.json               # C5
   missing_required_law.json             # C3
-  conflicting_same_operation_cards.json # cross-card C1/C4
+  conflicting_same_trace_step_cards.json# cross-card C1/C4 (same trace_step_id + output_name, different values)
+  same_operation_different_step_ok.json # pass — same operation tag, different steps, different values
+  quantity_attribution_ambiguous.json   # C4 — repeated (value, unit), no disambiguator
 ```
 
 The historical known-failures become permanent fixtures: completing-the-square values changing incorrectly; a
