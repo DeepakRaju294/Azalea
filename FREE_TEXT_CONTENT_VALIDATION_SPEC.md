@@ -48,15 +48,24 @@ useful for function calls. This always improves performance.") holds several cla
 ```text
 Claim segmentation:
 - A free-text field is split into ordered claim spans BEFORE L1–L4.
-- Each span carries: claim_id · field · text_span · claim_class (factual | non_factual_framing | prompt) ·
-  its L1–L4 result · evidence_context · disposition.
+- Each span carries: claim_id · field · text_span · claim_class (factual | non_factual_framing | prompt |
+  unclassified) · its L1–L4 result · evidence_context · disposition.
 - Field disposition is COMPUTED from its claim dispositions:
     all claims ship            → ship field;
     only removable-claim fails → SOFTEN field by deleting/replacing ONLY those spans;
     a required claim fails      → repair or withhold the field/card.
 ```
+**Coverage contract (segmentation is the enforcement boundary — a missed clause is a bypass).**
+```text
+- Claim spans form an ORDERED, NON-OVERLAPPING cover of every non-whitespace character in the field.
+- Every residual span is assigned factual | non_factual_framing | prompt | unclassified.
+- `unclassified` residual text FAILS CLOSED: shadow_validate logs `segmentation_coverage_gap`; on_enforced repairs
+  or withholds that span/field.
+- A span may hold multiple atomic propositions ONLY when they share the same claim_class AND validation basis;
+  otherwise it must be split (a definition + a performance assertion in one sentence → two spans).
+```
 This keeps the validator from deleting a whole concept card because one sentence is unsupported, while still
-guaranteeing the unsupported sentence can't survive.
+guaranteeing the unsupported sentence can't survive — and that no factual clause slips through as unvalidated residue.
 
 Each claim span runs the applicable rungs; the **strongest applicable** verdict wins. L1–L3 are deterministic and
 preferred; L4 is a **risk classifier**, not a certifier — it may reject/downgrade but **never establishes a claim
@@ -129,8 +138,21 @@ identity):
 L3 does NOT require every free-text card to describe an operation; C5 applies only to action-bearing claims under
 the active narration contract.
 ```
-This catches prose that teaches the wrong method next to a correct worked example ("first isolate acceleration"
-beside a substitute-into-F=ma example) even with no numeric/unit conflict. Contradiction ⇒ **hard fail**.
+**Sibling-trace binding (never bind by proximity).** A general rule/definition must NOT be checked against a
+concrete example's values just because it sits next to it:
+```text
+- explicit_example_reference → the span refers to a named/example-specific value, operation, or result → bind to
+  the declared (trace_id, trace_step_id, output_name|fact_id) and run C1/C2/C4/C5 against THOSE facts.
+- topic_general_rule        → the span states a general rule/definition → do NOT run example-value containment;
+  validate via L2 (symbolic) or L4 (evidence) instead.
+- mixed                     → split the span so the example-specific and general portions bind separately.
+L3 applies C1/C2/C4/C5 ONLY against the exact sibling-trace facts the span references; it must not infer
+example-specific binding from topic proximity.
+```
+This still catches prose that teaches the wrong method next to a correct worked example ("first isolate
+acceleration" beside a substitute-into-F=ma example), while a general "F = ma relates force, mass, and
+acceleration" definition beside a 4 kg / 20 N example is **not** forced to restate those values. Contradiction ⇒
+**hard fail**.
 
 ### L4 — bounded risk classifier (reject/downgrade-only, NEVER certifying)
 For claims unsettled by L1–L3 (definitions, attributions, "always/never"), a bounded verifier returns a **risk
@@ -183,6 +205,23 @@ unsupported_reason:
 
 ## 4. Outcomes — block, soften, or withhold (never certify)
 
+**Passing a check is NOT establishment.** L1 is scope-checking, L3 is contradiction-checking — neither *proves* a
+general claim. Every claim records how (if at all) it was established, so an implementation can't treat "L1+L2+L3
+didn't fail" as proof:
+```text
+ClaimEstablishment {
+  status: established | not_established
+  basis:  trace_authoritative | deterministic_ground_relation | deterministic_symbolic_transformation |
+          registered_definition | fact_pack_rule | supplied_source_excerpt | none
+  evidence_ids?: []
+}
+Ship rule — a claim_class==factual span may ship ONLY when:
+  - ClaimEstablishment.status == established (a concrete basis above, not merely "no check failed"); OR
+  - the field is authoritative/derivable and owned by trace-to-teaching (validated there, not here).
+Passing L1/L2/L3 WITHOUT producing an establishment basis does NOT establish a free-text factual claim → it is
+unsupported (soften/withhold).
+```
+
 ```
 field verdict:
   L1–L3 pass, L4 == n/a                     → SHIP (no unresolved factual assertion exists)
@@ -222,6 +261,7 @@ FreeTextValidationResult {
     semantic:      { l4: refuted | unsupported | no_objection | n/a | unavailable, span?,
                      unsupported_reason?, evidence_ids?[], evidence_context, verifier_available }
                      # evidence_ids REQUIRED on refuted; unsupported_reason set when l4 == unsupported
+    establishment: { status: established | not_established, basis, evidence_ids?[] }   # factual spans ship only if established
     decision:      ship | repair | soften | withhold
     failures:      [ typed, most-severe first ]
   } ]
@@ -287,6 +327,10 @@ Expected:
 | `test_l2_uses_declared_symbolic_domain` | relation valid over ℂ under a complex-domain contract | not rejected |
 | `test_l4_no_objection_cannot_override_claim_class` | span classified factual, verifier returns no_objection | not shipped as fact — resolved as unsupported unless deterministic/authoritative evidence establishes it |
 | `test_claim_span_soften_keeps_valid_siblings` | 3-claim field; only the performance claim unsupported | delete/soften only that span; the LIFO definition + framing ship |
+| `test_claim_segmentation_covers_entire_field` | "Stacks are LIFO, which always improves performance." | both the definition and the performance claim are spans; no factual residual left `unclassified` |
+| `test_unclassified_residual_fails_closed` | field with an unsegmented factual clause | `segmentation_coverage_gap` in shadow; repair/withhold in on_enforced |
+| `test_passing_checks_without_basis_is_unsupported` | factual claim passes L1/L2/L3 but has no establishment basis | not shipped; `establishment.status=not_established` → unsupported |
+| `test_l3_does_not_bind_general_rule_to_example_values` | general F=ma definition beside a 4 kg / 20 N example | no C1/C4 failure for not restating example values |
 | `test_l2_equivalence_transform_passes` | "x + 2 = 5, so x = 3" (subtract 2) | pass L2 (equivalence-preserving, registered op) |
 | `test_l1_does_not_reject_nontechnical_prose` | ordinary wording | not flagged as an out-of-scope technical term |
 | `test_l3_rejects_operation_conflict_with_sibling_trace` | prose method conflicts with the trace (no numeric conflict) | hard fail L3 via C5 |
@@ -318,7 +362,10 @@ fixtures/free_text/
 
 ```text
 Expected to change:
-- claim segmentation pass (field → ordered claim spans with claim_class) — the validation unit
+- claim segmentation pass (field → ordered claim spans with claim_class, FULL non-whitespace coverage,
+  unclassified-residual fail-closed, multi-proposition splitting) — the validation unit
+- claim-establishment resolver (status/basis/evidence_ids) — a factual span ships only when established
+- sibling-trace binding resolver (explicit_example_reference | topic_general_rule | mixed) for L3
 - free_text validator module (L1–L4 per span + FreeTextValidationResult with per-claim results + field_decision)
 - topic-level vocabulary object (assumed_prerequisite_terms/introduced_terms/approved_operations/symbols/aliases)
   + a domain tokenizer that classifies technical vs. ordinary tokens with confidence
@@ -351,6 +398,12 @@ MUST NOT become a source of truth:
 - [ ] L1 rejects an out-of-scope term against the Phase-0 topic contract.
 - [ ] The validation unit is a **claim span**: a field is segmented before L1–L4; `field_decision` is computed
   from per-claim dispositions, so an unsupported span is softened/deleted without dropping valid sibling claims.
+- [ ] Claim spans **cover every non-whitespace character** (ordered, non-overlapping); `unclassified` residual
+  text fails closed (`segmentation_coverage_gap` in shadow; repair/withhold in on_enforced).
+- [ ] A `factual` span ships only when `ClaimEstablishment.status == established` (a concrete basis) or it is
+  trace-owned — passing L1/L2/L3 without a basis is **not** establishment.
+- [ ] L3 binds C1/C2/C4/C5 only to the sibling-trace facts a span **explicitly references**; a general
+  rule/definition is not forced to restate a neighboring example's values.
 - [ ] L2 refutes `x²=−4 ⇒ x²=0` as a **class-3 transformation** (no registered algebraic operation justifies it;
   empty solution set not communicated) — **not** as a vacuously-true material implication; accepts a valid
   equivalence-preserving transform; marks underdetermined relations INDETERMINATE (→ L4); honors `symbolic_domain`.
