@@ -10,8 +10,9 @@
 > (the trace-backed half). **Clean split:** a value/claim with a verified trace → trace-to-teaching; a claim with
 > **no** trace → here. A field is validated by exactly one of the two.
 >
-> **Core stance:** conservative by construction. When a claim cannot be established, this layer **withholds or
-> softens** it — it never certifies. No card may present unverified free text as established fact.
+> **Core stance:** conservative by construction. When a **factual** claim cannot be established, this layer
+> **withholds or softens** it — it never certifies. **Non-factual framing** may ship only when it passes scope
+> checks and carries no technical or causal assertion. No card may present unverified free text as established fact.
 
 ---
 
@@ -125,6 +126,24 @@ L4 verdict:  refuted | unsupported | no_objection   (+ states n/a · unavailable
 **`n/a` (no factual assertion) and `unavailable` (couldn't run) are different**: `unavailable` on a factual
 assertion → soften/withhold, never a clean pass; `unavailable` on non-factual framing may ship if L1–L3 pass.
 
+**Version pinning + reproducibility.** Every L4 invocation records the exact evidence it ran against, so a verdict
+stays reproducible even after the fact-pack is later revised:
+```text
+EvidenceContext { fact_pack_id · fact_pack_version · definition_registry_version · source_excerpt_ids[] · trace_ids[] }
+- Every L4 invocation records its EvidenceContext; a `refuted` verdict identifies evidence_ids FROM that context.
+- Replaying the same card against the same EvidenceContext must yield the same deterministic evidence package
+  (and verdict), independent of newer fact-pack versions.
+```
+
+**`unsupported` carries a reason** (it drives different rollout actions, not just "delete"):
+```text
+unsupported_reason:
+- no_matching_evidence                            → normally soften/delete the sentence.
+- insufficient_scope                              → soften/delete.
+- conflicting_evidence_without_resolved_precedence→ a content-GOVERNANCE defect, not a generation bug (flag).
+- evidence_pack_missing_for_domain                → keep the FAMILY in shadow_validate (don't just delete sentences).
+```
+
 ---
 
 ## 4. Outcomes — block, soften, or withhold (never certify)
@@ -162,11 +181,13 @@ unsupported).
 FreeTextValidationResult {
   deterministic: { l1_scope, l2_symbolic, l3_sibling: pass|fail|indeterminate,
                    out_of_scope_terms[], refuted_relations[], symbolic_domain }
-  semantic:      { l4: refuted | unsupported | no_objection | n/a | unavailable, span?, evidence_ids?[],
-                   verifier_available }   # evidence_ids REQUIRED on a refuted verdict
+  semantic:      { l4: refuted | unsupported | no_objection | n/a | unavailable, span?,
+                   unsupported_reason?, evidence_ids?[], evidence_context, verifier_available }
+                   # evidence_ids REQUIRED on refuted; unsupported_reason set when l4 == unsupported
   decision:      ship | repair | soften | withhold
   failures:      [ typed, most-severe first ]
-  telemetry:     { topic_id, card_type, field, rung, verdict, action, retry_count }
+  telemetry:     { topic_id, card_type, field, rung, verdict, unsupported_reason?, action, retry_count,
+                   evidence_context }
 }
 ```
 
@@ -216,6 +237,8 @@ Expected:
 | `test_l4_unavailable_factual_assertion_withholds` | factual assertion, verifier unavailable | soften/withhold — NOT a clean pass |
 | `test_l4_na_non_factual_framing_ships` | field has no unresolved factual assertion (L4=n/a) | ship |
 | `test_l4_refuted_carries_evidence_ids` | refuted definition | verdict includes `evidence_ids` |
+| `test_l4_refuted_verdict_is_reproducible` | refuted definition vs a pinned fact-pack version | result carries `fact_pack_id`/`fact_pack_version`/`definition_registry_version`+`evidence_ids`; replay on same context → same verdict |
+| `test_l4_unsupported_reason_pack_missing_holds_family` | domain has no fact-pack | `unsupported_reason=evidence_pack_missing_for_domain`; family stays shadow_validate (not per-sentence delete) |
 | `test_soften_never_produces_vaguer_falsehood` | refuted claim | output is dropped/scoped, not a hedged version of the false claim |
 | `test_soften_uses_only_registered_or_authoritative_replacement` | softened field | deleted or replaced deterministically; never newly-generated factual prose |
 | `test_l2_indeterminate_symbolic_relation_falls_to_l4` | parsed but underdetermined relation | not a hard fail for lacking bindings; → L4 |
@@ -254,9 +277,10 @@ Expected to change:
   + a domain tokenizer that classifies technical vs. ordinary tokens with confidence
 - L2 relation classifier + symbolic rule/algebra engine (or adapter transformation proof) with symbolic_domain
 - L3 reuse of trace-to-teaching C1/C2/C4 + C5 for action-bearing free-text
-- versioned domain fact-pack / rule registry (L4's allowed evidence) + registered definitions
-- bounded verifier client returning refuted|unsupported|no_objection|n/a|unavailable over the supplied evidence
-  ONLY (reject/downgrade-only; refuted carries evidence_ids)
+- versioned domain fact-pack / rule registry (L4's allowed evidence) + registered definitions, with per-generation
+  EvidenceContext pinning (fact_pack_version / definition_registry_version / source_excerpt_ids / trace_ids)
+- bounded verifier client returning refuted|unsupported(+reason)|no_objection|n/a|unavailable over the supplied
+  evidence ONLY (reject/downgrade-only; refuted carries evidence_ids; verdicts reproducible against a pinned context)
 - deterministic softener (delete / registered-template / authoritative-sentence replacement only)
 - generation retry/soften coordinator
 - rollout gate integration + per-field telemetry emitter
@@ -282,6 +306,10 @@ MUST NOT become a source of truth:
   method/rule-order (C5 for action-bearing free-text).
 - [ ] L4 operates only over the supplied evidence package (vocabulary/definitions · trace facts · versioned
   fact-pack/rule registry · supplied sources); a `refuted` verdict carries `evidence_ids`; **never certifies**.
+- [ ] Every L4 verdict records its `EvidenceContext` (fact-pack/definition-registry versions); a refuted verdict
+  replays to the same result against the same pinned context.
+- [ ] `unsupported` carries an `unsupported_reason`; `evidence_pack_missing_for_domain` holds the family in
+  `shadow_validate` rather than deleting individual sentences.
 - [ ] L4 `n/a` (no factual assertion) and `unavailable` (couldn't run) are distinct: a factual assertion with
   `unavailable` is softened/withheld, never a clean pass; only `n/a`/`no_objection`-framing ships.
 - [ ] L1 checks only tokenizer-classified technical terms against the topic vocabulary object; ordinary prose is
