@@ -1,12 +1,17 @@
 """Goal → domain classifier (Phase 0, DOMAIN_ROUTING_AND_TOPIC_GATE_SPEC §3).
 
 Deterministic heuristic (no LLM, zero latency): a weighted count of per-domain keyword / notation / unit /
-language-slug hits. `confidence` is the top−runner-up margin. The four v1 domains are `coding · math · science ·
-concept`; anything that matches nothing resolves to `concept` with `classification_status = fallback_concept`
-(NOT `classifier_failed` — a genuine classifier *failure* is an exception the caller catches, §3.2).
+language-slug hits over the **fine scored domains**, plus two *derived* outcomes: `mixed` (two comparably-strong
+gate FAMILIES) and `unknown` (nothing matched).
 
-Stage-2 LLM escalation on low confidence is a deliberate v1 hook (see `classify_domain(..., escalate=)`), not
-implemented here. All keyword lists / weights / thresholds are **tunable config**, not blockers (§7).
+Two layers:
+- **`domain`** (fine, persisted/analytics): `coding · math · physics · chemistry · biology ·
+  electrical_engineering · finance · economics · humanities` — plus derived `mixed · unknown`.
+- **`gate_family`** (coarse, drives the allow-list): `coding · math · science · expository` — or `""` for
+  `mixed`/`unknown`, which are **non-gating** (the safe conservative fallback; existing behavior preserved).
+
+`classification_status ∈ {classified · ambiguous · failed}` (`pending` is the pre-run DB state; `failed` is set
+by the caller on exception, §3.2). All keyword lists / weights / thresholds are **tunable config** (§7).
 """
 from __future__ import annotations
 
@@ -14,11 +19,22 @@ import re
 from dataclasses import dataclass, field
 
 # --- tunable constants -----------------------------------------------------------------------------------
-_HIGH_CONFIDENCE = 0.40          # >= this margin -> `classified`; below -> `low_confidence`
-_KW_WEIGHT = 1                   # a plain keyword hit
+_HIGH_CONFIDENCE = 0.40           # >= this fine-domain margin -> `classified`; below -> `ambiguous`
+_KW_WEIGHT = 1                    # a plain keyword hit
 _STRONG_WEIGHT = 2               # notation / units / language names / CS-slug hits (higher signal)
+_MIXED_FLOOR = 3                 # both top-2 gate FAMILIES must reach this to be `mixed`
+_MIXED_MARGIN = 1                # ...and be within this of each other
 
-# Per-domain plain keywords (weight 1). Kept lowercase; matched on word boundaries.
+# Fine domain -> coarse gate family (the allow-list key). mixed/unknown map to "" (non-gating).
+FAMILY_OF: dict[str, str] = {
+    "coding": "coding", "machine_learning": "coding",
+    "math": "math", "logic": "math", "statistics": "math",
+    "physics": "science", "chemistry": "science", "biology": "science", "electrical_engineering": "science",
+    "finance": "expository", "economics": "expository", "humanities": "expository",
+}
+_SCORED = tuple(FAMILY_OF.keys())
+
+# Per-domain plain keywords (weight 1), lowercase, word-boundary matched.
 _KEYWORDS: dict[str, tuple[str, ...]] = {
     "coding": (
         "implement", "implementation", "code", "coding", "program", "programming", "function", "method",
@@ -32,74 +48,72 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
         "factoring", "quadratic", "completing the square", "logarithm", "exponent", "trigonometry", "sine",
         "cosine", "calculus", "algebra", "algebraic", "inequality", "expression", "simplify", "mathematically",
     ),
-    "science": (
-        "physics", "chemistry", "biology", "chemical", "reaction", "force", "velocity", "acceleration",
-        "momentum", "energy", "circuit", "voltage", "current", "resistance", "kinematics", "thermodynamics",
-        "cell", "dna", "photosynthesis", "evolution", "molecule", "atom", "stoichiometry", "molarity",
-        "ecosystem", "gravity", "newton's", "ohm's law", "density", "mass",
+    "machine_learning": (
+        "machine learning", "neural network", "deep learning", "backpropagation", "training data", "classifier",
+        "overfitting", "convolutional", "transformer", "embedding", "reinforcement learning", "supervised",
+        "unsupervised", "feature engineering", "gradient descent",
     ),
-    "concept": (
-        "inflation", "economics", "economy", "history", "historical", "philosophy", "ethics", "essay",
-        "writing", "business", "marketing", "finance", "politics", "sociology", "psychology", "definition",
-        "compare", "difference between", "meaning of", "what is",
+    "logic": (
+        "propositional logic", "predicate logic", "truth table", "syllogism", "tautology", "logical fallacy",
+        "boolean algebra", "first-order logic", "modus ponens", "inference rule", "formal logic",
+        "symbolic logic", "validity", "proposition", "deductive",
+    ),
+    "statistics": (
+        "statistics", "statistical", "probability", "distribution", "regression", "hypothesis test", "p-value",
+        "variance", "standard deviation", "correlation", "confidence interval", "bayesian", "median", "sample",
+        "normal distribution", "chi-square", "sampling",
+    ),
+    "physics": (
+        "physics", "force", "velocity", "acceleration", "momentum", "energy", "gravity", "motion", "newton's",
+        "kinematics", "thermodynamics", "wave", "optics", "quantum", "friction", "projectile", "torque",
+    ),
+    "chemistry": (
+        "chemistry", "chemical", "reaction", "molecule", "atom", "mole", "molar", "molarity", "stoichiometry",
+        "bond", "acid", "base", "compound", "element", "periodic table", "solution", "titration",
+    ),
+    "biology": (
+        "biology", "cell", "dna", "gene", "genetic", "photosynthesis", "evolution", "ecosystem", "organism",
+        "protein", "enzyme", "mitosis", "meiosis", "species", "anatomy", "respiration",
+    ),
+    "electrical_engineering": (
+        "circuit", "voltage", "current", "resistance", "capacitor", "inductor", "transistor", "amplifier",
+        "logic gate", "signal", "electrical", "impedance", "diode", "kirchhoff", "ohm's law",
+    ),
+    "finance": (
+        "finance", "financial", "investment", "stock", "interest", "compound interest", "portfolio", "bond",
+        "revenue", "profit", "cash flow", "valuation", "npv", "accounting", "loan", "mortgage",
+    ),
+    "economics": (
+        "economics", "economy", "inflation", "gdp", "supply", "demand", "market", "elasticity", "monetary",
+        "fiscal", "unemployment", "trade", "recession", "macroeconomic", "microeconomic",
+    ),
+    "humanities": (
+        "history", "historical", "war", "revolution", "philosophy", "ethics", "literature", "novel", "poem",
+        "poetry", "essay", "rhetoric", "art", "culture", "politics", "government", "religion", "sociology",
+        "psychology", "shakespeare", "hamlet", "theme", "themes", "literary",
     ),
 }
 
-# Strong signals (weight 2). `coding` gets language names; `math` notation; `science` units.
+# Strong signals (weight 2).
 _LANGUAGES: tuple[str, ...] = (
     "python", "java", "javascript", "typescript", "c++", "cpp", "c#", "golang", "rust", "ruby", "php",
     "kotlin", "swift", "scala", "sql", "pytorch", "tensorflow", "numpy",
 )
 _MATH_NOTATION: tuple[str, ...] = ("∑", "∫", "√", "π", "θ", "≤", "≥", "≠", "^2", "x^", "dx", "dy/dx")
-_SCIENCE_UNITS: tuple[str, ...] = ("m/s", "m/s^2", "m/s²", " mol", " n)", " kg", "joule", "volt", " amp",
-                                   "ohm", "km/h", "= ma", "f = ma", "f=ma")
-
-# Controlled subdomain families (§3.2), best-effort match within the winning domain.
-_SUBDOMAIN_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = {
-    "coding": {
-        "algorithms": ("algorithm", "sort", "search", "dfs", "bfs", "traversal", "dynamic programming"),
-        "data-structures": ("array", "linked list", "stack", "queue", "hash", "tree", "graph", "heap"),
-        "web-development": ("html", "css", "react", "http", "frontend", "backend", "web"),
-        "databases": ("sql", "database", "query", "index", "join"),
-        "machine-learning": ("neural", "pytorch", "tensorflow", "gradient descent", "model", "training"),
-        "programming-basics": ("function", "loop", "variable", "class", "method"),
-    },
-    "math": {
-        "algebra": ("algebra", "quadratic", "completing the square", "polynomial", "factor", "equation"),
-        "calculus": ("calculus", "integral", "derivative", "differentiate", "limit"),
-        "linear-algebra": ("matrix", "matrices", "vector", "eigen"),
-        "probability-statistics": ("probability", "statistics", "variance", "distribution", "mean"),
-        "geometry": ("geometry", "triangle", "circle", "angle", "area"),
-        "discrete-math": ("graph theory", "combinatorics", "logic", "set theory"),
-    },
-    "science": {
-        "physics": ("physics", "force", "velocity", "acceleration", "newton", "kinematics", "energy", "circuit"),
-        "chemistry": ("chemistry", "chemical", "reaction", "molecule", "atom", "mole", "stoichiometry"),
-        "biology": ("biology", "cell", "dna", "photosynthesis", "evolution", "ecosystem"),
-        "earth-science": ("plate tectonics", "geology", "weather", "climate"),
-    },
-    "concept": {
-        "economics": ("inflation", "economics", "economy", "finance", "market"),
-        "history": ("history", "historical", "war", "revolution"),
-        "philosophy": ("philosophy", "ethics", "logic", "epistemology"),
-        "business": ("business", "marketing", "management", "strategy"),
-        "writing": ("essay", "writing", "grammar", "rhetoric"),
-        "general": (),
-    },
-}
-
-_DOMAINS = ("coding", "math", "science", "concept")
+_PHYS_UNITS: tuple[str, ...] = ("m/s", "m/s^2", "m/s²", " kg", "joule", "newton", "= ma", "f = ma", "f=ma", "km/h")
+_EE_UNITS: tuple[str, ...] = (" volt", " amp", "ohm", "watt", "hertz", "farad")
+_CHEM_UNITS: tuple[str, ...] = (" mol", "g/mol", " ph ")
 
 
 @dataclass
 class DomainSignals:
-    """The Phase-0 classifier output (a subset of `PromptSignals`, §3)."""
-    domain: str                                   # coding | math | science | concept
-    confidence: float                             # top − runner-up margin, 0..1
-    classification_status: str                    # classified | low_confidence | fallback_concept | classifier_failed
-    subdomain_family: str = ""                    # controlled (§3.2) or ""
-    subdomain_label: str = ""                     # free text (reserved; "" in v1)
-    scores: dict[str, float] = field(default_factory=dict)  # per-domain raw scores (debug/telemetry)
+    """Phase-0 classifier output (a subset of `PromptSignals`, §3)."""
+    domain: str                                   # fine domain, or mixed | unknown
+    gate_family: str                              # coding | math | science | expository | "" (non-gating)
+    confidence: float                             # top − runner-up (fine) margin, 0..1
+    classification_status: str                    # classified | ambiguous | failed  (pending set by DB)
+    subdomain_family: str = ""                    # reserved; the fine `domain` already carries granularity
+    scores: dict[str, float] = field(default_factory=dict)  # per-fine-domain raw scores (telemetry/debug)
 
 
 def _count(text: str, needles: tuple[str, ...], *, word_boundary: bool) -> int:
@@ -107,7 +121,7 @@ def _count(text: str, needles: tuple[str, ...], *, word_boundary: bool) -> int:
     for n in needles:
         if not n:
             continue
-        if word_boundary and n.isalnum():
+        if word_boundary and n.replace(" ", "").isalnum() and " " not in n:
             if re.search(rf"\b{re.escape(n)}\b", text):
                 hits += 1
         elif n in text:                            # phrases / notation / units: plain substring
@@ -115,41 +129,43 @@ def _count(text: str, needles: tuple[str, ...], *, word_boundary: bool) -> int:
     return hits
 
 
-def _domain_scores(text: str) -> dict[str, float]:
-    scores: dict[str, float] = {}
-    for domain in _DOMAINS:
-        s = _KW_WEIGHT * _count(text, _KEYWORDS[domain], word_boundary=True)
-        scores[domain] = float(s)
+def _fine_scores(text: str) -> dict[str, float]:
+    scores = {d: float(_KW_WEIGHT * _count(text, _KEYWORDS[d], word_boundary=True)) for d in _SCORED}
     scores["coding"] += _STRONG_WEIGHT * _count(text, _LANGUAGES, word_boundary=False)
     scores["math"] += _STRONG_WEIGHT * _count(text, _MATH_NOTATION, word_boundary=False)
-    scores["science"] += _STRONG_WEIGHT * _count(text, _SCIENCE_UNITS, word_boundary=False)
+    scores["physics"] += _STRONG_WEIGHT * _count(text, _PHYS_UNITS, word_boundary=False)
+    scores["electrical_engineering"] += _STRONG_WEIGHT * _count(text, _EE_UNITS, word_boundary=False)
+    scores["chemistry"] += _STRONG_WEIGHT * _count(text, _CHEM_UNITS, word_boundary=False)
     return scores
 
 
-def _best_subdomain_family(domain: str, text: str) -> str:
-    best, best_hits = "", 0
-    for family, needles in _SUBDOMAIN_FAMILIES.get(domain, {}).items():
-        h = _count(text, needles, word_boundary=False)
-        if h > best_hits:
-            best, best_hits = family, h
-    return best
+def _family_scores(fine: dict[str, float]) -> dict[str, float]:
+    fam: dict[str, float] = {}
+    for domain, score in fine.items():
+        fam[FAMILY_OF[domain]] = fam.get(FAMILY_OF[domain], 0.0) + score
+    return fam
 
 
 def classify_domain(goal: str) -> DomainSignals:
-    """Map a raw goal string to a `DomainSignals`. Never raises for normal input; nothing-matches ⇒
-    `fallback_concept`. (A real classifier *failure* — e.g. an escalation call throwing — is the caller's
-    responsibility to catch and turn into `classification_status = classifier_failed`, §3.2.)"""
+    """Map a raw goal to a `DomainSignals`. Never raises for normal input. Nothing-matches ⇒ `unknown`
+    (non-gating); two comparably-strong gate families ⇒ `mixed` (non-gating). A real classifier *failure* is an
+    exception the caller catches and turns into `classification_status='failed'`, §3.2."""
     text = f" {str(goal or '').lower().strip()} "
-    scores = _domain_scores(text)
+    fine = _fine_scores(text)
+    fam = _family_scores(fine)
 
-    ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
-    top_domain, top_score = ranked[0]
-    runner_up = ranked[1][1] if len(ranked) > 1 else 0.0
-
+    fine_ranked = sorted(fine.items(), key=lambda kv: kv[1], reverse=True)
+    top_domain, top_score = fine_ranked[0]
     if top_score <= 0:
-        return DomainSignals("concept", 0.0, "fallback_concept", "general", "", scores)
+        return DomainSignals("unknown", "", 0.0, "ambiguous", "", fine)
 
+    fam_ranked = sorted(fam.items(), key=lambda kv: kv[1], reverse=True)
+    if len(fam_ranked) > 1:
+        (f1, s1), (f2, s2) = fam_ranked[0], fam_ranked[1]
+        if s1 >= _MIXED_FLOOR and s2 >= _MIXED_FLOOR and (s1 - s2) <= _MIXED_MARGIN:
+            return DomainSignals("mixed", "", 0.0, "ambiguous", "", fine)
+
+    runner_up = fine_ranked[1][1] if len(fine_ranked) > 1 else 0.0
     confidence = max(0.0, min(1.0, (top_score - runner_up) / top_score))
-    status = "classified" if confidence >= _HIGH_CONFIDENCE else "low_confidence"
-    family = _best_subdomain_family(top_domain, text)
-    return DomainSignals(top_domain, round(confidence, 3), status, family, "", scores)
+    status = "classified" if confidence >= _HIGH_CONFIDENCE else "ambiguous"
+    return DomainSignals(top_domain, FAMILY_OF[top_domain], round(confidence, 3), status, "", fine)

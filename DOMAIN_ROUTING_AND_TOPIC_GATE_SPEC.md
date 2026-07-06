@@ -26,20 +26,32 @@ the domain's allow-list.*
 
 ## 2. Domain taxonomy (resolved)
 
-- **Q1 — v1 domains = `coding · math · science · concept`.** No stored `other` (it becomes a structure-less
-  dumping ground that poisons analytics). Unknown/unsupported requests resolve to `concept`; **ambiguous**
-  requests resolve to `concept` **only when classification completes** — a classifier *failure* uses
-  `classification_status = classifier_failed` and takes the §3.2 failure route rather than applying the concept
-  gate. The raw classifier label may be kept internally for debugging, but routing always resolves to one of the
-  four.
-- **Q2 — `concept` definition.** Content whose primary learning mode is **explanation, categorization,
-  comparison, or historical/contextual understanding** — rather than executable code, symbolic derivation, or a
-  causal physical mechanism. `concept` is also the safe fallback profile.
-- **Q4 — one primary domain per path; no `mixed` in v1.** Store a single `domain`; optionally keep ranked
-  candidates internally for debugging. A **topic-level domain override** may be added later (Phase 3), but v1
-  routing is deterministic off the path domain. Examples: "Learn Python for data analysis" → `coding`;
-  "Understand gradient descent mathematically" → `math`; "Build a neural net in PyTorch" → `coding`; "the physics
-  behind neural nets" → `science`/`concept`.
+- **Q1 — TWO-LAYER taxonomy (updated): fine `domain` → coarse `gate_family`.** The persisted, analytics-facing
+  **`domain`** is fine-grained; a small **`gate_family`** drives the allow-list. This lets us add fine domains
+  cheaply (a keyword list + a `FAMILY_OF` row) without touching the gate architecture.
+  | `gate_family` | fine `domain`s |
+  |---|---|
+  | `coding` | `coding` · `machine_learning` |
+  | `math` | `math` · `logic` · `statistics` |
+  | `science` | `physics` · `chemistry` · `biology` · `electrical_engineering` |
+  | `expository` | `finance` · `economics` · `humanities` |
+  | *(none — non-gating)* | `mixed` · `unknown` |
+  Fine domains are open to extension (see the "candidate additions" note below). `mixed` (two comparably-strong
+  families) and `unknown` (nothing matched) are **non-gating** — the conservative fallback that preserves existing
+  behavior.
+- **Q2 — `expository` family.** Content whose primary mode is **explanation, categorization, comparison, or
+  historical/contextual understanding** — `finance`/`economics`/`humanities` in v1 (concept-family gate rules).
+- **Q4 — `mixed` is now a first-class outcome (non-gating).** A path still has ONE primary `domain`, but when two
+  gate families are comparably strong the classifier returns `mixed` and the gate is a **no-op** (per-topic
+  domain routing is the eventual Phase-3 refinement). Examples: "completing the square" → `math`; "Newton's second
+  law" → `physics`; "Ohm's law in a circuit" → `electrical_engineering`; "photosynthesis" → `biology`; "what is
+  inflation" → `economics`; "themes in Hamlet" → `humanities`; "hypothesis testing" → `statistics`.
+
+> **Candidate fine-domain additions (cheap — keyword list + `FAMILY_OF` row, no architecture change):** the
+> strongest are `statistics` (done) and `machine_learning` (done). Also worth considering: `astronomy` /
+> `earth_science` (→ science), `medicine`/`health` (→ science), `language_learning` (→ expository, but a
+> different *skill*-acquisition shape — flag before adding). Humanities is deliberately kept coarse (not the
+> current focus).
 
 ---
 
@@ -77,50 +89,47 @@ the domain's allow-list.*
 must be distinguished from **classification unavailable/untrusted** — otherwise a classifier/LLM outage turns
 "Teach me DFS in Python" into `concept` and strips the coding types. Record separately:
 ```
-classification_status: classified | low_confidence | classifier_failed | fallback_concept
+classification_status: pending | classified | ambiguous | failed
+# pending: pre-classify DB state · classified: confident · ambiguous: low-margin / mixed / unknown · failed: classifier errored
 ```
 Rules:
-- `concept` + `classified` → normal concept gate.
-- **Classification failed before a reliable domain** → do **not** silently apply the restrictive concept gate
-  just because `concept` is the storage fallback. (The gate is final authority only when the result is
-  trustworthy enough to enforce.)
+- a classified fine domain → its `gate_family` allow-list applies.
+- **Classification failed / non-gating (`mixed` · `unknown`)** → do **not** apply a restrictive gate. (The gate is
+  final authority only when the result is trustworthy enough to enforce; `mixed`/`unknown` map to no `gate_family`.)
 
-**Classifier-failure route (exact — no implementer choice).** When `classification_status = classifier_failed`:
-1. Persist `StudyPath.domain = concept` **only as the storage fallback** + `classification_status = classifier_failed`.
-2. **Do not** invoke `_gate_topic_types_by_domain`.
+**Classifier-failure route (exact — no implementer choice).** When `classification_status = failed` (classifier
+errored) OR `domain ∈ {mixed, unknown}` (non-gating):
+1. Persist `StudyPath.domain` (`unknown` on failure) + the status; this is a storage value, **not** a gate.
+2. **Do not** invoke `_gate_topic_types_by_domain` (its `gate_family` lookup already no-ops these).
 3. Execute the **existing legacy** topic-generation route for that path (legacy behavior unchanged during the
    flag rollout — it may still call its own repair logic; the *new gated route* never does).
 4. Emit `classifier_failed_legacy_route` telemetry.
 
 The system must never apply the concept allow-list solely because the storage fallback is `concept`.
 
-### 3.3 Subdomain — two layers (Q6 resolved)
+### 3.3 Subdomain (largely SUPERSEDED by the fine `domain`, Q6)
 
-Don't build a big controlled vocabulary. Use `subdomain_family` (controlled) + `subdomain_label` (free text):
-
-| Domain | v1 controlled families |
-|---|---|
-| coding | programming-basics · data-structures · algorithms · web-development · databases · systems · machine-learning |
-| math | algebra · calculus · linear-algebra · discrete-math · probability-statistics · geometry |
-| science | physics · chemistry · biology · earth-science |
-| concept | business · history · economics · philosophy · writing · general |
-
-The free label still helps adapter routing; the family gives stable gates + analytics.
+The Q1 two-layer taxonomy moved most of this granularity into the fine `domain` itself (`physics`, `finance`,
+`logic`, …), so a separate controlled `subdomain_family` is now optional. Keep only a free `subdomain_label`
+(e.g. `completing_the_square`) as an adapter-routing prior; a finer controlled sub-taxonomy under a fine domain
+(e.g. `physics → kinematics/thermodynamics`) is a **later** refinement, not v1.
 
 ---
 
 ## 4. The domain gate
 
-### 4.1 Allow-lists
-`U` (universal, every domain): `study_path_introduction · concept_intuition · terminology_components ·
-compare_distinguish · problem_solving_application`.
+### 4.1 Allow-lists (keyed by `gate_family`, not the fine domain)
+The fine `domain` maps to a `gate_family` (§2 Q1); the **family** drives the allow-list. `U` (universal, every
+family): `study_path_introduction · concept_intuition · terminology_components · compare_distinguish ·
+problem_solving_application`.
 
-| Domain | Allowed (+ `U`) | Forbidden ⇒ remap |
+| `gate_family` | Allowed (+ `U`) | Forbidden ⇒ remap |
 |---|---|---|
 | coding | `algorithm_walkthrough · data_structure_operation · coding_implementation · process_walkthrough` | `math_formula_method · proof_reasoning · science_mechanism` |
 | math | `math_formula_method · proof_reasoning` | `coding_implementation · algorithm_walkthrough · data_structure_operation · process_walkthrough · science_mechanism` |
 | science | `science_mechanism · math_formula_method` *(quantitative)* | `coding_implementation · algorithm_walkthrough · data_structure_operation · process_walkthrough` |
-| concept | `process_walkthrough` | `coding_implementation · math_formula_method · proof_reasoning · science_mechanism` |
+| expository | `process_walkthrough` | `coding_implementation · math_formula_method · proof_reasoning · science_mechanism` |
+| *(mixed / unknown)* | — non-gating (no-op) — | — |
 
 `process_walkthrough` is forbidden for math/science on purpose — its `process` card is the CS **loop** scaffold
 (the completing-the-square offender). Gating it out forces `math_formula_method` (setup→calc→interpret).

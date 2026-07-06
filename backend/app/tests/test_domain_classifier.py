@@ -1,8 +1,8 @@
-"""Phase-0 goal→domain classifier (DOMAIN_ROUTING_AND_TOPIC_GATE_SPEC §3 / §6 fixtures).
+"""Phase-0 goal→domain classifier (DOMAIN_ROUTING_AND_TOPIC_GATE_SPEC §3).
 
-Deterministic heuristic: the acceptance-fixture prompts must resolve to the right v1 domain
-(coding · math · science · concept), and a nothing-matches prompt must yield `fallback_concept`
-(not `classifier_failed`). Keyword weights are tunable, so we assert the DOMAIN, not exact scores.
+Fine domains (coding · math · logic · statistics · physics · chemistry · biology · electrical_engineering ·
+finance · economics · humanities · machine_learning) + derived `mixed`/`unknown`; each maps to a coarse
+`gate_family`. Keyword weights are tunable, so we assert domain/family, not exact scores.
 
 Run: python -m unittest app.tests.test_domain_classifier
 """
@@ -15,45 +15,50 @@ from app.services.domain_classifier import classify_domain
 
 
 class DomainClassifierFixtures(unittest.TestCase):
-    def test_spec_acceptance_fixtures(self):
+    def test_fine_domain_fixtures(self):
         cases = {
             "Teach me completing the square.": "math",
             "Teach me DFS in Python.": "coding",
-            "Teach me Newton's second law.": "science",
-            "Teach me photosynthesis.": "science",
-            "Teach me how to calculate force using F = ma.": "science",
-            "What is inflation?": "concept",
-            "Build a neural net in PyTorch.": "coding",
-            "Understand gradient descent mathematically.": "math",
+            "Teach me Newton's second law.": "physics",
+            "Teach me photosynthesis.": "biology",
+            "Teach me how to calculate force using F = ma.": "physics",
+            "What is inflation?": "economics",
+            "Analyze the themes in Hamlet.": "humanities",
+            "Teach me stoichiometry.": "chemistry",
+            "Teach me how Ohm's Law works in a circuit.": "electrical_engineering",
+            "Teach me hypothesis testing and p-values.": "statistics",
+            "Teach me propositional logic and truth tables.": "logic",
+            "How do I calculate compound interest?": "finance",
         }
         for goal, expected in cases.items():
             self.assertEqual(classify_domain(goal).domain, expected, goal)
 
-    def test_nothing_matches_is_fallback_concept_not_failure(self):
-        sig = classify_domain("asdfghjkl qwerty zxcvb")
-        self.assertEqual(sig.domain, "concept")
-        self.assertEqual(sig.classification_status, "fallback_concept")
-        self.assertNotEqual(sig.classification_status, "classifier_failed")
+    def test_gate_family_mapping(self):
+        self.assertEqual(classify_domain("Teach me Newton's second law.").gate_family, "science")
+        self.assertEqual(classify_domain("Teach me photosynthesis.").gate_family, "science")
+        self.assertEqual(classify_domain("What is inflation?").gate_family, "expository")
+        self.assertEqual(classify_domain("Teach me completing the square.").gate_family, "math")
+        self.assertEqual(classify_domain("Teach me propositional logic.").gate_family, "math")
+        self.assertEqual(classify_domain("Teach me DFS in Python.").gate_family, "coding")
 
-    def test_empty_goal_is_fallback_concept(self):
-        for g in ("", None, "   "):
-            self.assertEqual(classify_domain(g).classification_status, "fallback_concept")
+    def test_unknown_when_nothing_matches(self):
+        for g in ("asdfghjkl qwerty zxcvb", "", None, "   "):
+            sig = classify_domain(g)
+            self.assertEqual(sig.domain, "unknown", repr(g))
+            self.assertEqual(sig.gate_family, "")                 # non-gating
+            self.assertEqual(sig.classification_status, "ambiguous")
+
+    def test_mixed_when_two_families_comparable(self):
+        # balanced coding + math signal -> mixed (non-gating), not a single winner
+        sig = classify_domain("python function loop recursion and algebra calculus theorem proof")
+        self.assertEqual(sig.domain, "mixed")
+        self.assertEqual(sig.gate_family, "")
 
     def test_status_and_confidence_shape(self):
         sig = classify_domain("Teach me DFS in Python.")
-        self.assertIn(sig.classification_status, {"classified", "low_confidence"})
+        self.assertIn(sig.classification_status, {"classified", "ambiguous"})
         self.assertGreaterEqual(sig.confidence, 0.0)
         self.assertLessEqual(sig.confidence, 1.0)
-
-    def test_subdomain_family_is_controlled(self):
-        # completing the square -> math/algebra family
-        self.assertEqual(classify_domain("Teach me completing the square.").subdomain_family, "algebra")
-        # DFS in Python -> coding/algorithms family
-        self.assertEqual(classify_domain("Teach me DFS in Python.").subdomain_family, "algorithms")
-
-    def test_scores_recorded_for_all_four_domains(self):
-        scores = classify_domain("Teach me completing the square.").scores
-        self.assertEqual(set(scores), {"coding", "math", "science", "concept"})
 
 
 if __name__ == "__main__":

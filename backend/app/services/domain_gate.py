@@ -13,48 +13,57 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Optional
 
+from app.services.domain_classifier import FAMILY_OF
+
 GATE_VERSION = "v1"
 REWRITE_VERSION = "v1"
 
-# --- taxonomy (spec §4.1 / §5.2) -------------------------------------------------------------------------
+# --- taxonomy (spec §4.1 / §5.2) — keyed by GATE FAMILY (coding · math · science · expository) ------------
+# The fine `domain` (physics, finance, logic, …) maps to a family via FAMILY_OF; the family drives the
+# allow-list. mixed/unknown (and any unmapped domain) are NON-GATING (no-op).
 _UNIVERSAL = frozenset({
     "study_path_introduction", "concept_intuition", "terminology_components", "compare_distinguish",
     "problem_solving_application",
 })
-_DOMAIN_ALLOWED: dict[str, frozenset[str]] = {
+_FAMILY_ALLOWED: dict[str, frozenset[str]] = {
     "coding": frozenset({"algorithm_walkthrough", "data_structure_operation", "coding_implementation",
                          "process_walkthrough"}),
     "math": frozenset({"math_formula_method", "proof_reasoning"}),
     "science": frozenset({"science_mechanism", "math_formula_method"}),  # math_formula_method only if quantitative
-    "concept": frozenset({"process_walkthrough"}),
+    "expository": frozenset({"process_walkthrough"}),                     # finance · economics · humanities
 }
-# The authoritative per-domain TEACHING set (§5.2 — replaces the coding-only _TEACHING_TYPES/_MEMBER_TEACHING_TYPES).
-DOMAIN_TEACHING_TYPES: dict[str, frozenset[str]] = {
+# The authoritative per-FAMILY TEACHING set (§5.2 — replaces the coding-only _TEACHING_TYPES/_MEMBER_TEACHING_TYPES).
+_FAMILY_TEACHING_TYPES: dict[str, frozenset[str]] = {
     "coding": frozenset({"algorithm_walkthrough", "data_structure_operation", "coding_implementation",
                          "process_walkthrough"}),
     "math": frozenset({"math_formula_method", "proof_reasoning"}),
     "science": frozenset({"science_mechanism", "math_formula_method"}),
-    "concept": frozenset({"concept_intuition", "compare_distinguish", "process_walkthrough"}),
+    "expository": frozenset({"concept_intuition", "compare_distinguish", "process_walkthrough"}),
 }
-# The domain's PRIMARY teaching type (remap target of last resort + coverage recovery, §4.2).
-_DOMAIN_PRIMARY = {"coding": "algorithm_walkthrough", "math": "math_formula_method",
-                   "science": "science_mechanism", "concept": "process_walkthrough"}
+# The family's PRIMARY teaching type (remap target of last resort + coverage recovery, §4.2).
+_FAMILY_PRIMARY = {"coding": "algorithm_walkthrough", "math": "math_formula_method",
+                   "science": "science_mechanism", "expository": "concept_intuition"}
 
-# Remap table (§4.2): forbidden type -> per-domain target. "drop_else_primary" = coding_implementation special case.
+# Remap table (§4.2): forbidden type -> per-FAMILY target. "drop_else_*" = coding_implementation special case.
 _REMAP: dict[str, dict[str, str]] = {
     "coding_implementation": {"math": "drop_else_primary", "science": "drop_else_primary",
-                              "concept": "drop_else_process"},
+                              "expository": "drop_else_process"},
     "algorithm_walkthrough": {"math": "math_formula_method", "science": "science_mechanism",
-                              "concept": "process_walkthrough"},
+                              "expository": "process_walkthrough"},
     "data_structure_operation": {"math": "math_formula_method", "science": "science_mechanism",
-                                 "concept": "process_walkthrough"},
+                                 "expository": "process_walkthrough"},
     "process_walkthrough": {"math": "math_formula_method", "science": "science_mechanism"},
-    "math_formula_method": {"coding": "algorithm_walkthrough", "concept": "concept_intuition"},
+    "math_formula_method": {"coding": "algorithm_walkthrough", "expository": "concept_intuition"},
     "proof_reasoning": {"coding": "concept_intuition", "science": "science_mechanism",
-                        "concept": "concept_intuition"},
+                        "expository": "concept_intuition"},
     "science_mechanism": {"coding": "concept_intuition", "math": "math_formula_method",
-                          "concept": "concept_intuition"},
+                          "expository": "concept_intuition"},
 }
+
+
+def teaching_types_for(domain: str) -> frozenset[str]:
+    """Native teaching types for a fine `domain` (via its gate family). Empty for mixed/unknown/unmapped."""
+    return _FAMILY_TEACHING_TYPES.get(FAMILY_OF.get(domain, ""), frozenset())
 # Target topic type -> required normalized content_role (§5.1).
 _TARGET_ROLE = {
     "math_formula_method": "calculation", "proof_reasoning": "proof", "science_mechanism": "mechanism",
@@ -140,17 +149,17 @@ def rewrite_topic_contract(topic: dict[str, Any], target_type: str, domain: str,
 
 
 # --- the gate (§4.2, two-pass) ----------------------------------------------------------------------------
-def _remap_target(forbidden: str, domain: str, *, has_other_teaching: bool,
+def _remap_target(forbidden: str, family: str, *, has_other_teaching: bool,
                   qc_fn: Callable[[dict[str, Any]], dict[str, Any]], topic: dict[str, Any]) -> Optional[str]:
-    """Resolve a forbidden type to its allowed target for `domain` (None ⇒ drop)."""
-    rule = _REMAP.get(forbidden, {}).get(domain)
+    """Resolve a forbidden type to its allowed target for `family` (None ⇒ drop)."""
+    rule = _REMAP.get(forbidden, {}).get(family)
     if rule is None:
-        return _DOMAIN_PRIMARY[domain]                     # unlisted forbidden ⇒ domain primary
+        return _FAMILY_PRIMARY[family]                     # unlisted forbidden ⇒ family primary
     if rule == "drop_else_primary":
-        return None if has_other_teaching else _DOMAIN_PRIMARY[domain]
+        return None if has_other_teaching else _FAMILY_PRIMARY[family]
     if rule == "drop_else_process":
         return None if has_other_teaching else "process_walkthrough"
-    if rule == "math_formula_method" and domain == "science":
+    if rule == "math_formula_method" and family == "science":
         return "math_formula_method" if qc_fn(topic).get("decision") else "science_mechanism"
     return rule
 
@@ -158,16 +167,17 @@ def _remap_target(forbidden: str, domain: str, *, has_other_teaching: bool,
 def gate_topic_types_by_domain(topics: list[dict[str, Any]], domain: str, *,
                                qc_fn: Callable[[dict[str, Any]], dict[str, Any]] = quantitative_center
                                ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """The final authority. Returns (gated_topics, telemetry). Raises nothing for normal input; a path left with
-    no valid teaching topic and no deterministic recovery is surfaced via `telemetry['routing_validation']`.
-    `domain='coding'` (or an unknown domain) is a no-op (coding is the permissive superset)."""
-    allowed = _DOMAIN_ALLOWED.get(domain)
-    tel = {"gate_version": GATE_VERSION, "domain": domain, "topics_seen": len(topics),
+    """The final authority. Returns (gated_topics, telemetry). The fine `domain` maps to a gate family
+    (FAMILY_OF); `mixed`/`unknown`/any unmapped domain is a **no-op** (conservative — existing behavior). A path
+    left with no native teaching type and no deterministic recovery surfaces `telemetry['routing_validation']`."""
+    family = FAMILY_OF.get(domain, "")
+    allowed = _FAMILY_ALLOWED.get(family)
+    tel = {"gate_version": GATE_VERSION, "domain": domain, "gate_family": family, "topics_seen": len(topics),
            "topics_rewritten": 0, "topics_dropped": 0, "routing_validation": None, "coverage_recovered": False}
-    if not allowed or domain == "coding":
-        return topics, tel                                 # coding: allow-list is the permissive superset
+    if not allowed:
+        return topics, tel                                 # mixed / unknown / unmapped -> no gating
 
-    teach = DOMAIN_TEACHING_TYPES[domain]
+    teach = _FAMILY_TEACHING_TYPES[family]
 
     # Pass 1+2: for each forbidden topic, decide remap vs drop (a coding_implementation drops only if another
     # non-intro teaching topic already covers the path).
@@ -175,7 +185,7 @@ def gate_topic_types_by_domain(topics: list[dict[str, Any]], domain: str, *,
     for t in topics:
         ct = _tt(t)
         # science × math_formula_method: allowed only when quantitatively centered, else remap to mechanism.
-        if domain == "science" and ct == "math_formula_method" and not qc_fn(t).get("decision"):
+        if family == "science" and ct == "math_formula_method" and not qc_fn(t).get("decision"):
             rewrite_topic_contract(t, "science_mechanism", domain, reason="science_qualitative")
             tel["topics_rewritten"] += 1
             kept.append(t); continue
@@ -183,7 +193,7 @@ def gate_topic_types_by_domain(topics: list[dict[str, Any]], domain: str, *,
             kept.append(t); continue
         # forbidden ⇒ remap/drop
         others_teaching = any(_tt(o) in teach and o is not t for o in topics)
-        target = _remap_target(ct, domain, has_other_teaching=others_teaching, qc_fn=qc_fn, topic=t)
+        target = _remap_target(ct, family, has_other_teaching=others_teaching, qc_fn=qc_fn, topic=t)
         if target is None:
             tel["topics_dropped"] += 1                     # drop the forbidden coding twin
             continue
@@ -196,7 +206,7 @@ def gate_topic_types_by_domain(topics: list[dict[str, Any]], domain: str, *,
         recovered = False
         for t in kept:
             if not _is_intro(t):
-                rewrite_topic_contract(t, _DOMAIN_PRIMARY[domain], domain, reason="native_coverage_recovery")
+                rewrite_topic_contract(t, _FAMILY_PRIMARY[family], domain, reason="native_coverage_recovery")
                 tel["topics_rewritten"] += 1
                 tel["coverage_recovered"] = recovered = True
                 break

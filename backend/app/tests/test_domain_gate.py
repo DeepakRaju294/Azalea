@@ -12,7 +12,7 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.domain_gate import (
-    DOMAIN_TEACHING_TYPES, gate_topic_types_by_domain, quantitative_center, rewrite_topic_contract,
+    gate_topic_types_by_domain, quantitative_center, rewrite_topic_contract, teaching_types_for,
 )
 
 
@@ -95,21 +95,34 @@ class Gate(unittest.TestCase):
         self.assertEqual(_types(gated), ["algorithm_walkthrough", "coding_implementation"])
 
     def test_science_math_formula_method_gated_by_quantitative_center(self):
-        # quantitative science topic keeps math_formula_method
+        # a science-FAMILY domain (physics): quantitative topic keeps math_formula_method
         quant = [{"title": "Calculate force using F = ma", "course_type": "math_formula_method"}]
-        g1, _ = gate_topic_types_by_domain([dict(t) for t in quant], "science")
+        g1, _ = gate_topic_types_by_domain([dict(t) for t in quant], "physics")
         self.assertEqual(_types(g1), ["math_formula_method"])
-        # qualitative science topic is remapped to science_mechanism
+        # a science-family domain (biology): qualitative topic is remapped to science_mechanism
         qual = [{"title": "Understand photosynthesis", "course_type": "math_formula_method"}]
-        g2, _ = gate_topic_types_by_domain([dict(t) for t in qual], "science")
+        g2, _ = gate_topic_types_by_domain([dict(t) for t in qual], "biology")
         self.assertEqual(_types(g2), ["science_mechanism"])
+
+    def test_expository_domain_forbids_stem_types(self):
+        # economics (expository family): a stray math_formula_method topic remaps to concept_intuition
+        path = [{"title": "Supply and Demand", "course_type": "math_formula_method"}]
+        gated, _ = gate_topic_types_by_domain([dict(t) for t in path], "economics")
+        self.assertEqual(_types(gated), ["concept_intuition"])
+
+    def test_mixed_and_unknown_are_noops(self):
+        path = [{"title": "X", "course_type": "coding_implementation"}]
+        for d in ("mixed", "unknown"):
+            gated, tel = gate_topic_types_by_domain([dict(t) for t in path], d)
+            self.assertEqual(_types(gated), ["coding_implementation"], d)
+            self.assertEqual(tel["gate_family"], "")
 
     def test_native_coverage_recovery(self):
         # a math path left with only universal types recovers by relabeling the first non-intro topic
         path = [{"title": "Intro", "course_type": "study_path_introduction"},
                 {"title": "Key Terms", "course_type": "terminology_components"}]
         gated, tel = gate_topic_types_by_domain([dict(t) for t in path], "math")
-        self.assertTrue(any(t.get("course_type") in DOMAIN_TEACHING_TYPES["math"] for t in gated))
+        self.assertTrue(any(t.get("course_type") in teaching_types_for("math") for t in gated))
         self.assertTrue(tel["coverage_recovered"])
 
     def test_no_native_teaching_type_fails_validation(self):
