@@ -36,8 +36,16 @@ Applies to any card **field** not covered by the trace-to-teaching field ledger 
 |---|---|
 | `background` prose · `concept_intuition` body · `components_terms` definitions · `edge_case` assertions · `practice` prompt correctness · "why it matters" / interpretation framing | any `authoritative`/`derivable` trace value (→ trace-to-teaching) · topic-type routing (→ Phase 0) · card presence/shape (→ Phase 2 gate) |
 
-A card may be **mixed**: trace-backed fields go through trace-to-teaching, free-text fields through this spec. A
-field is never validated by both.
+**Validation ownership is assigned per CLAIM SPAN, not per field.** A span is validated by exactly one
+truth-owning path:
+```text
+- content_ownership trace_authoritative / trace_derivable  → trace-to-teaching;
+- content_ownership free_text (factual / non_factual_framing / prompt) → this spec;
+- content_ownership deterministic_carried_elsewhere        → its registered deterministic source.
+```
+A single UI field may contain spans owned by DIFFERENT paths (a trace-backed result sentence followed by a
+free-text explanation), but **no individual span is validated by two truth-owning paths.** (Field routing is per
+span; do not route a whole field wholesale to one validator.)
 
 ---
 
@@ -343,7 +351,8 @@ Expected:
 | `test_l2_skips_non_extractable` | prose with no clean relation | L2 pass; falls to L4 |
 | `test_l3_rejects_contradicting_sibling_example` | prose value conflicts with the topic's worked example | hard fail L3 |
 | `test_l4_downgrades_unverifiable_definition` | plausible but unverifiable definition asserted as fact | soften (sentence dropped/reduced) |
-| `test_l4_rejects_refuted_definition` | "a stack is FIFO" | repair → withhold field |
+| `test_l4_refuted_required_definition_withholds` | required components_terms def "A stack is FIFO." | repair ×2 → still refuted → withhold field/card |
+| `test_l4_refuted_optional_span_deleted` | optional background sentence "A stack is FIFO." | repair ×2 → still refuted → delete span; siblings remain; field_decision = soften |
 | `test_l4_unavailable_factual_assertion_withholds` | factual assertion, verifier unavailable | soften/withhold — NOT a clean pass |
 | `test_l4_na_non_factual_framing_ships` | field has no unresolved factual assertion (L4=n/a) | ship |
 | `test_l4_refuted_carries_evidence_ids` | refuted definition | verdict includes `evidence_ids` |
