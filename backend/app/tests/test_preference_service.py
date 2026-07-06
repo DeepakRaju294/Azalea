@@ -10,10 +10,46 @@ import unittest
 
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
+import app.db.base  # noqa: F401 — register models before the lazy model imports in the service run
+
 from app.services.preference_service import (
     PROV_INFERRED, PROV_SAVED_DEFAULT, PROV_SYSTEM_DEFAULT, PROV_USER_SELECTED,
-    contract_versions, resolve_preferences,
+    contract_versions, get_user_preference, resolve_preferences, upsert_user_preference,
 )
+from app.models.preferences import PREFERENCE_SCHEMA_VERSION, UserPreference
+
+
+class _FakeQuery:
+    def __init__(self, result):
+        self._result = result
+
+    def filter(self, *a, **k):
+        return self
+
+    def one_or_none(self):
+        return self._result
+
+
+class _FakeSession:
+    """Minimal stand-in for a SQLAlchemy Session — the repo has no DB-backed test harness, so the CRUD branches
+    (missing vs existing row, partial upsert, schema stamping) are exercised without a live Postgres."""
+
+    def __init__(self, existing=None):
+        self.existing = existing
+        self.added: list = []
+        self.committed = False
+
+    def query(self, *a, **k):
+        return _FakeQuery(self.existing)
+
+    def add(self, obj):
+        self.added.append(obj)
+
+    def commit(self):
+        self.committed = True
+
+    def refresh(self, obj):
+        pass
 
 
 class ResolvePreferences(unittest.TestCase):
@@ -67,9 +103,45 @@ class ResolvePreferences(unittest.TestCase):
 
     def test_schema_version_mirror_matches_model(self):
         # the service mirrors the constant lazily to avoid an import cycle — assert it never drifts
-        import app.db.base  # ensure base is loaded before importing the model directly
-        from app.models.preferences import PREFERENCE_SCHEMA_VERSION
         self.assertEqual(contract_versions()["preference_schema_version"], PREFERENCE_SCHEMA_VERSION)
+
+
+class UserPreferenceCrud(unittest.TestCase):
+    def test_get_missing_returns_none(self):
+        self.assertIsNone(get_user_preference(_FakeSession(existing=None), "u1"))
+
+    def test_get_existing_returns_row(self):
+        pref = UserPreference(user_id="u1", default_depth_level="deep")
+        self.assertIs(get_user_preference(_FakeSession(existing=pref), "u1"), pref)
+
+    def test_upsert_creates_row_when_absent(self):
+        db = _FakeSession(existing=None)
+        out = upsert_user_preference(db, "u1", {"default_depth_level": "deep", "default_language": "java"})
+        self.assertEqual(out.user_id, "u1")
+        self.assertEqual(out.default_depth_level, "deep")
+        self.assertEqual(out.default_language, "java")
+        self.assertEqual(out.schema_version, PREFERENCE_SCHEMA_VERSION)
+        self.assertIn(out, db.added)
+        self.assertTrue(db.committed)
+
+    def test_upsert_partial_leaves_unset_untouched(self):
+        pref = UserPreference(user_id="u1", default_depth_level="working", default_language="python")
+        db = _FakeSession(existing=pref)
+        out = upsert_user_preference(db, "u1", {"default_depth_level": "deep"})
+        self.assertEqual(out.default_depth_level, "deep")     # provided → updated
+        self.assertEqual(out.default_language, "python")      # unset → unchanged
+        self.assertEqual(db.added, [])                        # existing row, nothing added
+
+    def test_upsert_explicit_none_clears_default(self):
+        pref = UserPreference(user_id="u1", default_language="java")
+        out = upsert_user_preference(_FakeSession(existing=pref), "u1", {"default_language": None})
+        self.assertIsNone(out.default_language)
+
+    def test_upsert_ignores_non_mutable_keys(self):
+        db = _FakeSession(existing=None)
+        out = upsert_user_preference(db, "u1", {"user_id": "hacked", "schema_version": 999})
+        self.assertEqual(out.user_id, "u1")                   # protected key not overwritten from updates
+        self.assertEqual(out.schema_version, PREFERENCE_SCHEMA_VERSION)
 
 
 if __name__ == "__main__":

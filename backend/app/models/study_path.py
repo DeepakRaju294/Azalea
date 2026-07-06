@@ -79,3 +79,23 @@ class StudyPath(Base):
         cascade="all, delete-orphan",
         order_by="LearningMaterial.created_at.desc()",
     )
+
+    # Phase-1 (D1): the active immutable generation snapshot. Viewonly join on the plain pointer column (not a
+    # declared FK — avoids a circular study_paths <-> study_path_generations FK at create_all time).
+    active_generation = relationship(
+        "StudyPathGeneration",
+        primaryjoin="foreign(StudyPath.active_generation_id) == StudyPathGeneration.id",
+        viewonly=True,
+        uselist=False,
+    )
+
+    @property
+    def effective_preferences(self) -> dict | None:
+        """The effective preferences this path last generated under (from the active snapshot), or None."""
+        gen = self.active_generation
+        return gen.effective_preferences_json if gen is not None else None
+
+    @property
+    def preference_provenance(self) -> dict | None:
+        gen = self.active_generation
+        return gen.preference_provenance_json if gen is not None else None

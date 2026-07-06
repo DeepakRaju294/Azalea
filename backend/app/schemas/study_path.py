@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -26,5 +26,12 @@ class StudyPathRead(BaseModel):
     estimated_minutes_remaining: int | None
     language: str
     created_at: datetime
+
+    # Phase-0/1: the inferred domain + classifier status, and the effective preferences the active generation
+    # ran under (from the immutable snapshot). `effective_preferences` is None until the first generation.
+    domain: str | None = None
+    classification_status: str | None = None
+    effective_preferences: dict[str, Any] | None = None
+    preference_provenance: dict[str, Any] | None = None
 
     model_config = {"from_attributes": True}

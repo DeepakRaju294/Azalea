@@ -35,6 +35,9 @@ _PREFERENCE_SCHEMA_VERSION = 1
 # Platform defaults — the lowest precedence tier (§3).
 PLATFORM_DEFAULTS: dict[str, Any] = {"depth_level": "working", "language": "python", "knowledge_level": None}
 
+# The user-level default fields a client may upsert (guards against writing arbitrary columns).
+MUTABLE_PREFERENCE_FIELDS = ("default_depth_level", "default_language", "default_knowledge_level")
+
 # Provenance labels (§3): richer than inferred/user so "saw Python & clicked Next" ≠ "system guessed Python".
 PROV_INFERRED = "inferred"
 PROV_USER_CONFIRMED = "user_confirmed"
@@ -173,3 +176,28 @@ def write_generation_snapshot(
         except Exception:  # noqa: BLE001
             pass
         return None
+
+
+# --- user-level defaults CRUD (§3) — kept here so the route stays a thin delegator and can be unit-tested
+# without importing app.api.deps (which calls load_dotenv() at import and would leak .env flags into tests). ----
+def get_user_preference(db: Session, user_id: str) -> Any:
+    """Return the user's `UserPreference` row, or None if they have no stored defaults yet."""
+    from app.models.preferences import UserPreference  # lazy — breaks the base import cycle
+    return db.query(UserPreference).filter(UserPreference.user_id == user_id).one_or_none()
+
+
+def upsert_user_preference(db: Session, user_id: str, updates: dict[str, Any]) -> Any:
+    """Create-or-update the user's defaults. Only keys in `MUTABLE_PREFERENCE_FIELDS` are written (a present key
+    with value None clears that default); `schema_version` is re-stamped. Returns the persisted row."""
+    from app.models.preferences import PREFERENCE_SCHEMA_VERSION, UserPreference  # lazy — see above
+    pref = db.query(UserPreference).filter(UserPreference.user_id == user_id).one_or_none()
+    if pref is None:
+        pref = UserPreference(user_id=user_id)
+        db.add(pref)
+    for field in MUTABLE_PREFERENCE_FIELDS:
+        if field in updates:
+            setattr(pref, field, updates[field])
+    pref.schema_version = PREFERENCE_SCHEMA_VERSION
+    db.commit()
+    db.refresh(pref)
+    return pref

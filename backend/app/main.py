@@ -23,6 +23,7 @@ from app.api.routes import (
     study_sessions,
     recommendations,
     learner_state,
+    preferences,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -345,6 +346,7 @@ app.include_router(quick_practice.router)
 app.include_router(study_sessions.router, prefix="/study-sessions", tags=["Study Sessions"])
 app.include_router(recommendations.router, prefix="/recommendations", tags=["Recommendations"])
 app.include_router(learner_state.router, prefix="/learner-state", tags=["Learner State"])
+app.include_router(preferences.router, prefix="/preferences", tags=["Preferences"])
 
 
 @app.get("/")
