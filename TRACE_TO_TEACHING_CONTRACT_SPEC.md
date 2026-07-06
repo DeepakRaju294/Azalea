@@ -249,10 +249,14 @@ TraceTeachingValidationResult {
                    operation_alignment }
   semantic:      { c6: pass|reject|unavailable, offending_span?, judge_available }
   decision:      pass | retry | withhold | shadow_log
-  failures:      [ { check, class: primary | independent | suppressed, field, detail } ]   # ALL, not just first
+  failures:      [ { check, class: primary | independent | suppressed, field,
+                     trace_step_id?, quantity_id?, output_name?, fact_id?, detail } ]   # ALL, not just first
   telemetry:     { trace_id, card_type, operation, rollout_mode, retry_count, primary_failure }
 }
 ```
+Use the stable identities in diagnostics: a C4 failure carries the `quantity_id` (+ `output_name`); a
+`quantity_attribution_ambiguous` failure carries `candidate_quantity_ids: [...]` (e.g.
+`["s2.initial_velocity", "s2.final_velocity"]`) so the offending pair is inspectable, not just "ambiguous."
 
 **Execution order:** run all of C1–C5 and collect every failure; do **not** run C6 if any *unsuppressed* hard
 deterministic failure exists; retry with the **complete** failure payload; persist the first failure as
@@ -436,8 +440,9 @@ fixtures/trace_teaching/
 ```
 
 The historical known-failures become permanent fixtures: completing-the-square values changing incorrectly; a
-valid magnitude explained as a signed directional quantity; wrong/converted units; duplicate cards citing one
-operation with different values; a required operation omitted from the teaching sequence.
+valid magnitude explained as a signed directional quantity; wrong/converted units; duplicate cards bound to the
+same `trace_step_id` and `output_name`/`fact_id` but surfacing different authoritative values; a required
+operation omitted from the teaching sequence.
 
 ---
 
