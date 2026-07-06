@@ -20,7 +20,7 @@ from typing import Any, Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.services.domain_classifier import FAMILY_OF
+from app.services.domain_classifier import gate_family_of
 from app.services.domain_gate import GATE_VERSION, REWRITE_VERSION
 
 _log = logging.getLogger(__name__)
@@ -85,7 +85,7 @@ def resolve_preferences(
       coding-family path; non-coding paths record `null` (language had no effect).
     """
     selected = dict(selected or {})
-    is_coding = FAMILY_OF.get(domain or "", "") == "coding"
+    is_coding = gate_family_of(selected.get("domain") or domain) == "coding"
 
     # domain — user override wins; otherwise the classifier inference seeds it (no confirmation surface yet).
     if selected.get("domain"):
@@ -134,6 +134,15 @@ def write_generation_snapshot(
     and returns None on failure without raising (must never block generation)."""
     from app.models.preferences import StudyPathGeneration, UserPreference  # lazy — breaks the base import cycle
     try:
+        # The per-path override (top precedence tier). Falls back to the path's stored selection; a
+        # user-selected domain is folded in so its provenance resolves as user_selected (not inferred).
+        if selected is None:
+            selected = dict(getattr(study_path, "selected_preferences", None) or {})
+        else:
+            selected = dict(selected)
+        if study_path.classification_status == "user_selected" and study_path.domain:
+            selected.setdefault("domain", study_path.domain)
+
         user_pref = (
             db.query(UserPreference)
             .filter(UserPreference.user_id == study_path.user_id)

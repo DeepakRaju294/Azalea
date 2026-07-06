@@ -11,7 +11,7 @@ import unittest
 
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
-from app.services.domain_classifier import classify_domain
+from app.services.domain_classifier import classify_domain, gate_family_of
 
 
 class DomainClassifierFixtures(unittest.TestCase):
@@ -59,6 +59,16 @@ class DomainClassifierFixtures(unittest.TestCase):
         sig = classify_domain("python function loop recursion and algebra calculus theorem proof")
         self.assertEqual(sig.domain, "mixed")
         self.assertEqual(sig.gate_family, "")
+
+    def test_gate_family_of_accepts_fine_family_and_alias(self):
+        # fine domain, family name given directly, and the user-facing "concept" alias all resolve
+        self.assertEqual(gate_family_of("physics"), "science")
+        self.assertEqual(gate_family_of("science"), "science")       # family name itself
+        self.assertEqual(gate_family_of("concept"), "expository")    # wizard coarse label
+        self.assertEqual(gate_family_of("coding"), "coding")
+        self.assertEqual(gate_family_of("math"), "math")
+        for junk in ("mixed", "unknown", "", None, "banana"):
+            self.assertEqual(gate_family_of(junk), "", repr(junk))
 
     def test_status_and_confidence_shape(self):
         sig = classify_domain("Teach me DFS in Python.")

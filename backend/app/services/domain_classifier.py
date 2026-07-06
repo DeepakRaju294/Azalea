@@ -36,6 +36,27 @@ FAMILY_OF: dict[str, str] = {
 }
 _SCORED = tuple(FAMILY_OF.keys())
 
+# The four coarse gate families themselves (an override may name a family directly, not a fine domain).
+GATE_FAMILIES = frozenset({"coding", "math", "science", "expository"})
+# Coarse labels a USER override may use (the wizard offers "coding · math · science · concept", §2). "concept"
+# is the learner-facing name for the expository family.
+_DOMAIN_ALIASES: dict[str, str] = {"concept": "expository"}
+
+
+def gate_family_of(domain: str | None) -> str:
+    """Resolve a `domain` to its gate family, accepting a FINE domain (physics → science), a family name given
+    directly (science → science), or a user-facing alias (concept → expository). Unknown/mixed/empty ⇒ "" (the
+    non-gating fallback). This is the single source of truth for domain→family used by the gate + preference
+    resolution, so a user-selected coarse override routes exactly like an inferred fine domain."""
+    if not domain:
+        return ""
+    d = _DOMAIN_ALIASES.get(domain, domain)
+    if d in FAMILY_OF:
+        return FAMILY_OF[d]
+    if d in GATE_FAMILIES:
+        return d
+    return ""
+
 # Per-domain plain keywords (weight 1), lowercase, word-boundary matched.
 _KEYWORDS: dict[str, tuple[str, ...]] = {
     "coding": (

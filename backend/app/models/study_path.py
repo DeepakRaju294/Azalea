@@ -48,6 +48,11 @@ class StudyPath(Base):
     # first generation writes a snapshot; a regeneration repoints this at the newer revision.
     active_generation_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Phase-1 (§3): the per-path OVERRIDE the learner confirmed in onboarding — the top precedence tier. Shape:
+    # {depth_level?, language?} (a domain override is applied directly to `domain` with status='user_selected').
+    # NULL = no explicit override (fall through to user default → inferred → platform).
+    selected_preferences: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     progress_percent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     estimated_minutes_remaining: Mapped[int | None] = mapped_column(
         Integer,

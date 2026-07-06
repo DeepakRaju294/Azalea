@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Optional
 
-from app.services.domain_classifier import FAMILY_OF
+from app.services.domain_classifier import FAMILY_OF, gate_family_of
 
 GATE_VERSION = "v1"
 REWRITE_VERSION = "v1"
@@ -62,8 +62,8 @@ _REMAP: dict[str, dict[str, str]] = {
 
 
 def teaching_types_for(domain: str) -> frozenset[str]:
-    """Native teaching types for a fine `domain` (via its gate family). Empty for mixed/unknown/unmapped."""
-    return _FAMILY_TEACHING_TYPES.get(FAMILY_OF.get(domain, ""), frozenset())
+    """Native teaching types for a `domain` (via its gate family). Empty for mixed/unknown/unmapped."""
+    return _FAMILY_TEACHING_TYPES.get(gate_family_of(domain), frozenset())
 # Target topic type -> required normalized content_role (§5.1).
 _TARGET_ROLE = {
     "math_formula_method": "calculation", "proof_reasoning": "proof", "science_mechanism": "mechanism",
@@ -170,7 +170,7 @@ def gate_topic_types_by_domain(topics: list[dict[str, Any]], domain: str, *,
     """The final authority. Returns (gated_topics, telemetry). The fine `domain` maps to a gate family
     (FAMILY_OF); `mixed`/`unknown`/any unmapped domain is a **no-op** (conservative — existing behavior). A path
     left with no native teaching type and no deterministic recovery surfaces `telemetry['routing_validation']`."""
-    family = FAMILY_OF.get(domain, "")
+    family = gate_family_of(domain)
     allowed = _FAMILY_ALLOWED.get(family)
     tel = {"gate_version": GATE_VERSION, "domain": domain, "gate_family": family, "topics_seen": len(topics),
            "topics_rewritten": 0, "topics_dropped": 0, "routing_validation": None, "coverage_recovered": False}

@@ -110,6 +110,17 @@ class Gate(unittest.TestCase):
         gated, _ = gate_topic_types_by_domain([dict(t) for t in path], "economics")
         self.assertEqual(_types(gated), ["concept_intuition"])
 
+    def test_coarse_override_domains_route_like_their_family(self):
+        # a user override may name a family directly ("science") or the wizard alias ("concept") — the gate must
+        # route it exactly like an inferred fine domain of that family.
+        quant = [{"title": "Calculate force using F = ma", "course_type": "math_formula_method"}]
+        g_science, _ = gate_topic_types_by_domain([dict(t) for t in quant], "science")
+        self.assertEqual(_types(g_science), ["math_formula_method"])   # science family keeps quantitative formula
+        stem = [{"title": "Supply and Demand", "course_type": "math_formula_method"}]
+        g_concept, tel = gate_topic_types_by_domain([dict(t) for t in stem], "concept")
+        self.assertEqual(tel["gate_family"], "expository")
+        self.assertEqual(_types(g_concept), ["concept_intuition"])     # concept alias == expository family
+
     def test_mixed_and_unknown_are_noops(self):
         path = [{"title": "X", "course_type": "coding_implementation"}]
         for d in ("mixed", "unknown"):

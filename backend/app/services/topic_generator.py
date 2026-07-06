@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.prompts.topic_prompt import SYSTEM_PROMPT, build_topic_prompt
 from app.services.course_type_classifier import enrich_topic_with_course_type
-from app.services.domain_classifier import FAMILY_OF
+from app.services.domain_classifier import gate_family_of
 from app.services.domain_gate import gate_topic_types_by_domain
 from app.services.llm_client import generate_structured_topics
 
@@ -39,7 +39,7 @@ def _coding_transforms_enabled(domain: str | None) -> bool:
     (shadow) OR the domain is unknown/mixed/coding, they run exactly as before (§5, D-c)."""
     if not _gate_enforced() or not domain:
         return True
-    return FAMILY_OF.get(domain, "") in ("", "coding")
+    return gate_family_of(domain) in ("", "coding")
 
 
 def _record_gate_telemetry(payload: dict[str, Any]) -> None:

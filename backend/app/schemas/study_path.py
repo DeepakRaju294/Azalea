@@ -6,6 +6,13 @@ from pydantic import BaseModel
 # The languages we ship verified canonical code for. One per study path, chosen at creation.
 CodeLanguage = Literal["python", "cpp", "java"]
 
+# Structural depth level (ONBOARDING_AND_PREFERENCE_CAPTURE_SPEC §4.1). Defined here (the base schema module) so
+# the preferences schema can import it without a cycle.
+DepthLevel = Literal["intuition", "working", "deep"]
+
+# Coarse domain labels a learner may pick as a per-path override (the wizard's Content-Type step, §2).
+OverrideDomain = Literal["coding", "math", "science", "concept"]
+
 
 class StudyPathCreate(BaseModel):
     title: str
@@ -16,6 +23,16 @@ class StudyPathCreate(BaseModel):
 
 class StudyPathLanguageUpdate(BaseModel):
     language: CodeLanguage
+
+
+class StudyPathPreferenceUpdate(BaseModel):
+    """A learner's per-path override (the top precedence tier, §3). All optional — only provided fields are
+    applied; an explicit null clears that override. `domain` sets the effective routing domain
+    (status → user_selected); `depth_level`/`language` are stored in `StudyPath.selected_preferences`."""
+
+    domain: OverrideDomain | None = None
+    depth_level: DepthLevel | None = None
+    language: CodeLanguage | None = None
 
 
 class StudyPathRead(BaseModel):

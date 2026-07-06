@@ -29,7 +29,12 @@ from app.models.study_path import StudyPath
 from app.models.study_session import StudySession
 from app.models.topic import Topic
 from app.schemas.lesson import LessonRead
-from app.schemas.study_path import StudyPathCreate, StudyPathLanguageUpdate, StudyPathRead
+from app.schemas.study_path import (
+    StudyPathCreate,
+    StudyPathLanguageUpdate,
+    StudyPathPreferenceUpdate,
+    StudyPathRead,
+)
 from app.schemas.study_path_recommendation import (
     RecommendedTopicRead,
     StudyPathRecommendationRead,
@@ -40,7 +45,7 @@ from app.services.lesson_generator import (
 from app.services.lean_lesson_generator import build_lean_lesson_from_topic_and_chunks
 from app.services.legacy_v2_visual_bridge import attach_v2_visuals_to_legacy_lesson
 from app.services.topic_generator import generate_topics_from_chunks
-from app.services.domain_classifier import classify_domain
+from app.services.domain_classifier import classify_domain, gate_family_of
 from app.services.preference_service import write_generation_snapshot
 from app.services.llm_client import generate_title
 
@@ -54,8 +59,11 @@ def ensure_study_path_domain(study_path: StudyPath, db: Session, *, force: bool 
     """Classify the path's goal → fine domain and persist it (DOMAIN_ROUTING_AND_TOPIC_GATE_SPEC §3).
 
     Idempotent: skips re-classification once a path has a settled status unless `force=True` (e.g. the goal
-    changed). Never raises — a classifier failure is recorded as `classification_status='failed'` (§3.2), which
-    the gate treats as non-gating. Returns the fine `domain` string (or None on failure)."""
+    changed). A learner override (`classification_status == 'user_selected'`, §3) is authoritative and is NEVER
+    reclassified, even on force. Never raises — a classifier failure is recorded as
+    `classification_status='failed'` (§3.2), which the gate treats as non-gating. Returns the effective `domain`."""
+    if study_path.classification_status == "user_selected":
+        return study_path.domain                              # user override wins over inference, always
     already_classified = (
         study_path.domain
         and study_path.classification_status not in (None, "", "pending")
@@ -67,6 +75,7 @@ def ensure_study_path_domain(study_path: StudyPath, db: Session, *, force: bool 
         study_path.domain = sig.domain
         study_path.classification_status = sig.classification_status
         study_path.domain_provenance = {
+            "inferred_domain": sig.domain,                    # kept even after a later override (telemetry §8)
             "gate_family": sig.gate_family,
             "confidence": sig.confidence,
             "scores": sig.scores,
@@ -598,6 +607,49 @@ def update_study_path_language(
         current_user=current_user,
     )
     study_path.language = payload.language
+    db.commit()
+    db.refresh(study_path)
+    return study_path
+
+
+@router.patch("/{study_path_id}/preferences", response_model=StudyPathRead)
+def update_study_path_preferences(
+    study_path_id: str,
+    payload: StudyPathPreferenceUpdate,
+    db: Session = Depends(get_db),
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    """Apply the learner's per-path override (ONBOARDING_AND_PREFERENCE_CAPTURE_SPEC §3) — the top precedence
+    tier. Set BEFORE generation so topics generate from the effective domain + preferences. A `domain` override
+    becomes authoritative (`classification_status='user_selected'`) and is never reclassified; `depth_level`/
+    `language` are stored in `selected_preferences`. Does NOT regenerate existing content (§3.1 step 8)."""
+    study_path = get_owned_study_path(study_path_id=study_path_id, db=db, current_user=current_user)
+    data = payload.model_dump(exclude_unset=True)
+
+    if "domain" in data:
+        new_domain = data["domain"]
+        if new_domain is None:                                # clear override → re-infer from the goal
+            study_path.classification_status = "pending"
+            ensure_study_path_domain(study_path, db, force=True)
+        else:
+            if gate_family_of(new_domain) == "":
+                raise HTTPException(status_code=422, detail=f"Unsupported domain override: {new_domain!r}")
+            provenance = dict(study_path.domain_provenance or {})
+            provenance["override_domain"] = new_domain
+            provenance["gate_family"] = gate_family_of(new_domain)
+            study_path.domain = new_domain
+            study_path.classification_status = "user_selected"
+            study_path.domain_provenance = provenance
+
+    selected = dict(study_path.selected_preferences or {})
+    for field in ("depth_level", "language"):
+        if field in data:
+            if data[field] is None:
+                selected.pop(field, None)
+            else:
+                selected[field] = data[field]
+    study_path.selected_preferences = selected or None
+
     db.commit()
     db.refresh(study_path)
     return study_path

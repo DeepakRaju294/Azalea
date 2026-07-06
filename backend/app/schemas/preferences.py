@@ -1,11 +1,7 @@
 """Phase-1 user-preference API schemas (ONBOARDING_AND_PREFERENCE_CAPTURE_SPEC §3)."""
-from typing import Literal
-
 from pydantic import BaseModel
 
-from app.schemas.study_path import CodeLanguage
-
-DepthLevel = Literal["intuition", "working", "deep"]
+from app.schemas.study_path import CodeLanguage, DepthLevel
 
 
 class UserPreferenceRead(BaseModel):

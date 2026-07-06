@@ -90,6 +90,22 @@ class ResolvePreferences(unittest.TestCase):
         self.assertEqual(effective["domain"], "math")
         self.assertEqual(prov["domain"], PROV_USER_SELECTED)
 
+    def test_coarse_domain_override_drives_language_activity(self):
+        # a selected coarse "concept" override is non-coding → language inactive; "coding" → active
+        _, eff_concept, _ = resolve_preferences(domain="physics", selected={"domain": "concept"})
+        self.assertEqual(eff_concept["domain"], "concept")
+        self.assertEqual(eff_concept["language_status"], "inactive_non_coding")
+        _, eff_coding, prov = resolve_preferences(domain="math", selected={"domain": "coding"})
+        self.assertEqual(eff_coding["domain"], "coding")
+        self.assertEqual(eff_coding["language_status"], "active_coding")
+        self.assertEqual(prov["domain"], PROV_USER_SELECTED)
+
+    def test_path_override_depth_beats_user_default(self):
+        _, eff, prov = resolve_preferences(
+            domain="coding", user_default_depth="working", selected={"depth_level": "deep"})
+        self.assertEqual(eff["depth_level"], "deep")
+        self.assertEqual(prov["depth_level"], PROV_USER_SELECTED)
+
     def test_knowledge_level_always_inactive(self):
         _, effective, prov = resolve_preferences(domain="coding", user_default_knowledge=3)
         self.assertIsNone(effective["knowledge_level"])

@@ -75,6 +75,10 @@ def ensure_study_path_domain_columns() -> None:
         connection.execute(
             text("ALTER TABLE study_paths ADD COLUMN IF NOT EXISTS active_generation_id VARCHAR")
         )
+        # Phase-1 (§3): the per-path preference override the learner confirmed in onboarding.
+        connection.execute(
+            text("ALTER TABLE study_paths ADD COLUMN IF NOT EXISTS selected_preferences JSONB")
+        )
 
 
 def ensure_quick_practice_schema() -> None:
