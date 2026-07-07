@@ -23,6 +23,9 @@ ADAPTER_TYPES = {
     "T10": "stateful_operation_invariant_maintenance",   # mutate/probe/rotate/resize/evict/restore/compress/schedule
     # T11 backtracking (choose/explore/undo); T12 program-execution / memory trace (variables/loops/stack/pointers).
     "T11": "constraint_search_backtracking", "T12": "program_execution_memory_trace",
+    # T15 matrix row-operation elimination (Gauss-Jordan): pivot + structured row op over a matrix; the invariant
+    # is solution-set preservation — distinct from T7 scalar rewriting.
+    "T15": "matrix_row_operation_elimination",
 }
 
 # Raw-trace ceiling per type — the MAX learner-facing steps a bounded instance may produce (headroom above the
@@ -36,12 +39,12 @@ ADAPTER_TYPES = {
 TYPE_TRACE_BUDGET = {
     "T1": 12, "T2": 16, "T3": 12, "T4": 8, "T5": 16, "T6": 8,
     "T7": 12, "T8a": 16, "T8b": 16, "T9a": 20, "T9b": 18, "T10": 16,
-    "T11": 18, "T12": 16,
+    "T11": 18, "T12": 16, "T15": 16,
 }
 TYPE_TEACHING_TARGET = {
     "T1": 10, "T2": 12, "T3": 10, "T4": 7, "T5": 12, "T6": 6,
     "T7": 10, "T8a": 12, "T8b": 12, "T9a": 14, "T9b": 10, "T10": 12,
-    "T11": 12, "T12": 12,
+    "T11": 12, "T12": 12, "T15": 12,
 }
 
 
@@ -68,6 +71,8 @@ TYPE_VISUAL_BUDGET = {
     "T10": _vb(["operation_target", "repaired_region"], "one operation + the local invariant region repaired"),
     "T11": _vb(["current_choice", "violated_constraint", "undo_target"], "current branch + one backtrack path"),
     "T12": _vb(["current_line", "affected_vars", "active_frame"], "current line + only affected variables/frame"),
+    "T15": _vb(["pivot_row", "target_row", "eliminated_column"],
+               "the pivot row + the row being reduced + the column being cleared"),
 }
 
 # Per-failure behavior. A correct trace whose VISUAL compile or FRONTEND render fails must still ship the
@@ -255,8 +260,9 @@ def _inject_formula_specs() -> None:
     from .families import derivation_engine as de
     from .families import formula_engine as fe
     from .families import rewrite_engine as re_
+    from .families import rowreduce_engine as rr
     from .families import stateful_engine as se
-    for mod in (fe, re_, ce, de, se):
+    for mod in (fe, re_, ce, de, se, rr):
         for spec in mod.registered_specs():
             MANIFEST.setdefault(spec.slug, mod.manifest_entry(spec))
             ROUTING_RULES.setdefault(spec.slug, mod.routing_rule(spec))
