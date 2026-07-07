@@ -397,6 +397,13 @@ FreeTextValidationResult {
     ownership_provenance?: { deterministic_source_id, source_version, source_field }   # required if carried_elsewhere
     deterministic: { l1_scope, l2_symbolic, l3_sibling: pass|fail|indeterminate,
                      out_of_scope_terms[], refuted_relations[], symbolic_domain }
+    operation_binding?: {   # class-3 transformations — records exactly what was checked, for replay/debug
+      operation_id, operation_version, operation_source: surfaced_text | registered_metadata,
+      declared_operation_span?: {start,end}, normalized_surface_operation?,
+      source_relation, canonical_output_relation, target_relation,
+      target_conformance: pass|fail|indeterminate,
+      relation_mode: equivalence|necessary_condition|contradiction|no_solution,
+      relation_mode_conformance: pass|fail|indeterminate, directional_marker_id? }
     semantic:      { l4: refuted | unsupported | no_objection | n/a | unavailable, span?,
                      unsupported_reason?, evidence_ids?[], evidence_context, verifier_available }
                      # evidence_ids REQUIRED on refuted; unsupported_reason set when l4 == unsupported
@@ -408,8 +415,11 @@ FreeTextValidationResult {
   } ]
   field_decision:  ship | repair | soften | withhold      # computed from the claim dispositions above
   telemetry:       { topic_id, card_type, field, claim_id, content_ownership, span_requirement, requirement_source,
-                     rung, verdict, unsupported_reason?, action, retry_count, evidence_context }
-                     # requirement_source lets you tell a correct contract-mapped withhold from a fallback default
+                     rung, verdict, unsupported_reason?, action, retry_count, evidence_context,
+                     operation_id?, operation_version?, relation_mode?,
+                     operation_failure_stage?: binding | target_conformance | relation_mode }
+                     # requirement_source distinguishes a contract-mapped withhold from a fallback default;
+                     # operation_failure_stage says WHY a class-3 transform failed (which of the 3 L2 gates)
 }
 ```
 
@@ -460,6 +470,7 @@ Expected:
 | `test_l2_accepts_declared_necessary_condition` | "Squaring both sides of x = 2 gives a necessary condition: x² = 4." op `square_both_sides`; relation_mode `necessary_condition` | pass L2 — source-solutions ⊆ target AND a registered directional marker is present |
 | `test_l2_rejects_surface_operation_metadata_mismatch` | prose "Divide both sides by 2: x = 3"; metadata op `subtract_2_from_both_sides`; x+2=5→x=3 | hard fail L2 — surfaced operation ≠ registered binding; metadata can't override what the learner reads |
 | `test_l2_accepts_surface_operation_matching_metadata` | prose "Subtract 2 from both sides: x = 3"; metadata op `subtract_2_from_both_sides` | binding conforms → proceed to target-conformance + relation-mode |
+| `test_l2_operation_failure_is_replayable` | prose "Divide both sides by 2"; metadata `subtract_2_from_both_sides`; x+2=5→x=3 | result records `operation_binding` (operation_id, normalized_surface_operation=divide_both_sides_by_2, operation_failure_stage=binding); l2_symbolic=fail; replayable |
 | `test_l2_accepts_true_symbolic_implication` | "If a = 2, then a² = 4." | pass L2 (class 2 implication under the declared domain) |
 | `test_l2_accepts_true_ground_relation` | known a=2 (authoritative); prose "a² = 4" | pass L2 (class 1 ground) |
 | `test_l2_skips_non_extractable` | prose with no cleanly extractable relation | `l2_symbolic = indeterminate` (NOT pass); no L2 establishment basis created; factual spans continue to establishment + L4 |
@@ -593,6 +604,9 @@ MUST NOT become a source of truth:
 - [ ] Operation-binding conformance: the surfaced operation phrase normalizes to the registered `operation_id`;
   a surfaced-vs-metadata disagreement is a hard L2 failure (metadata never silently overrides the operation the
   learner reads); metadata-only operations are allowed only where the card contract permits.
+- [ ] The result records `operation_binding` (op id/version/source, canonical vs. target, relation-mode
+  conformance) and telemetry carries `operation_failure_stage` (binding | target_conformance | relation_mode) —
+  a class-3 failure is inspectable + replayable, not an opaque "L2 fail".
 - [ ] A practice prompt is render-eligible only when Q24 prose passes AND `PracticeBinding.practice_validation_status
   == valid` AND the rendered inputs/units/answer match the bound `PracticeProblemContract`; Q24 `no_objection` alone
   is never eligibility.
