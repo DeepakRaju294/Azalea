@@ -212,6 +212,20 @@ whose canonical output ≠ the declared target ⇒ REFUTED; a one-way step rende
   registered operation transforms source into target under the domain (zero or multiple fits → indeterminate /
   reject per the card contract). Never inferred by an LLM.
 ```
+**Operation-binding conformance (the surfaced text must be the operation the backend actually validates).** The
+validator checks the *instructional claim the learner reads*, not a hidden backend interpretation — so declared
+prose and registered metadata can't disagree:
+```text
+OperationBinding { operation_id · operation_version · source_relation · target_relation · relation_mode ·
+                   declared_operation_span? · operation_source: surfaced_text | registered_metadata }
+- operation_source == surfaced_text → the surfaced operation phrase must deterministically NORMALIZE to the
+  registered operation_id (via the operation-intent lexicon).
+- surfaced text AND metadata both present → they must resolve to the SAME operation_id + operation_version.
+- surfaced text ABSENT → metadata may supply the operation ONLY when the card contract explicitly permits
+  metadata-backed transformations.
+- A surfaced/metadata DISAGREEMENT is a HARD L2 failure. Metadata may NEVER silently override the operation the
+  learner sees (e.g. prose "divide both sides by 2" with metadata `subtract_2_from_both_sides` ⇒ REFUTED).
+```
 So *"Squaring both sides of x² = −4 gives x² = 0"* is a **class-3 transformation with a DECLARED operation**
 (`square_both_sides`) and is **refuted** because applying that operation to `x²=−4` yields `x⁴=16`, not the
 declared target `x²=0` (and the empty-over-ℝ solution set is not communicated) — **not** treated as a
@@ -443,7 +457,9 @@ Expected:
 | `test_l2_rejects_invalid_symbolic_transformation` | "Squaring both sides of x² = −4 gives x² = 0." (declared op `square_both_sides`) | hard fail L2 (class 3) — the DECLARED operation yields x⁴=16, not the target x²=0; not read as vacuous implication, not inferred |
 | `test_l2_rejects_wrong_target_with_same_solution_set` | domain=real; source x²=−4; op `square_both_sides`; target x²=0 | hard fail L2 (target-conformance) — canonical output x⁴=16 ≠ target; NOT excused by source+target both having the empty ℝ solution set |
 | `test_l2_rejects_one_way_transform_rendered_as_equivalence` | source x=2; op `square_both_sides`; target x²=4; relation_mode `equivalence` | hard fail L2 — canonical target matches but target has extra solution (x=−2); a one-way step can't be an equivalence |
-| `test_l2_accepts_declared_necessary_condition` | "If x = 2, then any solution must satisfy x² = 4." op `square_both_sides`; relation_mode `necessary_condition` | pass L2 — source-solutions ⊆ target AND a registered directional marker is present |
+| `test_l2_accepts_declared_necessary_condition` | "Squaring both sides of x = 2 gives a necessary condition: x² = 4." op `square_both_sides`; relation_mode `necessary_condition` | pass L2 — source-solutions ⊆ target AND a registered directional marker is present |
+| `test_l2_rejects_surface_operation_metadata_mismatch` | prose "Divide both sides by 2: x = 3"; metadata op `subtract_2_from_both_sides`; x+2=5→x=3 | hard fail L2 — surfaced operation ≠ registered binding; metadata can't override what the learner reads |
+| `test_l2_accepts_surface_operation_matching_metadata` | prose "Subtract 2 from both sides: x = 3"; metadata op `subtract_2_from_both_sides` | binding conforms → proceed to target-conformance + relation-mode |
 | `test_l2_accepts_true_symbolic_implication` | "If a = 2, then a² = 4." | pass L2 (class 2 implication under the declared domain) |
 | `test_l2_accepts_true_ground_relation` | known a=2 (authoritative); prose "a² = 4" | pass L2 (class 1 ground) |
 | `test_l2_skips_non_extractable` | prose with no cleanly extractable relation | `l2_symbolic = indeterminate` (NOT pass); no L2 establishment basis created; factual spans continue to establishment + L4 |
@@ -493,7 +509,8 @@ fixtures/free_text/
   valid_equivalence_transform.json  # "x+2=5; subtract 2 from both sides: x=3" — declared op, equivalence-preserving, passes
   wrong_target_same_solution_set.json # declared square_both_sides, x²=−4→x²=0 — refuted on target conformance
   one_way_as_equivalence.json       # x=2→x²=4 rendered as equivalence — refuted (relation_mode)
-  declared_necessary_condition_ok.json # "any solution must satisfy x²=4" — necessary_condition, passes
+  declared_necessary_condition_ok.json # "squaring both sides of x=2 gives a necessary condition: x²=4" — passes
+  surface_metadata_operation_mismatch.json # prose "divide by 2" vs metadata subtract_2 — refuted (binding)
   multi_claim_field.json            # 3 claims, only one unsupported → span-level soften
   out_of_scope_term.json            # L1
   wrong_definition_stack_fifo.json  # L4 refuted
@@ -573,6 +590,9 @@ MUST NOT become a source of truth:
 - [ ] A declared class-3 transformation also conforms to its backend `relation_mode`: `equivalence` needs equal
   solution sets (+ may replace); `necessary_condition` needs source⊆target AND a registered directional marker
   (equivalence language on a one-way step ⇒ refuted); `contradiction` states the empty set.
+- [ ] Operation-binding conformance: the surfaced operation phrase normalizes to the registered `operation_id`;
+  a surfaced-vs-metadata disagreement is a hard L2 failure (metadata never silently overrides the operation the
+  learner reads); metadata-only operations are allowed only where the card contract permits.
 - [ ] A practice prompt is render-eligible only when Q24 prose passes AND `PracticeBinding.practice_validation_status
   == valid` AND the rendered inputs/units/answer match the bound `PracticeProblemContract`; Q24 `no_objection` alone
   is never eligibility.
