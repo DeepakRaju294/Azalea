@@ -683,6 +683,16 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
             return None
         prose = validate_prose(cards, trace, adapter, code_anchored=bool(code))
         last_prose = prose
+        # Q23 shadow-parallel: run the generalized C1–C6 gate over the same trace-bound cards and LOG its verdicts
+        # next to the shipped validator's. Strict no-op unless a family is enrolled; best-effort; changes nothing.
+        try:
+            from app.services.trace_teaching import adapt as _tt_adapt
+            from app.services.trace_teaching import shadow as _tt_shadow
+
+            _tt_shadow.evaluate(cards, _tt_adapt.steps_by_id(trace),
+                                topic_id=str(topic.get("id") or ""))
+        except Exception:  # noqa: BLE001 — observability must never break generation
+            pass
         hard = hard_prose_violations(prose)
         if code:                                                  # executed-reference per-line value check:
             from .code_execution_check import executed_reference_violations   # a // comment must not attribute
