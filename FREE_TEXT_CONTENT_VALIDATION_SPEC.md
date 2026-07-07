@@ -38,7 +38,7 @@ The card fields that TYPICALLY carry free-text spans (vs. what's owned elsewhere
 
 | In scope (validated here) | Out of scope (owned elsewhere) |
 |---|---|
-| `background` prose · `concept_intuition` body · `components_terms` definitions · `edge_case` assertions · `practice` prompt correctness · "why it matters" / interpretation framing | any `authoritative`/`derivable` trace value (→ trace-to-teaching) · topic-type routing (→ Phase 0) · card presence/shape (→ Phase 2 gate) |
+| `background` prose · `concept_intuition` body · `components_terms` definitions · `edge_case` assertions · `practice` prompt **prose** (terminology / unsupported claims / framing) · "why it matters" / interpretation framing | any `authoritative`/`derivable` trace value (→ trace-to-teaching) · topic-type routing (→ Phase 0) · card presence/shape (→ Phase 2 gate) · **practice PROBLEM correctness** (→ `PracticeProblemContract`, below) |
 
 **Validation ownership is assigned per CLAIM SPAN, not per field.** A span is validated by exactly one
 truth-owning path:
@@ -65,6 +65,19 @@ dodge establishment / deletion):
    approved path; on_enforced withholds the span/field per its backend requirement. NEVER a silent free_text downgrade.
 4. No backend mapping at all → the span is `free_text` and must establish normally (a discarded model label does
    NOT make it deterministic).
+```
+
+**Practice-problem correctness is NOT a free-text claim** (this validator must not silently become a
+problem-generator validator). A generated practice prompt ("A 7 kg object accelerates at 3 m/s². Find the net
+force.") has intentionally-new values that are NOT supposed to match a sibling trace; checking its *prose* for
+unsupported claims does not establish that the problem has a valid, satisfiable answer:
+```text
+- Q24 checks a practice prompt's PROSE only: terminology (L1), unsupported claims (L4), framing.
+- Practice PROBLEM correctness is owned by a `PracticeProblemContract` + its deterministic evaluator/adapter:
+  { problem_id · domain/topic · generated_inputs · constraints · expected_answer|solver_contract ·
+    accepted_solution_path(s) · unit/domain_assumptions · deterministic_evaluator · prompt_rendering_fields }.
+- A practice prompt MUST NOT be treated as established just because Q24 raised no objection — it ships only when a
+  PracticeProblemContract supplies a valid expected answer + deterministic constraint evaluation.
 ```
 
 ---
@@ -423,6 +436,7 @@ Expected:
 | `test_backend_deterministic_mapping_missing_provenance_fails_closed` | backend mapping selects deterministic_carried_elsewhere but provenance missing/invalid | hard routing failure; NO fallback to free_text (withhold per backend requirement) |
 | `test_span_requirement_is_backend_derived` | same invalid claim in optional background vs required components_terms def | backend requirement → delete for background, withhold for the required def; model-provided labels ignored |
 | `test_l3_does_not_bind_general_rule_to_example_values` | general F=ma definition beside a 4 kg / 20 N example | no C1/C4 failure for not restating example values |
+| `test_practice_prompt_requires_problem_contract` | new force-law problem with generated values | Q24 may validate prose/scope, but the prompt ships only if a PracticeProblemContract supplies a valid expected answer + deterministic constraint check; Q24 no-objection alone does NOT establish it |
 | `test_l2_equivalence_transform_passes` | "x + 2 = 5. Subtract 2 from both sides: x = 3." | pass L2 (declared equivalence-preserving op) |
 | `test_l2_undeclared_operation_is_indeterminate` | "x + 2 = 5, so x = 3" (no operation surfaced/attached) | INDETERMINATE → L4 (no LLM guess of the step) |
 | `test_l1_does_not_reject_nontechnical_prose` | ordinary wording | not flagged as an out-of-scope technical term |
@@ -550,6 +564,8 @@ MUST NOT become a source of truth:
   biased toward withholding.
 - **Not** validation of trace-backed values — that is `TRACE_TO_TEACHING_CONTRACT_SPEC` (the §2 split is strict).
 - **Not** a Phase-0/Phase-2 routing or shape concern.
+- **Not** a practice-problem-correctness validator — Q24 checks practice prompt *prose*; problem validity (a valid,
+  satisfiable, correctly-answered problem) is owned by `PracticeProblemContract` + its deterministic evaluator (§2).
 - Together the companions close the loop: **trace-to-teaching** keeps trace-backed prose faithful to the trace;
   **free-text validation** bounds the claims that have no trace. Phase 2 `on_enforced` for a family requires
   **both** clean in `shadow_validate`.
