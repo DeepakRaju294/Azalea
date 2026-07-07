@@ -22,6 +22,7 @@ from .routing import OPTIONAL, REQUIRED, ESSENTIAL, FREE_TEXT  # re-exported for
 # claim_class
 FACTUAL = "factual"
 NON_FACTUAL_FRAMING = "non_factual_framing"
+PROMPT = "prompt"
 UNCLASSIFIED = "unclassified"
 
 # decisions
