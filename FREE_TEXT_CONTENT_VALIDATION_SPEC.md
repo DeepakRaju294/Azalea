@@ -273,6 +273,22 @@ neither was selected:
   operation_binding (operation mismatch) or relation_binding (relation mismatch). No metadata operation is applied
   after a reported binding failure.
 ```
+**Typed state model (nullable by construction, not overloaded `indeterminate`).** Each binding-failure stage has an
+exact null-field shape, so a downstream reader never sees an accidentally-populated resolved op or canonical output:
+```text
+transformation_failure_stage == operation_binding (operation bind itself failed):
+  resolved_operation_id      = null
+  resolved_operation_version = null
+  canonical_output_relation  = null
+  target_conformance         = unevaluated
+  relation_mode_conformance  = unevaluated
+
+transformation_failure_stage == relation_binding (operation bind passed, source/target bind failed):
+  resolved_operation_id/version  MAY be retained (for audit) since the operation bind passed
+  canonical_output_relation  = null      # never applied to a mismatched/hidden relation
+  target_conformance         = unevaluated
+  relation_mode_conformance  = unevaluated
+```
 So *"Squaring both sides of x² = −4 gives x² = 0"* is a **class-3 transformation with a DECLARED operation**
 (`square_both_sides`) and is **refuted** because applying that operation to `x²=−4` yields `x⁴=16`, not the
 declared target `x²=0` (and the empty-over-ℝ solution set is not communicated) — **not** treated as a
