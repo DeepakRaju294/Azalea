@@ -14,7 +14,7 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.free_text import binding as bindmod
-from app.services.free_text import relations, transformation, validator
+from app.services.free_text import relations, routing, transformation, validator
 
 
 def _prov():
@@ -174,6 +174,92 @@ class SliceDisposition(unittest.TestCase):
             repair_fn=lambda t: t)  # useless repair
         self.assertEqual(result.field_decision, validator.SOFTEN)
         self.assertNotIn("x² = 0", result.field_text_out)
+
+
+class BackendRouting(unittest.TestCase):
+    def test_generator_ownership_labels_are_ignored(self):
+        # generator claims deterministic_carried_elsewhere; NO backend mapping → routes to free_text anyway
+        routed = routing.route_span(None, generator_label={"content_ownership": "deterministic_carried_elsewhere"})
+        self.assertEqual(routed.content_ownership, routing.FREE_TEXT)
+        self.assertTrue(routed.generator_label_discarded)
+
+    def test_backend_deterministic_mapping_missing_provenance_fails_closed(self):
+        mapping = routing.RegisteredMapping(
+            content_ownership=routing.DETERMINISTIC_CARRIED_ELSEWHERE,
+            span_requirement=routing.REQUIRED, requirement_source=routing.NARRATION_CONTRACT,
+            ownership_provenance=None)   # missing provenance
+        routed = routing.route_span(mapping)
+        self.assertTrue(routed.hard_routing_failure)
+        self.assertEqual(routed.content_ownership, routing.DETERMINISTIC_CARRIED_ELSEWHERE)  # NOT downgraded
+
+    def test_deterministic_carried_elsewhere_with_provenance_routes(self):
+        mapping = routing.RegisteredMapping(
+            content_ownership=routing.DETERMINISTIC_CARRIED_ELSEWHERE,
+            span_requirement=routing.OPTIONAL, requirement_source=routing.REGISTERED_TEMPLATE,
+            ownership_provenance=routing.OwnershipProvenance("term_registry", "v3", "definition"))
+        routed = routing.route_span(mapping)
+        self.assertFalse(routed.hard_routing_failure)
+
+    def test_unclassified_defaults_required_when_unmapped(self):
+        routed = routing.route_span(None, unclassified=True)
+        self.assertEqual(routed.span_requirement, routing.REQUIRED)
+
+    def test_hard_routing_failure_withholds_field(self):
+        field = "Squaring both sides of x² = −4 gives x² = 0."
+        mapping = routing.RegisteredMapping(
+            content_ownership=routing.DETERMINISTIC_CARRIED_ELSEWHERE,
+            span_requirement=routing.REQUIRED, requirement_source=routing.NARRATION_CONTRACT)
+        result = validator.validate_field(field, mappings={"c0": mapping})
+        self.assertEqual(result.field_decision, validator.WITHHOLD)
+        self.assertEqual(result.field_text_out, "")
+
+
+class ModeAndTelemetry(unittest.TestCase):
+    FIELD = ("A quadratic can have no real solution. "
+             "Squaring both sides of x² = −4 gives x² = 0. "
+             "Such equations still matter in physics.")
+
+    def test_shadow_validate_leaves_display_unchanged(self):
+        result = validator.validate_field(
+            self.FIELD, mode=validator.SHADOW_VALIDATE, requirements={"c1": validator.OPTIONAL})
+        # decision is still COMPUTED (would soften)…
+        self.assertEqual(result.field_decision, validator.SOFTEN)
+        # …but the displayed text is unchanged in shadow
+        self.assertEqual(result.field_text_out, self.FIELD)
+
+    def test_on_enforced_applies_disposition(self):
+        result = validator.validate_field(
+            self.FIELD, mode=validator.ON_ENFORCED, requirements={"c1": validator.OPTIONAL})
+        self.assertEqual(result.field_decision, validator.SOFTEN)
+        self.assertNotIn("x² = 0", result.field_text_out)
+
+    def test_telemetry_records_failure_stage_and_ownership(self):
+        result = validator.validate_field(
+            self.FIELD, mode=validator.SHADOW_VALIDATE, requirements={"c1": validator.OPTIONAL})
+        rows = result.telemetry(topic_id="t1", card_type="concept_intuition", field="body")
+        refuted = [r for r in rows if r["verdict"] == transformation.VERDICT_REFUTED]
+        self.assertEqual(len(refuted), 1)
+        self.assertEqual(refuted[0]["transformation_failure_stage"], bindmod.STAGE_TARGET_CONFORMANCE)
+        self.assertEqual(refuted[0]["content_ownership"], routing.FREE_TEXT)
+        self.assertEqual(refuted[0]["requirement_source"], routing.CARD_SCHEMA)
+        self.assertEqual(refuted[0]["action"], validator.ACTION_DELETE)
+
+    def test_generator_label_discard_is_recorded_in_telemetry(self):
+        result = validator.validate_field(
+            self.FIELD, mode=validator.SHADOW_VALIDATE, requirements={"c1": validator.OPTIONAL},
+            generator_labels={"c1": {"span_requirement": "optional"}})
+        rows = result.telemetry()
+        c1 = [r for r in rows if r["claim_id"] == "c1"][0]
+        self.assertTrue(c1["generator_label_discarded"])
+
+
+class Segmentation(unittest.TestCase):
+    def test_spans_cover_every_non_whitespace_character(self):
+        field = "A. B is C. D matters."
+        spans = validator.segment(field)
+        covered = "".join(s.text for s in spans)
+        stripped_field = "".join(field.split())
+        self.assertEqual("".join(covered.split()), stripped_field)
 
 
 if __name__ == "__main__":
