@@ -28,6 +28,9 @@ ADAPTER_TYPES = {
     # row op over a matrix, invariant = solution-set preservation — distinct from T7 scalar rewriting.
     "T14": "indexed_table_evaluation",
     "T15": "matrix_row_operation_elimination",
+    # T16 numerical time-step convergence: iterate + residual + stopping/convergence check — distinct from T8a's
+    # "add a valid piece" (models tolerance/residual/convergence).
+    "T16": "numerical_time_step_convergence",
 }
 
 # Raw-trace ceiling per type — the MAX learner-facing steps a bounded instance may produce (headroom above the
@@ -41,12 +44,12 @@ ADAPTER_TYPES = {
 TYPE_TRACE_BUDGET = {
     "T1": 12, "T2": 16, "T3": 12, "T4": 8, "T5": 16, "T6": 8,
     "T7": 12, "T8a": 16, "T8b": 16, "T9a": 20, "T9b": 18, "T10": 16,
-    "T11": 18, "T12": 16, "T14": 16, "T15": 16,
+    "T11": 18, "T12": 16, "T14": 16, "T15": 16, "T16": 34,
 }
 TYPE_TEACHING_TARGET = {
     "T1": 10, "T2": 12, "T3": 10, "T4": 7, "T5": 12, "T6": 6,
     "T7": 10, "T8a": 12, "T8b": 12, "T9a": 14, "T9b": 10, "T10": 12,
-    "T11": 12, "T12": 12, "T14": 12, "T15": 12,
+    "T11": 12, "T12": 12, "T14": 12, "T15": 12, "T16": 14,
 }
 
 
@@ -76,6 +79,7 @@ TYPE_VISUAL_BUDGET = {
     "T14": _vb(["active_row", "cell_value"], "the row being evaluated + the cell value just computed"),
     "T15": _vb(["pivot_row", "target_row", "eliminated_column"],
                "the pivot row + the row being reduced + the column being cleared"),
+    "T16": _vb(["current_estimate", "residual"], "the current estimate + how the residual shrank"),
 }
 
 # Per-failure behavior. A correct trace whose VISUAL compile or FRONTEND render fails must still ship the
@@ -264,9 +268,10 @@ def _inject_formula_specs() -> None:
     from .families import formula_engine as fe
     from .families import rewrite_engine as re_
     from .families import rowreduce_engine as rr
+    from .families import numerical_engine as ne
     from .families import stateful_engine as se
     from .families import table_engine as te
-    for mod in (fe, re_, ce, de, se, rr, te):
+    for mod in (fe, re_, ce, de, se, rr, te, ne):
         for spec in mod.registered_specs():
             MANIFEST.setdefault(spec.slug, mod.manifest_entry(spec))
             ROUTING_RULES.setdefault(spec.slug, mod.routing_rule(spec))

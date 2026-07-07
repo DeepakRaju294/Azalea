@@ -11,12 +11,12 @@ Adding an adapter = add one declaration to its `types/tN_*.py` file (+ its famil
 from .decl import hydrate as _hydrate
 from .types import (t1_traversal, t2_greedy, t3_divide_conquer, t4_search, t5_dp, t6_formula, t7_rewrite,
                     t8a_incremental, t8b_derivation, t9_relaxation, t10_stateful, t11_backtracking,
-                    t12_execution, t14_table, t15_rowreduce)
+                    t12_execution, t14_table, t15_rowreduce, t16_numerical)
 
 # One module per TYPE; each exposes DECLARATIONS. The order here is the registration order.
 _TYPE_MODULES = [t1_traversal, t2_greedy, t3_divide_conquer, t4_search, t5_dp, t6_formula, t7_rewrite,
                  t8a_incremental, t8b_derivation, t9_relaxation, t10_stateful, t11_backtracking,
-                 t12_execution, t14_table, t15_rowreduce]
+                 t12_execution, t14_table, t15_rowreduce, t16_numerical]
 
 DECLARATIONS = [d for mod in _TYPE_MODULES for d in mod.DECLARATIONS]
 
@@ -47,9 +47,11 @@ from .families.derivation_engine import registered_specs as _derivation_specs  #
 from .families.stateful_engine import registered_specs as _stateful_specs  # noqa: E402
 from .families.rowreduce_engine import registered_specs as _rowreduce_specs  # noqa: E402
 from .families.table_engine import registered_specs as _table_specs  # noqa: E402
+from .families.numerical_engine import registered_specs as _numerical_specs  # noqa: E402
 NARRATION_SLUGS = NARRATION_SLUGS | frozenset(
     s.slug for s in (*_formula_specs(), *_rewrite_specs(), *_construct_specs(),
-                     *_derivation_specs(), *_stateful_specs(), *_rowreduce_specs(), *_table_specs()))
+                     *_derivation_specs(), *_stateful_specs(), *_rowreduce_specs(), *_table_specs(),
+                     *_numerical_specs()))
 for _slug in NARRATION_SLUGS:
     if _slug in ADAPTERS:
         type(ADAPTERS[_slug]).provides_narration = True
