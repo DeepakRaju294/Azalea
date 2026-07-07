@@ -229,6 +229,25 @@ OperationBinding { surfaced_operation? {declared_operation_span, normalized_oper
 - Metadata may NEVER silently override the operation the learner sees (prose "divide both sides by 2" with metadata
   `subtract_2_from_both_sides` ⇒ binding fail ⇒ REFUTED).
 ```
+**OperationBinding provenance (model-authored metadata is NEVER an authoritative operation contract).** The
+surface-vs-metadata checks above only bite if the metadata is *not* attacker-controllable by the generator —
+otherwise a model could emit `operation_id`/`source_relation`/`target_relation`/`relation_mode` that conveniently
+validate its own prose. Like `content_ownership`/`span_requirement`/`relation_mode`, the transformation metadata is
+BACKEND-authoritative:
+```text
+- Generator-supplied transformation metadata is NOT authoritative input. operation_id, operation_version,
+  source_relation, target_relation, and relation_mode emitted by the generator are DISCARDED (or retained only as
+  non-binding hints); a model label is never an operation contract.
+- An OperationBinding may be created ONLY from:
+  1. deterministic extraction from surfaced learner-visible prose; OR
+  2. a registered backend adapter / template / trace contract with stable provenance
+     { binding_source_id, binding_source_version, binding_field }.
+- Metadata-backed (surface-absent) transformations are allowed ONLY when the binding originates from a registered
+  backend source AND the card contract explicitly permits metadata-backed transformations.
+- Missing/invalid backend provenance for a metadata-backed OperationBinding is a HARD routing/binding failure:
+  shadow_validate logs + retains the approved path; on_enforced withholds per the card requirement. NEVER silently
+  trust generator metadata, and NEVER downgrade to an unvalidated transformation.
+```
 **Relation-binding conformance (the displayed source/target EQUATIONS must be the ones validated).** Binding the
 operation isn't enough — metadata could validate a hidden equation while the learner reads a false one:
 ```text
@@ -413,6 +432,8 @@ FreeTextValidationResult {
     deterministic: { l1_scope, l2_symbolic, l3_sibling: pass|fail|indeterminate,
                      out_of_scope_terms[], refuted_relations[], symbolic_domain }
     operation_binding?: {   # class-3 transformations — records BOTH inputs + resolution, for replay/debug
+      binding_provenance?: { binding_source: surfaced_extraction | registered_backend_source,
+                             binding_source_id?, binding_source_version?, binding_field? },  # metadata authority
       surfaced_operation?: { declared_operation_span: {start,end}, normalized_operation_id },
       surfaced_source_relation?, surfaced_target_relation?,
       metadata_operation?: { operation_id, operation_version },
@@ -494,6 +515,7 @@ Expected:
 | `test_l2_operation_failure_is_replayable` | prose "Divide both sides by 2"; metadata `subtract_2_from_both_sides`; x+2=5→x=3 | result records `operation_binding` (operation_id, normalized_surface_operation=divide_both_sides_by_2, `transformation_failure_stage=operation_binding`); l2_symbolic=fail; replayable |
 | `test_l2_rejects_surface_relation_metadata_mismatch` | prose "Subtract 2 from both sides of x + 3 = 5: x = 3"; metadata source `x+2=5`, target `x=3` | hard L2 binding failure — `relation_binding_conformance=fail` (surfaced_source_relation ≠ metadata_source_relation); metadata can't validate a different equation than the learner sees |
 | `test_l2_relation_binding_failure_is_replayable` | same relation-mismatch fixture | `relation_binding_conformance=fail`, `transformation_failure_stage=relation_binding`, l2_symbolic=fail; surfaced_ + metadata_source_relation both retained for replay |
+| `test_l2_rejects_generator_authored_operation_metadata` | prose has a transformation; generator payload supplies operation_id/source_relation/target_relation/relation_mode; NO registered backend adapter/template provenance | generator metadata is ignored as authority; binding derived only from surfaced text (`binding_provenance.binding_source=surfaced_extraction`) OR the span fails closed when metadata-backed validation is required; no generator-authored metadata can establish/validate the claim |
 | `test_l2_accepts_true_symbolic_implication` | "If a = 2, then a² = 4." | pass L2 (class 2 implication under the declared domain) |
 | `test_l2_accepts_true_ground_relation` | known a=2 (authoritative); prose "a² = 4" | pass L2 (class 1 ground) |
 | `test_l2_skips_non_extractable` | prose with no cleanly extractable relation | `l2_symbolic = indeterminate` (NOT pass); no L2 establishment basis created; factual spans continue to establishment + L4 |
@@ -546,6 +568,7 @@ fixtures/free_text/
   declared_necessary_condition_ok.json # "squaring both sides of x=2 gives a necessary condition: x²=4" — passes
   surface_metadata_operation_mismatch.json # prose "divide by 2" vs metadata subtract_2 — refuted (operation binding)
   surface_metadata_relation_mismatch.json # prose source x+3=5 vs metadata source x+2=5 — refuted (relation binding)
+  generator_authored_operation_metadata.json # generator-supplied op/relations metadata, no backend provenance — ignored as authority
   multi_claim_field.json            # 3 claims, only one unsupported → span-level soften
   out_of_scope_term.json            # L1
   wrong_definition_stack_fifo.json  # L4 refuted
@@ -569,7 +592,9 @@ Expected to change:
   trace); runs before/alongside L4; L4 can never mark established. A factual span ships only when established
 - BACKEND ownership + requiredness router: content_ownership (free_text | trace_authoritative | trace_derivable |
   deterministic_carried_elsewhere, with ownership_provenance) + span_requirement (optional | required | essential
-  from narration_contract | card_schema | registered_template) — generator-authored labels are rejected
+  from narration_contract | card_schema | registered_template) — generator-authored labels are rejected; SAME
+  router supplies OperationBinding metadata authority (surfaced_extraction | registered_backend_source +
+  binding_provenance) so generator-emitted operation_id/relations/relation_mode are never trusted as a contract
 - sibling-trace binding resolver (explicit_example_reference | topic_general_rule | mixed) for L3
 - PracticeBinding bridge to PracticeProblemContract + its deterministic evaluator (render-gates practice prompts;
   Q24 owns prose only)
@@ -595,6 +620,8 @@ MUST NOT become a source of truth:
 - the L4 verifier (reject/downgrade only; NEVER certifies or authors a claim; "supported" is not a verdict)
 - softening that produces a vaguer version of a false claim, or any LLM-authored replacement factual prose
 - sealed-eval "truth" for free-variable relations (those need the symbolic rule under a declared domain)
+- generator-supplied transformation metadata (operation_id / source_relation / target_relation / relation_mode) as
+  an operation contract — it is a non-binding hint at most; authority is surfaced prose or a registered backend source
 - frontend recovery / legacy narration fallback in on_enforced mode
 ```
 
@@ -625,6 +652,11 @@ MUST NOT become a source of truth:
 - [ ] A declared class-3 transformation also conforms to its backend `relation_mode`: `equivalence` needs equal
   solution sets (+ may replace); `necessary_condition` needs source⊆target AND a registered directional marker
   (equivalence language on a one-way step ⇒ refuted); `contradiction` states the empty set.
+- [ ] Transformation metadata is **backend-authoritative**: generator-supplied `operation_id`/`operation_version`/
+  `source_relation`/`target_relation`/`relation_mode` are DISCARDED (or kept only as non-binding hints). An
+  `OperationBinding` is created only from surfaced-prose extraction or a registered backend source with stable
+  `binding_provenance { binding_source_id, binding_source_version, binding_field }`; missing/invalid provenance on a
+  metadata-backed binding fails closed (never silently trusts generator metadata, never downgrades to unvalidated).
 - [ ] Operation-binding conformance: the surfaced operation phrase normalizes to the registered `operation_id`;
   a surfaced-vs-metadata disagreement is a hard L2 failure (metadata never silently overrides the operation the
   learner reads); metadata-only operations are allowed only where the card contract permits.
