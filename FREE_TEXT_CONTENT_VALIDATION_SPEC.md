@@ -436,10 +436,11 @@ FreeTextValidationResult {
   field_decision:  ship | repair | soften | withhold      # computed from the claim dispositions above
   telemetry:       { topic_id, card_type, field, claim_id, content_ownership, span_requirement, requirement_source,
                      rung, verdict, unsupported_reason?, action, retry_count, evidence_context,
-                     operation_id?, operation_version?, relation_mode?,
-                     operation_failure_stage?: binding | target_conformance | relation_mode }
+                     operation_id?, operation_version?, relation_mode?, transformation_failure_stage?:
+                       operation_binding | relation_binding | target_conformance | relation_mode }
                      # requirement_source distinguishes a contract-mapped withhold from a fallback default;
-                     # operation_failure_stage says WHY a class-3 transform failed (which of the 3 L2 gates)
+                     # transformation_failure_stage says WHICH of the 4 class-3 gates failed (wrong operation vs
+                     # wrong equation vs wrong output vs wrong logical strength — distinct in shadow metrics)
 }
 ```
 
@@ -490,8 +491,9 @@ Expected:
 | `test_l2_accepts_declared_necessary_condition` | "Squaring both sides of x = 2 gives a necessary condition: x² = 4." op `square_both_sides`; relation_mode `necessary_condition` | pass L2 — source-solutions ⊆ target AND a registered directional marker is present |
 | `test_l2_rejects_surface_operation_metadata_mismatch` | prose "Divide both sides by 2: x = 3"; metadata op `subtract_2_from_both_sides`; x+2=5→x=3 | hard fail L2 — surfaced operation ≠ registered binding; metadata can't override what the learner reads |
 | `test_l2_accepts_surface_operation_matching_metadata` | prose "Subtract 2 from both sides: x = 3"; metadata op `subtract_2_from_both_sides` | `operation_source==both`, `binding_conformance==pass`, surfaced `normalized_operation_id` == metadata `operation_id`, resolved op recorded → proceed to target-conformance + relation-mode |
-| `test_l2_operation_failure_is_replayable` | prose "Divide both sides by 2"; metadata `subtract_2_from_both_sides`; x+2=5→x=3 | result records `operation_binding` (operation_id, normalized_surface_operation=divide_both_sides_by_2, operation_failure_stage=binding); l2_symbolic=fail; replayable |
+| `test_l2_operation_failure_is_replayable` | prose "Divide both sides by 2"; metadata `subtract_2_from_both_sides`; x+2=5→x=3 | result records `operation_binding` (operation_id, normalized_surface_operation=divide_both_sides_by_2, `transformation_failure_stage=operation_binding`); l2_symbolic=fail; replayable |
 | `test_l2_rejects_surface_relation_metadata_mismatch` | prose "Subtract 2 from both sides of x + 3 = 5: x = 3"; metadata source `x+2=5`, target `x=3` | hard L2 binding failure — `relation_binding_conformance=fail` (surfaced_source_relation ≠ metadata_source_relation); metadata can't validate a different equation than the learner sees |
+| `test_l2_relation_binding_failure_is_replayable` | same relation-mismatch fixture | `relation_binding_conformance=fail`, `transformation_failure_stage=relation_binding`, l2_symbolic=fail; surfaced_ + metadata_source_relation both retained for replay |
 | `test_l2_accepts_true_symbolic_implication` | "If a = 2, then a² = 4." | pass L2 (class 2 implication under the declared domain) |
 | `test_l2_accepts_true_ground_relation` | known a=2 (authoritative); prose "a² = 4" | pass L2 (class 1 ground) |
 | `test_l2_skips_non_extractable` | prose with no cleanly extractable relation | `l2_symbolic = indeterminate` (NOT pass); no L2 establishment basis created; factual spans continue to establishment + L4 |
@@ -630,11 +632,12 @@ MUST NOT become a source of truth:
   the canonical operation is applied to the SURFACED source; a surfaced-vs-metadata source/target mismatch is a
   hard L2 binding failure (`relation_binding_conformance=fail`) — metadata can't validate a different equation than
   the learner sees.
-- [ ] The result records `operation_binding` retaining BOTH inputs (`surfaced_operation` + `metadata_operation`)
-  and the resolution (`resolved_operation_id`, `operation_source: surfaced_text|registered_metadata|both`,
-  `binding_conformance: pass|fail|metadata_only`), plus canonical-vs-target and relation-mode conformance;
-  telemetry carries `operation_failure_stage` (binding | target_conformance | relation_mode) — a class-3 failure is
-  inspectable + replayable, not an opaque "L2 fail".
+- [ ] The result records `operation_binding` retaining **all available surfaced + metadata inputs** with explicit
+  source/provenance and resolution state (`resolved_operation_id`, `operation_source: surfaced_text|
+  registered_metadata|both`, `binding_conformance` + `relation_binding_conformance: pass|fail|metadata_only`), plus
+  canonical-vs-target and relation-mode conformance; telemetry carries `transformation_failure_stage`
+  (operation_binding | relation_binding | target_conformance | relation_mode) — each of the four distinct class-3
+  failures is inspectable + replayable, not an opaque "L2 fail".
 - [ ] A practice prompt is render-eligible only when Q24 prose passes AND `PracticeBinding.practice_validation_status
   == valid` AND the rendered inputs/units/answer match the bound `PracticeProblemContract`; Q24 `no_objection` alone
   is never eligibility.
