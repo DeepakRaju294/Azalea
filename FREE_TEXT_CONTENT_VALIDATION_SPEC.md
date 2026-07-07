@@ -185,18 +185,25 @@ because it coincidentally shares a solution set with the source):
    under the declared domain.
 2. Target conformance — the canonical result must match the declared target (or a registered canonical-equivalent
    rendering of it). If it does NOT → REFUTED, even when source and target share a solution set.
-3. Semantic preservation (ONLY after step 2 passes) — classify per the operation contract + domain:
-   - equivalence-preserving → source and target share the same solution set under the declared domain;
-   - implication-preserving → every solution of source satisfies target, AND the operation justifies the
-     directional loss of information;
-   - contradiction / no-solution → the target must EXPLICITLY communicate the contradiction / empty solution set;
-     it may not invent a new equation or conclusion.
+3. Relation-mode conformance (ONLY after step 2 passes) — every declared class-3 transformation carries a
+   BACKEND-derived `relation_mode`; the RENDERED prose must match its logical strength (correct algebra can still
+   teach an invalid *solving* step):
+   - `equivalence` → source and target share the same solution set under the domain; the target MAY replace the
+     source (equivalence language allowed: "rewrite as", "is equivalent to", "solving gives");
+   - `necessary_condition` → source-solutions ⊆ target-solutions (a ONE-WAY consequence); the target may NOT be
+     used as an equivalent replacement unless the reverse implication is separately established, and the prose MUST
+     carry a registered directional marker ("any solution must satisfy", "therefore a necessary condition is",
+     "this implies"). **Equivalence language on a necessary_condition op ⇒ REFUTED.**
+   - `contradiction` / `no_solution` → the target must EXPLICITLY communicate the empty solution set /
+     inconsistency; it may not invent a new equation or conclusion.
 A transformation with no DECLARED operation is INDETERMINATE → L4 (never operation-inferred); a declared operation
-whose canonical output ≠ the declared target ⇒ REFUTED.
+whose canonical output ≠ the declared target ⇒ REFUTED; a one-way step rendered with equivalence language ⇒ REFUTED.
 ```
-> **Invariant:** a declared transformation must be BOTH syntactically faithful to the registered operation (step 2)
-> AND semantically valid under the declared domain (step 3) — an invalid derivation never passes merely because its
-> wrong target coincidentally shares a solution set with the source.
+> **Invariant:** a declared transformation must be (1) syntactically faithful to the registered operation, (2)
+> semantically valid under the domain, AND (3) rendered with the correct logical strength (equivalent rewrite /
+> one-way consequence / contradiction). Correct algebra with the wrong logical framing is still refused — e.g.
+> `x = 2 ⇒ x² = 4` is a valid necessary_condition, but rendering it as an equivalence ("solving gives x² = 4, so
+> x = ±2") is refuted because `x²=4` admits `x = −2` that the source excludes.
 **Operation identification (v1 = surfaced/declared, never inferred by an LLM).**
 ```text
 - v1: the operation must be SURFACED in the span ("Subtract 2 from both sides: x = 3") OR attached as registered
@@ -414,7 +421,7 @@ be made outside verified adapter-backed examples.**
 Minimum vertical slice — a math concept card with a false symbolic claim
 Field:  concept_intuition body contains "Squaring both sides of x² = −4 gives x² = 0."
         (declared operation surfaced in prose; equivalently, transformation_metadata { operation_id:
-         square_both_sides, source: "x²=−4", target: "x²=0" } is attached to the span)
+         square_both_sides, source: "x²=−4", target: "x²=0", relation_mode: equivalence } is attached to the span)
 Expected:
   - the field is segmented into claim spans; this span is a DERIVATION/TRANSFORMATION claim (L2 class 3) with a
     DECLARED operation (never inferred)
@@ -435,6 +442,8 @@ Expected:
 | `test_l1_rejects_out_of_scope_term` | prose uses a term not assumed/taught | hard fail L1; term in `out_of_scope_terms` |
 | `test_l2_rejects_invalid_symbolic_transformation` | "Squaring both sides of x² = −4 gives x² = 0." (declared op `square_both_sides`) | hard fail L2 (class 3) — the DECLARED operation yields x⁴=16, not the target x²=0; not read as vacuous implication, not inferred |
 | `test_l2_rejects_wrong_target_with_same_solution_set` | domain=real; source x²=−4; op `square_both_sides`; target x²=0 | hard fail L2 (target-conformance) — canonical output x⁴=16 ≠ target; NOT excused by source+target both having the empty ℝ solution set |
+| `test_l2_rejects_one_way_transform_rendered_as_equivalence` | source x=2; op `square_both_sides`; target x²=4; relation_mode `equivalence` | hard fail L2 — canonical target matches but target has extra solution (x=−2); a one-way step can't be an equivalence |
+| `test_l2_accepts_declared_necessary_condition` | "If x = 2, then any solution must satisfy x² = 4." op `square_both_sides`; relation_mode `necessary_condition` | pass L2 — source-solutions ⊆ target AND a registered directional marker is present |
 | `test_l2_accepts_true_symbolic_implication` | "If a = 2, then a² = 4." | pass L2 (class 2 implication under the declared domain) |
 | `test_l2_accepts_true_ground_relation` | known a=2 (authoritative); prose "a² = 4" | pass L2 (class 1 ground) |
 | `test_l2_skips_non_extractable` | prose with no cleanly extractable relation | `l2_symbolic = indeterminate` (NOT pass); no L2 establishment basis created; factual spans continue to establishment + L4 |
@@ -483,6 +492,8 @@ fixtures/free_text/
   undeclared_transformation_indeterminate.json # "since x²=−4, we get x²=0" (no op) — INDETERMINATE → L4
   valid_equivalence_transform.json  # "x+2=5; subtract 2 from both sides: x=3" — declared op, equivalence-preserving, passes
   wrong_target_same_solution_set.json # declared square_both_sides, x²=−4→x²=0 — refuted on target conformance
+  one_way_as_equivalence.json       # x=2→x²=4 rendered as equivalence — refuted (relation_mode)
+  declared_necessary_condition_ok.json # "any solution must satisfy x²=4" — necessary_condition, passes
   multi_claim_field.json            # 3 claims, only one unsupported → span-level soften
   out_of_scope_term.json            # L1
   wrong_definition_stack_fifo.json  # L4 refuted
@@ -514,8 +525,9 @@ Expected to change:
 - topic-level vocabulary object (assumed_prerequisite_terms/introduced_terms/approved_operations/symbols/aliases)
   + a domain tokenizer that classifies technical vs. ordinary tokens with confidence
 - L2 relation classifier (ground / symbolic-identity / DERIVATION-transformation / underdetermined) + symbolic
-  rule/algebra engine with registered algebraic operations + symbolic_domain (transformation preservation, not
-  material implication)
+  rule/algebra engine with registered algebraic operations + symbolic_domain + relation_mode (equivalence |
+  necessary_condition | contradiction) + registered directional-marker lexicon (transformation preservation +
+  correct logical strength, not material implication)
 - L3 reuse of trace-to-teaching C1/C2/C4 + C5 for action-bearing free-text
 - versioned domain fact-pack / rule registry (L4's allowed evidence) + registered definitions, with per-generation
   EvidenceContext pinning (fact_pack_version / definition_registry_version / source_excerpt_ids / trace_ids)
@@ -558,6 +570,9 @@ MUST NOT become a source of truth:
 - [ ] A class-3 transformation is validated against a **surfaced/declared** operation (or registered metadata);
   an undeclared step is INDETERMINATE → L4, never an LLM-inferred operation. The §6 slice's refuted fixture carries
   a **declared** operation whose result ≠ the declared target (not an inferred refutation).
+- [ ] A declared class-3 transformation also conforms to its backend `relation_mode`: `equivalence` needs equal
+  solution sets (+ may replace); `necessary_condition` needs source⊆target AND a registered directional marker
+  (equivalence language on a one-way step ⇒ refuted); `contradiction` states the empty set.
 - [ ] A practice prompt is render-eligible only when Q24 prose passes AND `PracticeBinding.practice_validation_status
   == valid` AND the rendered inputs/units/answer match the bound `PracticeProblemContract`; Q24 `no_objection` alone
   is never eligibility.
