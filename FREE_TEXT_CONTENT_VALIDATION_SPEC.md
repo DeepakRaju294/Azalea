@@ -32,7 +32,9 @@ Verified adapters back only a subset of cards (a worked example, a formula break
 
 ## 2. Scope — what is "free text"
 
-Applies to any card **field** not covered by the trace-to-teaching field ledger (§3 there):
+Applies to every claim span whose backend-assigned `content_ownership` is `free_text`. A UI field may contain a
+mixture of trace-owned, deterministic-owned, and free-text spans; **this contract owns only the free-text spans**.
+The card fields that TYPICALLY carry free-text spans (vs. what's owned elsewhere):
 
 | In scope (validated here) | Out of scope (owned elsewhere) |
 |---|---|
@@ -393,7 +395,7 @@ Expected:
 | `test_l2_rejects_invalid_symbolic_transformation` | "Since x² = −4, we get x² = 0." | hard fail L2 (class 3) — no registered algebraic rule justifies the transformation under the domain; not read as vacuous implication |
 | `test_l2_accepts_true_symbolic_implication` | "If a = 2, then a² = 4." | pass L2 (class 2 implication under the declared domain) |
 | `test_l2_accepts_true_ground_relation` | known a=2 (authoritative); prose "a² = 4" | pass L2 (class 1 ground) |
-| `test_l2_skips_non_extractable` | prose with no clean relation | L2 pass; falls to L4 |
+| `test_l2_skips_non_extractable` | prose with no cleanly extractable relation | `l2_symbolic = indeterminate` (NOT pass); no L2 establishment basis created; factual spans continue to establishment + L4 |
 | `test_l3_rejects_contradicting_sibling_example` | prose value conflicts with the topic's worked example | hard fail L3 |
 | `test_l4_downgrades_unverifiable_definition` | plausible but unverifiable definition asserted as fact | soften (sentence dropped/reduced) |
 | `test_l4_refuted_required_definition_withholds` | required components_terms def "A stack is FIFO." | repair ×2 → still refuted → withhold field/card |
