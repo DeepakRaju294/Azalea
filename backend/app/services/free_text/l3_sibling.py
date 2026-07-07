@@ -4,16 +4,20 @@ Two parts:
 1. BINDING classification (the novel Q24 contribution — never bind by proximity): a general rule/definition must
    NOT be checked against a concrete example's values just because it sits next to it. Only a span that EXPLICITLY
    references an example value/operation/result binds to that sibling fact.
-2. The consistency checks themselves reuse trace-to-teaching C1/C2/C4/C5. This module implements the C1 numeric
-   containment gate against explicitly-referenced facts; **C2 (forbidden claims), C4 (quantity↔unit) and C5
-   (action/method order) are delegated to the shared Q23 check module and are NOT implemented here yet** — L3
-   returns `not_applicable` for those until Q23 lands, so it never silently passes an unchecked action claim.
+2. The consistency checks themselves REUSE the shared trace-to-teaching module (Q23): C1 value containment · C2
+   forbidden claims · C4 unit fidelity · C5 operation. L3 builds a sibling Step from the referenced facts and calls
+   `trace_teaching.validator.run_checks`. C2/C5 are exercised only when the sibling step declares forbidden_claims /
+   an operation_contract; otherwise the shared checks return `not_applicable` (nothing to check, never a silent pass).
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 from typing import Optional, Tuple
+
+from app.services.trace_teaching import checks as _tt_checks
+from app.services.trace_teaching import grammar as _tt_grammar
+from app.services.trace_teaching import validator as _ttv
 
 # binding classes
 EXPLICIT_EXAMPLE_REFERENCE = "explicit_example_reference"
@@ -42,15 +46,15 @@ class SiblingFact:
 @dataclass(frozen=True)
 class L3Result:
     binding_class: str
-    c1_values: str              # PASS | FAIL | NOT_APPLICABLE
-    c2_forbidden: str           # delegated to Q23 → NOT_APPLICABLE here
-    c4_units: str               # delegated to Q23 → NOT_APPLICABLE here
-    c5_action: str              # delegated to Q23 → NOT_APPLICABLE here
+    c1_values: str              # PASS | FAIL | NOT_APPLICABLE  (shared Q23 C1)
+    c2_forbidden: str           # shared Q23 C2 (n/a unless the sibling step declares forbidden_claims)
+    c4_units: str               # shared Q23 C4
+    c5_action: str              # shared Q23 C5 (n/a unless action_bearing + an operation_contract)
     conflicting_facts: Tuple[str, ...] = ()
 
     @property
     def status(self) -> str:
-        return FAIL if self.c1_values == FAIL else PASS
+        return FAIL if FAIL in (self.c1_values, self.c2_forbidden, self.c4_units, self.c5_action) else PASS
 
 
 _NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
@@ -72,23 +76,44 @@ def classify_binding(span_text: str, sibling_facts: Tuple[SiblingFact, ...]) -> 
     return TOPIC_GENERAL_RULE
 
 
-def check_sibling_consistency(span_text: str, sibling_facts: Tuple[SiblingFact, ...]) -> L3Result:
-    """Run C1 numeric containment ONLY against facts the span explicitly references (C2/C4/C5 delegated to Q23)."""
+def _sibling_step(sibling_facts, forbidden_claims, operation_contract, trace_field_values):
+    return _tt_grammar.Step(
+        id="sibling", operation="",
+        allowed_values=tuple(f.value for f in sibling_facts),
+        allowed_quantities=tuple(_tt_grammar.AllowedQuantity(
+            quantity_id=f"{f.trace_id}.{f.trace_step_id}.{f.output_name}",
+            name=f.output_name, value=f.value, unit=f.unit, output_name=f.output_name)
+            for f in sibling_facts),
+        forbidden_claims=tuple(forbidden_claims),
+        operation_contract=operation_contract,
+        trace_field_values=dict(trace_field_values or {}),
+    )
+
+
+def check_sibling_consistency(
+    span_text: str,
+    sibling_facts: Tuple[SiblingFact, ...],
+    *,
+    forbidden_claims: Tuple = (),
+    operation_contract=None,
+    trace_field_values: Optional[dict] = None,
+    action_bearing: bool = False,
+) -> L3Result:
+    """Reuse the shared Q23 checks (C1/C2/C4/C5) against ONLY the facts a span explicitly references.
+
+    A general rule/definition is never bound to a neighboring example's values (returns not_applicable). An explicit
+    example reference builds a sibling Step and delegates to trace_teaching.validator.run_checks."""
     binding = classify_binding(span_text, sibling_facts)
 
     if binding == TOPIC_GENERAL_RULE:
-        # general rule — do NOT run example-value containment (validate via L2/L4 instead)
         return L3Result(binding, NOT_APPLICABLE, NOT_APPLICABLE, NOT_APPLICABLE, NOT_APPLICABLE)
 
-    span_nums = set(_NUM_RE.findall(span_text))
-    conflicts = []
-    ran_c1 = False
-    for f in sibling_facts:
-        if f.output_name.lower() not in span_text.lower():
-            continue                       # bind only to facts the span actually names
-        ran_c1 = True
-        if span_nums and f.value not in span_nums:
-            conflicts.append(f"{f.trace_id}:{f.trace_step_id}:{f.output_name}")
+    step = _sibling_step(sibling_facts, forbidden_claims, operation_contract, trace_field_values)
+    r = _ttv.run_checks(span_text, step, field_name="sibling", prose_bearing=True,
+                        action_bearing=action_bearing, run_c6=False)
 
-    c1 = FAIL if conflicts else (PASS if ran_c1 else NOT_APPLICABLE)
-    return L3Result(binding, c1, NOT_APPLICABLE, NOT_APPLICABLE, NOT_APPLICABLE, tuple(conflicts))
+    def _st(cr):
+        return cr.status if cr is not None else NOT_APPLICABLE
+
+    conflicts = tuple(f"{f.check}:{f.detail}" for f in r.failures)
+    return L3Result(binding, _st(r.c1), _st(r.c2), _st(r.c4), _st(r.c5), conflicts)

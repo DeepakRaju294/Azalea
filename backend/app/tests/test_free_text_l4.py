@@ -96,6 +96,27 @@ class L3Binding(unittest.TestCase):
         self.assertEqual(r.c1_values, l3_sibling.PASS)
         self.assertEqual(r.status, l3_sibling.PASS)
 
+    def test_l3_forbidden_claim_flows_through_shared_c2(self):
+        from app.services.trace_teaching import grammar as g
+        fc = (g.ForbiddenClaim("direction_reversal", "object",
+                               {"trace_field": "motion_direction", "equals": "unchanged"},
+                               ("reverses", "moves backward")),)
+        r = l3_sibling.check_sibling_consistency(
+            "Here the object reverses at 20 N.", self.FACTS,
+            forbidden_claims=fc, trace_field_values={"motion_direction": "unchanged"})
+        self.assertEqual(r.c2_forbidden, l3_sibling.FAIL)
+        self.assertEqual(r.status, l3_sibling.FAIL)
+
+    def test_l3_operation_mismatch_flows_through_shared_c5(self):
+        from app.services.trace_teaching import grammar as g
+        oc = g.OperationContract("substitute_known_values",
+                                 ("substitute", "plug in"), ("solve for", "differentiate"))
+        r = l3_sibling.check_sibling_consistency(
+            "Here we solve for acceleration using 20 N.", self.FACTS,
+            operation_contract=oc, action_bearing=True)
+        self.assertEqual(r.c5_action, l3_sibling.FAIL)
+        self.assertEqual(r.status, l3_sibling.FAIL)
+
 
 if __name__ == "__main__":
     unittest.main()
