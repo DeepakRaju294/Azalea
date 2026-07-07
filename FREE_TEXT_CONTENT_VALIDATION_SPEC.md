@@ -229,6 +229,18 @@ OperationBinding { surfaced_operation? {declared_operation_span, normalized_oper
 - Metadata may NEVER silently override the operation the learner sees (prose "divide both sides by 2" with metadata
   `subtract_2_from_both_sides` ⇒ binding fail ⇒ REFUTED).
 ```
+**Relation-binding conformance (the displayed source/target EQUATIONS must be the ones validated).** Binding the
+operation isn't enough — metadata could validate a hidden equation while the learner reads a false one:
+```text
+- When prose surfaces a source and/or target relation, the validator extracts + normalizes the DISPLAYED relations.
+- If metadata also supplies source_relation/target_relation, surfaced and metadata relations must MATCH after
+  canonical normalization.
+- The canonical operation is applied to the SURFACED-normalized source when one is present; metadata may not
+  silently substitute a different source/target from the learner-visible claim.
+- A surfaced-vs-metadata source OR target mismatch is a HARD L2 binding failure.
+- Metadata-only source/target is allowed ONLY where the card contract permits metadata-backed transformations AND
+  the learner is shown no contradictory relation text.
+```
 So *"Squaring both sides of x² = −4 gives x² = 0"* is a **class-3 transformation with a DECLARED operation**
 (`square_both_sides`) and is **refuted** because applying that operation to `x²=−4` yields `x⁴=16`, not the
 declared target `x²=0` (and the empty-over-ℝ solution set is not communicated) — **not** treated as a
@@ -402,12 +414,14 @@ FreeTextValidationResult {
                      out_of_scope_terms[], refuted_relations[], symbolic_domain }
     operation_binding?: {   # class-3 transformations — records BOTH inputs + resolution, for replay/debug
       surfaced_operation?: { declared_operation_span: {start,end}, normalized_operation_id },
+      surfaced_source_relation?, surfaced_target_relation?,
       metadata_operation?: { operation_id, operation_version },
+      metadata_source_relation?, metadata_target_relation?,
       resolved_operation_id, resolved_operation_version,
       operation_source: surfaced_text | registered_metadata | both,
-      binding_conformance: pass | fail | metadata_only,   # fail = surfaced≠metadata; metadata_only = no surfaced text
-      source_relation, canonical_output_relation, target_relation,
-      target_conformance: pass|fail|indeterminate,
+      binding_conformance: pass | fail | metadata_only,          # OPERATION: surfaced vs metadata
+      relation_binding_conformance: pass | fail | metadata_only,  # SOURCE/TARGET relations: surfaced vs metadata
+      canonical_output_relation, target_conformance: pass|fail|indeterminate,
       relation_mode: equivalence|necessary_condition|contradiction|no_solution,
       relation_mode_conformance: pass|fail|indeterminate, directional_marker_id? }
     semantic:      { l4: refuted | unsupported | no_objection | n/a | unavailable, span?,
@@ -477,6 +491,7 @@ Expected:
 | `test_l2_rejects_surface_operation_metadata_mismatch` | prose "Divide both sides by 2: x = 3"; metadata op `subtract_2_from_both_sides`; x+2=5→x=3 | hard fail L2 — surfaced operation ≠ registered binding; metadata can't override what the learner reads |
 | `test_l2_accepts_surface_operation_matching_metadata` | prose "Subtract 2 from both sides: x = 3"; metadata op `subtract_2_from_both_sides` | `operation_source==both`, `binding_conformance==pass`, surfaced `normalized_operation_id` == metadata `operation_id`, resolved op recorded → proceed to target-conformance + relation-mode |
 | `test_l2_operation_failure_is_replayable` | prose "Divide both sides by 2"; metadata `subtract_2_from_both_sides`; x+2=5→x=3 | result records `operation_binding` (operation_id, normalized_surface_operation=divide_both_sides_by_2, operation_failure_stage=binding); l2_symbolic=fail; replayable |
+| `test_l2_rejects_surface_relation_metadata_mismatch` | prose "Subtract 2 from both sides of x + 3 = 5: x = 3"; metadata source `x+2=5`, target `x=3` | hard L2 binding failure — `relation_binding_conformance=fail` (surfaced_source_relation ≠ metadata_source_relation); metadata can't validate a different equation than the learner sees |
 | `test_l2_accepts_true_symbolic_implication` | "If a = 2, then a² = 4." | pass L2 (class 2 implication under the declared domain) |
 | `test_l2_accepts_true_ground_relation` | known a=2 (authoritative); prose "a² = 4" | pass L2 (class 1 ground) |
 | `test_l2_skips_non_extractable` | prose with no cleanly extractable relation | `l2_symbolic = indeterminate` (NOT pass); no L2 establishment basis created; factual spans continue to establishment + L4 |
@@ -527,7 +542,8 @@ fixtures/free_text/
   wrong_target_same_solution_set.json # declared square_both_sides, x²=−4→x²=0 — refuted on target conformance
   one_way_as_equivalence.json       # x=2→x²=4 rendered as equivalence — refuted (relation_mode)
   declared_necessary_condition_ok.json # "squaring both sides of x=2 gives a necessary condition: x²=4" — passes
-  surface_metadata_operation_mismatch.json # prose "divide by 2" vs metadata subtract_2 — refuted (binding)
+  surface_metadata_operation_mismatch.json # prose "divide by 2" vs metadata subtract_2 — refuted (operation binding)
+  surface_metadata_relation_mismatch.json # prose source x+3=5 vs metadata source x+2=5 — refuted (relation binding)
   multi_claim_field.json            # 3 claims, only one unsupported → span-level soften
   out_of_scope_term.json            # L1
   wrong_definition_stack_fifo.json  # L4 refuted
@@ -610,6 +626,10 @@ MUST NOT become a source of truth:
 - [ ] Operation-binding conformance: the surfaced operation phrase normalizes to the registered `operation_id`;
   a surfaced-vs-metadata disagreement is a hard L2 failure (metadata never silently overrides the operation the
   learner reads); metadata-only operations are allowed only where the card contract permits.
+- [ ] Relation-binding conformance: the displayed source/target equations must match the backend-bound relations;
+  the canonical operation is applied to the SURFACED source; a surfaced-vs-metadata source/target mismatch is a
+  hard L2 binding failure (`relation_binding_conformance=fail`) — metadata can't validate a different equation than
+  the learner sees.
 - [ ] The result records `operation_binding` retaining BOTH inputs (`surfaced_operation` + `metadata_operation`)
   and the resolution (`resolved_operation_id`, `operation_source: surfaced_text|registered_metadata|both`,
   `binding_conformance: pass|fail|metadata_only`), plus canonical-vs-target and relation-mode conformance;
