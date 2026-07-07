@@ -3085,6 +3085,16 @@ def _normalize_lean_card_order(
     except Exception:  # noqa: BLE001 — observability must never break generation
         pass
 
+    # Q24 free-text shadow evaluation (same AZALEA_DOMAIN_NARRATION_V2 ladder). Runs the free-text validation
+    # ladder over the plan's prose fields and logs the false-claim/unestablished rate WITHOUT changing output.
+    # Strict no-op until a family is enrolled; best-effort — never breaks generation.
+    try:
+        from app.services.free_text.shadow import evaluate_card_plan as evaluate_free_text_plan
+
+        evaluate_free_text_plan(topic_type, normalized)
+    except Exception:  # noqa: BLE001 — observability must never break generation
+        pass
+
     return normalized
 
 
