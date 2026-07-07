@@ -177,16 +177,26 @@ L2 relation / claim classes:
 4. Extractable but underdetermined — parses but cannot be proven/refuted under the declared domain → L2 returns
    INDETERMINATE; the field falls to L4 (never a hard fail merely for lacking bindings).
 ```
-**Transformation validation (class 3).** A step is judged by whether its operation preserves the declared relation
-under the domain — never by truth-table implication:
+**Transformation validation (class 3) — canonical OUTPUT first, then semantics.** A declared operation is checked
+syntactically against its OWN output *before* any solution-set reasoning (a wrong target must not be excused just
+because it coincidentally shares a solution set with the source):
 ```text
-- equivalence-preserving step  → source and target share the same solution set under the declared domain;
-- implication-preserving step  → every solution of source satisfies target, AND the named operation justifies the
-                                 directional loss of information;
-- contradiction / no-solution  → the target must EXPLICITLY communicate the contradiction / empty solution set;
-                                 it may not invent a new equation or conclusion.
-A transformation with no registered algebraic operation justifying source→target ⇒ REFUTED.
+1. Canonical operation application — apply the registered declared operation to the NORMALIZED source relation
+   under the declared domain.
+2. Target conformance — the canonical result must match the declared target (or a registered canonical-equivalent
+   rendering of it). If it does NOT → REFUTED, even when source and target share a solution set.
+3. Semantic preservation (ONLY after step 2 passes) — classify per the operation contract + domain:
+   - equivalence-preserving → source and target share the same solution set under the declared domain;
+   - implication-preserving → every solution of source satisfies target, AND the operation justifies the
+     directional loss of information;
+   - contradiction / no-solution → the target must EXPLICITLY communicate the contradiction / empty solution set;
+     it may not invent a new equation or conclusion.
+A transformation with no DECLARED operation is INDETERMINATE → L4 (never operation-inferred); a declared operation
+whose canonical output ≠ the declared target ⇒ REFUTED.
 ```
+> **Invariant:** a declared transformation must be BOTH syntactically faithful to the registered operation (step 2)
+> AND semantically valid under the declared domain (step 3) — an invalid derivation never passes merely because its
+> wrong target coincidentally shares a solution set with the source.
 **Operation identification (v1 = surfaced/declared, never inferred by an LLM).**
 ```text
 - v1: the operation must be SURFACED in the span ("Subtract 2 from both sides: x = 3") OR attached as registered
@@ -424,6 +434,7 @@ Expected:
 |---|---|---|
 | `test_l1_rejects_out_of_scope_term` | prose uses a term not assumed/taught | hard fail L1; term in `out_of_scope_terms` |
 | `test_l2_rejects_invalid_symbolic_transformation` | "Squaring both sides of x² = −4 gives x² = 0." (declared op `square_both_sides`) | hard fail L2 (class 3) — the DECLARED operation yields x⁴=16, not the target x²=0; not read as vacuous implication, not inferred |
+| `test_l2_rejects_wrong_target_with_same_solution_set` | domain=real; source x²=−4; op `square_both_sides`; target x²=0 | hard fail L2 (target-conformance) — canonical output x⁴=16 ≠ target; NOT excused by source+target both having the empty ℝ solution set |
 | `test_l2_accepts_true_symbolic_implication` | "If a = 2, then a² = 4." | pass L2 (class 2 implication under the declared domain) |
 | `test_l2_accepts_true_ground_relation` | known a=2 (authoritative); prose "a² = 4" | pass L2 (class 1 ground) |
 | `test_l2_skips_non_extractable` | prose with no cleanly extractable relation | `l2_symbolic = indeterminate` (NOT pass); no L2 establishment basis created; factual spans continue to establishment + L4 |
@@ -470,7 +481,8 @@ Expected:
 fixtures/free_text/
   invalid_symbolic_transformation.json # "squaring both sides of x²=−4 gives x²=0" — L2 class 3, DECLARED op yields wrong target
   undeclared_transformation_indeterminate.json # "since x²=−4, we get x²=0" (no op) — INDETERMINATE → L4
-  valid_equivalence_transform.json  # "x+2=5, so x=3" — L2 class 3 equivalence-preserving, passes
+  valid_equivalence_transform.json  # "x+2=5; subtract 2 from both sides: x=3" — declared op, equivalence-preserving, passes
+  wrong_target_same_solution_set.json # declared square_both_sides, x²=−4→x²=0 — refuted on target conformance
   multi_claim_field.json            # 3 claims, only one unsupported → span-level soften
   out_of_scope_term.json            # L1
   wrong_definition_stack_fifo.json  # L4 refuted
@@ -557,9 +569,10 @@ MUST NOT become a source of truth:
   trace-owned — passing L1/L2/L3 without a basis is **not** establishment.
 - [ ] L3 binds C1/C2/C4/C5 only to the sibling-trace facts a span **explicitly references**; a general
   rule/definition is not forced to restate a neighboring example's values.
-- [ ] L2 refutes `x²=−4 ⇒ x²=0` as a **class-3 transformation** (no registered algebraic operation justifies it;
-  empty solution set not communicated) — **not** as a vacuously-true material implication; accepts a valid
-  equivalence-preserving transform; marks underdetermined relations INDETERMINATE (→ L4); honors `symbolic_domain`.
+- [ ] L2 refutes the DECLARED class-3 transformation "squaring both sides of x²=−4 gives x²=0" on **target
+  conformance** — the canonical operation output is x⁴=16, not the declared target (refuted **even though** source
+  and target share the empty ℝ solution set); an UNdeclared transformation is INDETERMINATE → L4 (never
+  operation-inferred); accepts a valid equivalence-preserving transform; honors `symbolic_domain`.
 - [ ] `no_objection` never ships a span whose `claim_class` is `factual`; such a span resolves refuted/unsupported/
   unavailable unless deterministic/authoritative evidence establishes it.
 - [ ] L3 rejects prose contradicting the topic's verified example — values/units (C1/C4) **and** a conflicting
