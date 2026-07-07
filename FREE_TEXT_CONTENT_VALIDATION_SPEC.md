@@ -79,6 +79,16 @@ unsupported claims does not establish that the problem has a valid, satisfiable 
 - A practice prompt MUST NOT be treated as established just because Q24 raised no objection — it ships only when a
   PracticeProblemContract supplies a valid expected answer + deterministic constraint evaluation.
 ```
+A narrow **bridge** (not a merge) carries the contract result into Q24's render decision. For any `claim_class ==
+prompt` whose field is a practice prompt:
+```text
+PracticeBinding { practice_problem_id · practice_contract_version · practice_validation_status: valid|invalid|
+                  unavailable · evaluator_id · evaluator_version }
+Render eligibility (practice prompt) = Q24 prose validation passes
+  AND PracticeBinding.practice_validation_status == valid
+  AND the rendered inputs/units/expected-answer match the bound PracticeProblemContract.
+Q24 `no_objection` alone is NEVER render eligibility for a generated practice problem.
+```
 
 ---
 
@@ -185,9 +195,12 @@ A transformation with no registered algebraic operation justifying source→targ
   registered operation transforms source into target under the domain (zero or multiple fits → indeterminate /
   reject per the card contract). Never inferred by an LLM.
 ```
-So `x² = −4 ⇒ x² = 0` is a **class-3 transformation** and is **refuted** because no registered operation rewrites
-`x²=−4` into `x²=0` and the (empty, over ℝ) solution set is not communicated — **not** treated as a vacuously-true
-implication. A complex-valid relation under a `complex` domain is **not** rejected.
+So *"Squaring both sides of x² = −4 gives x² = 0"* is a **class-3 transformation with a DECLARED operation**
+(`square_both_sides`) and is **refuted** because applying that operation to `x²=−4` yields `x⁴=16`, not the
+declared target `x²=0` (and the empty-over-ℝ solution set is not communicated) — **not** treated as a
+vacuously-true implication. An **undeclared** step ("since x²=−4, we get x²=0", no operation surfaced/attached) is
+**INDETERMINATE → L4** instead (Operation identification, above) — the validator never *infers* the operation to
+manufacture a refutation. A complex-valid relation under a `complex` domain is **not** rejected.
 
 ### L3 — sibling-trace consistency (deterministic)
 If the topic has a verified example trace, free-text prose must not contradict it. Reuse the applicable
@@ -357,6 +370,8 @@ FreeTextValidationResult {
                      unsupported_reason?, evidence_ids?[], evidence_context, verifier_available }
                      # evidence_ids REQUIRED on refuted; unsupported_reason set when l4 == unsupported
     establishment: { status: established | not_established, basis, evidence_ids?[] }   # factual spans ship only if established
+    practice_binding?: { practice_problem_id, practice_contract_version, practice_validation_status,
+                         evaluator_id, evaluator_version }   # practice prompts: render-eligible only if status==valid
     decision:      ship | repair | soften | withhold
     failures:      [ typed, most-severe first ]
   } ]
@@ -387,11 +402,14 @@ be made outside verified adapter-backed examples.**
 
 ```text
 Minimum vertical slice — a math concept card with a false symbolic claim
-Field:  concept_intuition body contains "since x² = −4, we get x² = 0"
+Field:  concept_intuition body contains "Squaring both sides of x² = −4 gives x² = 0."
+        (declared operation surfaced in prose; equivalently, transformation_metadata { operation_id:
+         square_both_sides, source: "x²=−4", target: "x²=0" } is attached to the span)
 Expected:
-  - the field is segmented into claim spans; this span is classified a DERIVATION/TRANSFORMATION claim (L2 class 3)
-  - L2 refutes it: no registered algebraic operation transforms x²=−4 into x²=0 under symbolic_domain=real, and the
-    empty (over ℝ) solution set is not communicated — NOT read as a vacuously-true implication
+  - the field is segmented into claim spans; this span is a DERIVATION/TRANSFORMATION claim (L2 class 3) with a
+    DECLARED operation (never inferred)
+  - L2 refutes it: square_both_sides applied to x²=−4 yields x⁴=16, NOT the declared target x²=0 (empty-over-ℝ
+    solution set not communicated) — not a vacuously-true implication
   - claim decision = repair; after 2 failed repairs → soften by deleting THAT span (valid sibling claims survive);
     if the span is the field's reason to exist → withhold the field
   - in shadow_validate: legacy display unchanged, verdict logged
@@ -405,7 +423,7 @@ Expected:
 | Test | Fixture | Expected assertion |
 |---|---|---|
 | `test_l1_rejects_out_of_scope_term` | prose uses a term not assumed/taught | hard fail L1; term in `out_of_scope_terms` |
-| `test_l2_rejects_invalid_symbolic_transformation` | "Since x² = −4, we get x² = 0." | hard fail L2 (class 3) — no registered algebraic rule justifies the transformation under the domain; not read as vacuous implication |
+| `test_l2_rejects_invalid_symbolic_transformation` | "Squaring both sides of x² = −4 gives x² = 0." (declared op `square_both_sides`) | hard fail L2 (class 3) — the DECLARED operation yields x⁴=16, not the target x²=0; not read as vacuous implication, not inferred |
 | `test_l2_accepts_true_symbolic_implication` | "If a = 2, then a² = 4." | pass L2 (class 2 implication under the declared domain) |
 | `test_l2_accepts_true_ground_relation` | known a=2 (authoritative); prose "a² = 4" | pass L2 (class 1 ground) |
 | `test_l2_skips_non_extractable` | prose with no cleanly extractable relation | `l2_symbolic = indeterminate` (NOT pass); no L2 establishment basis created; factual spans continue to establishment + L4 |
@@ -436,7 +454,7 @@ Expected:
 | `test_backend_deterministic_mapping_missing_provenance_fails_closed` | backend mapping selects deterministic_carried_elsewhere but provenance missing/invalid | hard routing failure; NO fallback to free_text (withhold per backend requirement) |
 | `test_span_requirement_is_backend_derived` | same invalid claim in optional background vs required components_terms def | backend requirement → delete for background, withhold for the required def; model-provided labels ignored |
 | `test_l3_does_not_bind_general_rule_to_example_values` | general F=ma definition beside a 4 kg / 20 N example | no C1/C4 failure for not restating example values |
-| `test_practice_prompt_requires_problem_contract` | new force-law problem with generated values | Q24 may validate prose/scope, but the prompt ships only if a PracticeProblemContract supplies a valid expected answer + deterministic constraint check; Q24 no-objection alone does NOT establish it |
+| `test_practice_prompt_requires_problem_contract` | new force-law problem with generated values | Q24 prose/scope may pass, but **render eligibility is FALSE unless `PracticeBinding.practice_validation_status == valid`** for the bound PracticeProblemContract; Q24 no_objection alone is not eligibility |
 | `test_l2_equivalence_transform_passes` | "x + 2 = 5. Subtract 2 from both sides: x = 3." | pass L2 (declared equivalence-preserving op) |
 | `test_l2_undeclared_operation_is_indeterminate` | "x + 2 = 5, so x = 3" (no operation surfaced/attached) | INDETERMINATE → L4 (no LLM guess of the step) |
 | `test_l1_does_not_reject_nontechnical_prose` | ordinary wording | not flagged as an out-of-scope technical term |
@@ -450,7 +468,8 @@ Expected:
 
 ```text
 fixtures/free_text/
-  invalid_symbolic_transformation.json # "since x²=−4, we get x²=0" — L2 class 3, unjustified transform
+  invalid_symbolic_transformation.json # "squaring both sides of x²=−4 gives x²=0" — L2 class 3, DECLARED op yields wrong target
+  undeclared_transformation_indeterminate.json # "since x²=−4, we get x²=0" (no op) — INDETERMINATE → L4
   valid_equivalence_transform.json  # "x+2=5, so x=3" — L2 class 3 equivalence-preserving, passes
   multi_claim_field.json            # 3 claims, only one unsupported → span-level soften
   out_of_scope_term.json            # L1
@@ -477,6 +496,8 @@ Expected to change:
   deterministic_carried_elsewhere, with ownership_provenance) + span_requirement (optional | required | essential
   from narration_contract | card_schema | registered_template) — generator-authored labels are rejected
 - sibling-trace binding resolver (explicit_example_reference | topic_general_rule | mixed) for L3
+- PracticeBinding bridge to PracticeProblemContract + its deterministic evaluator (render-gates practice prompts;
+  Q24 owns prose only)
 - free_text validator module (L1–L4 per span + FreeTextValidationResult with per-claim results + field_decision)
 - topic-level vocabulary object (assumed_prerequisite_terms/introduced_terms/approved_operations/symbols/aliases)
   + a domain tokenizer that classifies technical vs. ordinary tokens with confidence
@@ -523,7 +544,11 @@ MUST NOT become a source of truth:
   (a required unsupported definition withholds, not deletes). `requirement_source` is carried in the result +
   telemetry (a contract-mapped withhold is distinguishable from a fallback default).
 - [ ] A class-3 transformation is validated against a **surfaced/declared** operation (or registered metadata);
-  an undeclared step is INDETERMINATE → L4, never an LLM-inferred operation.
+  an undeclared step is INDETERMINATE → L4, never an LLM-inferred operation. The §6 slice's refuted fixture carries
+  a **declared** operation whose result ≠ the declared target (not an inferred refutation).
+- [ ] A practice prompt is render-eligible only when Q24 prose passes AND `PracticeBinding.practice_validation_status
+  == valid` AND the rendered inputs/units/answer match the bound `PracticeProblemContract`; Q24 `no_objection` alone
+  is never eligibility.
 - [ ] The validation unit is a **claim span**: a field is segmented before L1–L4; `field_decision` is computed
   from per-claim dispositions, so an unsupported span is softened/deleted without dropping valid sibling claims.
 - [ ] Claim spans **cover every non-whitespace character** (ordered, non-overlapping); `unclassified` residual
