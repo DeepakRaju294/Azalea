@@ -260,6 +260,19 @@ operation isn't enough — metadata could validate a hidden equation while the l
 - Metadata-only source/target is allowed ONLY where the card contract permits metadata-backed transformations AND
   the learner is shown no contradictory relation text.
 ```
+**Binding gates canonical application (a failed bind exposes NO resolved operation).** A binding failure must not
+leave a `resolved_operation_id` that a downstream step could apply — both inputs are retained for replay, but
+neither was selected:
+```text
+- resolved_operation_id / resolved_operation_version are present ONLY when binding_conformance ∈ {pass, metadata_only};
+  they are absent/null when binding_conformance == fail.
+- Canonical operation application (target-conformance step) may run ONLY when
+  binding_conformance ∈ {pass, metadata_only} AND relation_binding_conformance ∈ {pass, metadata_only}.
+- On binding_conformance == fail OR relation_binding_conformance == fail: canonical_output_relation is NOT produced,
+  target_conformance / relation_mode_conformance stay unevaluated, and transformation_failure_stage is
+  operation_binding (operation mismatch) or relation_binding (relation mismatch). No metadata operation is applied
+  after a reported binding failure.
+```
 So *"Squaring both sides of x² = −4 gives x² = 0"* is a **class-3 transformation with a DECLARED operation**
 (`square_both_sides`) and is **refuted** because applying that operation to `x²=−4` yields `x⁴=16`, not the
 declared target `x²=0` (and the empty-over-ℝ solution set is not communicated) — **not** treated as a
@@ -512,9 +525,9 @@ Expected:
 | `test_l2_accepts_declared_necessary_condition` | "Squaring both sides of x = 2 gives a necessary condition: x² = 4." op `square_both_sides`; relation_mode `necessary_condition` | pass L2 — source-solutions ⊆ target AND a registered directional marker is present |
 | `test_l2_rejects_surface_operation_metadata_mismatch` | prose "Divide both sides by 2: x = 3"; metadata op `subtract_2_from_both_sides`; x+2=5→x=3 | hard fail L2 — surfaced operation ≠ registered binding; metadata can't override what the learner reads |
 | `test_l2_accepts_surface_operation_matching_metadata` | prose "Subtract 2 from both sides: x = 3"; metadata op `subtract_2_from_both_sides` | `operation_source==both`, `binding_conformance==pass`, surfaced `normalized_operation_id` == metadata `operation_id`, resolved op recorded → proceed to target-conformance + relation-mode |
-| `test_l2_operation_failure_is_replayable` | prose "Divide both sides by 2"; metadata `subtract_2_from_both_sides`; x+2=5→x=3 | result records `operation_binding` (operation_id, normalized_surface_operation=divide_both_sides_by_2, `transformation_failure_stage=operation_binding`); l2_symbolic=fail; replayable |
+| `test_l2_operation_failure_is_replayable` | prose "Divide both sides by 2"; metadata `subtract_2_from_both_sides`; x+2=5→x=3 | result records `operation_binding` (surfaced+metadata retained, normalized_surface_operation=divide_both_sides_by_2, `transformation_failure_stage=operation_binding`); `resolved_operation_id` is null, `canonical_output_relation` NOT produced; l2_symbolic=fail; replayable |
 | `test_l2_rejects_surface_relation_metadata_mismatch` | prose "Subtract 2 from both sides of x + 3 = 5: x = 3"; metadata source `x+2=5`, target `x=3` | hard L2 binding failure — `relation_binding_conformance=fail` (surfaced_source_relation ≠ metadata_source_relation); metadata can't validate a different equation than the learner sees |
-| `test_l2_relation_binding_failure_is_replayable` | same relation-mismatch fixture | `relation_binding_conformance=fail`, `transformation_failure_stage=relation_binding`, l2_symbolic=fail; surfaced_ + metadata_source_relation both retained for replay |
+| `test_l2_relation_binding_failure_is_replayable` | same relation-mismatch fixture | `relation_binding_conformance=fail`, `transformation_failure_stage=relation_binding`, `canonical_output_relation` NOT produced, l2_symbolic=fail; surfaced_ + metadata_source_relation both retained for replay |
 | `test_l2_rejects_generator_authored_operation_metadata` | prose has a transformation; generator payload supplies operation_id/source_relation/target_relation/relation_mode; NO registered backend adapter/template provenance | generator metadata is ignored as authority; binding derived only from surfaced text (`binding_provenance.binding_source=surfaced_extraction`) OR the span fails closed when metadata-backed validation is required; no generator-authored metadata can establish/validate the claim |
 | `test_l2_accepts_true_symbolic_implication` | "If a = 2, then a² = 4." | pass L2 (class 2 implication under the declared domain) |
 | `test_l2_accepts_true_ground_relation` | known a=2 (authoritative); prose "a² = 4" | pass L2 (class 1 ground) |
@@ -664,6 +677,11 @@ MUST NOT become a source of truth:
   the canonical operation is applied to the SURFACED source; a surfaced-vs-metadata source/target mismatch is a
   hard L2 binding failure (`relation_binding_conformance=fail`) — metadata can't validate a different equation than
   the learner sees.
+- [ ] A failed bind exposes **no resolved operation and no canonical output**: `resolved_operation_id`/
+  `resolved_operation_version` are set only when `binding_conformance ∈ {pass, metadata_only}` (null on `fail`);
+  canonical application runs only when both `binding_conformance` and `relation_binding_conformance ∈ {pass,
+  metadata_only}`, so `canonical_output_relation` is not produced on a binding failure — no metadata operation is
+  applied after a reported binding failure.
 - [ ] The result records `operation_binding` retaining **all available surfaced + metadata inputs** with explicit
   source/provenance and resolution state (`resolved_operation_id`, `operation_source: surfaced_text|
   registered_metadata|both`, `binding_conformance` + `relation_binding_conformance: pass|fail|metadata_only`), plus
