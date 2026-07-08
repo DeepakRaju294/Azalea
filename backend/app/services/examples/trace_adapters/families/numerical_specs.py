@@ -75,4 +75,25 @@ NEWTON_RECIPROCAL = NumericalSpec(
 )
 
 
-ALL_SPECS = [NEWTON_SQRT, NEWTON_CBRT, FIXED_POINT_LINEAR, NEWTON_RECIPROCAL]
+# ── Forward Euler for Newton's law of cooling: T' = -k(T - Tenv) → steady state Tenv ─────────────────────────
+# a genuine TIME-STEPPING ODE method (not root-finding): with k*h = 0.5 the temperature relaxes to room temp.
+NEWTON_COOLING_EULER = NumericalSpec(
+    slug="euler_newton_cooling",
+    title="Euler's method for Newton's law of cooling",
+    problem_template="A body at T0 = {T0} degrees cools toward room temperature Tenv = {Tenv}. "
+                     "Use Euler's method (T' = -k(T - Tenv), k*h = 0.5) to step it forward.",
+    setup=lambda rng: {"T0": rng.randint(60, 100), "Tenv": rng.randint(15, 30)},
+    initial=lambda p: float(p["T0"]),
+    update=lambda p, T: (T - 0.5 * (T - p["Tenv"]), f"T <- T - 0.5*(T - {p['Tenv']})"),
+    residual=lambda p, T: abs(T - p["Tenv"]),        # distance to the steady state
+    true_value=lambda p: float(p["Tenv"]),           # the ODE's steady state (fixed point)
+    tol=1e-2, answer_tol=1e-2, max_iters=30,
+    estimate_name="steady_temperature",
+    aliases=["euler's method cooling", "newton's law of cooling", "euler method ode",
+             "forward euler cooling", "numerical cooling"],
+    not_aliases=["square", "cube", "reciprocal"],
+    priority=54,
+)
+
+
+ALL_SPECS = [NEWTON_SQRT, NEWTON_CBRT, FIXED_POINT_LINEAR, NEWTON_RECIPROCAL, NEWTON_COOLING_EULER]
