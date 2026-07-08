@@ -12,7 +12,9 @@
 > update). A concept's type is the **shape of its verified trace**, never its subject area. This is what keeps the
 > catalog finite and the authoring cost low.
 >
-> **Status.** All **18 types are now LIVE** (188 adapters, `manifest_gaps()` CLEAN). The four types added in the
+> **Status.** All **18 types are now LIVE** (201 adapters, `manifest_gaps()` CLEAN). The **full running list of
+> every adapter** is in [`ADAPTER_CATALOG.md`](ADAPTER_CATALOG.md) (auto-generated from the manifest); this spec
+> defines the *types*, that doc lists the *adapters*. The four types added in the
 > last revision — T13 proofs, T14 tabular evaluation, T15 matrix row-reduction, T16 numerical convergence — are
 > now implemented as declarative engines with their own gates (each keeps the "ran ≠ correct" guarantee; see §3/§5).
 > **Durable taxonomy = 18 trace grammars across 8 declarative engines (Family B) + the hand-coded CS families
@@ -29,16 +31,17 @@
 | **C — Guided / source-grounded** (conceptual) | prose with **no verifiable trace** (intuition, real-world meaning, open-ended proof) | not an adapter | authored as guided content; policed by Q24 free-text validation, never claimed as verified |
 
 Family B is where breadth scales: *"turn each dominant trace shape into an ENGINE, then add each concept as data
-gated by the type's test."* All eight Family-B engines (incl. the four newest — T13/T14/T15/T16) are live. Family A
-is bounded and hand-authored (the algorithmic set is finite). Family C is the honest home for anything without a
-machine-checkable trace — it is not forced into an adapter.
+gated by the type's test."* The four planned types are all **new Family-B engines**. Family A is bounded and
+hand-authored (the algorithmic set is finite). Family C is the honest home for anything without a machine-checkable
+trace — it is not forced into an adapter.
 
 ---
 
 ## 2. The full type table (authoritative)
 
-Keyed to `app/services/examples/trace_adapters/manifest.py::ADAPTER_TYPES`.
-**18 live types, 188 adapters, `manifest_gaps()` CLEAN.**
+Keyed to `app/services/examples/trace_adapters/manifest.py::ADAPTER_TYPES`. The per-type counts + example concepts
+below are a summary; the exhaustive per-adapter list is [`ADAPTER_CATALOG.md`](ADAPTER_CATALOG.md).
+**18 live types, 201 adapters, `manifest_gaps()` CLEAN.**
 
 | Type | Trace grammar | Family | Status / backing | Adapters | Example concepts |
 |---|---|---|---|---|---|
@@ -46,7 +49,7 @@ Keyed to `app/services/examples/trace_adapters/manifest.py::ADAPTER_TYPES`.
 | **T2** | `greedy_frontier_update` | A | LIVE · hand-coded | 3 | dijkstra, prim, kruskal |
 | **T3** | `divide_and_conquer` | A | LIVE · hand-coded | 2 | merge_sort, quick_sort |
 | **T4** | `search_narrowing` | A | LIVE · hand-coded | 2 | binary_search, bst_search |
-| **T5** | `dp_table_fill` | A | LIVE · hand-coded | 2 | coin_change, longest_increasing_subsequence |
+| **T5** | `dp_table_fill` | A | LIVE · hand-coded | 6 | coin_change, longest_increasing_subsequence, house_robber, max_subarray, rod_cutting, edit_distance (2-D grid) |
 | **T9a** | `edge_pass_relaxation` | A | LIVE · hand-coded | 1 | bellman_ford |
 | **T9b** | `layered_state_refinement` | A | LIVE · hand-coded | 1 | floyd_warshall |
 | **T11** | `constraint_search_backtracking` | A | LIVE · hand-coded | 1 | n_queens |
@@ -55,11 +58,11 @@ Keyed to `app/services/examples/trace_adapters/manifest.py::ADAPTER_TYPES`.
 | **T7** | `reduction_rewriting` | B | LIVE · rewrite_engine | 9 | linear_equation, combine_like_terms, distribute, solve_proportion |
 | **T8a** | `incremental_construction` | B | LIVE · construct_engine | 20 | prefix_sums, fibonacci, pascals_triangle_row, polynomial_derivative/integral, gradient_descent |
 | **T8b** | `formal_derivation` | B | LIVE · derivation_engine | 16 | complete_the_square, difference_of_squares, exponent_laws, sum_geometric_series, foil_expansion |
-| **T10** | `stateful_operation_invariant_maintenance` | B | LIVE · stateful_engine | 8 | stack, queue, hash_table_insert, lru_cache, min_stack |
-| **T13** | `proof_obligation_discharge` | B | LIVE · induction_engine | 4 | induction: sum of first n / squares / cubes / odds (machine-checked base + inductive-step identity) |
-| **T14** | `indexed_table_evaluation` | B | LIVE · table_engine | 4 | truth tables (A∧(B∨C), XOR, implication, majority); grammar covers K-maps / transition / probability tables |
+| **T10** | `stateful_operation_invariant_maintenance` | B | LIVE · stateful_engine | 8 | stack, queue, hash_table_insert, lru_cache, min_stack, set_operations, modular_counter, union_find |
+| **T13** | `proof_obligation_discharge` | B | LIVE · induction_engine | 6 | induction: sum of first n / squares / cubes / odds / evens / i(i+1) (machine-checked base + inductive-step identity) |
+| **T14** | `indexed_table_evaluation` | B | LIVE · table_engine | 9 | truth tables: and-or, XOR, implication, majority, NAND, NOR, XNOR, biconditional, full-adder sum; grammar covers K-maps / transition / probability tables |
 | **T15** | `matrix_row_operation_elimination` | B | LIVE · rowreduce_engine | 3 | solve 2×2/3×3 linear systems, Gaussian/Gauss-Jordan elimination (Cramer oracle) |
-| **T16** | `numerical_time_step_convergence` | B | LIVE · numerical_engine | 3 | Newton sqrt/cbrt, linear fixed-point (residual + convergence check) |
+| **T16** | `numerical_time_step_convergence` | B | LIVE · numerical_engine | 5 | Newton sqrt/cbrt/reciprocal, linear fixed-point, Euler cooling ODE (residual + convergence check) |
 
 > `manifest_gaps()` is **CLEAN** — every declared adapter is registered with a routing rule + declaration.
 > The four newest engines pilot a few concepts each; more are one-file DATA edits (§6).
@@ -83,8 +86,7 @@ Gate:      each inference cites a registered rule; each obligation is MACHINE-CH
            (induction: base + step both verified for the concrete predicate; big-O: an explicit (c, n0) witness
            checked over a bound; loop invariant: holds initially, preserved by the body, implies the postcondition
            on exit). An open-ended proof with no checkable obligation model is Family C, never a fake T13 adapter.
-Coverage:  v1 = polynomial summation identities (sum of first n / squares / cubes / odds); more proof schemas
-           (contradiction, big-O witness, loop invariants) extend §6.
+Coverage:  §6 (proofs) is the highest-priority planned family.
 ```
 
 ### T14 — `indexed_table_evaluation`
