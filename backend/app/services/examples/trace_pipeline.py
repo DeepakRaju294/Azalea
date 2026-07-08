@@ -416,6 +416,13 @@ def _ensure_completion(cards: list[dict[str, Any]], trace: ContractTrace, termin
     if _COMPLETE_RE.search(res):
         return
     ans = _final_answer_text(trace)
+    # For a derivation/rewrite the final answer IS the last transform's result — it is already displayed on
+    # this card, so a restated "Complete: … Final result: X" is pure redundancy that reads as robotic filler.
+    # State the terminal tersely instead; the answer stays visible above. (Coding traces, where the answer is
+    # a distinct aggregate not equal to the last step's value, keep the full completion + stopping criterion.)
+    if ans and res and ans in res:
+        last["result"] = res.rstrip(".") + ". This is the final result."
+        return
     crit = str(terminal or "").strip().rstrip(".")
     tail = f"Complete: {crit}. Final result: {ans}." if crit else f"Complete — final result: {ans}."
     last["result"] = (res.rstrip(".") + ". " + tail).lstrip(". ")

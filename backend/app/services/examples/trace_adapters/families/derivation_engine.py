@@ -79,7 +79,9 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
     # Transformational framing (NOT "state update"): begin with the expression, then apply one NAMED rule per
     # step, before -> after. No data-structure state, no repeated action.
     d1 = f"begin with {start}"
-    r1 = f"we start from {start} and apply one rule per step until we reach the result"
+    # The opening state_claim card just names the starting expression — keep the reason honest (the useful
+    # "one rule at a time" orientation, not the robotic "apply one rule per step until we reach the result").
+    r1 = f"the starting expression we will rewrite, one rule at a time"
     e1 = f"We begin with {start}."
     steps = [Step(id="s1", operation="state_claim", prior_state={"problem": spec.title},
                   state_after={**state, "expr": start}, inputs=dict(state), decision=d1, reason=r1,
