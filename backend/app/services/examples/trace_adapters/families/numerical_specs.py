@@ -57,4 +57,22 @@ FIXED_POINT_LINEAR = NumericalSpec(
 )
 
 
-ALL_SPECS = [NEWTON_SQRT, NEWTON_CBRT, FIXED_POINT_LINEAR]
+# ── Newton's method for the reciprocal 1/a (division-free): x_{n+1} = x_n(2 - a x_n) ─────────────────────────
+# converges to 1/a from any 0 < x0 < 2/a; start at 1/(a+1) < 1/a to stay in the basin.
+NEWTON_RECIPROCAL = NumericalSpec(
+    slug="newton_reciprocal",
+    title="Newton's method for a reciprocal (division-free)",
+    problem_template="Use Newton's method to approximate 1/{a} without dividing.",
+    setup=lambda rng: {"a": rng.randint(2, 9)},
+    initial=lambda p: 1.0 / (p["a"] + 1),
+    update=lambda p, x: (x * (2 - p["a"] * x), f"x <- x(2 - {p['a']}x)"),
+    residual=lambda p, x: abs(p["a"] * x - 1),
+    true_value=lambda p: 1.0 / p["a"],
+    aliases=["newton's method reciprocal", "newton reciprocal", "division-free reciprocal",
+             "compute reciprocal by newton", "approximate 1/a iteratively"],
+    not_aliases=["square", "cube"],
+    priority=52,
+)
+
+
+ALL_SPECS = [NEWTON_SQRT, NEWTON_CBRT, FIXED_POINT_LINEAR, NEWTON_RECIPROCAL]

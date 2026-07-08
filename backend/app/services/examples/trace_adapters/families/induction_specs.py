@@ -55,4 +55,30 @@ SUM_ODD_NUMBERS = InductionSpec(
 )
 
 
-ALL_SPECS = [SUM_FIRST_N, SUM_FIRST_N_SQUARES, SUM_FIRST_N_CUBES, SUM_ODD_NUMBERS]
+SUM_EVEN_NUMBERS = InductionSpec(
+    slug="induction_sum_of_evens",
+    title="proof that 2 + 4 + ... + 2n = n(n+1)",
+    problem_template="Prove by induction that the sum of the first n even numbers is n(n+1) (check n={N}).",
+    f=lambda i: 2 * i,
+    g=lambda n: n * (n + 1),
+    f_str="2i", g_str="n(n+1)",
+    aliases=["induction sum of even numbers", "prove sum of first n even numbers", "sum of evens by induction"],
+    not_aliases=["odd", "squares", "cubes"],
+    priority=105,
+)
+
+SUM_I_TIMES_I_PLUS_1 = InductionSpec(
+    slug="induction_sum_i_times_i_plus_1",
+    title="proof that sum of i(i+1) = n(n+1)(n+2)/3",
+    problem_template="Prove by induction that the sum of i(i+1) for i=1..n is n(n+1)(n+2)/3 (check n={N}).",
+    f=lambda i: i * (i + 1),
+    g=lambda n: n * (n + 1) * (n + 2) // 3,
+    f_str="i(i+1)", g_str="n(n+1)(n+2)/3",
+    aliases=["induction sum of i(i+1)", "sum i times i plus one by induction",
+             "prove sum of i(i+1) by induction"],
+    priority=105,
+)
+
+
+ALL_SPECS = [SUM_FIRST_N, SUM_FIRST_N_SQUARES, SUM_FIRST_N_CUBES, SUM_ODD_NUMBERS,
+             SUM_EVEN_NUMBERS, SUM_I_TIMES_I_PLUS_1]
