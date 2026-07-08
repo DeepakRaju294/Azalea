@@ -11,7 +11,8 @@ os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.examples import trace_pipeline as tp
 from app.services.examples.trace_adapters import ADAPTERS
-from app.services.examples.trace_adapters.families.dp import _true_house_robber, _true_max_subarray
+from app.services.examples.trace_adapters.families.dp import (
+    _true_house_robber, _true_max_subarray, _true_rod_cutting, _true_edit_distance)
 
 
 class HouseRobberOracle(unittest.TestCase):
@@ -77,6 +78,52 @@ class MaxSubarrayTrace(unittest.TestCase):
             dp = list(tr.steps[-1].state_after["dp"])
             self.assertEqual(dp, _true_max_subarray(nums))
         self.assertGreater(seen, 0, "no valid max_subarray teaching trace produced")
+
+
+class RodCutting(unittest.TestCase):
+    def test_known_values(self):
+        # classic CLRS prices for lengths 1..8; rod length 4 -> best revenue 10
+        p = [1, 5, 8, 9, 10, 17, 17, 20]
+        self.assertEqual(_true_rod_cutting(p, 4)[-1], 10)
+        self.assertEqual(_true_rod_cutting([2, 5, 7, 8], 4)[-1], 10)   # 2+2 pieces
+
+    def test_trace_answer_matches_oracle(self):
+        adapter = ADAPTERS["rod_cutting"]
+        seen = 0
+        for seed in range(30):
+            tr = tp.select_instance(adapter, seed=seed)
+            if tr is None:
+                continue
+            seen += 1
+            self.assertEqual(tp.structural_invariants(tr, adapter), [])
+            p = list(tr.steps[0].prior_state["prices"])
+            L = tr.steps[0].prior_state["L"]
+            self.assertEqual(tr.final_answer, {"max_revenue": _true_rod_cutting(p, L)[-1]})
+        self.assertGreater(seen, 0)
+
+
+class EditDistance(unittest.TestCase):
+    def test_known_values(self):
+        self.assertEqual(_true_edit_distance("abc", "abc")[-1][-1], 0)
+        self.assertEqual(_true_edit_distance("abc", "abd")[-1][-1], 1)
+        self.assertEqual(_true_edit_distance("cat", "act")[-1][-1], 2)
+        self.assertEqual(_true_edit_distance("aaa", "bbb")[-1][-1], 3)
+
+    def test_trace_answer_matches_oracle(self):
+        adapter = ADAPTERS["edit_distance"]
+        seen = 0
+        for seed in range(30):
+            tr = tp.select_instance(adapter, seed=seed)
+            if tr is None:
+                continue
+            seen += 1
+            self.assertEqual(tp.structural_invariants(tr, adapter), [])
+            s = tr.steps[0].prior_state["s"]
+            t = tr.steps[0].prior_state["t"]
+            self.assertEqual(tr.final_answer, {"edit_distance": _true_edit_distance(s, t)[-1][-1]})
+            # the completed grid equals the oracle
+            self.assertEqual(tr.steps[-1].state_after["dp"], _true_edit_distance(s, t))
+        self.assertGreater(seen, 0)
 
 
 if __name__ == "__main__":

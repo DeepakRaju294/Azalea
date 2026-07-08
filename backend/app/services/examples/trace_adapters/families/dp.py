@@ -527,3 +527,288 @@ class MaxSubarrayAdapter(FamilyAdapterBase):
                           str(card.get("result", ""))]).lower()
         dv = str(step.inputs["dp_value"])
         return [] if dv in prose else [("dp_value_not_stated", dv)]
+
+
+# ======================================================================================================
+# ROD CUTTING — max revenue cutting a rod into priced pieces (1-D DP; max-over-first-cut, like coin change)
+# ======================================================================================================
+def _true_rod_cutting(prices: list[int], L: int) -> list[int]:
+    """Independent oracle: dp[l] = max revenue obtainable from a rod of length l given `prices` (prices[k] =
+    value of a piece of length k+1). Recomputed straight from the prices, refereeing the trace's table."""
+    dp = [0] * (L + 1)
+    for l in range(1, L + 1):
+        best = 0
+        for c in range(1, min(l, len(prices)) + 1):
+            best = max(best, prices[c - 1] + dp[l - c])
+        dp[l] = best
+    return dp
+
+
+_RC_CONV = {"algorithm_variant": "rod_cutting", "recurrence": "dp[l] = max(prices[c-1] + dp[l-c] for c in 1..l)",
+            "cell_meaning": "dp[l] = most revenue from a rod of length l",
+            "trace_granularity": "one_cell"}
+_RC_REQ = ["single_piece", "combine_pieces", "completion"]
+_RC_INV = [{"id": "dp_matches_true_rod_cutting", "scope": "every_step",
+            "statement": "every filled cell equals the true maximum revenue for that rod length"}]
+
+
+class RodCuttingAdapter(FamilyAdapterBase):
+    slug = "rod_cutting"
+    label_convention = "ints"
+    example_spec = ExampleSpec(
+        input=InstanceShape("integers", count=(4, 4), value_range=(1, 9), structure=["piece_prices"]),
+        stages={"fill_cell": StageSpec(
+            "fill_cell", "compute one dp cell — the best revenue for this rod length",
+            teaching_focus="each length tries every first cut, then reuses the best revenue for the remainder",
+            contains={"try_each_first_cut": "internal", "take_best": "required"},
+            state_effects=["dp grows by one length; each cell is a solved sub-answer longer rods build on"])},
+        structure="fill_cell for lengths 1..L; the answer is dp[L]",
+        must_exercise=["single_piece", "combine_pieces", "completion"],
+        must_cover=["combine_pieces"], must_avoid=[],
+        terminal="every length up to the rod is solved, so dp[L] is the most revenue",
+        output_shape="the maximum revenue from cutting the rod")
+
+    def candidates(self, seed: int):
+        rng = random.Random(seed)
+        for i in range(120):
+            L = rng.randint(4, 5)
+            prices = [rng.randint(1, 9) for _ in range(L)]
+            yield {"prices": prices, "L": L, "_id": f"rod_cutting_v1_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        ev = trace.case_evidence
+        return (len(trace.steps) >= 3 and bool(ev.get("single_piece")) and bool(ev.get("combine_pieces")))
+
+    def reference(self, example_input, *, candidate_id: str = "", attempt: int = 1, seed: int = 0):
+        prices = [int(x) for x in example_input["prices"]]
+        L = int(example_input["L"])
+        dp = [0]
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        for l in range(1, L + 1):
+            best, best_c = 0, 0
+            for c in range(1, min(l, len(prices)) + 1):
+                cand = prices[c - 1] + dp[l - c]
+                if cand > best:
+                    best, best_c = cand, c
+            prior = {"dp": list(dp), "filled": l, "prices": prices, "L": L}
+            dp.append(best)
+            after = {"dp": list(dp), "filled": l + 1, "prices": prices, "L": L}
+            sid = f"s{l}"
+            if best_c == l:
+                kind = "single_piece"
+                reason = (f"dp[{l}] (most revenue from length {l}): the best is one uncut piece of length {l}, "
+                          f"worth {prices[l - 1]} — dp[{l}] = {best}.")
+                evr = f"dp[{l}] = {best} (one piece of length {l}); dp so far {dp}."
+            else:
+                kind = "combine_pieces"
+                reason = (f"dp[{l}] (most revenue from length {l}): the best first cut is length {best_c} "
+                          f"(worth {prices[best_c - 1]}), leaving {l - best_c}, whose best is dp[{l - best_c}] = "
+                          f"{dp[l - best_c]} — dp[{l}] = {prices[best_c - 1]} + {dp[l - best_c]} = {best}.")
+                evr = (f"dp[{l}] = {best} (cut {best_c} worth {prices[best_c - 1]} plus the best for "
+                       f"{l - best_c}); dp so far {dp}.")
+            evidence.setdefault(kind, []).append(sid)
+            allowed = sorted({int(x) for x in re.findall(r"\d+", reason + " " + evr)})
+            steps.append(Step(
+                id=sid, operation="fill_cell", prior_state=prior, state_after=after,
+                inputs={"length": l, "dp_value": best, "first_cut": best_c},
+                decision=f"dp[{l}] = {best}", reason=reason,
+                visual_state={"kind": "array", "array": list(dp), "active": l},
+                visual_delta={"cell": l, "dp_value": best, "first_cut": best_c},
+                expected_visible_result=evr,
+                facts={"allowed_values": allowed, "required_facts": [fact("dp_value", best)],
+                       "forbidden_claims": []}))
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        return ContractTrace(
+            problem=(f"Given piece prices {prices} (price of length k is prices[k-1]) and a rod of length {L}, "
+                     f"find the maximum revenue using dynamic programming (dp[l] = max over first cut c of "
+                     f"prices[c-1] + dp[l-c])."),
+            conventions=dict(_RC_CONV),
+            initial_state={"dp": [0], "filled": 1, "prices": prices, "L": L},
+            final_answer={"max_revenue": dp[L]}, steps=steps,
+            invariants=[dict(x) for x in _RC_INV], required_cases=list(_RC_REQ), case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        a, b = a or {}, b or {}
+        return list(a.get("dp") or []) == list(b.get("dp") or []) and a.get("filled") == b.get("filled")
+
+    def final_answer_entails(self, state, answer):
+        dp = (state or {}).get("dp") or []
+        return bool(dp) and dp[-1] == (answer or {}).get("max_revenue")
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "dp_matches_true_rod_cutting":
+            dp = list((state or {}).get("dp") or [])
+            prices = list((state or {}).get("prices") or [])
+            L = (state or {}).get("L") or 0
+            true = _true_rod_cutting(prices, L)
+            return dp == true[:len(dp)]
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation == "fill_cell" else [f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        dv = str(step.inputs["dp_value"])
+        return [] if dv in prose else [("dp_value_not_stated", dv)]
+
+
+# ======================================================================================================
+# EDIT DISTANCE (Levenshtein) — the canonical 2-D DP; a GRID table filled cell by cell (match vs. edit)
+# ======================================================================================================
+def _true_edit_distance(s: str, t: str) -> list[list[int]]:
+    """Independent oracle: the full (m+1)x(n+1) Levenshtein table. Recomputed straight from the strings, so it
+    referees the trace's grid rather than echoing it. Answer = table[m][n]."""
+    m, n = len(s), len(t)
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+    for i in range(m + 1):
+        dp[i][0] = i
+    for j in range(n + 1):
+        dp[0][j] = j
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            if s[i - 1] == t[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1]
+            else:
+                dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+    return dp
+
+
+def _base_grid(m: int, n: int) -> list[list[int]]:
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+    for i in range(m + 1):
+        dp[i][0] = i
+    for j in range(n + 1):
+        dp[0][j] = j
+    return dp
+
+
+_ED_CONV = {"algorithm_variant": "levenshtein",
+            "recurrence": "match: dp[i][j]=dp[i-1][j-1]; else 1+min(delete, insert, replace)",
+            "cell_meaning": "dp[i][j] = edit distance between the first i and first j characters",
+            "trace_granularity": "one_cell"}
+_ED_REQ = ["match", "edit", "completion"]
+_ED_INV = [{"id": "grid_matches_true_edit_distance", "scope": "every_step",
+            "statement": "every filled cell equals the true Levenshtein distance for that prefix pair"}]
+
+
+class EditDistanceAdapter(FamilyAdapterBase):
+    slug = "edit_distance"
+    label_convention = "ints"
+    example_spec = ExampleSpec(
+        input=InstanceShape("strings", count=(2, 2), structure=["source_string", "target_string"]),
+        stages={"fill_cell": StageSpec(
+            "fill_cell", "compute one dp cell — the edit distance for this prefix pair",
+            teaching_focus="matching characters copy the diagonal; otherwise take 1 + the cheapest of the three neighbors",
+            contains={"match_or_min_of_three": "required"},
+            state_effects=["one grid cell is filled; later cells build on the three already-solved neighbors"])},
+        structure="fill_cell for inner cells (i,j); the answer is dp[m][n]",
+        must_exercise=["match", "edit", "completion"],
+        must_cover=["edit"], must_avoid=[],
+        terminal="every prefix pair is solved, so dp[m][n] is the edit distance",
+        output_shape="the minimum number of edits to turn the source into the target")
+
+    def candidates(self, seed: int):
+        rng = random.Random(seed)
+        alpha = "abc"
+        for i in range(160):
+            s = "".join(rng.choice(alpha) for _ in range(3))
+            t = "".join(rng.choice(alpha) for _ in range(3))
+            yield {"s": s, "t": t, "_id": f"edit_distance_v1_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        ev = trace.case_evidence
+        return (len(trace.steps) >= 4 and bool(ev.get("match")) and bool(ev.get("edit")))
+
+    def reference(self, example_input, *, candidate_id: str = "", attempt: int = 1, seed: int = 0):
+        s, t = str(example_input["s"]), str(example_input["t"])
+        m, n = len(s), len(t)
+        dp = _base_grid(m, n)
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        filled = 0
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                prior = {"dp": [row[:] for row in dp], "filled": filled, "s": s, "t": t}
+                if s[i - 1] == t[j - 1]:
+                    dp[i][j] = dp[i - 1][j - 1]
+                    kind = "match"
+                    reason = (f"dp[{i}][{j}]: source '{s[i - 1]}' equals target '{t[j - 1]}', so copy the diagonal "
+                              f"dp[{i - 1}][{j - 1}] = {dp[i - 1][j - 1]} — dp[{i}][{j}] = {dp[i][j]}.")
+                    evr = f"dp[{i}][{j}] = {dp[i][j]} (match '{s[i - 1]}'; copy the diagonal)."
+                else:
+                    dele, ins, rep = dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]
+                    dp[i][j] = 1 + min(dele, ins, rep)
+                    kind = "edit"
+                    reason = (f"dp[{i}][{j}]: '{s[i - 1]}' != '{t[j - 1]}', so 1 + the cheapest of delete "
+                              f"dp[{i - 1}][{j}] = {dele}, insert dp[{i}][{j - 1}] = {ins}, replace "
+                              f"dp[{i - 1}][{j - 1}] = {rep} — dp[{i}][{j}] = {dp[i][j]}.")
+                    evr = f"dp[{i}][{j}] = {dp[i][j]} (edit: 1 + min({dele}, {ins}, {rep}))."
+                filled += 1
+                after = {"dp": [row[:] for row in dp], "filled": filled, "s": s, "t": t}
+                sid = f"s{filled}"
+                evidence.setdefault(kind, []).append(sid)
+                allowed = sorted({int(x) for x in re.findall(r"\d+", reason + " " + evr)})
+                steps.append(Step(
+                    id=sid, operation="fill_cell", prior_state=prior, state_after=after,
+                    inputs={"i": i, "j": j, "dp_value": dp[i][j]},
+                    decision=f"dp[{i}][{j}] = {dp[i][j]}", reason=reason,
+                    visual_state={"kind": "grid", "grid": [row[:] for row in dp], "active": [i, j]},
+                    visual_delta={"cell": [i, j], "dp_value": dp[i][j]},
+                    expected_visible_result=evr,
+                    facts={"allowed_values": allowed, "required_facts": [fact("dp_value", dp[i][j])],
+                           "forbidden_claims": []}))
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        return ContractTrace(
+            problem=(f"Find the edit (Levenshtein) distance between '{s}' and '{t}' using dynamic programming "
+                     f"(dp[i][j] = dp[i-1][j-1] on a match, else 1 + min of the three neighbors)."),
+            conventions=dict(_ED_CONV),
+            initial_state={"dp": _base_grid(m, n), "filled": 0, "s": s, "t": t},
+            final_answer={"edit_distance": dp[m][n]}, steps=steps,
+            invariants=[dict(x) for x in _ED_INV], required_cases=list(_ED_REQ), case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        a, b = a or {}, b or {}
+        return a.get("dp") == b.get("dp") and a.get("filled") == b.get("filled")
+
+    def final_answer_entails(self, state, answer):
+        dp = (state or {}).get("dp") or []
+        return bool(dp) and dp[-1][-1] == (answer or {}).get("edit_distance")
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "grid_matches_true_edit_distance":
+            dp = (state or {}).get("dp") or []
+            s, t = str((state or {}).get("s") or ""), str((state or {}).get("t") or "")
+            m, n = len(s), len(t)
+            true = _true_edit_distance(s, t)
+            for i in range(m + 1):                       # base column always correct
+                if dp[i][0] != true[i][0]:
+                    return False
+            for j in range(n + 1):                       # base row always correct
+                if dp[0][j] != true[0][j]:
+                    return False
+            k, cnt = (state or {}).get("filled") or 0, 0   # the first k inner cells (row-major) are filled
+            for i in range(1, m + 1):
+                for j in range(1, n + 1):
+                    cnt += 1
+                    if cnt <= k and dp[i][j] != true[i][j]:
+                        return False
+            return True
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation == "fill_cell" else [f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        dv = str(step.inputs["dp_value"])
+        return [] if dv in prose else [("dp_value_not_stated", dv)]
