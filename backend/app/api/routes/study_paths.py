@@ -46,6 +46,7 @@ from app.services.lean_lesson_generator import build_lean_lesson_from_topic_and_
 from app.services.legacy_v2_visual_bridge import attach_v2_visuals_to_legacy_lesson
 from app.services.topic_generator import generate_topics_from_chunks
 from app.services.domain_classifier import classify_domain, gate_family_of
+from app.services.domain_classifier_llm import resolve_with_llm
 from app.services.preference_service import scope_directive, write_generation_snapshot
 from app.services.llm_client import generate_title
 
@@ -72,6 +73,10 @@ def ensure_study_path_domain(study_path: StudyPath, db: Session, *, force: bool 
         return study_path.domain
     try:
         sig = classify_domain(study_path.goal or "")
+        # C.2: deterministic-first; an LLM tie-break resolves the AMBIGUOUS minority only when the flag is on
+        # (AZALEA_DOMAIN_LLM_FALLBACK). No-op + best-effort otherwise, so this never blocks or slows the
+        # confident majority.
+        sig = resolve_with_llm(study_path.goal or "", sig)
         study_path.domain = sig.domain
         study_path.classification_status = sig.classification_status
         study_path.domain_provenance = {
@@ -80,6 +85,7 @@ def ensure_study_path_domain(study_path: StudyPath, db: Session, *, force: bool 
             "confidence": sig.confidence,
             "scores": sig.scores,
             "classifier_version": _CLASSIFIER_VERSION,
+            "source": sig.source,                             # deterministic | llm (C.2)
         }
     except Exception:  # noqa: BLE001 — classification must never block path creation/generation (§3.2)
         study_path.classification_status = "failed"

@@ -170,6 +170,7 @@ class DomainSignals:
     classification_status: str                    # classified | ambiguous | failed  (pending set by DB)
     subdomain_family: str = ""                    # reserved; the fine `domain` already carries granularity
     scores: dict[str, float] = field(default_factory=dict)  # per-fine-domain raw scores (telemetry/debug)
+    source: str = "deterministic"                 # deterministic | llm — how this result was decided (C.2)
 
 
 def _count(text: str, needles: tuple[str, ...], *, word_boundary: bool) -> int:
