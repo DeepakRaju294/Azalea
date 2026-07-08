@@ -12,11 +12,11 @@
 > update). A concept's type is the **shape of its verified trace**, never its subject area. This is what keeps the
 > catalog finite and the authoring cost low.
 >
-> **Status of this revision.** The system has **14 LIVE types** (implemented engines/classes, 174 adapters,
-> `manifest_gaps()` CLEAN). This spec adds **4 PLANNED types (T13–T16)** — genuinely distinct trace grammars for
-> proofs, tabular evaluation, matrix row-reduction, and numerical convergence that the 14 cannot express without
-> weakening the gate. **Durable taxonomy = 18 trace grammars.** Planned types have **0 adapters** until their
-> engine + gate are built; nothing below claims they are implemented.
+> **Status.** All **18 types are now LIVE** (188 adapters, `manifest_gaps()` CLEAN). The four types added in the
+> last revision — T13 proofs, T14 tabular evaluation, T15 matrix row-reduction, T16 numerical convergence — are
+> now implemented as declarative engines with their own gates (each keeps the "ran ≠ correct" guarantee; see §3/§5).
+> **Durable taxonomy = 18 trace grammars across 8 declarative engines (Family B) + the hand-coded CS families
+> (Family A).**
 
 ---
 
@@ -25,20 +25,20 @@
 | Family | What the trace is | Backing | Adding a concept |
 |---|---|---|---|
 | **A — Algorithmic execution traces** (CS) | line → state-delta of *running an algorithm* on a concrete input; verified by an **executable reference** | **hand-coded adapter classes** (one per algorithm family) | write/extend an adapter class + its gate |
-| **B — Declarative generators** (math / science / finance) | the **spec IS the content** — a deterministic step script over declared givens; verified by an **independent oracle** | **declarative type-engines** (5 live, 4 planned); a concept is a **DATA SPEC** | append one spec to `families/*_specs.py` (**one-file edit**, gate-verified) — once the engine exists |
+| **B — Declarative generators** (math / science / finance) | the **spec IS the content** — a deterministic step script over declared givens; verified by an **independent oracle** | **8 declarative type-engines** (T6/T7/T8a/T8b/T10/T13/T14/T15/T16); a concept is a **DATA SPEC** | append one spec to `families/*_specs.py` (**one-file edit**, gate-verified) |
 | **C — Guided / source-grounded** (conceptual) | prose with **no verifiable trace** (intuition, real-world meaning, open-ended proof) | not an adapter | authored as guided content; policed by Q24 free-text validation, never claimed as verified |
 
 Family B is where breadth scales: *"turn each dominant trace shape into an ENGINE, then add each concept as data
-gated by the type's test."* The four planned types are all **new Family-B engines**. Family A is bounded and
-hand-authored (the algorithmic set is finite). Family C is the honest home for anything without a machine-checkable
-trace — it is not forced into an adapter.
+gated by the type's test."* All eight Family-B engines (incl. the four newest — T13/T14/T15/T16) are live. Family A
+is bounded and hand-authored (the algorithmic set is finite). Family C is the honest home for anything without a
+machine-checkable trace — it is not forced into an adapter.
 
 ---
 
 ## 2. The full type table (authoritative)
 
-Keyed to `app/services/examples/trace_adapters/manifest.py::ADAPTER_TYPES` for LIVE rows.
-**14 live types (174 adapters) + 4 planned = 18 durable grammars.**
+Keyed to `app/services/examples/trace_adapters/manifest.py::ADAPTER_TYPES`.
+**18 live types, 188 adapters, `manifest_gaps()` CLEAN.**
 
 | Type | Trace grammar | Family | Status / backing | Adapters | Example concepts |
 |---|---|---|---|---|---|
@@ -56,21 +56,21 @@ Keyed to `app/services/examples/trace_adapters/manifest.py::ADAPTER_TYPES` for L
 | **T8a** | `incremental_construction` | B | LIVE · construct_engine | 20 | prefix_sums, fibonacci, pascals_triangle_row, polynomial_derivative/integral, gradient_descent |
 | **T8b** | `formal_derivation` | B | LIVE · derivation_engine | 16 | complete_the_square, difference_of_squares, exponent_laws, sum_geometric_series, foil_expansion |
 | **T10** | `stateful_operation_invariant_maintenance` | B | LIVE · stateful_engine | 8 | stack, queue, hash_table_insert, lru_cache, min_stack |
-| **T13** | `proof_obligation_discharge` | B | **PLANNED** · engine TBD | 0 | induction, contradiction, contrapositive, loop-invariant, correctness, big-O (with explicit witness) |
-| **T14** | `indexed_table_evaluation` | B | **PLANNED** · engine TBD | 0 | truth tables, K-maps, transition tables, joint-probability tables, convolution/DFT outputs |
-| **T15** | `matrix_row_operation_elimination` | B | **PLANNED** · engine TBD | 0 | Gaussian/Gauss-Jordan elimination, linear systems, nodal/mesh analysis, LU, rank |
-| **T16** | `numerical_time_step_convergence` | B | **PLANNED** · engine TBD | 0 | Newton-Raphson, fixed-point, Euler, RK, bisection-as-root-find, iterative solvers |
+| **T13** | `proof_obligation_discharge` | B | LIVE · induction_engine | 4 | induction: sum of first n / squares / cubes / odds (machine-checked base + inductive-step identity) |
+| **T14** | `indexed_table_evaluation` | B | LIVE · table_engine | 4 | truth tables (A∧(B∨C), XOR, implication, majority); grammar covers K-maps / transition / probability tables |
+| **T15** | `matrix_row_operation_elimination` | B | LIVE · rowreduce_engine | 3 | solve 2×2/3×3 linear systems, Gaussian/Gauss-Jordan elimination (Cramer oracle) |
+| **T16** | `numerical_time_step_convergence` | B | LIVE · numerical_engine | 3 | Newton sqrt/cbrt, linear fixed-point (residual + convergence check) |
 
-> `manifest_gaps()` is **CLEAN** for the live set — every declared adapter is registered with a routing rule +
-> declaration. T13–T16 are roadmap, not gaps.
+> `manifest_gaps()` is **CLEAN** — every declared adapter is registered with a routing rule + declaration.
+> The four newest engines pilot a few concepts each; more are one-file DATA edits (§6).
 
 ---
 
-## 3. The four planned types (T13–T16) — grammar, distinctness, gate
+## 3. The four newest types (T13–T16) — grammar, distinctness, gate
 
-Each is a **new Family-B engine**. Its verification invariant is stated up front, because a new type must *keep*
-the gate's "ran ≠ correct" guarantee, not relax it. Where a concept's truth is not machine-checkable, it is **not**
-a T13–T16 adapter — it is Family C (guided).
+Each is a **live Family-B engine** (v1 pilots; more concepts are one-file data edits). Its verification invariant
+is stated up front, because a new type must *keep* the gate's "ran ≠ correct" guarantee, not relax it. Where a
+concept's truth is not machine-checkable, it is **not** a T13–T16 adapter — it is Family C (guided).
 
 ### T13 — `proof_obligation_discharge`
 ```
@@ -83,7 +83,8 @@ Gate:      each inference cites a registered rule; each obligation is MACHINE-CH
            (induction: base + step both verified for the concrete predicate; big-O: an explicit (c, n0) witness
            checked over a bound; loop invariant: holds initially, preserved by the body, implies the postcondition
            on exit). An open-ended proof with no checkable obligation model is Family C, never a fake T13 adapter.
-Coverage:  §6 (proofs) is the highest-priority planned family.
+Coverage:  v1 = polynomial summation identities (sum of first n / squares / cubes / odds); more proof schemas
+           (contradiction, big-O witness, loop invariants) extend §6.
 ```
 
 ### T14 — `indexed_table_evaluation`
@@ -178,12 +179,13 @@ Ask, in order — the first match wins:
 - **T8a construction:** a **validity predicate** holds after *every* piece; answer vs oracle.
 - **T8b derivation:** value/identity **preserved at each named-rule step**; answer vs oracle.
 - **T10 stateful:** an independent **replay oracle** reproduces the final state after the operation script.
-- **T13 proof (planned):** every obligation discharged by a checkable schema (base+step, (c,n₀) witness, invariant
-  triple); un-checkable ⇒ Family C.
-- **T14 table (planned):** each cell recomputed locally + a table invariant (exhaustive/normalized/coverage/length).
-- **T15 row reduction (planned):** each row op preserves the represented system; final rank/solution vs an
-  independent solver.
-- **T16 numerical (planned):** each iterate recomputed; residual trend + stopping test verified; divergence labeled.
+- **T13 proof:** every obligation discharged by a checkable schema (v1: induction base + inductive-step polynomial
+  identity by multi-point evaluation); a wrong closed form is rejected; un-checkable ⇒ Family C.
+- **T14 table:** each cell recomputed locally + a table invariant (v1: exhaustive 2^n rows); column vs recompute.
+- **T15 row reduction:** each row op preserves the represented system (solution satisfies every intermediate
+  matrix); final solution vs an independent Cramer's-rule oracle.
+- **T16 numerical:** each iterate recomputed; residual non-increasing + stopping test verified; converged estimate
+  close to an independent oracle (within tolerance).
 
 The trace is ground truth; **`TRACE_TO_TEACHING_CONTRACT_SPEC` (Q23)** + **`FREE_TEXT_CONTENT_VALIDATION_SPEC`
 (Q24)** keep the *prose* honest to it.
@@ -199,7 +201,7 @@ one adapter class (Family A) or one data spec (Family B) unless marked *later*/*
 **Priority order:** `T15 row reduction → T13 proofs → T14 tables → T16 numerical`, then the within-existing-type
 expansions (DP, data-structure ops, program-memory traces, digital-logic/circuit rows, signals rows).
 
-### New-engine families (build the engine, then author rows)
+### Newest-engine families (engines LIVE — remaining items are one-file data rows / a hand-coded schema per row)
 ```text
 T13 proofs:      direct, contrapositive, contradiction, (strong) induction, set-equality, divisibility,
                  existence/uniqueness, loop-invariant, algorithm-correctness, termination, recurrence, big-O
