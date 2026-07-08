@@ -95,5 +95,30 @@ class EnforceDisplayStep(unittest.TestCase):
         self.assertIn("This is the final result.", card["result"])
 
 
+class SurgicalActivation(unittest.TestCase):
+    def setUp(self):
+        rollout._FAMILY_MODES.clear()
+        self._prev = os.environ.pop(enforce._MATH_SLICE_FLAG, None)
+
+    def tearDown(self):
+        rollout._FAMILY_MODES.clear()
+        os.environ.pop(enforce._MATH_SLICE_FLAG, None)
+        if self._prev is not None:
+            os.environ[enforce._MATH_SLICE_FLAG] = self._prev
+
+    def test_flag_unset_is_dark(self):
+        enforce.enroll_audited_math_slice()
+        self.assertEqual(rollout._FAMILY_MODES, {})
+
+    def test_flag_enrolls_only_the_audited_slice(self):
+        os.environ[enforce._MATH_SLICE_FLAG] = "on_enforced"
+        enforce.enroll_audited_math_slice()
+        self.assertEqual(rollout.resolve_mode("math", "worked_example"), rollout.ON_ENFORCED)
+        self.assertEqual(rollout.resolve_mode("math", "formula_breakdown"), rollout.ON_ENFORCED)
+        # NOT the whole domain — an unaudited math card type + other domains stay off_legacy.
+        self.assertEqual(rollout.resolve_mode("math", "background"), rollout.OFF_LEGACY)
+        self.assertEqual(rollout.resolve_mode("coding", "worked_example"), rollout.OFF_LEGACY)
+
+
 if __name__ == "__main__":
     unittest.main()

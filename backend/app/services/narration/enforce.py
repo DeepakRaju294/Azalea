@@ -20,6 +20,7 @@ DEFERRED to a later slice (documented, not silently skipped):
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Any
 
@@ -45,6 +46,35 @@ _log = logging.getLogger(__name__)
 
 # v1 is scoped to the math slice; widen only when a domain's audit + renderer spike are approved (§9.1).
 _ENFORCED_DOMAINS = ("math",)
+
+# The AUDITED math slice — only these card types have a registered contract + fact-sources + adapter capability
+# (worked_example via T8b/T6, formula_breakdown via T6). Surgical activation enrolls exactly these, not the whole
+# math domain, so turning the slice on can't silently pull in an unaudited card type.
+_AUDITED_MATH_SLICE = ("worked_example", "formula_breakdown")
+
+# Dedicated activation flag (kept SEPARATE from the global AZALEA_DOMAIN_NARRATION_V2 default so enabling the math
+# slice never globally flips other domains). Set to `on_enforced` (or `shadow_validate`) to enroll the slice.
+_MATH_SLICE_FLAG = "AZALEA_NARRATION_MATH_SLICE"
+
+
+def enroll_audited_math_slice() -> None:
+    """Surgically enroll ONLY the audited math slice at the mode named by AZALEA_NARRATION_MATH_SLICE. Dark when
+    the flag is unset (the default). Idempotent; best-effort (a live→off_legacy attempt is simply skipped)."""
+    mode = str(os.getenv(_MATH_SLICE_FLAG, "")).strip().lower()
+    if mode not in (rollout.SHADOW_VALIDATE, rollout.ON_ENFORCED):
+        return
+    for card_type in _AUDITED_MATH_SLICE:
+        try:
+            rollout.set_family_mode("math", card_type, mode)
+        except ValueError:  # noqa: PERF203 — a family already live can't roll back; leave it
+            pass
+
+
+# Enroll at import (the enforce step is imported lazily during generation, after .env is loaded). Dark by default.
+try:
+    enroll_audited_math_slice()
+except Exception:  # noqa: BLE001 — activation is best-effort; never break import
+    pass
 
 # The narrated-terminal wrapper produced by trace_pipeline._ensure_completion (and any LLM narration that mimics
 # it): "<content>. Complete: <criterion>. Final result: <ans>." / "<content>. Complete — final result: <ans>."
