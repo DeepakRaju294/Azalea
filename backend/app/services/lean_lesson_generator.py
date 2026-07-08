@@ -3085,6 +3085,16 @@ def _normalize_lean_card_order(
     except Exception:  # noqa: BLE001 — observability must never break generation
         pass
 
+    # Phase-2B on_enforced DISPLAY step (same ladder). Applies the resolved narration contract to enrolled MATH
+    # cards (terminal_not_narrated result lines + framing metadata). Strict no-op unless a math family is enrolled
+    # at on_enforced; math-scoped and presentation-only; best-effort — never breaks generation.
+    try:
+        from app.services.narration.enforce import apply_enforced_narration
+
+        normalized = apply_enforced_narration(topic_type, normalized)
+    except Exception:  # noqa: BLE001 — display enforcement must never break generation
+        pass
+
     # Q24 free-text shadow evaluation (same AZALEA_DOMAIN_NARRATION_V2 ladder). Runs the free-text validation
     # ladder over the plan's prose fields and logs the false-claim/unestablished rate WITHOUT changing output.
     # Strict no-op until a family is enrolled; best-effort — never breaks generation.
