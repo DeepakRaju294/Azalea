@@ -5,10 +5,12 @@ by family); this TYPE file owns their declarations (type + routing + canonical),
 Byte-identical to the pre-migration classes (see the all-adapters golden check).
 """
 from . import declare
-from ..families.dp import CoinChangeAdapter, HouseRobberAdapter, LongestIncreasingSubsequenceAdapter
+from ..families.dp import (CoinChangeAdapter, HouseRobberAdapter, LongestIncreasingSubsequenceAdapter,
+                           MaxSubarrayAdapter)
 
 LONGEST_INCREASING_SUBSEQUENCE = declare(LongestIncreasingSubsequenceAdapter, "longest_increasing_subsequence", "T5")
 COIN_CHANGE = declare(CoinChangeAdapter, "coin_change", "T5")
 HOUSE_ROBBER = declare(HouseRobberAdapter, "house_robber", "T5")
+MAX_SUBARRAY = declare(MaxSubarrayAdapter, "max_subarray", "T5")
 
-DECLARATIONS = [LONGEST_INCREASING_SUBSEQUENCE, COIN_CHANGE, HOUSE_ROBBER]
+DECLARATIONS = [LONGEST_INCREASING_SUBSEQUENCE, COIN_CHANGE, HOUSE_ROBBER, MAX_SUBARRAY]

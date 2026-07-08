@@ -181,6 +181,12 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "routing_aliases": ["house robber", "house_robber", "rob houses", "max non-adjacent sum",
                             "maximum non adjacent sum", "non-adjacent sum"],
         "negative_guards": [], "fixtures": ["rob_house", "skip_house"]},
+    "max_subarray": {
+        "type": "T5", "family": "dynamic_programming", "status": "pilot",
+        "verification_level": "trace_verified", "coding": False, "canonical_solution": None,
+        "routing_aliases": ["maximum subarray", "max subarray", "max_subarray", "largest contiguous sum",
+                            "kadane's algorithm", "kadane algorithm", "maximum subarray sum"],
+        "negative_guards": [], "fixtures": ["extend", "restart"]},
     "n_queens": {
         "type": "T11", "family": "backtracking", "status": "pilot",
         "verification_level": "trace_verified", "coding": True, "canonical_solution": "n_queens",
@@ -417,6 +423,8 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
                     "priority": 60},
     "house_robber": {"any": ["house robber", "house_robber", "rob houses", "max non-adjacent sum",
                              "maximum non adjacent sum", "non-adjacent sum"], "priority": 60},
+    "max_subarray": {"any": ["maximum subarray", "max subarray", "max_subarray", "largest contiguous sum",
+                             "kadane's algorithm", "kadane algorithm", "maximum subarray sum"], "priority": 60},
     "longest_increasing_subsequence": {"any": ["increasing subsequence", "longest_increasing_subsequence"],
                                        "priority": 50},
     "arithmetic_eval": {"any": ["order of operations", "evaluate expression", "arithmetic expression"],

@@ -11,7 +11,7 @@ os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.examples import trace_pipeline as tp
 from app.services.examples.trace_adapters import ADAPTERS
-from app.services.examples.trace_adapters.families.dp import _true_house_robber
+from app.services.examples.trace_adapters.families.dp import _true_house_robber, _true_max_subarray
 
 
 class HouseRobberOracle(unittest.TestCase):
@@ -46,6 +46,37 @@ class HouseRobberTrace(unittest.TestCase):
             dp = list(tr.steps[-1].state_after["dp"])
             self.assertEqual(dp, _true_house_robber(nums))
         self.assertGreater(seen, 0, "no valid house_robber teaching trace produced")
+
+
+class MaxSubarrayOracle(unittest.TestCase):
+    def test_known_values(self):
+        self.assertEqual(max(_true_max_subarray([-2, 1, -3, 4, -1, 2, 1, -5, 4])), 6)   # [4,-1,2,1]
+        self.assertEqual(max(_true_max_subarray([5, 4, -1, 7, 8])), 23)
+        self.assertEqual(max(_true_max_subarray([-3, -1, -2])), -1)                     # all negative
+        self.assertEqual(max(_true_max_subarray([2])), 2)
+
+    def test_recurrence_holds(self):
+        nums = [3, -2, 5, -1, 6]
+        dp = _true_max_subarray(nums)
+        for i in range(1, len(nums)):
+            self.assertEqual(dp[i], max(nums[i], dp[i - 1] + nums[i]))
+
+
+class MaxSubarrayTrace(unittest.TestCase):
+    def test_valid_teaching_trace_and_answer_is_max_of_dp(self):
+        adapter = ADAPTERS["max_subarray"]
+        seen = 0
+        for seed in range(30):
+            tr = tp.select_instance(adapter, seed=seed)
+            if tr is None:
+                continue
+            seen += 1
+            self.assertEqual(tp.structural_invariants(tr, adapter), [])
+            nums = list(tr.steps[0].prior_state["nums"])
+            self.assertEqual(tr.final_answer, {"max_sum": max(_true_max_subarray(nums))})
+            dp = list(tr.steps[-1].state_after["dp"])
+            self.assertEqual(dp, _true_max_subarray(nums))
+        self.assertGreater(seen, 0, "no valid max_subarray teaching trace produced")
 
 
 if __name__ == "__main__":

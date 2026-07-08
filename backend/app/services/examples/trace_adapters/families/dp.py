@@ -405,3 +405,125 @@ class HouseRobberAdapter(FamilyAdapterBase):
                           str(card.get("result", ""))]).lower()
         dv = str(step.inputs["dp_value"])
         return [] if dv in prose else [("dp_value_not_stated", dv)]
+
+
+# ======================================================================================================
+# MAXIMUM SUBARRAY (Kadane) — largest contiguous sum (canonical 1-D DP; the answer is max(dp), not dp[-1])
+# ======================================================================================================
+def _true_max_subarray(nums: list[int]) -> list[int]:
+    """Independent oracle: dp[i] = the largest sum of a contiguous subarray ENDING at i. Recomputed straight
+    from `nums`, refereeing the trace's table rather than echoing it. The answer is max(dp)."""
+    dp: list[int] = []
+    for i, v in enumerate(nums):
+        dp.append(v if i == 0 else max(v, dp[i - 1] + v))
+    return dp
+
+
+_MS_CONV = {"algorithm_variant": "kadane", "recurrence": "dp[i] = max(nums[i], dp[i-1] + nums[i])",
+            "cell_meaning": "dp[i] = largest contiguous-subarray sum ending at index i",
+            "answer": "max over all dp[i]", "trace_granularity": "one_cell"}
+_MS_REQ = ["restart", "extend", "completion"]
+_MS_INV = [{"id": "dp_matches_true_max_subarray", "scope": "every_step",
+            "statement": "every filled cell equals the true best subarray sum ending at that index"}]
+
+
+class MaxSubarrayAdapter(FamilyAdapterBase):
+    slug = "max_subarray"
+    label_convention = "ints"
+    example_spec = ExampleSpec(
+        input=InstanceShape("integers", count=(5, 5), value_range=(-5, 6), structure=["array_values"]),
+        stages={"fill_cell": StageSpec(
+            "fill_cell", "compute one dp cell — the best subarray sum ending here",
+            teaching_focus="either extend the running sum, or restart at this element when the running sum is negative",
+            contains={"extend_or_restart": "required"},
+            state_effects=["dp grows by one index; the running best is the max cell so far"])},
+        structure="fill_cell for indices 0..n-1; the answer is max(dp)",
+        must_exercise=["restart", "extend", "completion"],
+        must_cover=["extend"], must_avoid=[],
+        terminal="every prefix is solved, so max(dp) is the largest contiguous subarray sum",
+        output_shape="the largest sum of any contiguous subarray")
+
+    def candidates(self, seed: int):
+        rng = random.Random(seed)
+        for i in range(120):
+            nums = [rng.randint(-5, 6) for _ in range(5)]
+            yield {"nums": nums, "_id": f"max_subarray_v1_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        ev = trace.case_evidence
+        return (len(trace.steps) >= 4 and bool(ev.get("extend")) and bool(ev.get("restart")))
+
+    def reference(self, example_input, *, candidate_id: str = "", attempt: int = 1, seed: int = 0):
+        nums = [int(x) for x in example_input["nums"]]
+        dp: list[int] = []
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        for i, v in enumerate(nums):
+            prior = {"dp": list(dp), "filled": i, "nums": nums}
+            if i == 0:
+                best, kind = v, "restart"
+                reason = f"dp[0] (best subarray ending at 0): start a new subarray at index 0 — dp[0] = {v}."
+                evr = f"dp[0] = {v} (start here); dp so far {dp + [best]}."
+            else:
+                extend = dp[i - 1] + v
+                if extend > v:
+                    best, kind = extend, "extend"
+                    reason = (f"dp[{i}] (best subarray ending at {i}): the running sum dp[{i - 1}] = {dp[i - 1]} "
+                              f"is worth extending, so add {v} to get {extend} (better than restarting at {v}) — "
+                              f"dp[{i}] = {extend}.")
+                    evr = f"dp[{i}] = {extend} (extend: dp[{i - 1}] + {v}); dp so far {dp + [best]}."
+                else:
+                    best, kind = v, "restart"
+                    reason = (f"dp[{i}] (best subarray ending at {i}): the running sum dp[{i - 1}] = {dp[i - 1]} "
+                              f"would only drag {v} down, so restart at {v} — dp[{i}] = {v}.")
+                    evr = f"dp[{i}] = {v} (restart at index {i}); dp so far {dp + [best]}."
+            dp.append(best)
+            after = {"dp": list(dp), "filled": i + 1, "nums": nums}
+            sid = f"s{i + 1}"
+            evidence.setdefault(kind, []).append(sid)
+            allowed = sorted({int(x) for x in re.findall(r"-?\d+", reason + " " + evr)})
+            steps.append(Step(
+                id=sid, operation="fill_cell", prior_state=prior, state_after=after,
+                inputs={"index": i, "dp_value": best},
+                decision=f"dp[{i}] = {best}", reason=reason,
+                visual_state={"kind": "array", "array": list(dp), "active": i},
+                visual_delta={"cell": i, "dp_value": best},
+                expected_visible_result=evr,
+                facts={"allowed_values": allowed, "required_facts": [fact("dp_value", best)],
+                       "forbidden_claims": []}))
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        return ContractTrace(
+            problem=(f"Given the array {nums}, find the largest sum of any contiguous subarray using dynamic "
+                     f"programming (Kadane: dp[i] = max(nums[i], dp[i-1] + nums[i]); answer = max(dp))."),
+            conventions=dict(_MS_CONV),
+            initial_state={"dp": [], "filled": 0, "nums": nums},
+            final_answer={"max_sum": max(dp)}, steps=steps,
+            invariants=[dict(x) for x in _MS_INV], required_cases=list(_MS_REQ), case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        a, b = a or {}, b or {}
+        return list(a.get("dp") or []) == list(b.get("dp") or []) and a.get("filled") == b.get("filled")
+
+    def final_answer_entails(self, state, answer):
+        dp = (state or {}).get("dp") or []
+        return bool(dp) and max(dp) == (answer or {}).get("max_sum")
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "dp_matches_true_max_subarray":
+            dp = list((state or {}).get("dp") or [])
+            nums = list((state or {}).get("nums") or [])
+            true = _true_max_subarray(nums)
+            return dp == true[:len(dp)]
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation == "fill_cell" else [f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        dv = str(step.inputs["dp_value"])
+        return [] if dv in prose else [("dp_value_not_stated", dv)]
