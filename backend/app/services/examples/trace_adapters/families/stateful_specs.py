@@ -303,5 +303,57 @@ MIN_STACK = StatefulSpec(
     oracle=_minstk_oracle, target="every push and pop has been processed")
 
 
+# --- union-find (disjoint set union): union / find with a root chain ---------------------------------
+def _uf_find(parent: list, x: int) -> int:
+    while parent[x] != x:
+        x = parent[x]
+    return x
+
+
+def _uf_components(parent: list) -> int:
+    return sum(1 for i in range(len(parent)) if parent[i] == i)
+
+
+def _uf_setup(rng: random.Random) -> dict:
+    n = 6
+    ops = [("union", rng.randint(0, n - 1), rng.randint(0, n - 1)) for _ in range(rng.randint(4, 5))]
+    return {"ops": ops, "parent": list(range(n)), "n": n}
+
+
+def _uf_apply(s: dict, i: int) -> tuple:
+    _kind, a, b = s["ops"][i]
+    parent = list(s["parent"])
+    ra, rb = _uf_find(parent, a), _uf_find(parent, b)
+    if ra == rb:
+        prose = f"union({a}, {b}): both already have root {ra}, so the sets are merged — no change"
+    else:
+        parent[ra] = rb
+        prose = f"union({a}, {b}): root of {a} is {ra}, root of {b} is {rb}; link {ra} under {rb}"
+    return {**s, "parent": parent}, prose
+
+
+def _uf_oracle(s0: dict) -> dict:
+    parent = list(range(s0["n"]))
+    for _kind, a, b in s0["ops"]:
+        ra, rb = _uf_find(parent, a), _uf_find(parent, b)
+        if ra != rb:
+            parent[ra] = rb
+    return {"components": str(_uf_components(parent))}
+
+
+UNION_FIND = StatefulSpec(
+    slug="union_find", title="a sequence of union-find (disjoint set) operations", family="structures",
+    aliases=["union find", "union-find", "disjoint set", "disjoint set union", "dsu",
+             "connected components union find"], priority=64, op_word="union",
+    problem_template="Apply the union operations to a disjoint-set structure over 6 elements and give the "
+                     "number of connected components.",
+    setup=_uf_setup, ops_count=lambda s: len(s["ops"]), apply=_uf_apply,
+    render=lambda s: f"parent = {s['parent']}; components = {_uf_components(s['parent'])}",
+    answer=lambda s: {"components": str(_uf_components(s["parent"]))},
+    oracle=_uf_oracle,
+    invariant=lambda s: all(0 <= p < s["n"] for p in s["parent"]),
+    target="every union operation has been applied")
+
+
 ALL_SPECS = [STACK_OPERATIONS, QUEUE_OPERATIONS, HASH_TABLE_INSERT, LRU_CACHE, MODULAR_COUNTER, SET_OPERATIONS,
-             MIN_STACK]
+             MIN_STACK, UNION_FIND]
