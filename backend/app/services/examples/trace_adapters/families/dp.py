@@ -267,3 +267,141 @@ class CoinChangeAdapter(FamilyAdapterBase):
                           str(card.get("result", ""))]).lower()
         dv = str(step.inputs["dp_value"])
         return [] if dv in prose else [("dp_value_not_stated", dv)]
+
+
+# ======================================================================================================
+# HOUSE ROBBER — max non-adjacent sum (a canonical 1-D DP; interview classic)
+# ======================================================================================================
+def _true_house_robber(nums: list[int]) -> list[int]:
+    """Independent oracle: the correct dp table where dp[i] = max loot robbing houses 0..i with no two
+    adjacent. Recomputed straight from `nums`, so it referees the trace's table rather than echoing it."""
+    dp: list[int] = []
+    for i, v in enumerate(nums):
+        if i == 0:
+            dp.append(v)
+        elif i == 1:
+            dp.append(max(nums[0], nums[1]))
+        else:
+            dp.append(max(dp[i - 1], dp[i - 2] + v))
+    return dp
+
+
+_HR_CONV = {"algorithm_variant": "house_robber", "recurrence": "dp[i] = max(dp[i-1], dp[i-2] + nums[i])",
+            "cell_meaning": "dp[i] = most money robbing houses 0..i without robbing two adjacent",
+            "trace_granularity": "one_cell"}
+_HR_REQ = ["skip_house", "rob_house", "completion"]
+_HR_INV = [{"id": "dp_matches_true_house_robber", "scope": "every_step",
+            "statement": "every filled cell equals the true maximum non-adjacent loot up to that house"}]
+
+
+class HouseRobberAdapter(FamilyAdapterBase):
+    slug = "house_robber"
+    label_convention = "ints"
+    example_spec = ExampleSpec(
+        input=InstanceShape("integers", count=(5, 5), value_range=(1, 9), structure=["house_values"]),
+        stages={"fill_cell": StageSpec(
+            "fill_cell", "compute one dp cell — the best loot up to this house",
+            teaching_focus="each house either extends the best skipping it, or robs it plus the best two back",
+            contains={"compare_rob_vs_skip": "required"},
+            state_effects=["dp grows by one house; each cell is the best solved answer later houses build on"])},
+        structure="fill_cell for houses 0..n-1; the answer is dp[n-1]",
+        must_exercise=["skip_house", "rob_house", "completion"],
+        must_cover=["rob_house"], must_avoid=[],
+        terminal="every house is solved, so dp[n-1] is the most money that can be robbed",
+        output_shape="the maximum money robbable without robbing two adjacent houses")
+
+    def candidates(self, seed: int):
+        rng = random.Random(seed)
+        for i in range(80):
+            nums = [rng.randint(1, 9) for _ in range(5)]
+            yield {"nums": nums, "_id": f"house_robber_v1_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        ev = trace.case_evidence
+        return (len(trace.steps) >= 4 and bool(ev.get("rob_house")) and bool(ev.get("skip_house")))
+
+    def reference(self, example_input, *, candidate_id: str = "", attempt: int = 1, seed: int = 0):
+        nums = [int(x) for x in example_input["nums"]]
+        dp: list[int] = []
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        for i, v in enumerate(nums):
+            prior = {"dp": list(dp), "filled": i, "nums": nums}
+            if i == 0:
+                best, kind = v, "rob_house"
+                reason = f"dp[0] (best up to house 0): only house 0 is available, so rob it — dp[0] = {v}."
+                evr = f"dp[0] = {v} (rob house 0); dp so far {dp + [best]}."
+            elif i == 1:
+                if nums[1] >= nums[0]:
+                    best, kind = nums[1], "rob_house"
+                    reason = (f"dp[1] (best up to house 1): houses 0 and 1 are adjacent, so take the larger — "
+                              f"house 1 has {nums[1]} >= {nums[0]}, dp[1] = {nums[1]}.")
+                else:
+                    best, kind = nums[0], "skip_house"
+                    reason = (f"dp[1] (best up to house 1): houses 0 and 1 are adjacent, so take the larger — "
+                              f"house 0 has {nums[0]} > {nums[1]}, dp[1] = {nums[0]}.")
+                evr = f"dp[1] = {best} (the larger of houses 0 and 1); dp so far {dp + [best]}."
+            else:
+                rob = dp[i - 2] + v
+                skip = dp[i - 1]
+                if rob > skip:
+                    best, kind = rob, "rob_house"
+                    reason = (f"dp[{i}] (best up to house {i}): robbing house {i} adds {v} to dp[{i - 2}] = "
+                              f"{dp[i - 2]}, giving {rob}, which beats skipping it (dp[{i - 1}] = {skip}) — "
+                              f"dp[{i}] = {rob}.")
+                    evr = f"dp[{i}] = {rob} (rob house {i}: {v} + dp[{i - 2}]); dp so far {dp + [best]}."
+                else:
+                    best, kind = skip, "skip_house"
+                    reason = (f"dp[{i}] (best up to house {i}): skipping house {i} keeps dp[{i - 1}] = {skip}, "
+                              f"which is at least robbing it ({v} + dp[{i - 2}] = {rob}) — dp[{i}] = {skip}.")
+                    evr = f"dp[{i}] = {skip} (skip house {i}, keep dp[{i - 1}]); dp so far {dp + [best]}."
+            dp.append(best)
+            after = {"dp": list(dp), "filled": i + 1, "nums": nums}
+            sid = f"s{i + 1}"
+            evidence.setdefault(kind, []).append(sid)
+            allowed = sorted({int(x) for x in re.findall(r"\d+", reason + " " + evr)})
+            steps.append(Step(
+                id=sid, operation="fill_cell", prior_state=prior, state_after=after,
+                inputs={"house": i, "dp_value": best},
+                decision=f"dp[{i}] = {best}", reason=reason,
+                visual_state={"kind": "array", "array": list(dp), "active": i},
+                visual_delta={"cell": i, "dp_value": best},
+                expected_visible_result=evr,
+                facts={"allowed_values": allowed, "required_facts": [fact("dp_value", best)],
+                       "forbidden_claims": []}))
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        return ContractTrace(
+            problem=(f"Given house values {nums}, find the most money you can rob without robbing two adjacent "
+                     f"houses, using dynamic programming (dp[i] = max(dp[i-1], dp[i-2] + nums[i]))."),
+            conventions=dict(_HR_CONV),
+            initial_state={"dp": [], "filled": 0, "nums": nums},
+            final_answer={"max_loot": dp[-1]}, steps=steps,
+            invariants=[dict(x) for x in _HR_INV], required_cases=list(_HR_REQ), case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        a, b = a or {}, b or {}
+        return list(a.get("dp") or []) == list(b.get("dp") or []) and a.get("filled") == b.get("filled")
+
+    def final_answer_entails(self, state, answer):
+        dp = (state or {}).get("dp") or []
+        return bool(dp) and dp[-1] == (answer or {}).get("max_loot")
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "dp_matches_true_house_robber":
+            dp = list((state or {}).get("dp") or [])
+            nums = list((state or {}).get("nums") or [])
+            true = _true_house_robber(nums)
+            return dp == true[:len(dp)]
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation == "fill_cell" else [f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        dv = str(step.inputs["dp_value"])
+        return [] if dv in prose else [("dp_value_not_stated", dv)]

@@ -175,6 +175,12 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "verification_level": "trace_verified", "coding": True, "canonical_solution": "coin_change",
         "routing_aliases": ["coin change", "coin_change", "fewest coins", "minimum coins", "making change"],
         "negative_guards": [], "fixtures": ["single_coin", "build_from_subproblem"]},
+    "house_robber": {
+        "type": "T5", "family": "dynamic_programming", "status": "pilot",
+        "verification_level": "trace_verified", "coding": False, "canonical_solution": None,
+        "routing_aliases": ["house robber", "house_robber", "rob houses", "max non-adjacent sum",
+                            "maximum non adjacent sum", "non-adjacent sum"],
+        "negative_guards": [], "fixtures": ["rob_house", "skip_house"]},
     "n_queens": {
         "type": "T11", "family": "backtracking", "status": "pilot",
         "verification_level": "trace_verified", "coding": True, "canonical_solution": "n_queens",
@@ -409,6 +415,8 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
                    "priority": 70},
     "coin_change": {"any": ["coin change", "coin_change", "fewest coins", "minimum coins", "making change"],
                     "priority": 60},
+    "house_robber": {"any": ["house robber", "house_robber", "rob houses", "max non-adjacent sum",
+                             "maximum non adjacent sum", "non-adjacent sum"], "priority": 60},
     "longest_increasing_subsequence": {"any": ["increasing subsequence", "longest_increasing_subsequence"],
                                        "priority": 50},
     "arithmetic_eval": {"any": ["order of operations", "evaluate expression", "arithmetic expression"],
