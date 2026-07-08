@@ -47,6 +47,25 @@ class DomainClassifierFixtures(unittest.TestCase):
         self.assertEqual(classify_domain("Teach me propositional logic.").gate_family, "math")
         self.assertEqual(classify_domain("Teach me DFS in Python.").gate_family, "coding")
 
+    def test_expanded_vocabulary_classifies_confidently(self):
+        # Regression for the C.1 keyword-coverage + plural fix: these were UNKNOWN/ambiguous before (the wizard
+        # had to ask the domain). The classifier now recognizes them CONFIDENTLY, so onboarding can trust it.
+        cases = {
+            "union find": "coding",
+            "time complexity": "coding",
+            "how does encryption work": "coding",
+            "backtracking": "coding",
+            "linked lists": "coding",                 # regular plural via the trailing-s match
+            "derivatives and integrals": "math",      # plurals
+            "gaussian elimination": "math",
+            "the water cycle": "earth_science",
+            "the French Revolution": "humanities",     # history phrase outweighs the "french" language collision
+        }
+        for goal, expected in cases.items():
+            sig = classify_domain(goal)
+            self.assertEqual(sig.domain, expected, goal)
+            self.assertEqual(sig.classification_status, "classified", f"{goal!r} should classify confidently")
+
     def test_unknown_when_nothing_matches(self):
         for g in ("asdfghjkl qwerty zxcvb", "", None, "   "):
             sig = classify_domain(g)

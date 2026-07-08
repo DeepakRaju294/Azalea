@@ -61,15 +61,25 @@ def gate_family_of(domain: str | None) -> str:
 _KEYWORDS: dict[str, tuple[str, ...]] = {
     "coding": (
         "implement", "implementation", "code", "coding", "program", "programming", "function", "method",
-        "class", "api", "compile", "debug", "algorithm", "data structure", "array", "linked list", "hashmap",
-        "hash table", "recursion", "loop", "pointer", "stack", "queue", "binary search", "sorting", "sort",
-        "traversal", "dfs", "bfs", "dynamic programming", "leetcode", "runtime", "big o",
+        "class", "api", "compile", "compiler", "debug", "algorithm", "data structure", "array", "linked list",
+        "hashmap", "hash table", "hashing", "recursion", "recursive", "loop", "pointer", "stack", "queue",
+        "binary search", "sorting", "sort", "traversal", "dfs", "bfs", "dynamic programming", "leetcode",
+        "runtime", "big o", "big-o",
+        # CS vocabulary the tables were missing (all clearly-coding, low collision)
+        "union find", "disjoint set", "time complexity", "space complexity", "complexity analysis",
+        "encryption", "cryptography", "cipher", "backtracking", "memoization", "greedy algorithm",
+        "two pointer", "sliding window", "bit manipulation", "binary tree", "tree traversal",
+        "graph algorithm", "graph traversal", "shortest path", "priority queue", "heap", "trie",
+        "breadth-first", "depth-first", "concurrency", "iterator", "closure", "object oriented",
+        "linked lists", "search algorithm", "sorting algorithm",
     ),
     "math": (
         "solve", "prove", "proof", "derive", "derivation", "equation", "formula", "theorem", "integral",
         "integrate", "derivative", "differentiate", "matrix", "matrices", "vector", "polynomial", "factor",
         "factoring", "quadratic", "completing the square", "logarithm", "exponent", "trigonometry", "sine",
         "cosine", "calculus", "algebra", "algebraic", "inequality", "expression", "simplify", "mathematically",
+        "limit", "series", "sequence", "summation", "induction", "geometry", "gaussian elimination",
+        "system of equations", "linear system", "eigenvalue", "determinant",
     ),
     "machine_learning": (
         "machine learning", "neural network", "deep learning", "backpropagation", "training data", "classifier",
@@ -104,6 +114,7 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "earth_science": (
         "earth science", "geology", "geological", "plate tectonics", "rock", "mineral", "volcano", "earthquake",
         "erosion", "sediment", "fossil", "atmosphere", "weather", "climate", "ocean", "glacier",
+        "water cycle", "carbon cycle", "nitrogen cycle", "hydrology", "meteorology",
     ),
     "medicine": (
         "medicine", "medical", "health", "physiology", "disease", "diagnosis", "symptom", "treatment",
@@ -133,6 +144,9 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
         "history", "historical", "war", "revolution", "philosophy", "ethics", "literature", "novel", "poem",
         "poetry", "essay", "rhetoric", "art", "culture", "politics", "government", "religion", "sociology",
         "psychology", "shakespeare", "hamlet", "theme", "themes", "literary",
+        # common history phrases — outweigh a colliding language name (e.g. "french" in "French Revolution")
+        "french revolution", "american revolution", "industrial revolution", "russian revolution",
+        "world war", "civil war", "cold war", "renaissance", "empire",
     ),
 }
 
@@ -164,7 +178,10 @@ def _count(text: str, needles: tuple[str, ...], *, word_boundary: bool) -> int:
         if not n:
             continue
         if word_boundary and n.replace(" ", "").isalnum() and " " not in n:
-            if re.search(rf"\b{re.escape(n)}\b", text):
+            # optional trailing 's' so a keyword matches its regular plural (derivative -> derivatives,
+            # vector -> vectors, equation -> equations) without a separate entry. Irregular plurals
+            # (matrix -> matrices) still need their own keyword.
+            if re.search(rf"\b{re.escape(n)}s?\b", text):
                 hits += 1
         elif n in text:                            # phrases / notation / units: plain substring
             hits += 1
