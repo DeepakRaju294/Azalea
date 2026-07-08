@@ -36,6 +36,15 @@ const DEPTH_OPTIONS: { value: DepthLevel; label: string; blurb: string }[] = [
   { value: "deep", label: "Deep", blurb: "Edge cases + extra practice" },
 ];
 
+// Language applies only to CODING paths (math/science/concept have no programming language). Asked here so it is
+// no longer on the home page; stored as the path override via updateStudyPathPreferences.
+type CodeLanguage = "python" | "cpp" | "java";
+const LANGUAGE_OPTIONS: { value: CodeLanguage; label: string; blurb: string }[] = [
+  { value: "python", label: "Python", blurb: "Readable, great for learning" },
+  { value: "cpp", label: "C++", blurb: "Systems, performance, contests" },
+  { value: "java", label: "Java", blurb: "OOP, enterprise, Android" },
+];
+
 // Mirror of the backend gate_family_of coarse mapping (fine domain -> the wizard's coarse choice).
 function toCoarseDomain(domain?: string | null): OverrideDomain | null {
   if (!domain) return null;
@@ -53,7 +62,7 @@ function toCoarseDomain(domain?: string | null): OverrideDomain | null {
   return null; // mixed / unknown — no confident coarse mapping
 }
 
-type Step = "domain" | "preferences";
+type Step = "domain" | "language" | "preferences";
 
 export default function OnboardingWizardPage() {
   const router = useRouter();
@@ -73,6 +82,7 @@ export default function OnboardingWizardPage() {
 
   const [domain, setDomain] = useState<OverrideDomain>("concept");
   const [depth, setDepth] = useState<DepthLevel>("working");
+  const [language, setLanguage] = useState<CodeLanguage>("python");
 
   const [step, setStep] = useState<Step>("domain");
   // Q8: a high-confidence domain + saved prefs shows a single compact confirm instead of the full wizard.
@@ -96,6 +106,9 @@ export default function OnboardingWizardPage() {
         setDefaultDepthIsSaved(savedDepth !== null);
         setDomain(coarse ?? "concept");
         setDepth(savedDepth ?? (p.effective_preferences?.depth_level as DepthLevel) ?? "working");
+        setLanguage(
+          (prefs.default_language ?? (p.language as CodeLanguage | undefined) ?? "python") as CodeLanguage,
+        );
         setCompact(isHighConfidence && savedExists);
       } catch (err) {
         console.error(err);
@@ -115,10 +128,14 @@ export default function OnboardingWizardPage() {
     setSubmitting(true);
     setError("");
     try {
-      const payload: { domain?: OverrideDomain; depth_level: DepthLevel } = { depth_level: depth };
+      const payload: { domain?: OverrideDomain; depth_level: DepthLevel; language?: CodeLanguage } = {
+        depth_level: depth,
+      };
       // Only send a domain override when the learner actually changed it — an unchanged domain stays inferred
       // (preserves the classifier-quality signal, §8).
       if (domain !== inferredDomain) payload.domain = domain;
+      // Language applies only to coding paths.
+      if (domain === "coding") payload.language = language;
       await updateStudyPathPreferences(studyPathId, payload);
       goToPath();
     } catch (err) {
@@ -138,6 +155,8 @@ export default function OnboardingWizardPage() {
 
   const domainLabel = DOMAIN_OPTIONS.find((d) => d.value === domain)?.label ?? "Concept";
   const depthLabel = DEPTH_OPTIONS.find((d) => d.value === depth)?.label ?? "Working";
+  const languageLabel = LANGUAGE_OPTIONS.find((l) => l.value === language)?.label ?? "Python";
+  const isCoding = domain === "coding"; // the language step only applies to coding paths
 
   return (
     <main className="min-h-screen bg-[#F7F4FB] text-[#17151F]">
@@ -155,7 +174,7 @@ export default function OnboardingWizardPage() {
           </button>
         </div>
 
-        {!compact && <Stepper step={step} />}
+        {!compact && <Stepper step={step} isCoding={isCoding} />}
 
         <div className="rounded-[2rem] border border-[#E7E1EF] bg-white/90 p-6 shadow-xl shadow-[#7B61FF]/10 md:p-8">
           <p className="mb-1 text-sm text-[#817A92]">{path?.title}</p>
@@ -164,6 +183,7 @@ export default function OnboardingWizardPage() {
             <CompactConfirm
               domainLabel={domainLabel}
               depthLabel={depthLabel}
+              languageLabel={isCoding ? languageLabel : undefined}
               onConfirm={applyAndContinue}
               onChange={() => setCompact(false)}
               submitting={submitting}
@@ -176,7 +196,19 @@ export default function OnboardingWizardPage() {
               selected={domain}
               onSelect={(v) => setDomain(v as OverrideDomain)}
               primaryLabel="Next"
+              onPrimary={() => setStep(isCoding ? "language" : "preferences")}
+              onSkip={goToPath}
+            />
+          ) : step === "language" ? (
+            <StepCard
+              heading="Which programming language?"
+              source="Used for code, walkthroughs, and worked examples"
+              options={LANGUAGE_OPTIONS}
+              selected={language}
+              onSelect={(v) => setLanguage(v as CodeLanguage)}
+              primaryLabel="Next"
               onPrimary={() => setStep("preferences")}
+              onBack={() => setStep("domain")}
               onSkip={goToPath}
             />
           ) : (
@@ -188,7 +220,7 @@ export default function OnboardingWizardPage() {
               onSelect={(v) => setDepth(v as DepthLevel)}
               primaryLabel={submitting ? "Saving…" : "Start learning"}
               onPrimary={applyAndContinue}
-              onBack={() => setStep("domain")}
+              onBack={() => setStep(isCoding ? "language" : "domain")}
               onSkip={goToPath}
               primaryDisabled={submitting}
             />
@@ -203,6 +235,7 @@ export default function OnboardingWizardPage() {
           <RecapRail
             items={[
               { label: "Content type", value: domainLabel },
+              ...(isCoding && step !== "domain" ? [{ label: "Language", value: languageLabel }] : []),
               ...(step === "preferences" ? [{ label: "Depth", value: depthLabel }] : []),
             ]}
           />
@@ -212,9 +245,10 @@ export default function OnboardingWizardPage() {
   );
 }
 
-function Stepper({ step }: { step: Step }) {
+function Stepper({ step, isCoding }: { step: Step; isCoding: boolean }) {
   const steps: { id: Step; label: string }[] = [
     { id: "domain", label: "Content Type" },
+    ...(isCoding ? [{ id: "language" as Step, label: "Language" }] : []),
     { id: "preferences", label: "Preferences" },
   ];
   const activeIndex = steps.findIndex((s) => s.id === step);
@@ -327,12 +361,14 @@ function StepCard({
 function CompactConfirm({
   domainLabel,
   depthLabel,
+  languageLabel,
   onConfirm,
   onChange,
   submitting,
 }: {
   domainLabel: string;
   depthLabel: string;
+  languageLabel?: string;
   onConfirm: () => void;
   onChange: () => void;
   submitting: boolean;
@@ -342,7 +378,14 @@ function CompactConfirm({
       <h1 className="text-2xl font-bold tracking-[-0.02em] text-[#2B1D45]">Ready to generate</h1>
       <p className="mt-2 text-[#4A4358]">
         Generating as{" "}
-        <span className="font-semibold text-[#7D4DE5]">{domainLabel}</span> ·{" "}
+        <span className="font-semibold text-[#7D4DE5]">{domainLabel}</span>
+        {languageLabel && (
+          <>
+            {" "}·{" "}
+            <span className="font-semibold text-[#7D4DE5]">{languageLabel}</span>
+          </>
+        )}{" "}
+        ·{" "}
         <span className="font-semibold text-[#7D4DE5]">{depthLabel} depth</span>.
       </p>
       <div className="mt-6 flex items-center justify-between gap-3">
