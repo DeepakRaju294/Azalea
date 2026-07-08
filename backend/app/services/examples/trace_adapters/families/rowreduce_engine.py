@@ -201,7 +201,7 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
             id=step_id, operation=operation, prior_state=prior, state_after=state_after,
             inputs=dict(example_input) if op == "initialize" else {"output": rendered},
             decision=decision, reason=reason,
-            visual_state={"kind": "matrix", "output": rendered}, expected_visible_result=evis,
+            visual_state={"kind": "variables", "output": rendered}, expected_visible_result=evis,
             facts={"allowed_values": _ints(rendered, factor, sol_str if is_last else ""),
                    "required_facts": [fact(operation, rendered)], "forbidden_claims": []}))
         prev_render = rendered

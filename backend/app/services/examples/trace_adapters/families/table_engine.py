@@ -97,7 +97,7 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
         state_after={"output": f"[{header}]"}, inputs=dict(example_input),
         decision=f"set up the truth table for {spec.expr_str}",
         reason=f"one row per input assignment; there are 2^{len(variables)} = {len(assigns)} rows",
-        visual_state={"kind": "table", "output": f"[{header}]"},
+        visual_state={"kind": "variables", "output": f"[{header}]"},
         expected_visible_result=f"Table header: {header}. {len(assigns)} rows to fill.",
         facts={"allowed_values": _ints(len(assigns), len(variables)),
                "required_facts": [fact("initialize", header)], "forbidden_claims": []}))
@@ -125,7 +125,7 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
             inputs={"output": rendered},
             decision=f"evaluate {spec.expr_str} at {assign_str}",
             reason=f"substitute {assign_str} into {spec.expr_str}; the cell value is {val}",
-            visual_state={"kind": "table", "output": rendered}, expected_visible_result=evis,
+            visual_state={"kind": "variables", "output": rendered}, expected_visible_result=evis,
             facts={"allowed_values": _ints(rendered, col_str if is_last else "", true_count if is_last else ""),
                    "required_facts": [fact("fill_row", str(val))], "forbidden_claims": []}))
         prev_render = state_after["output"]

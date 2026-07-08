@@ -307,7 +307,7 @@ class HouseRobberAdapter(FamilyAdapterBase):
         structure="fill_cell for houses 0..n-1; the answer is dp[n-1]",
         must_exercise=["skip_house", "rob_house", "completion"],
         must_cover=["rob_house"], must_avoid=[],
-        terminal="every house is solved, so dp[n-1] is the most money that can be robbed",
+        terminal="every house is solved, so the last cell holds the most money that can be robbed",
         output_shape="the maximum money robbable without robbing two adjacent houses")
 
     def candidates(self, seed: int):
@@ -758,7 +758,7 @@ class EditDistanceAdapter(FamilyAdapterBase):
                     id=sid, operation="fill_cell", prior_state=prior, state_after=after,
                     inputs={"i": i, "j": j, "dp_value": dp[i][j]},
                     decision=f"dp[{i}][{j}] = {dp[i][j]}", reason=reason,
-                    visual_state={"kind": "grid", "grid": [row[:] for row in dp], "active": [i, j]},
+                    visual_state={"kind": "variables", "grid": [row[:] for row in dp], "active": [i, j]},
                     visual_delta={"cell": [i, j], "dp_value": dp[i][j]},
                     expected_visible_result=evr,
                     facts={"allowed_values": allowed, "required_facts": [fact("dp_value", dp[i][j])],

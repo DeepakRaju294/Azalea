@@ -103,7 +103,7 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
         state_after={"output": f"claim {claim}"}, inputs=dict(example_input),
         decision=f"state the claim to prove by induction: {claim}",
         reason="prove it holds for all n >= base by mathematical induction",
-        visual_state={"kind": "proof", "output": f"claim {claim}"},
+        visual_state={"kind": "variables", "output": f"claim {claim}"},
         expected_visible_result=f"Claim {claim}.",
         facts={"allowed_values": _ints(spec.base, spec.g_str), "required_facts": [fact("claim", claim)],
                "forbidden_claims": []})
@@ -116,7 +116,7 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
         decision=f"discharge the base case: check P({spec.base})",
         reason=f"the left side sums to {spec.sum_upto(spec.base)} and {spec.g_str} at n={spec.base} is "
                f"{base_val}; they are equal, so P({spec.base}) holds",
-        visual_state={"kind": "proof", "output": base_out},
+        visual_state={"kind": "variables", "output": base_out},
         expected_visible_result=f"Base case holds: P({spec.base}) is true ({base_val}).",
         facts={"allowed_values": _ints(spec.base, base_val), "required_facts": [fact("base", str(base_val))],
                "forbidden_claims": []})
@@ -130,7 +130,7 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
         reason=f"adding the next term {spec.f_str}(k+1) to the hypothesis g(k) gives g(k+1) as an algebraic "
                f"identity; the obligation is discharged, so by induction P(n) holds for all n >= {spec.base}. "
                f"For n={n}, the sum is {val_at_n}",
-        visual_state={"kind": "proof", "output": step_out},
+        visual_state={"kind": "variables", "output": step_out},
         expected_visible_result=f"Inductive step holds; by induction P(n) is true for all n. For n={n}: {val_at_n}.",
         facts={"allowed_values": _ints(n, val_at_n), "required_facts": [fact("inductive_step", str(val_at_n))],
                "forbidden_claims": []})
