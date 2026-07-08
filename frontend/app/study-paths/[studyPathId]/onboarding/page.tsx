@@ -85,8 +85,6 @@ export default function OnboardingWizardPage() {
   const [language, setLanguage] = useState<CodeLanguage>("python");
 
   const [step, setStep] = useState<Step>("domain");
-  // Q8: a high-confidence domain + saved prefs shows a single compact confirm instead of the full wizard.
-  const [compact, setCompact] = useState(false);
 
   useEffect(() => {
     if (isCheckingAuth) return;
@@ -97,9 +95,10 @@ export default function OnboardingWizardPage() {
         if (!active) return;
         setPath(p);
         const coarse = toCoarseDomain(p.domain);
+        // Confident when the classifier settled it — deterministically (C.1) OR via the LLM tie-break (C.2),
+        // both of which set classification_status="classified". `mixed`/`unknown` stay ambiguous.
         const isHighConfidence = p.classification_status === "classified" && coarse !== null;
         const savedDepth = prefs.default_depth_level;
-        const savedExists = savedDepth !== null || prefs.default_language !== null;
 
         setInferredDomain(coarse);
         setHighConfidence(isHighConfidence);
@@ -109,7 +108,10 @@ export default function OnboardingWizardPage() {
         setLanguage(
           (prefs.default_language ?? (p.language as CodeLanguage | undefined) ?? "python") as CodeLanguage,
         );
-        setCompact(isHighConfidence && savedExists);
+        // Confidence-gated: a confident inference SKIPS the redundant "what kind of topic is this?" question —
+        // straight to depth (+ language for coding), with a "change" escape hatch. Only an ambiguous inference
+        // (which the deterministic + LLM passes both couldn't settle) actually asks the domain.
+        setStep(isHighConfidence ? "preferences" : "domain");
       } catch (err) {
         console.error(err);
         if (active) setError("Couldn't load this path. You can continue without setting preferences.");
@@ -154,8 +156,6 @@ export default function OnboardingWizardPage() {
   if (isCheckingAuth || loading) return <WizardSkeleton />;
 
   const domainLabel = DOMAIN_OPTIONS.find((d) => d.value === domain)?.label ?? "Concept";
-  const depthLabel = DEPTH_OPTIONS.find((d) => d.value === depth)?.label ?? "Working";
-  const languageLabel = LANGUAGE_OPTIONS.find((l) => l.value === language)?.label ?? "Python";
   const isCoding = domain === "coding"; // the language step only applies to coding paths
 
   return (
@@ -174,21 +174,10 @@ export default function OnboardingWizardPage() {
           </button>
         </div>
 
-        {!compact && <Stepper step={step} isCoding={isCoding} />}
-
         <div className="rounded-[2rem] border border-[#E7E1EF] bg-white/90 p-6 shadow-xl shadow-[#7B61FF]/10 md:p-8">
           <p className="mb-1 text-sm text-[#817A92]">{path?.title}</p>
 
-          {compact ? (
-            <CompactConfirm
-              domainLabel={domainLabel}
-              depthLabel={depthLabel}
-              languageLabel={isCoding ? languageLabel : undefined}
-              onConfirm={applyAndContinue}
-              onChange={() => setCompact(false)}
-              submitting={submitting}
-            />
-          ) : step === "domain" ? (
+          {step === "domain" ? (
             <StepCard
               heading="What kind of topic is this?"
               source={domainSourceLabel}
@@ -197,24 +186,39 @@ export default function OnboardingWizardPage() {
               onSelect={(v) => setDomain(v as OverrideDomain)}
               primaryLabel="Next"
               onPrimary={() => setStep("preferences")}
+              onBack={highConfidence ? () => setStep("preferences") : undefined}
               onSkip={goToPath}
             />
           ) : step === "preferences" ? (
-            // Depth comes before language on purpose: language (coding only) is the LAST question, so the domain
-            // decision has as long as possible to resolve — including a future async/LLM tie-break — before we
-            // decide whether to ask it at all.
-            <StepCard
-              heading="How deep should we go?"
-              source={depthSourceLabel}
-              options={DEPTH_OPTIONS}
-              selected={depth}
-              onSelect={(v) => setDepth(v as DepthLevel)}
-              primaryLabel={isCoding ? "Next" : submitting ? "Saving…" : "Start learning"}
-              onPrimary={isCoding ? () => setStep("language") : applyAndContinue}
-              onBack={() => setStep("domain")}
-              onSkip={goToPath}
-              primaryDisabled={!isCoding && submitting}
-            />
+            <>
+              {highConfidence && (
+                <p className="mb-4 text-sm text-[#817A92]">
+                  Teaching this as{" "}
+                  <span className="font-semibold text-[#7D4DE5]">{domainLabel}</span> ·{" "}
+                  <button
+                    type="button"
+                    onClick={() => setStep("domain")}
+                    className="font-medium text-[#7D4DE5] underline-offset-2 hover:underline"
+                  >
+                    change
+                  </button>
+                </p>
+              )}
+              {/* Depth before language: language (coding only) is the LAST question, so the domain decision has
+                  as long as possible to resolve (incl. the C.2 LLM tie-break) before we decide whether to ask it. */}
+              <StepCard
+                heading="How deep should we go?"
+                source={depthSourceLabel}
+                options={DEPTH_OPTIONS}
+                selected={depth}
+                onSelect={(v) => setDepth(v as DepthLevel)}
+                primaryLabel={isCoding ? "Next" : submitting ? "Saving…" : "Start learning"}
+                onPrimary={isCoding ? () => setStep("language") : applyAndContinue}
+                onBack={highConfidence ? undefined : () => setStep("domain")}
+                onSkip={goToPath}
+                primaryDisabled={!isCoding && submitting}
+              />
+            </>
           ) : (
             <StepCard
               heading="Which programming language?"
@@ -234,56 +238,8 @@ export default function OnboardingWizardPage() {
 
           <p className="mt-5 text-center text-xs text-[#9A93A8]">You can change this later in settings.</p>
         </div>
-
-        {!compact && (
-          <RecapRail
-            items={[
-              { label: "Content type", value: domainLabel },
-              ...(step === "preferences" || step === "language"
-                ? [{ label: "Depth", value: depthLabel }]
-                : []),
-              ...(step === "language" ? [{ label: "Language", value: languageLabel }] : []),
-            ]}
-          />
-        )}
       </div>
     </main>
-  );
-}
-
-function Stepper({ step, isCoding }: { step: Step; isCoding: boolean }) {
-  const steps: { id: Step; label: string }[] = [
-    { id: "domain", label: "Content Type" },
-    { id: "preferences", label: "Preferences" },
-    ...(isCoding ? [{ id: "language" as Step, label: "Language" }] : []), // language is asked last (coding only)
-  ];
-  const activeIndex = steps.findIndex((s) => s.id === step);
-  return (
-    <div className="mb-4 flex items-center justify-center gap-3">
-      {steps.map((s, i) => (
-        <div key={s.id} className="flex items-center gap-3">
-          <span
-            className={`inline-flex items-center gap-2 text-xs font-semibold ${
-              i <= activeIndex ? "text-[#7D4DE5]" : "text-[#B4ADC2]"
-            }`}
-          >
-            <span
-              className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] ${
-                i < activeIndex
-                  ? "bg-[#7D4DE5] text-white"
-                  : i === activeIndex
-                    ? "bg-[#EEE6FF] text-[#7D4DE5] ring-1 ring-[#CBB5FF]"
-                    : "bg-[#EFEAF5] text-[#B4ADC2]"
-              }`}
-            >
-              {i < activeIndex ? <Check className="h-3 w-3" /> : i + 1}
-            </span>
-            {s.label}
-          </span>
-          {i < steps.length - 1 && <span className="h-px w-6 bg-[#E2DCEA]" />}
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -360,69 +316,6 @@ function StepCard({
           <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
       </div>
-    </div>
-  );
-}
-
-function CompactConfirm({
-  domainLabel,
-  depthLabel,
-  languageLabel,
-  onConfirm,
-  onChange,
-  submitting,
-}: {
-  domainLabel: string;
-  depthLabel: string;
-  languageLabel?: string;
-  onConfirm: () => void;
-  onChange: () => void;
-  submitting: boolean;
-}) {
-  return (
-    <div>
-      <h1 className="text-2xl font-bold tracking-[-0.02em] text-[#2B1D45]">Ready to generate</h1>
-      <p className="mt-2 text-[#4A4358]">
-        Generating as{" "}
-        <span className="font-semibold text-[#7D4DE5]">{domainLabel}</span>
-        {languageLabel && (
-          <>
-            {" "}·{" "}
-            <span className="font-semibold text-[#7D4DE5]">{languageLabel}</span>
-          </>
-        )}{" "}
-        ·{" "}
-        <span className="font-semibold text-[#7D4DE5]">{depthLabel} depth</span>.
-      </p>
-      <div className="mt-6 flex items-center justify-between gap-3">
-        <Button variant="ghost" onClick={onChange} className="text-[#766E85]">
-          Change
-        </Button>
-        <Button
-          onClick={onConfirm}
-          disabled={submitting}
-          className="rounded-full bg-[#9B6DFF] px-5 text-white shadow-md shadow-purple-300/40 hover:bg-[#8C5CF4]"
-        >
-          {submitting ? "Saving…" : "Looks good"}
-          <ArrowRight className="ml-2 h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function RecapRail({ items }: { items: { label: string; value: string }[] }) {
-  return (
-    <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs text-[#817A92]">
-      <span className="font-semibold">You selected:</span>
-      {items.map((it) => (
-        <span
-          key={it.label}
-          className="rounded-full border border-[#E8E1EF] bg-white px-3 py-1 text-[#5E35C8]"
-        >
-          {it.label}: <span className="font-semibold">{it.value}</span>
-        </span>
-      ))}
     </div>
   );
 }
