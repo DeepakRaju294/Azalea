@@ -169,7 +169,25 @@ class NarrationDataAudit(unittest.TestCase):
         s = audit.audit_summary()
         self.assertFalse(s["science_interpretation_available"])
         self.assertIn("trace.step.quantity_kind", s["gaps"])
-        self.assertTrue(s["supplies"]["units"])
+        self.assertTrue(s["formula_engine_supplies"]["units"])
+
+    def test_derivation_engine_supplies_math_worked_example_and_formula_breakdown(self):
+        # T8b (completing-the-square etc.) is the audited provider for the math on_enforced slice: it must supply
+        # the REQUIRED math worked_example fields (result, reasoning) and the formula_breakdown rule/form — so the
+        # gate's on_enforced capability check no longer fails closed for this family.
+        audit.register_audited_capabilities()
+        slug = "t8b_derivation_engine"
+        we_result = fact_source.get_fact_source("worked_example", "result", "math")
+        we_reason = fact_source.get_fact_source("worked_example", "reasoning", "math")
+        fb_rule = fact_source.get_fact_source("formula_breakdown", "rule", "math")
+        fb_form = fact_source.get_fact_source("formula_breakdown", "form", "math")
+        for fs in (we_result, we_reason, fb_rule, fb_form):
+            self.assertIsNotNone(fs)
+            self.assertTrue(fact_source.adapter_can_supply(slug, fs),
+                            f"{slug} must supply {fs.card_type}.{fs.field}")
+        # dimensionless algebra → no units claim invented
+        self.assertFalse(audit.DERIVATION_ENGINE_CAPABILITY.supports_units)
+        self.assertIn(slug, audit.audit_summary()["audited_adapters"])
 
 
 class Contracts(unittest.TestCase):
