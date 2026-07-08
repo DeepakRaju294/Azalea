@@ -196,31 +196,35 @@ export default function OnboardingWizardPage() {
               selected={domain}
               onSelect={(v) => setDomain(v as OverrideDomain)}
               primaryLabel="Next"
-              onPrimary={() => setStep(isCoding ? "language" : "preferences")}
-              onSkip={goToPath}
-            />
-          ) : step === "language" ? (
-            <StepCard
-              heading="Which programming language?"
-              source="Used for code, walkthroughs, and worked examples"
-              options={LANGUAGE_OPTIONS}
-              selected={language}
-              onSelect={(v) => setLanguage(v as CodeLanguage)}
-              primaryLabel="Next"
               onPrimary={() => setStep("preferences")}
-              onBack={() => setStep("domain")}
               onSkip={goToPath}
             />
-          ) : (
+          ) : step === "preferences" ? (
+            // Depth comes before language on purpose: language (coding only) is the LAST question, so the domain
+            // decision has as long as possible to resolve — including a future async/LLM tie-break — before we
+            // decide whether to ask it at all.
             <StepCard
               heading="How deep should we go?"
               source={depthSourceLabel}
               options={DEPTH_OPTIONS}
               selected={depth}
               onSelect={(v) => setDepth(v as DepthLevel)}
+              primaryLabel={isCoding ? "Next" : submitting ? "Saving…" : "Start learning"}
+              onPrimary={isCoding ? () => setStep("language") : applyAndContinue}
+              onBack={() => setStep("domain")}
+              onSkip={goToPath}
+              primaryDisabled={!isCoding && submitting}
+            />
+          ) : (
+            <StepCard
+              heading="Which programming language?"
+              source="Used for code, walkthroughs, and worked examples"
+              options={LANGUAGE_OPTIONS}
+              selected={language}
+              onSelect={(v) => setLanguage(v as CodeLanguage)}
               primaryLabel={submitting ? "Saving…" : "Start learning"}
               onPrimary={applyAndContinue}
-              onBack={() => setStep(isCoding ? "language" : "domain")}
+              onBack={() => setStep("preferences")}
               onSkip={goToPath}
               primaryDisabled={submitting}
             />
@@ -235,8 +239,10 @@ export default function OnboardingWizardPage() {
           <RecapRail
             items={[
               { label: "Content type", value: domainLabel },
-              ...(isCoding && step !== "domain" ? [{ label: "Language", value: languageLabel }] : []),
-              ...(step === "preferences" ? [{ label: "Depth", value: depthLabel }] : []),
+              ...(step === "preferences" || step === "language"
+                ? [{ label: "Depth", value: depthLabel }]
+                : []),
+              ...(step === "language" ? [{ label: "Language", value: languageLabel }] : []),
             ]}
           />
         )}
@@ -248,8 +254,8 @@ export default function OnboardingWizardPage() {
 function Stepper({ step, isCoding }: { step: Step; isCoding: boolean }) {
   const steps: { id: Step; label: string }[] = [
     { id: "domain", label: "Content Type" },
-    ...(isCoding ? [{ id: "language" as Step, label: "Language" }] : []),
     { id: "preferences", label: "Preferences" },
+    ...(isCoding ? [{ id: "language" as Step, label: "Language" }] : []), // language is asked last (coding only)
   ];
   const activeIndex = steps.findIndex((s) => s.id === step);
   return (
