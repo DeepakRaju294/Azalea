@@ -33,8 +33,29 @@ TOPIC_TYPE_TO_NARRATION_DOMAIN: dict[str, str] = {
 }
 
 
+# Structural, subject-AGNOSTIC topic types: their narration domain should follow the PATH's subject domain (a math
+# path's "process_walkthrough" is a MATH process, not a generic concept), not default to concept. Domain-specific
+# topic types (math_formula_method, algorithm_walkthrough, science_mechanism, …) keep their own §3 mapping.
+_SUBJECT_AGNOSTIC_TOPIC_TYPES = {
+    "process_walkthrough", "problem_solving_application", "study_path_introduction",
+    "concept_intuition", "terminology_components", "compare_distinguish",
+}
+
+
+def resolve_narration_domain(topic_type: str | None, path_domain: str | None = None) -> Optional[str]:
+    """The card's narration domain. A card's domain follows its topic type (§3), EXCEPT for the subject-agnostic
+    structural topic types, which inherit the path's subject domain when that is a gating narration domain — so a
+    math path whose topics are typed `process_walkthrough`/`study_path_introduction` still gets the math contract."""
+    tt = str(topic_type or "").strip().lower()
+    if path_domain and tt in _SUBJECT_AGNOSTIC_TOPIC_TYPES:
+        subject = matrix.narration_domain_of(path_domain)
+        if subject is not None:
+            return subject
+    return TOPIC_TYPE_TO_NARRATION_DOMAIN.get(tt)
+
+
 def narration_domain_for_topic_type(topic_type: str | None) -> Optional[str]:
-    return TOPIC_TYPE_TO_NARRATION_DOMAIN.get(str(topic_type or "").strip().lower())
+    return resolve_narration_domain(topic_type)
 
 
 def _card_key(card: dict[str, Any]) -> str:
@@ -66,10 +87,11 @@ def _fact_sources_ready(card_type: str, domain: str) -> bool:
     return bool(fact_source.required_sources_for(card_type, domain) is not None)
 
 
-def evaluate_card_plan(topic_type: str | None, cards: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+def evaluate_card_plan(topic_type: str | None, cards: list[dict[str, Any]],
+                       path_domain: str | None = None) -> Optional[dict[str, Any]]:
     """Shadow-evaluate a finalized card plan. Returns a telemetry report (and writes it), or None when the plan
     is entirely off_legacy (the default no-op) or the domain is non-gating. NEVER changes `cards`."""
-    domain = narration_domain_for_topic_type(topic_type)
+    domain = resolve_narration_domain(topic_type, path_domain)
     if domain is None:
         return None
 

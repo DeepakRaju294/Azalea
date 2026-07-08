@@ -29,7 +29,7 @@ from app.services.narration.shadow import (
     _contract_registered,
     _fact_sources_ready,
     _optional_cards_for,
-    narration_domain_for_topic_type,
+    resolve_narration_domain,
 )
 
 # Register the audited real-adapter capabilities at import so the fact-source enforcement is grounded in
@@ -83,14 +83,18 @@ def _enforce_card(card: dict[str, Any], domain: str, contract: contracts.Narrati
     }
 
 
-def apply_enforced_narration(topic_type: str | None, cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def apply_enforced_narration(topic_type: str | None, cards: list[dict[str, Any]],
+                             path_domain: str | None = None) -> list[dict[str, Any]]:
     """Apply the on_enforced display contract to an enrolled MATH card plan, in place; return the same list.
 
     Strict no-op when: the topic's narration domain is not in scope (v1 = math), the resolved contract is absent,
     or no card is enrolled beyond off_legacy. Best-effort — never raises into generation. A not-ready enrolled
     card keeps its legacy display (logged) rather than being withheld (frontend §12 withhold UI is a later slice).
+
+    `path_domain` (the study path's subject domain) lets a subject-agnostic topic type — e.g. a math path's
+    `process_walkthrough` — resolve to the math contract instead of defaulting to concept.
     """
-    domain = narration_domain_for_topic_type(topic_type)
+    domain = resolve_narration_domain(topic_type, path_domain)
     if domain is None or domain not in _ENFORCED_DOMAINS:
         return cards
     contract = contracts.narration_contract_for(domain)

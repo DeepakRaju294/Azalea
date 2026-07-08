@@ -70,6 +70,23 @@ class EnforceDisplayStep(unittest.TestCase):
         self.assertIn("Complete:", card["result"])     # legacy display preserved, not stripped, not dropped
         self.assertNotIn("narration", card)
 
+    def test_math_path_process_topic_resolves_to_math(self):
+        # the reviewed bug: a math path's worked example lives under a process_walkthrough topic, which maps to
+        # concept by topic type alone. With the path's subject domain threaded, it now resolves to math and the
+        # math contract is enforced.
+        rollout.set_family_mode("math", "worked_example", rollout.ON_ENFORCED)
+        card = _we_card()
+        enforce.apply_enforced_narration("process_walkthrough", [card], path_domain="math")
+        self.assertEqual(card["narration_mode"], rollout.ON_ENFORCED)
+        self.assertNotIn("Complete:", card["result"])
+
+    def test_process_topic_without_path_domain_stays_concept(self):
+        # without a math path domain, process_walkthrough → concept → math-scoped enforce is a no-op.
+        rollout.set_family_mode("math", "worked_example", rollout.ON_ENFORCED)
+        card = _we_card()
+        enforce.apply_enforced_narration("process_walkthrough", [card])
+        self.assertNotIn("narration_mode", card)
+
     def test_clean_terminal_is_preserved(self):
         # the terse "This is the final result." (already clean) must NOT be stripped.
         rollout.set_family_mode("math", "worked_example", rollout.ON_ENFORCED)

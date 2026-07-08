@@ -3076,12 +3076,19 @@ def _normalize_lean_card_order(
         others = [c for c in normalized if _lean_card_key(c) not in ("background", "roadmap")]
         normalized = [*backgrounds, *others, *roadmaps]
 
+    # The path's subject domain lets a subject-agnostic topic type (e.g. a math path's process_walkthrough)
+    # resolve to the math narration contract instead of defaulting to concept. Best-effort — never block on it.
+    try:
+        _path_domain = getattr(getattr(topic, "study_path", None), "domain", None)
+    except Exception:  # noqa: BLE001 — a detached/lazy relationship must never break generation
+        _path_domain = None
+
     # Phase-2B shadow evaluation (AZALEA_DOMAIN_NARRATION_V2 shadow_validate). Strict no-op in the default
     # off_legacy config and best-effort — emits narration eligibility/contract telemetry without touching output.
     try:
         from app.services.narration.shadow import evaluate_card_plan
 
-        evaluate_card_plan(topic_type, normalized)
+        evaluate_card_plan(topic_type, normalized, path_domain=_path_domain)
     except Exception:  # noqa: BLE001 — observability must never break generation
         pass
 
@@ -3091,7 +3098,7 @@ def _normalize_lean_card_order(
     try:
         from app.services.narration.enforce import apply_enforced_narration
 
-        normalized = apply_enforced_narration(topic_type, normalized)
+        normalized = apply_enforced_narration(topic_type, normalized, path_domain=_path_domain)
     except Exception:  # noqa: BLE001 — display enforcement must never break generation
         pass
 
