@@ -3032,6 +3032,79 @@ def _enforce_roadmap_coverage(cards: list[dict[str, Any]], topic: Topic) -> list
     }]
 
 
+_ROADMAP_SENTENCE_STARTERS = {
+    "this", "these", "those", "here", "next", "after", "then", "first", "second", "third",
+    "finally", "we", "you", "our", "in", "throughout", "during", "by",
+}
+
+
+def _looks_like_topic_preview_title(title: str) -> bool:
+    """Whether a roadmap line's pre-colon segment reads like a TOPIC title (e.g. "Applications of Completing the
+    Square") rather than a prose lead-in ("This path covers") or a short concept label — Title-Case, 2-8 words,
+    not starting with a demonstrative/sentence word."""
+    words = title.split()
+    if not (2 <= len(words) <= 8):
+        return False
+    if words[0].strip(",").lower() in _ROADMAP_SENTENCE_STARTERS:
+        return False
+    return sum(1 for w in words if w[:1].isupper()) >= 2
+
+
+def _prune_phantom_roadmap_previews(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
+    """Remove roadmap topic-preview lines that name a topic the path does NOT contain (the model over-promises,
+    e.g. previews an "Applications" topic that was never generated). Complement to _enforce_roadmap_coverage,
+    which only ADDS missing siblings. Conservative: a line is pruned only when it is topic-title-shaped, previews
+    no real sibling, AND the same roadmap card previews at least one real sibling (so a genuine topic list is what
+    we are pruning from — never a card that lists only concepts). A bare "Title:" header drops its subpoints too."""
+    import re
+
+    study_path = getattr(topic, "study_path", None)
+    sibs = getattr(study_path, "topics", None) if study_path is not None else None
+    if not sibs:
+        return cards
+    current_id = str(getattr(topic, "id", "") or "")
+    sibling_terms = [
+        _roadmap_terms(str(getattr(s, "title", "") or ""))
+        for s in sibs
+        if str(getattr(s, "id", "") or "") != current_id
+        and _topic_type_key(s) != "study_path_introduction"
+        and str(getattr(s, "title", "") or "").strip()
+    ]
+    if not sibling_terms:
+        return cards
+
+    def _previews_a_sibling(text: str) -> bool:
+        lw = set(re.findall(r"[a-z]+", text.lower()))
+        return any(st <= lw for st in sibling_terms)
+
+    for card in cards:
+        if _lean_card_key(card) != "roadmap":
+            continue
+        pts = [str(p) for p in (card.get("points") or [])]
+        titles = [re.match(r"^([^:]{3,}?):", re.sub(r"^\s*-\s*", "", p).strip()) for p in pts]
+        # Only prune from a card that actually lists a real topic (a genuine topic roadmap).
+        if not any(m and _previews_a_sibling(m.group(1)) for m in titles):
+            continue
+        kept: list[str] = []
+        i = 0
+        while i < len(pts):
+            body = re.sub(r"^\s*-\s*", "", pts[i]).strip()
+            m = re.match(r"^([^:]{3,}?):(.*)$", body)
+            title = m.group(1).strip() if m else ""
+            if m and _looks_like_topic_preview_title(title) and not _previews_a_sibling(title):
+                had_inline_desc = bool(m.group(2).strip())
+                i += 1
+                if not had_inline_desc:                      # bare "Title:" header → drop its subpoints too
+                    while i < len(pts) and (pts[i].lstrip().startswith("- ") or pts[i][:2] == "  "):
+                        i += 1
+                continue
+            kept.append(pts[i])
+            i += 1
+        if len(kept) != len(pts):
+            card["points"] = kept
+    return cards
+
+
 def _normalize_lean_card_order(
     cards: list[Any],
     topic: Topic,
@@ -3090,6 +3163,8 @@ def _normalize_lean_card_order(
         # Guarantee every non-intro topic is previewed (the roadmap rule is prompt-only) BEFORE ordering,
         # so a freshly-created roadmap card lands in the roadmap slot below.
         normalized = _enforce_roadmap_coverage(normalized, topic)
+        # …and drop any phantom preview of a topic the path does not actually contain (over-promising).
+        normalized = _prune_phantom_roadmap_previews(normalized, topic)
         # Intro = background(s) then roadmap(s); everything else has been filtered out.
         backgrounds = [c for c in normalized if _lean_card_key(c) == "background"]
         roadmaps = [c for c in normalized if _lean_card_key(c) == "roadmap"]
