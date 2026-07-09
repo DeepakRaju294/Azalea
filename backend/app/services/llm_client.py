@@ -4,6 +4,7 @@ import csv
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from threading import Lock
@@ -19,6 +20,27 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 if not OPENAI_API_KEY:
     raise RuntimeError("OPENAI_API_KEY is not set in .env")
+
+
+# --- LaTeX-safe JSON decode ------------------------------------------------------------------------------
+# The model writes LaTeX with single backslashes ("\frac", "\theta") inside JSON strings. Some of those are
+# VALID-but-wrong JSON escapes (\f→form-feed, \b→backspace, \n \r \t), so json.loads silently corrupts them
+# ("\frac" → form-feed + "rac"); others (\alpha, \sqrt, \cdot) are INVALID escapes that make json.loads raise.
+# Repair the raw text before decoding: double a lone backslash that begins a LaTeX command, WITHOUT touching a
+# real escape — \uXXXX (unicode), \" \\ \/, or a genuine whitespace escape (\n \t … NOT followed by a letter).
+# Idempotent: an already-escaped "\\frac" is preceded by a backslash, so the (?<!\\) guard skips it.
+_INVALID_ESCAPE_RE = re.compile(r'(?<!\\)\\(?![bfnrtu"\\/])([A-Za-z])')          # \a \s \c \Delta …  (always LaTeX)
+_AMBIGUOUS_ESCAPE_RE = re.compile(r'(?<!\\)\\([bfnrt])(?=[A-Za-z])')             # \frac \begin \nu \times \right
+
+
+def _repair_latex_escapes(raw: str) -> str:
+    return _AMBIGUOUS_ESCAPE_RE.sub(r'\\\\\1', _INVALID_ESCAPE_RE.sub(r'\\\\\1', raw))
+
+
+def _loads_llm_json(text: str) -> Any:
+    """json.loads with LaTeX-escape repair, so `\\frac`/`\\theta` in model JSON survive as literal backslashes
+    instead of being decoded into control characters (or raising). The single decode boundary for LLM output."""
+    return json.loads(_repair_latex_escapes(text))
 
 # max_retries=2 lets the SDK retry transient failures (5xx, network, and — most
 # importantly under parallel pregeneration — 429 rate-limits) twice with
@@ -1090,7 +1112,7 @@ def generate_structured_lesson(
     )
 
     try:
-        return json.loads(response.output_text)
+        return _loads_llm_json(response.output_text)
     except json.JSONDecodeError as exc:
         raise RuntimeError("OpenAI returned invalid lesson JSON") from exc
 
@@ -1117,7 +1139,7 @@ def generate_structured_topics(
     )
 
     try:
-        parsed = json.loads(response.output_text)
+        parsed = _loads_llm_json(response.output_text)
         return parsed["topics"]
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
         raise RuntimeError("OpenAI returned invalid topic JSON") from exc
@@ -1141,7 +1163,7 @@ def generate_topic_decomposition(
         text={"format": {"type": "json_object"}},
     )
     try:
-        return json.loads(response.output_text)
+        return _loads_llm_json(response.output_text)
     except json.JSONDecodeError as exc:
         raise RuntimeError("OpenAI returned invalid topic-decomposition JSON") from exc
 
@@ -1168,7 +1190,7 @@ def resolve_topic_overlap(
             ],
             text={"format": {"type": "json_object"}},
         )
-        decision = json.loads(response.output_text)
+        decision = _loads_llm_json(response.output_text)
     except (json.JSONDecodeError, RuntimeError, KeyError, TypeError):
         return None
     if not isinstance(decision, dict) or decision.get("decision") != "drop_topic":
@@ -1228,7 +1250,7 @@ def generate_single_lesson_card(
             ],
             text={"format": {"type": "json_object"}},
         )
-        parsed = json.loads(response.output_text)
+        parsed = _loads_llm_json(response.output_text)
     except (json.JSONDecodeError, RuntimeError, KeyError, TypeError):
         return None
     points = [str(p) for p in (parsed.get("points") or []) if str(p).strip()]
@@ -1270,7 +1292,7 @@ def generate_trace_narration(payload: dict[str, Any]) -> dict[str, Any]:
             ],
             text={"format": {"type": "json_object"}},
         )
-        parsed = json.loads(response.output_text)
+        parsed = _loads_llm_json(response.output_text)
         return parsed if isinstance(parsed, dict) else {}
     except (json.JSONDecodeError, RuntimeError, KeyError, TypeError):
         return {}
@@ -1298,7 +1320,7 @@ def generate_class_qa_response(
     )
 
     try:
-        return json.loads(response.output_text)
+        return _loads_llm_json(response.output_text)
     except json.JSONDecodeError as exc:
         raise RuntimeError("OpenAI returned invalid class Q&A JSON") from exc
 
@@ -1352,7 +1374,7 @@ def generate_lesson_segment(
     )
 
     try:
-        return json.loads(response.output_text)
+        return _loads_llm_json(response.output_text)
     except json.JSONDecodeError as exc:
         raise RuntimeError("OpenAI returned invalid lesson segment JSON") from exc
 
@@ -1400,7 +1422,7 @@ def generate_course_type_classification(
     )
 
     try:
-        return json.loads(response.output_text)
+        return _loads_llm_json(response.output_text)
     except json.JSONDecodeError as exc:
         raise RuntimeError("OpenAI returned invalid classification JSON") from exc
 
@@ -2234,7 +2256,7 @@ def generate_visual_patches(card_summaries: list[dict[str, Any]]) -> list[dict[s
         instructions=system_prompt,
     )
     try:
-        result = json.loads(response.output_text)
+        result = _loads_llm_json(response.output_text)
         return result.get("patches") or []
     except (json.JSONDecodeError, AttributeError) as exc:
         raise RuntimeError("OpenAI returned invalid visual patches JSON") from exc
@@ -2294,7 +2316,7 @@ def generate_lean_structured_lesson(
         )
 
     try:
-        return json.loads(response.output_text)
+        return _loads_llm_json(response.output_text)
     except json.JSONDecodeError as exc:
         raise RuntimeError("OpenAI returned invalid lean lesson JSON") from exc
 
@@ -2348,7 +2370,7 @@ class _StreamingCardExtractor:
                     self.depth -= 1
                     if self.depth == 0 and self.card_start >= 0:
                         try:
-                            out.append(json.loads(self.buf[self.card_start:i + 1]))
+                            out.append(_loads_llm_json(self.buf[self.card_start:i + 1]))
                         except json.JSONDecodeError:
                             pass
                         self.card_start = -1
@@ -2408,7 +2430,7 @@ def generate_lean_structured_lesson_streaming(
 
     full_text = "".join(parts)
     try:
-        lesson = json.loads(full_text)
+        lesson = _loads_llm_json(full_text)
     except json.JSONDecodeError as exc:
         raise RuntimeError("OpenAI returned invalid lean lesson JSON (stream)") from exc
     yield ("lesson", lesson)
@@ -2439,4 +2461,4 @@ def generate_card_slot(system_prompt: str, user_prompt: str) -> dict[str, Any]:
         text={"format": {"type": "json_schema", "name": "azalea_card_slot",
                           "schema": CARD_SLOT_JSON_SCHEMA, "strict": True}},
     )
-    return json.loads(response.output_text)
+    return _loads_llm_json(response.output_text)
