@@ -57,11 +57,18 @@ _AUDITED_MATH_SLICE = ("worked_example", "formula_breakdown")
 _MATH_SLICE_FLAG = "AZALEA_NARRATION_MATH_SLICE"
 
 
+def math_slice_mode() -> str:
+    """The mode the math narration slice is activated at (AZALEA_NARRATION_MATH_SLICE), or '' when dark. Shared
+    by the display step (path B) and the prompt scaffold injection (path A) so one flag controls the whole lens."""
+    m = str(os.getenv(_MATH_SLICE_FLAG, "")).strip().lower()
+    return m if m in (rollout.SHADOW_VALIDATE, rollout.ON_ENFORCED) else ""
+
+
 def enroll_audited_math_slice() -> None:
     """Surgically enroll ONLY the audited math slice at the mode named by AZALEA_NARRATION_MATH_SLICE. Dark when
     the flag is unset (the default). Idempotent; best-effort (a live→off_legacy attempt is simply skipped)."""
-    mode = str(os.getenv(_MATH_SLICE_FLAG, "")).strip().lower()
-    if mode not in (rollout.SHADOW_VALIDATE, rollout.ON_ENFORCED):
+    mode = math_slice_mode()
+    if not mode:
         return
     for card_type in _AUDITED_MATH_SLICE:
         try:

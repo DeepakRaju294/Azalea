@@ -771,6 +771,23 @@ def build_lean_user_prompt(
             "authored in a separate pass. Generate every OTHER card in the plan as normal."
         )
 
+    # Path-A narration scaffold (DARK unless the math slice flag is live): steer the process/method card to the
+    # domain's own frames (math → Setup/Operation/Result/Why) instead of the coding loop framing, so a math
+    # method isn't presented as a running loop ("Starting state / Repeated action / State update"). Best-effort.
+    try:
+        from app.services.narration.contracts import process_scaffold_directive
+        from app.services.narration.enforce import math_slice_mode
+        from app.services.narration.shadow import resolve_narration_domain
+
+        if math_slice_mode():
+            _nd = resolve_narration_domain(topic_type, getattr(study_path, "domain", None))
+            if _nd == "math":                                  # v1 slice: math only
+                _scaffold_directive = process_scaffold_directive(_nd)
+                if _scaffold_directive:
+                    parts.append(_scaffold_directive)
+    except Exception:  # noqa: BLE001 — prompt enrichment is additive; never block generation
+        pass
+
     if getattr(topic, "learner_outcome", None):
         parts.append(f"Learner outcome: {topic.learner_outcome}")
 

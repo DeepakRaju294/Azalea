@@ -67,6 +67,21 @@ FORMULA_BREAKDOWN_FRAMING: dict[str, dict[str, str]] = {
 }
 
 
+def process_scaffold_directive(domain: str | None) -> str | None:
+    """Path-A prompt injection (§3 restructure): the per-domain process/method-card frames, so a math (or
+    science) process card is framed with its own scaffold instead of the coding loop framing ("Starting state /
+    Repeated action / State update"). None for coding/unknown — keep the default frames there."""
+    nd = narration_domain_of(domain)
+    if nd is None or nd == "coding" or nd not in PROCESS_SCAFFOLD:
+        return None
+    frames = ", ".join(f'"{f}"' for f in PROCESS_SCAFFOLD[nd])
+    return (
+        f"PROCESS/METHOD CARD FRAMES ({nd}): for the process/method card, use these as the main bullets — {frames}. "
+        'Do NOT use code-execution loop framing ("Starting state", "Repeated action", "State update", '
+        f'"Stopping condition", "Output rule") — this is a {nd} method, not a running program.'
+    )
+
+
 def formula_breakdown_framing(domain: str | None) -> dict[str, str] | None:
     """Framing for the formula_breakdown card, or None where it isn't `defined` (only math in v1)."""
     nd = narration_domain_of(domain)
