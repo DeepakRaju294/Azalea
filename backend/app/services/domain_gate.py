@@ -75,6 +75,15 @@ _CODING_TYPES = frozenset({"algorithm_walkthrough", "data_structure_operation", 
 # Explicit, ordered title-framing prefixes to strip on remap (§5.1 — NOT a generic gerund strip; "Finding …" is kept).
 _STRIP_PREFIXES = ("implementing ", "coding ", "programming ", "solving ", "calculating ", "computing ",
                    "applying ")
+# Coding/procedural title framing that implies an algorithm shape ("Algorithm [Walkthrough] for X", "Walkthrough
+# of X", trailing " Algorithm"). Stripped only when remapping AWAY from a coding type, so a math topic remapped
+# from algorithm_walkthrough reads "Completing the Square", not "Algorithm for Completing the Square".
+_ALGO_TITLE_FRAMING_RE = re.compile(
+    r"^(?:the\s+)?algorithm(?:\s+walkthrough)?(?:\s+(?:for|to|of)\s+|\s*[:\-]\s*)"
+    r"|^(?:step[-\s]?by[-\s]?step\s+)?walkthrough(?:\s+(?:for|of)\s+|\s*[:\-]\s*)",
+    re.IGNORECASE,
+)
+_ALGO_TITLE_SUFFIX_RE = re.compile(r"\s+(?:algorithm|walkthrough)$", re.IGNORECASE)
 
 
 def _tt(t: dict[str, Any]) -> str:
@@ -116,12 +125,18 @@ def quantitative_center(topic: dict[str, Any]) -> dict[str, Any]:
 # --- full-contract rewrite (§5.1, D-a) --------------------------------------------------------------------
 def _normalize_title(title: str, target_type: str) -> str:
     t = str(title or "").strip()
-    if target_type not in _CODING_TYPES:                   # only strip framing when leaving a coding shape
-        low = t.lower()
-        for pfx in _STRIP_PREFIXES:
-            if low.startswith(pfx):
-                return t[len(pfx):].strip() or t
-    return t
+    if target_type in _CODING_TYPES:                       # only strip framing when leaving a coding shape
+        return t
+    low = t.lower()
+    for pfx in _STRIP_PREFIXES:
+        if low.startswith(pfx):
+            t = t[len(pfx):].strip() or t
+            break
+    # Strip algorithm/walkthrough framing ("Algorithm for X" → "X"); a math/science method is not an algorithm.
+    stripped = _ALGO_TITLE_SUFFIX_RE.sub("", _ALGO_TITLE_FRAMING_RE.sub("", t)).strip()
+    if stripped:
+        t = stripped
+    return t[:1].upper() + t[1:] if t else t
 
 
 def rewrite_topic_contract(topic: dict[str, Any], target_type: str, domain: str, *, reason: str) -> dict[str, Any]:
