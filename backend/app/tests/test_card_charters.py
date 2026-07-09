@@ -133,5 +133,53 @@ class Charters(unittest.TestCase):
                 os.environ["AZALEA_CARD_CHARTERS"] = prev
 
 
+import types
+
+from app.prompts.lean_lesson_prompt import build_lean_user_prompt
+
+
+def _fake_topic(topic_id, ttype, order, sp):
+    return types.SimpleNamespace(
+        id=topic_id, title="Completing the Square", description="", topic_type=ttype, course_type=ttype,
+        order_index=order, study_path=sp, purpose="", learner_outcome=None, in_scope=None, out_of_scope=None,
+        modifiers=None, decomposition_metadata=None, assumed_prerequisites=None)
+
+
+class PromptWiring(unittest.TestCase):
+    def setUp(self):
+        self._prev = os.environ.get("AZALEA_CARD_CHARTERS")
+        os.environ["AZALEA_CARD_CHARTERS"] = "background"
+
+    def tearDown(self):
+        if self._prev is None:
+            os.environ.pop("AZALEA_CARD_CHARTERS", None)
+        else:
+            os.environ["AZALEA_CARD_CHARTERS"] = self._prev
+
+    def test_A8_method_prompt_excludes_intuition_when_concept_sibling(self):
+        sp = types.SimpleNamespace(goal="learn completing the square", domain="math", topics=[])
+        concept = _fake_topic("c", "concept_intuition", 0, sp)
+        method = _fake_topic("m", "math_formula_method", 1, sp)
+        sp.topics = [concept, method]
+        prompt = build_lean_user_prompt(method, [])
+        self.assertIn("content_charter", prompt)                          # charter injected
+        self.assertIn("the intuition topic", prompt)                      # exclude points to the concept topic
+        self.assertNotIn("Give the one-sentence mental model", prompt)    # NOT told to give intuition (A8)
+
+    def test_method_prompt_includes_intuition_when_no_concept(self):
+        sp = types.SimpleNamespace(goal="learn completing the square", domain="math", topics=[])
+        method = _fake_topic("m", "math_formula_method", 0, sp)
+        sp.topics = [method]
+        prompt = build_lean_user_prompt(method, [])
+        self.assertIn("Give the one-sentence mental model", prompt)       # fallback fired → self-contained
+
+    def test_flag_off_is_dark(self):
+        os.environ.pop("AZALEA_CARD_CHARTERS", None)
+        sp = types.SimpleNamespace(goal="x", domain="math", topics=[])
+        method = _fake_topic("m", "math_formula_method", 0, sp)
+        sp.topics = [method]
+        self.assertNotIn("content_charter", build_lean_user_prompt(method, []))
+
+
 if __name__ == "__main__":
     unittest.main()

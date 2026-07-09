@@ -728,7 +728,11 @@ def build_lean_user_prompt(
         primary_blueprint = blueprints[0]
 
     topic_hint = topic.title + " " + (getattr(topic, "description", None) or "")
-    card_plan = _format_combined_card_plan(blueprints=blueprints, topic_hint=topic_hint)
+    # CARD_CONTENT_CHARTER_SPEC — per-card content-ownership directives for THIS topic, resolved against the
+    # whole path (dark unless AZALEA_CARD_CHARTERS names an active family).
+    charters_by_card = _resolve_card_charters(topic, study_path, primary_blueprint)
+    card_plan = _format_combined_card_plan(blueprints=blueprints, topic_hint=topic_hint,
+                                           charters_by_card=charters_by_card)
     assumption_ledger = build_assumption_ledger(topic=topic, study_path=study_path)
     assumption_ledger_text = format_assumption_ledger_for_prompt(assumption_ledger)
     # Sibling-topic scope boundaries (BIDIRECTIONAL distinctness): what the OTHER topics in this
@@ -889,7 +893,65 @@ def build_lean_user_prompt(
     return "\n".join(parts)
 
 
-def _format_card_plan(blueprint: dict, stage_rules: dict, topic_hint: str = "") -> str:
+def _charter_directive_lines(rc: Any) -> list[str]:
+    """The resolved card-charter (CARD_CONTENT_CHARTER_SPEC) rendered as co-located prompt lines. Prose only —
+    the builder never interprets slots."""
+    out = ["   content_charter (content ownership — obey exactly):"]
+    if rc.job:
+        out.append(f"     job: {rc.job}")
+    for d in rc.include_directives:
+        out.append(f"     cover: {d}")
+    for d in rc.exclude_directives:
+        out.append(f"     do_not: {d}")
+    if rc.scope_note:
+        out.append(f"     scope: {rc.scope_note}")
+    if rc.handoff:
+        out.append(f"     handoff: {rc.handoff}")
+    return out
+
+
+def _resolve_card_charters(topic: "Topic", study_path: Any, primary_blueprint: dict) -> dict[str, Any]:
+    """Resolve per-card charters for THIS topic against the whole path's topics + their planned card sets
+    (CARD_CONTENT_CHARTER_SPEC §5/§8). {} when the feature is off or on any error — additive, never blocks."""
+    try:
+        from app.core.card_charters import (
+            TopicPlan, active_charter_families, resolve_card_for, resolve_ownership,
+        )
+
+        if not active_charter_families():
+            return {}
+        sibs = list(getattr(study_path, "topics", None) or []) or [topic]
+        this_id = str(getattr(topic, "id", "") or id(topic))
+        plans: list[Any] = []
+        card_plans: dict[str, list[str]] = {}
+        for s in sorted(sibs, key=lambda x: int(getattr(x, "order_index", 0) or 0)):
+            s_type = getattr(s, "course_type", None) or getattr(s, "topic_type", None) or ""
+            s_key = str(getattr(s, "id", "") or id(s))
+            plans.append(TopicPlan(s_key, s_type, int(getattr(s, "order_index", 0) or 0)))
+            if s_key == this_id:
+                card_plans[s_key] = list(primary_blueprint.get("default_card_sequence") or [])
+            else:
+                try:
+                    bp = get_topic_blueprints(s_type, [])[0]
+                    card_plans[s_key] = list(bp.get("default_card_sequence") or [])
+                except Exception:  # noqa: BLE001
+                    card_plans[s_key] = []
+        ownership = resolve_ownership(plans, card_plans)
+        this_plan = TopicPlan(this_id,
+                              getattr(topic, "course_type", None) or getattr(topic, "topic_type", None) or "",
+                              int(getattr(topic, "order_index", 0) or 0))
+        out: dict[str, Any] = {}
+        for card_key in (primary_blueprint.get("default_card_sequence") or []):
+            resolved = resolve_card_for(this_plan, card_key, ownership)
+            if resolved is not None:
+                out[card_key] = resolved
+        return out
+    except Exception:  # noqa: BLE001 — charter injection is additive; never break generation
+        return {}
+
+
+def _format_card_plan(blueprint: dict, stage_rules: dict, topic_hint: str = "",
+                      charters_by_card: dict[str, Any] | None = None) -> str:
     optional_cards = set(blueprint.get("optional_cards") or [])
     optional_card_rules = blueprint.get("optional_card_rules") or {}
     example_usage_by_card = blueprint.get("example_usage_by_card") or {}
@@ -905,6 +967,8 @@ def _format_card_plan(blueprint: dict, stage_rules: dict, topic_hint: str = "") 
         repeat_text = " continuation-only repeatable"
         lines.append(f"{index}. blueprint_key: {card_key}{optional_text}{repeat_text}")
         lines.append(f"   card_type: {card_key}")
+        if charters_by_card and card_key in charters_by_card:
+            lines.extend(_charter_directive_lines(charters_by_card[card_key]))
         expected_example_types = example_usage_by_card.get(card_key) or ["none"]
         lines.append(
             "   allowed_example_type: " + " | ".join(expected_example_types)
@@ -1095,7 +1159,8 @@ def _resolve_visual_type_for_prompt(allowed_value: str, topic_hint: str) -> str:
     return options[0]
 
 
-def _format_combined_card_plan(blueprints: list[dict], topic_hint: str = "") -> str:
+def _format_combined_card_plan(blueprints: list[dict], topic_hint: str = "",
+                               charters_by_card: dict[str, Any] | None = None) -> str:
     sections: list[str] = []
     has_coding_continuation = any(
         blueprint.get("topic_type") == "coding_implementation"
@@ -1123,7 +1188,8 @@ def _format_combined_card_plan(blueprints: list[dict], topic_hint: str = "") -> 
                 sections.append(
                     "Because a coding_implementation continuation follows this walkthrough, omit the primary practice card here. The coding continuation's practice card should end the combined lesson."
                 )
-            sections.append(_format_card_plan(blueprint=primary_blueprint, stage_rules=stage_rules, topic_hint=topic_hint))
+            sections.append(_format_card_plan(blueprint=primary_blueprint, stage_rules=stage_rules,
+                                              topic_hint=topic_hint, charters_by_card=charters_by_card))
             continue
 
         continuation_blueprint = dict(blueprint)

@@ -10,6 +10,7 @@ be able to out-own a background's DEFINE_GLOBAL fallback — spec A16).
 """
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 
@@ -327,3 +328,12 @@ def resolve_card_for(this_topic: TopicPlan, card_type: str,
     if charter is None or not _family_active(charter.family, active_charter_families()):
         return None
     return resolve_card(charter, ownership, this_topic, card_type)
+
+
+# §12: report the active set at import so the feature can't silently no-op (unlike the dark flags).
+try:
+    _active = active_charter_families()
+    if _active:
+        logging.getLogger(__name__).info("card_charters active families: %s", sorted(_active))
+except Exception:  # noqa: BLE001
+    pass
