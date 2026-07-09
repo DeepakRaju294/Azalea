@@ -478,6 +478,25 @@ def _clean_subpoint_text(text: str) -> str:
     return value[:1].lower() + value[1:]
 
 
+# Orphaned/malformed LaTeX-delimiter artifacts the model sometimes emits in bullet text: a doubled inline-math
+# delimiter ("\\)" renders as a LaTeX line-break + paren instead of closing math) and a lone backslash left over
+# when inline math got split across a bullet ("take \ and add/subtract it"). Both are pure rendering noise.
+_DOUBLED_MATH_DELIM_RE = re.compile(r"\\{2,}([()\[\]])")
+_ORPHAN_BACKSLASH_RE = re.compile(r"(?:(?<=\s)|^)\\(?=\s|$)")
+
+
+def _repair_latex_delimiters(text: str) -> str:
+    """Clean orphaned/doubled inline-math delimiters in one bullet, PRESERVING its "  - " subpoint indent (that
+    prefix is the nesting convention). Leaves legit LaTeX (\\(x\\), \\frac{…}) untouched; no-op without a backslash."""
+    if not text or "\\" not in text:
+        return text
+    prefix, body = re.match(r"^(\s*(?:-\s+)?)(.*)$", text, re.S).groups()
+    body = _DOUBLED_MATH_DELIM_RE.sub(r"\\\1", body)     # "\\)" -> "\)"
+    body = _ORPHAN_BACKSLASH_RE.sub("", body)            # " \ " -> " "
+    body = re.sub(r"[ \t]{2,}", " ", body).strip()
+    return prefix + body
+
+
 def _lean_card_to_legacy(
     lean_card: dict[str, Any],
     card_index: int,
@@ -504,6 +523,7 @@ def _lean_card_to_legacy(
     points = _merge_bullet_fragments(points)
     points = _rewrite_call_stack_syntax(points)
     points = _sentence_case_bullet_starts(points)
+    points = [_repair_latex_delimiters(p) for p in points]
 
     # Build styled_elements for code snippet
     styled_elements: list[dict[str, Any]] = []
