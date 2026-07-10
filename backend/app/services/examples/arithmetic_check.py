@@ -83,6 +83,69 @@ def _lines(cards: Iterable[Any]) -> Iterable[str]:
                 yield str(v)
 
 
+def _num_of(text: Any) -> Optional[float]:
+    m = re.search(r"-?\d+(?:\.\d+)?", _strip_thousands(str(text or "")))
+    return float(m.group()) if m else None
+
+
+def _chain_final(line: str) -> tuple[Optional[str], Optional[float]]:
+    """(lhs symbol, final numeric value) of an 'a = b = c' chain, or (None, None)."""
+    segs = [s.strip() for s in _strip_thousands(line).split("=")]
+    if len(segs) < 2:
+        return None, None
+    vals = [_safe_eval(s) for s in segs]
+    final = next((v for v in reversed(vals) if v is not None), None)
+    return segs[0], final
+
+
+def check_final_answer_supported(cards: Iterable[Any], claimed_final: Any) -> list[str]:
+    """The stated final answer must actually be PRODUCED somewhere in the shown work — a final answer that
+    appears nowhere among the computed results is disconnected from its own derivation (idea #1)."""
+    cards = list(cards or [])
+    f = _num_of(claimed_final)
+    if f is None:
+        return []
+    computed: list[float] = []
+    for line in _lines(cards):
+        for seg in _strip_thousands(line).split("="):
+            v = _safe_eval(seg.strip())
+            if v is not None:
+                computed.append(v)
+    if not computed:
+        return []
+    if any(_close(f, c) or _close(f, c * 100) or _close(f, c / 100) for c in computed):
+        return []                                           # the answer IS produced (allowing %/fraction form)
+    shown = sorted({round(c, 4) for c in computed})[:6]
+    return [f"stated final answer {claimed_final!r} is not produced by the worked steps (computed values: {shown})"]
+
+
+def check_probability_bounds(cards: Iterable[Any], claimed_final: Any = None) -> list[str]:
+    """Domain sanity for probability: every P(...) result and the final answer must lie in [0, 1] (idea #2)."""
+    viol: list[str] = []
+    for line in _lines(cards):
+        lhs, final = _chain_final(line)
+        if lhs is None or final is None or not re.match(r"^P\s*\(", lhs):
+            continue
+        if final < -1e-9 or final > 1 + 1e-9:
+            viol.append(f"probability out of range: {lhs.strip()} = {round(final, 4)}")
+    f = _num_of(claimed_final)
+    if f is not None and (f < -1e-9 or f > 100 + 1e-9):     # allow up to 100 for a percent-form answer
+        viol.append(f"final probability out of range: {claimed_final!r}")
+    return viol
+
+
+def check_worked_example(cards: Iterable[Any], *, final_answer: Any = None,
+                         probability: bool = False) -> list[str]:
+    """All applicable deterministic checks for a worked example ([] == clean): internal arithmetic
+    consistency, final-answer-produced-by-the-work, and (for probability topics) [0,1] bounds."""
+    cards = list(cards or [])
+    out = check_arithmetic_consistency(cards)
+    out += check_final_answer_supported(cards, final_answer)
+    if probability:
+        out += check_probability_bounds(cards, final_answer)
+    return out
+
+
 def check_arithmetic_consistency(cards: Iterable[Any]) -> list[str]:
     """Return a list of arithmetic-consistency violations across the worked-example cards ([] == clean)."""
     violations: list[str] = []

@@ -1578,14 +1578,16 @@ def _verify_free_prose_example(topic: dict[str, Any], sol: Optional[dict[str, An
             return sol                                     # conceptual — no false rigor
         from app.services.examples.answer_anchor import (anchor_final_answer, math_eval_oracle,
                                                          set_answer_oracle, VERIFICATION_GUIDED)
-        from app.services.examples.arithmetic_check import check_arithmetic_consistency
+        from app.services.examples.arithmetic_check import check_worked_example
         if not _ANCHOR_ORACLE_SET:
             set_answer_oracle(math_eval_oracle)            # deterministic-eval oracle (once)
             _ANCHOR_ORACLE_SET = True
 
-        violations = check_arithmetic_consistency(sol.get("cards") or [])
-        level, expected, agree = anchor_final_answer(
-            topic, str(sol.get("problem") or ""), str(sol.get("final_answer") or ""))
+        final = str(sol.get("final_answer") or "")
+        blob = f"{topic.get('title') or ''} {topic.get('subject_key') or ''} {topic.get('course_type') or ''}".lower()
+        is_prob = any(k in blob for k in ("probab", "bayes", "conditional prob"))
+        violations = check_worked_example(sol.get("cards") or [], final_answer=final, probability=is_prob)
+        level, expected, agree = anchor_final_answer(topic, str(sol.get("problem") or ""), final)
         if violations or agree is False:
             from app.services.examples.guided_explanation import build_guided_explanation
             reason = "arithmetic_inconsistent" if violations else "answer_anchor_mismatch"
