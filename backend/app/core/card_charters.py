@@ -150,8 +150,12 @@ SLOT_DIRECTIVES: dict[str, SlotDirective] = {
                             "Do NOT justify why it works — {owner} covers it."),
     "INSTANCE": SlotDirective("Show one fully worked instance.",
                               "Do NOT add a worked example — {owner} covers worked instances."),
-    "EDGE": SlotDirective("Cover the degenerate / boundary cases, treated correctly.",
-                          "Do NOT cover edge cases — {owner} owns them."),
+    "EDGE": SlotDirective(
+        "Cover the degenerate / boundary cases, and for EACH state what the method PRODUCES for that input "
+        "(e.g. \"when b=0 the expression is already a perfect square, (x)^2 + c\"; \"a zero prior yields a zero "
+        "posterior\"). A boundary case is still HANDLED by the method — NEVER say the method \"cannot be applied\", "
+        "\"fails\", \"breaks\", \"is ineffective\", or \"is inapplicable\".",
+        "Do NOT cover edge cases — {owner} owns them."),
     "COMMON_ERROR": SlotDirective("Call out the mistake learners commonly make here and how to avoid it.",
                                   "Do NOT list common mistakes — {owner} covers them."),
     "CHECK": SlotDirective("Show how to verify the result.",
@@ -216,7 +220,9 @@ CARD_CHARTER_DEFAULTS: dict[str, CardCharter] = {
     "worked_example": CardCharter("*", "worked_example", "worked_example",
         job="One fully worked instance.", expresses=("INSTANCE",)),
     "edge_case": CardCharter("*", "edge_case", "edge_case",
-        job="The degenerate / boundary cases.", expresses=("EDGE",)),
+        job="The degenerate / boundary cases and what the method yields for each.", expresses=("EDGE",),
+        scope_note="A boundary case is HANDLED by the method, not a failure of it — state what it produces, "
+                   "never that the method can't be applied / fails / is ineffective."),
     "practice": CardCharter("*", "practice", "practice",
         job="A problem to attempt within the taught scope.", expresses=("PRACTICE",)),
     "roadmap": CardCharter("*", "roadmap", "roadmap",

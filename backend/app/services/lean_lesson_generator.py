@@ -512,6 +512,34 @@ def _card_headers(lean_card: dict[str, Any], title: str) -> tuple[str, str]:
     return main, goal
 
 
+# Deterministic backstop for the edge_case correctness anti-pattern (CARD_CONTENT_CHARTER_SPEC §6.4): a legitimate
+# boundary case is HANDLED by the method, not a failure of it. The LLM sometimes claims the method "can't be
+# applied" / "is ineffective" for a degenerate input (observed: x^2+4 "can't complete the square"; a zero prior
+# "renders Bayes ineffective") — both WRONG. Correct only the clear false-failure phrasings; grammatical + safe.
+_EDGE_FAILURE_SUBS: tuple[tuple[Any, str], ...] = (
+    (re.compile(r"\bcan(?:no|')?t\s+complete\s+the\s+square\b", re.IGNORECASE), "is already a complete square"),
+    (re.compile(r"\bcan(?:no|')?t\s+(?:be\s+)?(?:applied|used|proceed|computed?)\b", re.IGNORECASE), "still applies"),
+    (re.compile(r"\bdoes\s+not\s+apply\b", re.IGNORECASE), "still applies"),
+    (re.compile(r"\bis\s+(?:ineffective|inapplicable|useless|not\s+applicable)\b", re.IGNORECASE), "still applies"),
+    (re.compile(r"\brenders?\s+(.{1,40}?)\s+(?:ineffective|inapplicable|useless)\b", re.IGNORECASE),
+     r"does not prevent using \1"),
+)
+
+
+def _correct_edge_case_failure_framing(text: str) -> str:
+    """Rewrite a false 'the method fails on this boundary' claim into the correct 'it is still handled' framing.
+    Conservative — only the clear anti-patterns; a no-op otherwise."""
+    if not text:
+        return text
+    out = str(text)
+    for pat, repl in _EDGE_FAILURE_SUBS:
+        new = pat.sub(repl, out)
+        if new != out:
+            logger.info("edge_case: corrected false-failure framing %r", out[:120])
+            out = new
+    return out
+
+
 def _lean_card_to_legacy(
     lean_card: dict[str, Any],
     card_index: int,
@@ -539,6 +567,8 @@ def _lean_card_to_legacy(
     points = _rewrite_call_stack_syntax(points)
     points = _sentence_case_bullet_starts(points)
     points = [_repair_latex_delimiters(p) for p in points]
+    if blueprint_key == "edge_case":                    # correct false "the method fails here" framing (§6.4)
+        points = [_correct_edge_case_failure_framing(p) for p in points]
 
     # Build styled_elements for code snippet
     styled_elements: list[dict[str, Any]] = []
