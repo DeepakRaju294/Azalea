@@ -114,6 +114,22 @@ RULES:
   a trace of one of the concrete algorithms that follow — that concept is framing; embed it in the intro so
   the intro carries it, and do not spend a topic (or a forced worked example) on it.
 
+EXAMPLE (illustrative — copy the SHAPE and granularity, NOT the subject or domain):
+GOAL "learn the chain rule and the product rule" decomposes to 3 topics:
+  1. study_path_introduction (role "orientation", subject_key "differentiation_rules"): frames what
+     differentiation rules are, NAMES the assumed prerequisite in one line ("assumes you can take a
+     basic derivative such as d/dx of x^n — if that is new, review it first"), defines the shared terms
+     (derivative, composite function), previews the two rules. NO worked example, NO practice.
+  2. math_formula_method (subject_key "chain_rule", primary_action "understand", prereq = topic 1): ONE
+     topic that teaches the rule end-to-end — intuition, the formula, a worked example, practice.
+  3. math_formula_method (subject_key "product_rule", primary_action "understand"): ONE topic, same shape.
+BAD, do NOT do this:
+  - splitting a concept into "Understanding the Chain Rule" + "Applying the Chain Rule" (that is ONE topic);
+  - making the assumed prerequisite ("basic derivatives") its own teaching topic (it is NAMED in the
+    intro, never taught);
+  - a first topic typed math_formula_method / concept_intuition that carries a worked example in the
+    intro's place (the opener is study_path_introduction and teaches nothing).
+
 Return ONLY JSON of this shape:
 {{
   "path_plan": {{

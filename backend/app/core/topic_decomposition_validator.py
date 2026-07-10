@@ -150,8 +150,16 @@ def _assign_order_index(topics: list[dict[str, Any]], caps: dict[str, dict[str, 
                                        "prerequisite cycle in capability graph"))
         return
     rank = {cid: i for i, cid in enumerate(cap_order)}
-    # topics ordered by their capability's rank (embedded-owned capabilities don't have a topic)
-    ordered = sorted(topics, key=lambda t: rank.get(str(t.get("capability_id")), 10**6))
+
+    def _is_opener(t: dict[str, Any]) -> bool:
+        # The orientation intro is ALWAYS first — it frames the whole path and must not float on the
+        # capability graph (the LLM does not reliably make every concept depend on it).
+        return (str(t.get("topic_type") or "") == "study_path_introduction"
+                or str(t.get("content_role") or "").lower() == "orientation")
+
+    # openers first, then the rest by capability topological rank (embedded-owned caps have no topic)
+    ordered = sorted(topics, key=lambda t: (0 if _is_opener(t) else 1,
+                                            rank.get(str(t.get("capability_id")), 10**6)))
     for i, t in enumerate(ordered, start=1):
         t["order_index"] = i
 

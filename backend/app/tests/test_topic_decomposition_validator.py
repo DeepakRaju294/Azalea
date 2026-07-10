@@ -160,6 +160,25 @@ class RepairAndCoverageTests(unittest.TestCase):
         self.assertFalse(res.ok)
         self.assertTrue(any("no owner" in x.detail for x in res.actions))
 
+    def test_orientation_intro_is_always_ordered_first(self):
+        # The intro must lead the path even when the LLM wired the capability graph so it would sort last
+        # (here the intro capability declares the concepts as its prereqs -> topo rank would put it last).
+        plan = {"end_capability_actions": [],
+                "required_capabilities": [
+                    cap("bayes"), cap("total_prob"),
+                    cap("orientation", prereqs=["bayes", "total_prob"])]}
+        intro = topic("t_intro", "orientation", subject="probability", action="understand",
+                      role="orientation", evidence="explain_model", output="orientation",
+                      tt="study_path_introduction", practice_format="none")
+        tb = topic("t_b", "bayes", subject="bayes_theorem", action="understand", role="calculation",
+                   evidence="solve_numeric", output="P(A|B)", tt="math_formula_method")
+        tt = topic("t_t", "total_prob", subject="total_probability", action="understand",
+                   role="calculation", evidence="solve_numeric", output="P(A)", tt="math_formula_method")
+        res = validate_topic_decomposition(plan, [tb, tt, intro])
+        first = min(res.topics, key=lambda t: t["order_index"])
+        self.assertEqual(first["topic_id"], "t_intro")   # intro leads despite the graph
+        self.assertEqual(first["order_index"], 1)
+
     def test_reachability_requires_practice_capable_owner(self):
         plan = {"end_capability_actions": ["implement"],
                 "required_capabilities": [cap("impl", end=["implement"])]}
