@@ -74,6 +74,41 @@ def _apply_domain_gate(topics: list[dict[str, Any]], domain: str | None) -> list
     _record_gate_telemetry(tel)
     return gated if enforced else topics
 
+
+def _ensure_intro_topic(topics: list[dict[str, Any]], goal: str | None) -> list[dict[str, Any]]:
+    """Bulletproof backstop: a multi-topic path ALWAYS opens with a lightweight orientation topic. The
+    pipeline-level guarantee can be bypassed (regeneration, a stale decomposition), so enforce it here at
+    the OUTERMOST point — for both engines. Idempotent: skips when an intro already leads the path, and
+    leaves a single-topic path untouched (it self-orients)."""
+    if not topics or len(topics) < 2:
+        return topics
+    if any(str(t.get("course_type") or t.get("topic_type") or "").lower() == "study_path_introduction"
+           or str(t.get("content_role") or "").lower() == "orientation" for t in topics):
+        return topics
+    from app.services.topic_decomposition_pipeline import _intro_title
+    intro = {
+        "title": _intro_title(goal),
+        "purpose": ("Orient the learner: frame the area, name the assumed prerequisites (without teaching "
+                    "them), define the shared terms, and preview the topics ahead."),
+        "learner_outcome": "Understand what this study path covers and what it assumes you already know.",
+        "unit_title": "Introduction",
+        "topic_type": "study_path_introduction",
+        "course_type": "study_path_introduction",
+        "secondary_course_types": [],
+        "in_scope": [], "out_of_scope": [],
+        "practice_target": "", "practice_format": "",
+        "estimated_minutes": 8,
+        "content_role": "orientation",
+        "basis": "goal",
+        "decomposition_metadata": {"schema_version": 1, "capability_id": "orientation",
+                                   "content_role": "orientation", "basis": "goal", "synthesized_intro": True},
+    }
+    out = [intro, *topics]
+    for i, t in enumerate(out, start=1):
+        t["order_index"] = i
+    _log.info("topic_generator: prepended orientation intro (none present on a %d-topic path)", len(topics))
+    return out
+
 # Paradigms/methodologies that a concrete algorithm already teaches BY EXAMPLE. A standalone
 # "Understanding the X Strategy" / "What is X" topic for one of these — when the path's goal is
 # a specific algorithm, not the paradigm itself — is redundant with the algorithm walkthrough
@@ -914,7 +949,7 @@ Chunk index: {chunk.chunk_index}
                 # Gate BEFORE marking follow-ups so the marking reflects the final (possibly remapped) types.
                 decomposed = _apply_domain_gate(decomposed, domain)
                 _mark_coding_follow_ups(decomposed)
-                return decomposed
+                return _ensure_intro_topic(decomposed, goal)
             _log.warning("topic_generator: decomposition produced nothing — falling back to legacy")
         except Exception as exc:  # noqa: BLE001 — never block generation; fall back to legacy
             _log.warning("topic_generator: decomposition failed (%s) — falling back to legacy", exc)
@@ -1087,4 +1122,4 @@ Chunk index: {chunk.chunk_index}
         topic["topic_type"] = topic.get("course_type")
 
     _mark_coding_follow_ups(cleaned_topics)
-    return cleaned_topics
+    return _ensure_intro_topic(cleaned_topics, goal)
