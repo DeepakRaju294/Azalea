@@ -302,6 +302,7 @@ def enrich_topic_with_course_type(
     user_goal: str | None = None,
     previous_topics: list[str] | None = None,
     source_summary: str | None = None,
+    domain: str | None = None,
 ) -> dict[str, Any]:
     classification = classify_topic_course_type(
         user_goal=user_goal,
@@ -334,6 +335,19 @@ def enrich_topic_with_course_type(
         enriched["topic_type_reason"] = classification["reason"]
     if not enriched.get("course_type_reason"):
         enriched["course_type_reason"] = classification["reason"]
+
+    # Domain-aware constraint (§ source fix): a wording-based type that doesn't belong to the path's domain is
+    # remapped HERE — never emit e.g. algorithm_walkthrough on a math path. Only when a domain is supplied.
+    if domain:
+        from app.services.domain_gate import constrain_type_to_domain
+
+        original = str(enriched.get("topic_type") or enriched.get("course_type") or "")
+        final, remapped = constrain_type_to_domain(original, domain)
+        if remapped:
+            enriched["topic_type"] = enriched["course_type"] = final
+            reason = (f"Assigned {final}: the {domain} path allows only its own teaching types; the topic wording "
+                      f"suggested {original}, which was remapped.")
+            enriched["topic_type_reason"] = enriched["course_type_reason"] = reason
     return enriched
 
 

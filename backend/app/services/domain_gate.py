@@ -64,6 +64,29 @@ _REMAP: dict[str, dict[str, str]] = {
 def teaching_types_for(domain: str) -> frozenset[str]:
     """Native teaching types for a `domain` (via its gate family). Empty for mixed/unknown/unmapped."""
     return _FAMILY_TEACHING_TYPES.get(gate_family_of(domain), frozenset())
+
+
+def constrain_type_to_domain(course_type: str, domain: str | None) -> tuple[str, bool]:
+    """Domain-aware topic-type constraint at the SOURCE (the classifier), so a coding type is never assigned on a
+    known math/science path in the first place — the list-level gate then only backstops. Returns
+    (final_type, was_remapped). No-op when the domain is unknown/mixed/unmapped, the type is universal (intro,
+    concept, …), or it's already allowed. A DROP case (coding_implementation on a non-coding path) is left alone —
+    the list gate does the real drop; relabelling a single topic here would just create a duplicate."""
+    ct = str(course_type or "").strip().lower()
+    family = gate_family_of(domain) if domain else ""
+    allowed = _FAMILY_ALLOWED.get(family)
+    if not ct or not allowed or ct in allowed or ct in _UNIVERSAL:
+        return ct, False
+    rule = _REMAP.get(ct, {}).get(family)
+    if rule in ("drop_else_primary", "drop_else_process"):
+        return ct, False                                       # a DROP case → leave for the list-level gate
+    if rule is None:
+        target = _FAMILY_PRIMARY[family]                       # unlisted forbidden ⇒ family primary
+    elif rule == "math_formula_method" and family == "science":
+        target = "math_formula_method"                        # quantitative-friendly default; gate refines later
+    else:
+        target = rule
+    return target, target != ct
 # Target topic type -> required normalized content_role (§5.1).
 _TARGET_ROLE = {
     "math_formula_method": "calculation", "proof_reasoning": "proof", "science_mechanism": "mechanism",

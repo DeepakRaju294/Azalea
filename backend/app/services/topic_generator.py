@@ -1010,6 +1010,7 @@ Chunk index: {chunk.chunk_index}
             user_goal=goal,
             previous_topics=[topic["title"] for topic in cleaned_topics],
             source_summary=source_refs,
+            domain=domain if _gate_enforced() else None,   # constrain the type to the path's domain at the source
         )
         cleaned_topic["topic_type"] = cleaned_topic.get("course_type")
 
@@ -1072,6 +1073,7 @@ Chunk index: {chunk.chunk_index}
                 },
                 user_goal=goal,
                 source_summary=fallback_source_refs,
+                domain=domain if _gate_enforced() else None,
             )
         )
 
