@@ -59,6 +59,24 @@ class MultiConceptFixtures(unittest.TestCase):
         self.assertEqual(tp["course_type"], "math_formula_method")   # type from the capability's content_role
         self.assertEqual([t["order_index"] for t in topics], [1, 2, 3])  # contiguous order indices
 
+    def test_intro_conflated_with_a_concept_is_split(self):
+        # THE 23:10 regression: the model titled the intro after the first concept (orientation role, but a
+        # concrete subject + a teaching deliverable), so that concept got the intro blueprint (no worked
+        # example) and there was no real intro. De-conflate -> teach the concept + synthesize a real intro.
+        tp_as_intro = _topic("total_prob", subject="total_probability", title="Law of Total Probability",
+                             role="orientation", tt="study_path_introduction")
+        tp_as_intro["practice_evidence_type"] = "explain_model"
+        tp_as_intro["expected_output"] = "A clear explanation of the Law of Total Probability."
+        topics = self._run({"path_plan": _PLAN_BOTH, "topics": [tp_as_intro, _BAYES_TOPIC]})
+        intros = [t for t in topics if t["course_type"] == "study_path_introduction"]
+        self.assertEqual(len(intros), 1)                                  # exactly one, and it's generic
+        self.assertTrue(intros[0]["title"].startswith("Introduction to"))
+        # Total Probability is now a TAUGHT topic (math_formula_method), not the intro
+        tp = next(t for t in topics if "Total Probability" in t["title"]
+                  and t["course_type"] != "study_path_introduction")
+        self.assertEqual(tp["course_type"], "math_formula_method")
+        self.assertEqual(len(topics), 3)                                  # intro + both concepts
+
     def test_emitted_intro_is_not_duplicated(self):
         # when the model DOES emit an orientation topic, we must NOT synthesize a second one.
         intro = {"topic_id": "t_intro", "capability_id": "orient", "subject_key": "probability",

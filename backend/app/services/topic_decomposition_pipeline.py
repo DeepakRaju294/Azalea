@@ -137,6 +137,27 @@ def _is_opener(topic: dict[str, Any]) -> bool:
             or str(topic.get("content_role") or "").lower() == "orientation")
 
 
+# capability_ids / subjects a GENUINE orientation topic uses — anything else means the LLM loaded a real
+# concept into the intro slot.
+_GENERIC_INTRO_IDS = frozenset({"orientation", "study_path_intro", "study_path_introduction",
+                                "synth_intro", "overview", "introduction"})
+
+
+def _is_conflated_intro(topic: dict[str, Any]) -> bool:
+    """True when an 'orientation'/study_path_introduction topic is actually a mislabeled CONCEPT — it carries
+    a concrete subject + a teaching deliverable (expected_output + a real practice evidence type). The LLM
+    sometimes titles the intro after the first concept (e.g. an intro 'Law of Total Probability' that then
+    never teaches it), which starves that concept of a worked example and hides that there is no real intro."""
+    if not _is_opener(topic):
+        return False
+    cap = str(topic.get("capability_id") or "").lower()
+    subj = str(topic.get("subject_key") or "").lower()
+    generic = (not cap) or cap in _GENERIC_INTRO_IDS or subj in _GENERIC_INTRO_IDS
+    has_deliverable = (bool(str(topic.get("expected_output") or "").strip())
+                       and str(topic.get("practice_evidence_type") or "").strip() not in ("", "none"))
+    return (not generic) and has_deliverable
+
+
 # Leading goal-preamble words stripped when deriving the intro title ("I want to learn about X" -> "X").
 _INTRO_FILLER = frozenset({
     "i", "want", "wanna", "would", "like", "wish", "need", "hope", "aim", "trying", "try", "to",
@@ -217,6 +238,15 @@ def generate_decomposed_topics(
     # does not reliably emit one (and the validator stays pure), so synthesize it here when missing;
     # order_index 0 puts it ahead of the validated topics before the renumber below.
     topics_out = list(result.topics)
+    # De-conflate: an 'orientation' topic the LLM actually loaded with a concrete concept is a mislabeled
+    # teaching topic — restore its teaching type so the concept is TAUGHT (worked example + adapter), which
+    # also frees the intro slot so a real generic orientation topic is synthesized below.
+    for t in topics_out:
+        if _is_conflated_intro(t):
+            t["topic_type"] = "math_formula_method"       # domain gate remaps for non-math paths
+            t["content_role"] = "calculation"
+            _log.info("topic_decomposition: de-conflated mislabeled intro %r -> teaching topic", t.get("title"))
+
     non_intro = [t for t in topics_out if not _is_opener(t)]
     if not any(_is_opener(t) for t in topics_out) and len(non_intro) >= 2:
         intro = _synthesize_intro_topic(goal)
