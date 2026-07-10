@@ -200,7 +200,13 @@ CARD_CHARTERS: dict[tuple[str, str], CardCharter] = {
 # in Phase 1, but the resolver needs their `expresses` so e.g. a definition card out-owns a bg's DEFINE_GLOBAL).
 CARD_CHARTER_DEFAULTS: dict[str, CardCharter] = {
     "components_terms": CardCharter("*", "components_terms", "definition",
-        job="Define the terms this path uses.", expresses=("DEFINE_GLOBAL", "STRUCTURE")),
+        job="Define the terms and notation this topic introduces.", expresses=("DEFINE_GLOBAL", "STRUCTURE"),
+        scope_note="Define a term ONCE across the path; if an earlier card already defined it, reference it "
+                   "instead of repeating the definition."),
+    "definition": CardCharter("*", "definition", "definition",           # alias: some blueprints key it "definition"
+        job="Define the terms and notation this topic introduces.", expresses=("DEFINE_GLOBAL", "STRUCTURE"),
+        scope_note="Define a term ONCE across the path; if an earlier card already defined it, reference it "
+                   "instead of repeating the definition."),
     "formula_breakdown": CardCharter("*", "formula_breakdown", "method_process",
         job="The formula/method and why it works.", expresses=("PROCEDURE", "DERIVE", "PRECONDITION")),
     "method_process": CardCharter("*", "method_process", "method_process",
@@ -252,9 +258,15 @@ def _family_active(family: str, active: frozenset[str]) -> bool:
 
 # --- resolution (§5) --------------------------------------------------------------------------------------
 def _best(records: list[tuple[TopicPlan, str, int]]) -> tuple[TopicPlan, str, int]:
-    # highest priority, ties earliest order_index, then earliest card-plan index
+    # tier-1 (role-owner) winner: highest priority, ties earliest order_index, then earliest card-plan index
     return min(records, key=lambda r: (-TOPIC_ROLES.get(r[0].topic_type, _ZERO_ROLE).priority,
                                        r[0].order_index, r[2]))
+
+
+def _earliest(records: list[tuple[TopicPlan, str, int]]) -> tuple[TopicPlan, str, int]:
+    # tier-2/3 winner: earliest order_index, then earliest card-plan index (define/render at FIRST occurrence,
+    # so an earlier card owns a slot and a later card references it — never a forward reference)
+    return min(records, key=lambda r: (r[0].order_index, r[2]))
 
 
 def resolve_ownership(topics: list[TopicPlan],
@@ -282,9 +294,9 @@ def resolve_ownership(topics: list[TopicPlan],
         elif role_fallback:
             pick, tier = _best(role_fallback), 1
         elif express:
-            pick, tier = _best(express), 2
+            pick, tier = _earliest(express), 2       # §5 tier 2: earliest occurrence, not highest priority
         elif fallback:
-            pick, tier = _best(fallback), 3
+            pick, tier = _earliest(fallback), 3      # §5 tier 3: earliest occurrence
         if pick is not None:
             t, ct, _ = pick
             owners[slot] = SlotOwner(t.order_index, t.topic_type, ct, tier, _friendly(t.topic_type))

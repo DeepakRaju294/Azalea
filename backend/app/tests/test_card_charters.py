@@ -102,6 +102,18 @@ class Charters(unittest.TestCase):
         self.assertIn("DEFINE_GLOBAL", m.exclude_slots)
 
     # --- A18: background vs method_process — no double-owned procedure ------------------------------------
+    def test_A6_definition_owned_by_earliest_topic_not_highest_priority(self):
+        # two topics carry a definition card; the EARLIER one (intro) owns DEFINE_GLOBAL so the later (method)
+        # references it — never a forward reference. (§5 tier-2 = earliest occurrence, not topic priority.)
+        topics = [_tp("i", "study_path_introduction", 0), _tp("m", "math_formula_method", 1)]
+        plans = {"i": ["background", "components_terms", "roadmap"],
+                 "m": ["background", "components_terms", "formula_breakdown"]}
+        own = resolve_ownership(topics, plans)
+        self.assertEqual(own["DEFINE_GLOBAL"].topic_type, "study_path_introduction")
+        method_def = resolve_card(charter_for("math_formula_method", "components_terms"), own, topics[1], "components_terms")
+        self.assertIn("DEFINE_GLOBAL", method_def.exclude_slots)          # method references, doesn't redefine
+        self.assertNotIn("DEFINE_GLOBAL", method_def.include_slots)
+
     def test_A18_background_overview_method_process_full(self):
         topics = [_tp("m", "math_formula_method", 0)]
         plans = {"m": ["background", "formula_breakdown"]}
