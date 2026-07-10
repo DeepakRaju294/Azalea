@@ -6962,6 +6962,77 @@ def _materialize_node_link_worked_example_to_cards(
     return cards
 
 
+# Cards whose headline claim makes a good end-of-lesson takeaway, in the order they should appear.
+# (components_terms is excluded — glossary definitions are not takeaways.)
+_TAKEAWAY_SOURCE_ORDER: dict[str, int] = {
+    "background": 0, "formula_breakdown": 1, "process": 2, "edge_case": 3,
+}
+
+
+def _flatten_points(card: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    for p in card.get("points") or []:
+        s = re.sub(r"^[\s\-••]+", "", str(p)).strip()
+        if s:
+            out.append(s)
+    return out
+
+
+def _clean_takeaway(text: str) -> str:
+    t = re.sub(r"\s+", " ", str(text)).strip()
+    t = re.sub(r"^(edge case|special case|note|remember|key point)\b\s*:?\s*", "", t, flags=re.I)
+    return t.strip().rstrip(":").strip()
+
+
+def _tk_tokens(s: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", s.lower()))
+
+
+def _weak_takeaway(t: str) -> bool:
+    """A poor standalone takeaway: too short, a lead-in header ('Formula meaning' / 'X states'), or a
+    glossary entry ('P(A): The probability of A')."""
+    if len(t) < 25 or t.endswith(":"):
+        return True
+    if re.search(r"\b(states|is|are|means|include|includes|as follows|given by|the following)$", t, re.I):
+        return True                                             # lead-in fragment
+    return bool(re.match(r"^[\w()|Σ'.\s]{1,14}:\s", t))          # "<short symbol>: definition"
+
+
+def _derive_key_takeaways(cards: list[dict[str, Any]], max_items: int = 5) -> list[str]:
+    """Populate the lesson's key_takeaways from the finished cards (the lean path leaves it empty and no
+    takeaway card is emitted in practice). Prefer an explicit takeaway/summary card; otherwise distill ONE
+    strong claim from each key card (background, terms, formula, method, edge case), dropping lead-ins and
+    glossary lines and de-duplicating (e.g. the formula appearing in both background and the formula card).
+    Deterministic — no LLM."""
+    for c in cards:
+        if (str(c.get("blueprint_key") or "").lower() in ("takeaway", "summary")
+                or str(c.get("card_type") or "").lower() == "summary"):
+            pts = [p for p in (_clean_takeaway(x) for x in _flatten_points(c)) if not _weak_takeaway(p)]
+            if pts:
+                return pts[:max_items]
+
+    by_bp: dict[str, dict[str, Any]] = {}
+    for c in cards:
+        bp = str(c.get("blueprint_key") or "")
+        if bp in _TAKEAWAY_SOURCE_ORDER and bp not in by_bp:
+            by_bp[bp] = c
+    out: list[str] = []
+    for bp in sorted(by_bp, key=lambda b: _TAKEAWAY_SOURCE_ORDER[b]):
+        pts = [_clean_takeaway(p) for p in _flatten_points(by_bp[bp])]
+        if bp == "formula_breakdown":                            # the formula line, even if short
+            cand = next((p for p in pts if "=" in p and not _weak_takeaway(p)), None) \
+                or next((p for p in pts if "=" in p), None)
+        else:
+            cand = next((p for p in pts if not _weak_takeaway(p)), None)
+        if not cand:
+            continue
+        ct = _tk_tokens(cand)
+        if ct and any(len(ct & _tk_tokens(o)) >= 0.7 * len(ct) for o in out):
+            continue                                             # near-duplicate of an existing takeaway
+        out.append(cand)
+    return out[:max_items]
+
+
 def _convert_lean_to_legacy(
     lean_json: dict[str, Any],
     topic: Topic,
@@ -7113,7 +7184,7 @@ def _convert_lean_to_legacy(
         "lesson_cards": legacy_cards,
         "practice_questions": practice_questions,
         "visual_plan": [],
-        "key_takeaways": [],
+        "key_takeaways": _derive_key_takeaways(legacy_cards),
         "source_chunk_ids": build_source_chunk_ids(chunks),
         "source_summary": build_source_summary(chunks),
         "adaptation_metadata": {
