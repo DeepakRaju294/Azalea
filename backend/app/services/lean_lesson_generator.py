@@ -497,6 +497,21 @@ def _repair_latex_delimiters(text: str) -> str:
     return prefix + body
 
 
+_INSTRUCTOR_VOICE_RE = re.compile(
+    r"^\s*(detail|understand(ing)?|introduce|establish|familiarize|identify|follow|outline|explain|describe|"
+    r"learn|grasp|recognize|explore|review|cover|overview\s+of|define\s+the\s+concept)\b", re.IGNORECASE)
+
+
+def _card_headers(lean_card: dict[str, Any], title: str) -> tuple[str, str]:
+    """`main_concept` = a CONCRETE claim for THIS card (not an instructor objective like "Detail the foundational
+    knowledge"); `learning_goal` = the objective, kept DISTINCT. Fixes the pervasive main_concept==learning_goal
+    instructor-voice duplication (CARD_CONTENT_CHARTER_SPEC §7). No LLM — pure normalization."""
+    job = str(lean_card.get("learning_job") or "").strip()
+    main = job if (job and not _INSTRUCTOR_VOICE_RE.match(job)) else str(title or job or "").strip()
+    goal = job if job and job != main else ""          # distinct from main_concept, or empty
+    return main, goal
+
+
 def _lean_card_to_legacy(
     lean_card: dict[str, Any],
     card_index: int,
@@ -655,6 +670,7 @@ def _lean_card_to_legacy(
                 "rubric": {},
             })
 
+    main_concept, learning_goal = _card_headers(lean_card, title)
     return {
         "id": str(lean_card.get("id") or f"card-{card_index + 1}"),
         "blueprint_key": blueprint_key,
@@ -663,8 +679,8 @@ def _lean_card_to_legacy(
         "points": points,
         "body": body,
         "bullets": [],
-        "main_concept": str(lean_card.get("learning_job") or title or ""),
-        "learning_goal": str(lean_card.get("learning_job") or ""),
+        "main_concept": main_concept,
+        "learning_goal": learning_goal,
         "example_type": example_type,
         "visual_type": visual_type,
         "new_concepts": [],
