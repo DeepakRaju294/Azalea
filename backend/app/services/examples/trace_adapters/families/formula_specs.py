@@ -716,6 +716,59 @@ PROBABILITY_SIMPLE = FormulaSpec(
                     "compute_probability", "probability")],
     conventions={"definition": "P = favorable outcomes / total outcomes"})
 
+LAW_OF_TOTAL_PROBABILITY = FormulaSpec(
+    slug="law_of_total_probability", title="the law of total probability", family="statistics",
+    aliases=["law of total probability", "total probability"], priority=40,
+    problem_template=(
+        "Events B1 and B2 partition the sample space with P(B1) = {P_B1} (so P(B2) = 1 - P(B1)). "
+        "Event A has conditional probabilities P(A|B1) = {P_A_given_B1} and P(A|B2) = {P_A_given_B2}. "
+        "Find the total probability P(A)."),
+    givens=[Given("P_B1", "", 0.2, 0.8, integer=False),
+            Given("P_A_given_B1", "", 0.1, 0.9, integer=False),
+            Given("P_A_given_B2", "", 0.1, 0.9, integer=False)],
+    outputs=[
+        Output("P_B2", "P_B2 = 1 - P_B1", "1 - P_B1", "", "compute_partition_complement",
+               "the remaining partition probability"),
+        Output("P_A", "P_A = P_A_given_B1*P_B1 + P_A_given_B2*P_B2",
+               "P_A_given_B1*P_B1 + P_A_given_B2*P_B2", "", "compute_total_probability", "total probability")],
+    conventions={"law": "P(A) = P(A|B1)P(B1) + P(A|B2)P(B2), where the partition satisfies P(B1) + P(B2) = 1"})
+
+BAYES_THEOREM = FormulaSpec(
+    slug="bayes_theorem", title="Bayes' theorem", family="statistics",
+    aliases=["bayes theorem", "bayes' theorem", "bayes rule", "bayes' rule"],
+    not_aliases=["naive bayes"], priority=42,
+    problem_template=(
+        "A condition D has prior probability P(D) = {P_D}. A test is positive with probability "
+        "P(pos|D) = {P_pos_given_D} when D is present and P(pos|not D) = {P_pos_given_notD} when it is absent. "
+        "Given a positive test result, find the posterior P(D|pos) using Bayes' theorem."),
+    givens=[Given("P_D", "", 0.1, 0.3, integer=False),
+            Given("P_pos_given_D", "", 0.7, 0.9, integer=False),
+            Given("P_pos_given_notD", "", 0.1, 0.3, integer=False)],
+    outputs=[
+        Output("P_not_D", "P_not_D = 1 - P_D", "1 - P_D", "", "compute_complement_prior",
+               "prior probability of the complement"),
+        Output("P_pos", "P_pos = P_pos_given_D*P_D + P_pos_given_notD*P_not_D",
+               "P_pos_given_D*P_D + P_pos_given_notD*P_not_D", "", "compute_evidence_probability",
+               "total probability of a positive test"),
+        Output("P_D_given_pos", "P_D_given_pos = P_pos_given_D*P_D / P_pos",
+               "P_pos_given_D*P_D / P_pos", "", "apply_bayes_theorem", "posterior probability")],
+    conventions={"theorem": "P(D|pos) = P(pos|D)P(D) / P(pos); the evidence P(pos) itself comes from the law "
+                            "of total probability: P(pos) = P(pos|D)P(D) + P(pos|not D)P(not D)"})
+
+CONDITIONAL_PROBABILITY = FormulaSpec(
+    slug="conditional_probability", title="conditional probability", family="statistics",
+    aliases=["conditional probability"], priority=38,
+    problem_template=(
+        "In a sample, {n_A_and_B} outcomes satisfy both A and B, and {n_B_not_A} satisfy B but not A. "
+        "Find the conditional probability P(A|B) = P(A and B) / P(B)."),
+    givens=[Given("n_A_and_B", "", 1, 9), Given("n_B_not_A", "", 1, 9)],
+    outputs=[
+        Output("n_B", "n_B = n_A_and_B + n_B_not_A", "n_A_and_B + n_B_not_A", "", "compute_condition_total",
+               "outcomes satisfying B"),
+        Output("P_A_given_B", "P_A_given_B = n_A_and_B / n_B", "n_A_and_B / n_B", "",
+               "compute_conditional_probability", "conditional probability")],
+    conventions={"definition": "P(A|B) = P(A and B) / P(B) = (outcomes with A and B) / (outcomes with B)"})
+
 MOLE_FRACTION = FormulaSpec(
     slug="mole_fraction", title="mole fraction", family="chemistry",
     aliases=["mole fraction"], priority=16,
@@ -987,7 +1040,8 @@ ALL_SPECS = [
     # more geometry / finance
     SECTOR_AREA, ARC_LENGTH, SIMPLE_ROI,
     # probability / chemistry / EE
-    PROBABILITY_SIMPLE, MOLE_FRACTION, OHMS_POWER,
+    PROBABILITY_SIMPLE, LAW_OF_TOTAL_PROBABILITY, BAYES_THEOREM, CONDITIONAL_PROBABILITY,
+    MOLE_FRACTION, OHMS_POWER,
     # conversions / oscillation / gas
     KELVIN_CONVERSION, FAHRENHEIT_TO_CELSIUS, SPRING_PERIOD, MOLES_IDEAL_GAS, FREQUENCY_FROM_PERIOD,
     # gas laws / circuits / thermo
