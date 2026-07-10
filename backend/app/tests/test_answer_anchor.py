@@ -47,6 +47,28 @@ class AnswerAnchor(unittest.TestCase):
         self.assertEqual(level, VERIFICATION_ANSWER_ANCHORED)
         self.assertTrue(agree)
 
+    def test_display_rounding_still_agrees(self):
+        set_answer_oracle(lambda topic, problem: "0.307692")   # exact
+        _, _, agree = anchor_final_answer({}, "bayes", "0.31")  # example shows 2-dp
+        self.assertTrue(agree)                                  # rounding is not a mismatch
+
+    def test_percent_vs_fraction_agrees(self):
+        set_answer_oracle(lambda topic, problem: "0.0833")
+        _, _, agree = anchor_final_answer({}, "bayes", "8.33%")
+        self.assertTrue(agree)                                  # same quantity, different unit convention
+
+
+class MathEvalOracle(unittest.TestCase):
+    def test_extracts_then_evaluates_deterministically(self):
+        # the injected LLM only TRANSLATES to an expression; the arithmetic is done deterministically here.
+        got = aa.math_eval_oracle({}, "posterior with P(D)=0.1, sens 0.9, fpr 0.2",
+                                  extract_fn=lambda p: "0.9*0.1 / (0.9*0.1 + 0.2*0.9)")
+        self.assertAlmostEqual(float(got), 0.333333, places=5)   # 0.09 / 0.27
+
+    def test_unreducible_problem_defers(self):
+        # extract yields nothing and (offline dummy key) the LLM fallback is unavailable -> None (no downgrade)
+        self.assertIsNone(aa.math_eval_oracle({}, "explain the intuition", extract_fn=lambda p: ""))
+
 
 if __name__ == "__main__":
     unittest.main()

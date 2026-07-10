@@ -1554,6 +1554,51 @@ def _enforce_worked_example_schema_cap(
         return sol, False
 
 
+_ANCHOR_ORACLE_SET = False
+
+
+def _answer_anchor_enabled() -> bool:
+    return os.getenv("AZALEA_WORKED_EXAMPLE_ANSWER_ANCHOR", "").strip().lower() in {"1", "true", "on", "yes"}
+
+
+def _verify_free_prose_example(topic: dict[str, Any], sol: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """Adapter-free accuracy guard (AZALEA_WORKED_EXAMPLE_ANSWER_ANCHOR). For a determinate topic with NO
+    adapter, verify the model's free-prose worked example two ways — deterministic ARITHMETIC consistency
+    (offline) + an INDEPENDENT answer anchor (deterministic-eval oracle) — and DOWNGRADE to a guided
+    fallback rather than ship a wrong-but-confident example. Verified paths (adapters) are left untouched."""
+    global _ANCHOR_ORACLE_SET
+    if not _answer_anchor_enabled() or not isinstance(sol, dict) or sol.get("coding_fallback_used"):
+        return sol
+    try:
+        from app.services.examples.trace_pipeline import route_adapter
+        if route_adapter(topic) is not None:
+            return sol                                     # adapter path — already step-verified
+        from app.services.examples.task_classifier import classify_worked_example_task
+        if not classify_worked_example_task(topic).is_determinate:   # property, not a call
+            return sol                                     # conceptual — no false rigor
+        from app.services.examples.answer_anchor import (anchor_final_answer, math_eval_oracle,
+                                                         set_answer_oracle, VERIFICATION_GUIDED)
+        from app.services.examples.arithmetic_check import check_arithmetic_consistency
+        if not _ANCHOR_ORACLE_SET:
+            set_answer_oracle(math_eval_oracle)            # deterministic-eval oracle (once)
+            _ANCHOR_ORACLE_SET = True
+
+        violations = check_arithmetic_consistency(sol.get("cards") or [])
+        level, expected, agree = anchor_final_answer(
+            topic, str(sol.get("problem") or ""), str(sol.get("final_answer") or ""))
+        if violations or agree is False:
+            from app.services.examples.guided_explanation import build_guided_explanation
+            reason = "arithmetic_inconsistent" if violations else "answer_anchor_mismatch"
+            _log.warning("worked-example DOWNGRADED to guided (%s) for %r: %s",
+                         reason, topic.get("title"), (violations[:1] or f"expected {expected}"))
+            return build_guided_explanation(topic, reason=reason)
+        sol.setdefault("metadata", {})["verification_level"] = level   # answer_anchored | model_only
+        return sol
+    except Exception as exc:  # noqa: BLE001 — verification must never break generation
+        _log.warning("answer-anchor verification error (kept example): %s", exc)
+        return sol
+
+
 def apply_llm_solved_worked_example(
     lesson_json: dict[str, Any],
     topic: dict[str, Any],
@@ -1640,6 +1685,7 @@ def apply_llm_solved_worked_example(
 
         existing = _existing_problem_text(cards)
         sol = solve_worked_example(topic, existing_problem=existing, code=code, solver=solver)
+        sol = _verify_free_prose_example(topic, sol)   # adapter-free accuracy guard (flag-gated)
         if sol is None:
             # Visible diagnostic: the solver path was taken but produced nothing — almost always
             # a missing/dummy OPENAI_API_KEY (the lesson then keeps the weaker lean worked example).
