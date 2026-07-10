@@ -3,7 +3,7 @@ import unittest
 
 from app.core.topic_decomposition_validator import (
     validate_topic_decomposition,
-    CLEAR_DUPLICATE, SAFE_REPAIR, AMBIGUOUS_OVERLAP,
+    CLEAR_DUPLICATE, SAFE_REPAIR, AMBIGUOUS_OVERLAP, SUBJECT_MERGE,
 )
 
 
@@ -71,6 +71,53 @@ class DuplicateTests(unittest.TestCase):
         res = validate_topic_decomposition(
             plan, [a, b], resolve_overlap=lambda x, y: {"decision": "drop_topic", "surviving_topic_id": "t1"})
         self.assertEqual([t["topic_id"] for t in res.topics], ["t1"])
+
+
+class SubjectMergeTests(unittest.TestCase):
+    def test_understand_plus_apply_merge_into_one_topic(self):
+        # THE over-decomposition regression: the model split one concept into "understand" + "apply".
+        plan = {"end_capability_actions": ["apply"],
+                "required_capabilities": [
+                    cap("understand_bayes"),
+                    cap("apply_bayes", prereqs=["understand_bayes"], end=["apply"])]}
+        u = topic("t_u", "understand_bayes", subject="bayes_theorem", action="understand",
+                  role="foundation", evidence="explain_model", output="explain Bayes",
+                  tt="concept_intuition", practice_format="short_answer")
+        a = topic("t_a", "apply_bayes", subject="bayes_theorem_application", action="apply",
+                  role="application", evidence="solve_numeric", output="a solved Bayes problem",
+                  tt="problem_solving_application", practice_format="math_input")
+        res = validate_topic_decomposition(plan, [u, a])
+        self.assertEqual(len(res.topics), 1)                                   # one topic, not two
+        self.assertEqual(res.topics[0]["topic_type"], "problem_solving_application")  # richer arc wins
+        self.assertTrue(any(x.outcome == SUBJECT_MERGE for x in res.actions))
+        self.assertTrue(res.ok)                                               # coverage still satisfied
+        self.assertTrue(res.topics[0]["expected_output"])                     # stayed practice-capable
+
+    def test_same_action_same_subject_is_NOT_merged(self):
+        # two topics, same subject, SAME action -> that's a duplicate/ambiguous case, not a facet split:
+        # the merge must leave it to the sole-owner guard (both kept), never silently fold them.
+        plan = {"end_capability_actions": [],
+                "required_capabilities": [cap("c1"), cap("c2")]}
+        a = topic("t1", "c1", subject="bayes_theorem", action="understand", role="foundation",
+                  evidence="explain_model", output="same", tt="concept_intuition")
+        b = topic("t2", "c2", subject="bayes_theorem", action="explain", role="foundation",
+                  evidence="explain_model", output="same", tt="concept_intuition")
+        res = validate_topic_decomposition(plan, [a, b])
+        self.assertFalse(any(x.outcome == SUBJECT_MERGE for x in res.actions))
+        self.assertEqual({t["topic_id"] for t in res.topics}, {"t1", "t2"})   # sole-owner guard, both kept
+
+    def test_trace_vs_implement_not_merged(self):
+        # coding_implementation is excluded — trace vs implement is a genuine split, kept as two topics.
+        plan = {"end_capability_actions": ["implement"],
+                "required_capabilities": [cap("bfs_trace"), cap("bfs_impl", end=["implement"])]}
+        a = topic("t1", "bfs_trace", subject="breadth_first_search", action="trace",
+                  role="algorithm_trace", evidence="trace_state", output="visit order")
+        b = topic("t2", "bfs_impl", subject="breadth_first_search", action="implement",
+                  role="implementation", evidence="write_code", output="working function",
+                  tt="coding_implementation", practice_format="coding")
+        res = validate_topic_decomposition(plan, [a, b])
+        self.assertFalse(any(x.outcome == SUBJECT_MERGE for x in res.actions))
+        self.assertEqual({t["topic_id"] for t in res.topics}, {"t1", "t2"})
 
 
 class RepairAndCoverageTests(unittest.TestCase):

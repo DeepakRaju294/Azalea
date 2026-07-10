@@ -26,6 +26,41 @@ CLEAR_DUPLICATE = "CLEAR_DUPLICATE"
 SAFE_REPAIR = "SAFE_REPAIR"
 AMBIGUOUS_OVERLAP = "AMBIGUOUS_OVERLAP"
 REPAIR = "REPAIR"                    # a coverage gap repaired by synthesizing a topic (B.4.1)
+SUBJECT_MERGE = "SUBJECT_MERGE"      # understand+apply of one subject folded into a single topic (B.4.2b)
+
+# Non-coding teaching types eligible for the same-subject merge, ranked by how COMPLETE their card
+# blueprint is (lower = richer arc, wins the merge). A single topic of the richest type teaches the
+# concept end-to-end (intuition → worked example → practice), so an "understand X" + "apply X" pair is
+# one topic, not two. Coding types (coding_implementation) and study_path_introduction are excluded:
+# trace-vs-implement is a genuine split, and the intro is never a concept topic.
+_MERGEABLE_TYPE_PRIORITY: dict[str, int] = {
+    "math_formula_method": 0,
+    "proof_reasoning": 1,
+    "algorithm_walkthrough": 2,
+    "data_structure_operation": 3,
+    "science_mechanism": 4,
+    "problem_solving_application": 5,
+    "process_walkthrough": 6,
+    "compare_distinguish": 7,
+    "terminology_components": 8,
+    "concept_intuition": 9,
+}
+
+# Trailing tokens that denote a TREATMENT of a subject, not the subject identity — stripped so
+# "bayes_theorem" and "bayes_theorem_application" collapse to the same base subject for the merge.
+_FACET_SUFFIX_TOKENS = frozenset({
+    "application", "applications", "applied", "apply", "applying",
+    "interpretation", "interpret", "interpreting",
+    "calculation", "calculations", "computation", "computing", "calculate",
+    "method", "methods", "usage", "use", "uses", "using",
+    "problem", "problems", "example", "examples", "practice", "practicing",
+})
+
+# Leading study-verbs stripped from a merged title so "Applying Bayes' Theorem" → "Bayes' Theorem".
+_LEADING_ACTION_WORDS = frozenset({
+    "applying", "understanding", "using", "interpreting", "calculating",
+    "computing", "solving", "exploring", "mastering", "analyzing",
+})
 
 
 @dataclass
@@ -199,6 +234,100 @@ def _synthesize_topic_for_capability(cid: str, cap: dict[str, Any]) -> dict[str,
     }
 
 
+def _base_subject(subject_key: Any) -> str:
+    """Base subject identity for the merge: normalize, then strip trailing facet tokens so an
+    'apply/interpret/compute' variant collapses onto the concept it treats."""
+    s = normalize_subject_key(str(subject_key or ""))
+    tokens = [t for t in s.split("_") if t]
+    while len(tokens) > 1 and tokens[-1] in _FACET_SUFFIX_TOKENS:
+        tokens.pop()
+    return "_".join(tokens) if tokens else s
+
+
+def _clean_merged_title(title: Any) -> str:
+    t = str(title or "").strip()
+    parts = t.split(None, 1)
+    if len(parts) == 2 and parts[0].lower() in _LEADING_ACTION_WORDS:
+        return parts[1]
+    return t
+
+
+def _absorb_topic(keeper: dict[str, Any], victim: dict[str, Any],
+                  caps: dict[str, dict[str, Any]]) -> None:
+    """Fold `victim` into `keeper`: union scope, carry practice-capability if missing, and re-home the
+    victim's capability as embedded under keeper (so coverage/reachability still hold)."""
+    for f in ("in_scope", "out_of_scope"):
+        merged = list(keeper.get(f) or [])
+        for x in victim.get(f) or []:
+            if x not in merged:
+                merged.append(x)
+        if merged:
+            keeper[f] = merged
+    for f in ("practice_target", "practice_format", "practice_evidence_type", "expected_output"):
+        if not str(keeper.get(f) or "").strip() and str(victim.get(f) or "").strip():
+            keeper[f] = victim[f]
+    keeper["title"] = _clean_merged_title(keeper.get("title"))
+
+    kcid, vcid = str(keeper.get("capability_id")), str(victim.get("capability_id"))
+    kcap, vcap = caps.get(kcid), caps.get(vcid)
+    if vcap is not None:
+        vcap["ownership_mode"] = "embedded"
+        vcap["owner_topic_id"] = str(keeper.get("topic_id"))
+        if kcap is not None:
+            k_end = list(kcap.get("satisfies_end_actions") or [])
+            for a in vcap.get("satisfies_end_actions") or []:
+                if a not in k_end:
+                    k_end.append(a)
+            kcap["satisfies_end_actions"] = k_end
+            k_pre = {p for p in (kcap.get("prerequisite_capability_ids") or []) if p not in (kcid, vcid)}
+            k_pre |= {p for p in (vcap.get("prerequisite_capability_ids") or []) if p not in (kcid, vcid)}
+            kcap["prerequisite_capability_ids"] = sorted(k_pre)
+    # anything that depended on the victim now depends on the keeper
+    for cid, cap in caps.items():
+        if cid in (kcid, vcid):
+            continue
+        pres = cap.get("prerequisite_capability_ids") or []
+        if vcid in pres:
+            cap["prerequisite_capability_ids"] = [kcid if p == vcid else p for p in pres]
+
+
+def _merge_same_subject_topics(topics: list[dict[str, Any]], caps: dict[str, dict[str, Any]],
+                               actions: list[ValidatorAction]) -> list[dict[str, Any]]:
+    """B.4.2b — collapse an 'understand X' + 'apply X' split into ONE teaching topic. Fires only on
+    same-base-subject, non-coding teaching topics whose learner ACTIONS DIFFER (a real facet split);
+    same-action pairs are left to duplicate detection so the sole-owner guard is untouched. The richest
+    blueprint type wins; the leaner topic's capability is embedded under it."""
+    pos = {id(t): i for i, t in enumerate(topics)}
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for t in topics:
+        if str(t.get("topic_type") or "") not in _MERGEABLE_TYPE_PRIORITY:
+            continue
+        base = _base_subject(t.get("subject_key"))
+        if base:
+            groups.setdefault(base, []).append(t)
+
+    remove: set[int] = set()
+    for base, group in groups.items():
+        if len(group) < 2:
+            continue
+        ordered = sorted(group, key=lambda t: (_MERGEABLE_TYPE_PRIORITY[str(t.get("topic_type"))], pos[id(t)]))
+        keeper = ordered[0]
+        used_actions = {canonical_action(keeper.get("primary_action"))}
+        for t in ordered[1:]:
+            ca = canonical_action(t.get("primary_action"))
+            if ca is None or ca in used_actions:
+                continue  # same action -> a duplicate, not a facet split; leave it for dedup
+            _absorb_topic(keeper, t, caps)
+            used_actions.add(ca)
+            remove.add(id(t))
+            actions.append(ValidatorAction(
+                "subject_merge", SUBJECT_MERGE,
+                f"folded {t.get('title')!r} into {keeper.get('title')!r} "
+                f"(same subject {base!r}; understand+apply → one topic)",
+                [str(keeper.get("topic_id")), str(t.get("topic_id"))]))
+    return [t for t in topics if id(t) not in remove]
+
+
 def validate_topic_decomposition(
     path_plan: dict[str, Any],
     topics: list[dict[str, Any]],
@@ -226,6 +355,10 @@ def validate_topic_decomposition(
         if role and tt and not role_matches_type(str(role), str(tt)):
             actions.append(ValidatorAction("role_type", "FLAG",
                                            f"role {role!r} != type {tt!r}", [str(t.get("topic_id"))]))
+
+    # B.4.2b same-subject merge — fold an understand+apply split into one teaching topic BEFORE dedup
+    # (only different-action pairs merge, so same-action duplicates still reach the dedup/sole-owner pass).
+    topics = _merge_same_subject_topics(topics, caps, actions)
 
     # B.4.2 duplicates — drop CLEAR_DUPLICATE (later, unless sole owner), route AMBIGUOUS.
     survivors: list[dict[str, Any]] = []

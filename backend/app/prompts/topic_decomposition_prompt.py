@@ -81,7 +81,13 @@ RULES:
 - content_role ∈ {", ".join(CONTENT_ROLES)}; topic_type ∈ {", ".join(TOPIC_TYPES)}.
 - practice_evidence_type ∈ {", ".join(PRACTICE_EVIDENCE_TYPES)}.
 - expected_output = the concrete artifact the learner produces (distinct from practice_target).
-- Two topics on the same subject are allowed only when the learner job (primary_action) differs.
+- ONE concept = ONE topic. "Understanding X" and "applying X" are the SAME capability, never two topics:
+  a single topic teaches a concept end-to-end and its card structure already carries intuition →
+  worked example → practice. Do NOT emit a separate "understand" topic and "apply" topic for the same
+  subject, and do NOT append "application"/"interpretation" to a subject_key to make a second topic.
+  Two topics on ONE subject are allowed ONLY when the DELIVERABLE genuinely differs — the canonical case
+  is trace-by-hand vs. write-the-code (algorithm_walkthrough + coding_implementation). "understand" vs
+  "apply"/"calculate" is not such a split.
 - Distinct TECHNIQUES are distinct learning deltas — even at the same complexity class or under one umbrella.
   When the GOAL is to learn or survey a FAMILY of methods (e.g. "sorting algorithms", "graph traversals",
   "search algorithms", "tree traversals"), each canonical member that teaches a DIFFERENT technique is its
@@ -90,8 +96,16 @@ RULES:
   representative). The "unique delta" here is the TECHNIQUE, not the runtime class or the shared umbrella
   subject. (This does NOT apply when the goal targets ONE specific method — then include only what that
   method needs, not its whole family.)
-- Keep the path minimal (usually 3-10 topics); foundation topics only when a brief just-in-time note
-  inside the next topic would not suffice. EXCEPTION: a family SURVEY (above) covers its canonical members
+- The path BEGINS with exactly one orientation topic: content_role "orientation", topic_type
+  "study_path_introduction", primary_action "understand". It FRAMES the area, NAMES the assumed
+  prerequisites WITHOUT teaching them (a one-line "if X is new to you, review it first" — a prereq is
+  mentioned, never taught), defines the shared terms used across later topics, and previews the topics.
+  It teaches NO subtopic and has NO worked example and NO practice. Do NOT put a `foundation` teaching
+  topic (e.g. "Interpreting Probability") in this slot — a prerequisite the learner is assumed to have is
+  named in the intro, not made into its own teaching topic.
+- Keep the path minimal (usually 3-10 topics); a standalone `foundation` topic only when the learner
+  must genuinely LEARN that concept here (not merely be reminded of a prerequisite) AND a brief note in
+  the next topic would not suffice. EXCEPTION: a family SURVEY (above) covers its canonical members
   even when that pushes past the usual count — breadth across the techniques IS the learning there.
 - A `concept_intuition` topic is only for a concept the learner must MASTER on its own (a substantial,
   distinct learning delta). A paradigm / mental-model / "what X is" FRAMING for the topics that follow is

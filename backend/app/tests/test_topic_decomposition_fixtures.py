@@ -60,6 +60,25 @@ class MultiConceptFixtures(unittest.TestCase):
         order = {t["title"]: t["order_index"] for t in topics}
         self.assertLess(order["Law of Total Probability"], order["Bayes' Theorem"])   # prereq first
 
+    def test_understand_and_apply_split_is_collapsed_end_to_end(self):
+        # The live Engine-B regression: the model split each concept into an "understand" topic and an
+        # "apply" topic (distinct subject_keys w/ an _application suffix). The pipeline must collapse each
+        # pair into ONE teaching topic so the goal's two concepts yield two topics, not four.
+        cap_u = _cap("understand_bayes", subject="bayes_theorem", primary="Bayes' Theorem", role="concept_intuition")
+        cap_a = _cap("apply_bayes", prereqs=["understand_bayes"], subject="bayes_theorem_application",
+                     primary="Bayes' Theorem", role="problem_solving_application")
+        plan = {"end_capability_actions": ["apply"], "required_capabilities": [cap_u, cap_a]}
+        t_u = _topic("understand_bayes", subject="bayes_theorem", title="Understanding Bayes' Theorem",
+                     role="concept_intuition", tt="concept_intuition")
+        t_a = _topic("apply_bayes", subject="bayes_theorem_application", title="Applying Bayes' Theorem",
+                     role="problem_solving_application", tt="problem_solving_application")
+        t_a["primary_action"] = "apply"
+        topics = generate_decomposed_topics("learn bayes theorem", "s",
+                                            model_fn=lambda p: {"path_plan": plan, "topics": [t_u, t_a]})
+        self.assertEqual(len(topics), 1)                        # understand + apply folded into one
+        self.assertEqual(topics[0]["title"], "Bayes' Theorem")  # leading study-verb stripped
+        self.assertEqual(topics[0]["course_type"], "problem_solving_application")
+
     def test_single_technique_one_topic_no_padding(self):
         plan = {"end_capability_actions": ["calculate"],
                 "required_capabilities": [_cap("cts", subject="completing_the_square",
