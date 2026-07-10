@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from app.services.llm_client import client, OPENAI_MODEL
+from app.services.llm_client import _loads_llm_json, client, OPENAI_MODEL
 
 
 TARGETED_REPAIR_JSON_SCHEMA: dict[str, Any] = {
@@ -158,7 +158,7 @@ The follow_up_question should be one question only.
     )
 
     try:
-        repair = json.loads(response.output_text)
+        repair = _loads_llm_json(response.output_text)
         repair["repair_level"] = repair_level
         repair["prior_repair_count"] = prior_repair_count
         return repair
@@ -211,7 +211,7 @@ Return:
     )
 
     try:
-        result = json.loads(response.output_text)
+        result = _loads_llm_json(response.output_text)
         result["correctness"] = max(0.0, min(1.0, float(result["correctness"])))
         result["reasoning_quality"] = max(
             0.0,

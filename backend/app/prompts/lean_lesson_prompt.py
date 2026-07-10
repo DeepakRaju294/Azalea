@@ -896,7 +896,8 @@ def build_lean_user_prompt(
 def _charter_directive_lines(rc: Any) -> list[str]:
     """The resolved card-charter (CARD_CONTENT_CHARTER_SPEC) rendered as co-located prompt lines. Prose only —
     the builder never interprets slots."""
-    out = ["   content_charter (content ownership — obey exactly):"]
+    out = ["   content_charter (content ownership — OBEY EXACTLY; these OVERRIDE any general card guidance above "
+           "that would have this card cover what another card owns):"]
     if rc.job:
         out.append(f"     job: {rc.job}")
     for d in rc.include_directives:

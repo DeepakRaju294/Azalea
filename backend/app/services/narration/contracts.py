@@ -76,9 +76,10 @@ def process_scaffold_directive(domain: str | None) -> str | None:
         return None
     frames = ", ".join(f'"{f}"' for f in PROCESS_SCAFFOLD[nd])
     return (
-        f"PROCESS/METHOD CARD FRAMES ({nd}): for the process/method card, use these as the main bullets — {frames}. "
-        'Do NOT use code-execution loop framing ("Starting state", "Repeated action", "State update", '
-        f'"Stopping condition", "Output rule") — this is a {nd} method, not a running program.'
+        f"PROCESS/METHOD CARD FRAMES ({nd}) — THIS OVERRIDES any 'Starting state / Repeated action / State update "
+        "/ Stopping condition / Output rule' framing described anywhere else in these instructions. For the "
+        f"process/method card use EXACTLY these frames as the main bullets, in order: {frames}. This is a {nd} "
+        "method, not a running program — never use loop/state framing for it under any circumstances."
     )
 
 
