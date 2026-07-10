@@ -94,8 +94,12 @@ In-scope items are the exact ideas the lesson should teach.
 Out-of-scope items are related parent or sibling ideas the lesson must not teach.
 
 5. Keep the path short and purposeful.
-Study paths usually contain 3-10 topics unless the source material clearly requires fewer or more.
-Do not add "Overview", "Introduction", or "Review" filler topics.
+Use the MINIMUM number of topics the goal genuinely needs — never pad to reach a count. A single technique,
+formula, operation, or algorithm is usually 1-2 topics (an optional concept/intuition lead-in plus ONE method
+topic). A broad, multi-part subject may need more, up to ~10. If you cannot state a DISTINCT learning job for a
+topic that no other topic covers, do not create it.
+Do not add "Overview", "Introduction", or "Review" filler topics, and do not pad a single technique with separate
+"Understanding the Basics", "Steps to", "Practicing", or "Applying" topics — those regenerate the same lesson.
 NEVER create two topics of the SAME topic_type for the same algorithm / operation / subject. One
 algorithm = exactly ONE algorithm_walkthrough topic (plus its single coding_implementation follow-up);
 one operation = exactly ONE data_structure_operation topic. Do NOT split an algorithm into an

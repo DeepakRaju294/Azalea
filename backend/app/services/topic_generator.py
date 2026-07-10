@@ -179,18 +179,34 @@ _SUBJECT_FRAMING_WORDS: frozenset[str] = frozenset({
     # so it collapses with the "...Process" walkthrough of the same subject (they generate the same lesson).
     "example", "examples", "problem", "problems", "practice", "exercise", "exercises", "application",
     "applications", "applied", "worked", "solving", "solve", "solution", "solutions",
+    # step/understanding/basics framings the LLM pads a single technique with ("Steps to X", "Understanding the
+    # Basics of X") — stripping them lets those reduce to the bare subject so the same-subject dedup fires.
+    "steps", "step", "understanding", "understand", "basics", "basic", "overview", "fundamentals", "fundamental",
 })
 
 
+def _stem(tok: str) -> str:
+    """Light suffix stemmer so 'complete'/'completing' and 'square'/'squares' key the same (single-concept
+    dedup). Conservative: strips a common inflection, then at most one trailing 'e'; leaves short words alone."""
+    for suf in ("ing", "edness", "edly", "ed", "es", "s"):
+        if tok.endswith(suf) and len(tok) - len(suf) >= 4:
+            tok = tok[: -len(suf)]
+            break
+    if len(tok) >= 5 and tok.endswith("e"):
+        tok = tok[:-1]
+    return tok
+
+
 def _subject_tokens(title: str, extra_framing: frozenset[str] = frozenset()) -> tuple[frozenset[str], str]:
-    base = [t for t in _re.findall(r"[a-z0-9]+", str(title or "").lower())
+    # Framing check on the RAW token, then stem the survivors so inflections collapse (complete/completing).
+    base = [_stem(t) for t in _re.findall(r"[a-z0-9]+", str(title or "").lower())
             if t not in _SUBJECT_FRAMING_WORDS]
     stripped = [t for t in base if t not in extra_framing]
     # Domain stripping must never EMPTY the subject — in a single-algorithm path the algorithm name
     # itself is path-common (every Quick Sort title has 'quick'/'sort'); falling back to the un-stripped
-    # tokens keeps that subject so the same-subject dedup still works.
+    # tokens keeps that subject so the same-subject dedup still works. Sorted key = order-independent.
     tokens = stripped if stripped else base
-    return frozenset(tokens), "".join(tokens)
+    return frozenset(tokens), "".join(sorted(tokens))
 
 
 def _path_domain_tokens(topics: list[dict[str, Any]]) -> frozenset[str]:
@@ -208,7 +224,7 @@ def _path_domain_tokens(topics: list[dict[str, Any]]) -> frozenset[str]:
         title = str(t.get("title") or "")
         for ac in _re.findall(r"\b[A-Z]{2,}\b", title):
             acronyms.add(ac.lower())
-        for tok in {x for x in _re.findall(r"[a-z0-9]+", title.lower())
+        for tok in {_stem(x) for x in _re.findall(r"[a-z0-9]+", title.lower())
                     if x not in _SUBJECT_FRAMING_WORDS}:
             counts[tok] = counts.get(tok, 0) + 1
     common: set[str] = set()
@@ -252,11 +268,16 @@ def _drop_same_type_subject_duplicates(topics: list[dict[str, Any]]) -> list[dic
 # in this set — those are valid same-subject companions, not duplicates.
 _METHOD_LESSON_TYPES = frozenset({
     "process_walkthrough", "algorithm_walkthrough", "data_structure_operation", "problem_solving_application",
+    # math/science full-method lessons — each emits its own background + method + worked-example + practice, so
+    # two of the same subject duplicate (and the domain gate REMAPS math method topics TO math_formula_method,
+    # so a math path's duplicated method + application pair only both count once this is here).
+    "math_formula_method", "proof_reasoning", "science_mechanism",
 })
 # When several method lessons share a subject, keep the one that TEACHES the method (a walkthrough) over one
 # that merely applies/examples it; ties keep the earlier topic.
 _METHOD_LESSON_PRIORITY = {
     "algorithm_walkthrough": 3, "data_structure_operation": 3, "process_walkthrough": 3,
+    "math_formula_method": 3, "proof_reasoning": 3, "science_mechanism": 3,
     "problem_solving_application": 1,
 }
 

@@ -81,6 +81,29 @@ class CollapseSameSubjectMethodTopics(unittest.TestCase):
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0]["title"], "Completing the Square Process")  # tie -> earlier kept
 
+    def test_math_formula_method_plus_application_collapses(self):
+        # the live regression: the domain gate remaps a math method topic TO math_formula_method, so a
+        # math_formula_method + problem_solving_application pair (differing only by framing words) must collapse.
+        path = [
+            {"title": "Introduction to Completing the Square", "course_type": "study_path_introduction"},
+            {"title": "Understanding the Basics of Completing the Square", "course_type": "concept_intuition"},
+            {"title": "Steps to Complete the Square", "course_type": "math_formula_method"},
+            {"title": "Applying Completing the Square", "course_type": "problem_solving_application"},
+        ]
+        res = collapse([dict(t) for t in path])
+        self.assertEqual(_types(res),
+                         ["study_path_introduction", "concept_intuition", "math_formula_method"])  # application dropped
+
+    def test_two_math_formula_methods_distinct_angles_are_kept(self):
+        # distinct titles ("the Process" vs "Solve Quadratic Equations") read as different angles — NOT collapsed
+        # by title alone (content differentiation is the charters' job, not a topic drop).
+        path = [
+            {"title": "Understanding the Process of Completing the Square", "course_type": "math_formula_method"},
+            {"title": "Completing the Square to Solve Quadratic Equations", "course_type": "math_formula_method"},
+        ]
+        res = collapse([dict(t) for t in path])
+        self.assertEqual(len(res), 2)
+
     def test_never_empties_the_path(self):
         # even a pathological all-same-subject list keeps at least one topic
         path = [
