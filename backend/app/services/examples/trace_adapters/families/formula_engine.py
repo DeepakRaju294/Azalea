@@ -67,6 +67,16 @@ def _substitute(rhs: str, values: dict[str, Any]) -> str:
     return out
 
 
+def _apply_display_names(text: str, names: dict[str, str]) -> str:
+    """Render eval identifiers as textbook notation for the learner (`P_A_given_B1` -> `P(A|B1)`). Longest
+    first so a shorter name can't clobber part of a longer one. Values (already substituted) are untouched."""
+    if not names:
+        return text
+    for k in sorted(names, key=len, reverse=True):
+        text = re.sub(rf"\b{re.escape(k)}\b", names[k], text)
+    return text
+
+
 @dataclass
 class Given:
     name: str                                   # variable symbol used in the formulas
@@ -132,6 +142,7 @@ class FormulaSpec:
     not_aliases: list[str] = field(default_factory=list)     # routing `not` guards (blocking substrings)
     priority: int = 50                          # routing precedence (higher wins on overlap)
     register: bool = True                       # False = gate-only (e.g. a migration proof), not a live adapter
+    display_names: dict[str, str] = field(default_factory=dict)   # eval id -> textbook label in learner prose
 
     # ------- derived -------------------------------------------------------------------------------
     def base_env(self, example_input: dict[str, Any]) -> dict[str, Any]:
@@ -196,7 +207,9 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
     else:
         knowns_str = ", ".join(f"{g.name} = {_num(env[g.name])}{(' ' + g.unit) if g.unit else ''}"
                                for g in spec.givens)
-        f1 = [fact("known", f"{g.name} = {_num(env[g.name])}") for g in spec.givens]
+        f1 = [fact("known", _apply_display_names(f"{g.name} = {_num(env[g.name])}", spec.display_names))
+              for g in spec.givens]
+    knowns_str = _apply_display_names(knowns_str, spec.display_names)     # textbook notation for the learner
     d1 = knowns_str
     r1 = f"the given data is {knowns_str}" if spec.dataset is not None else f"the given quantities are {knowns_str}"
     e1 = f"Knowns: {knowns_str}."
@@ -222,16 +235,18 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
         env[o.name] = val
         answer[o.name] = val
         unit = (" " + o.unit) if o.unit else ""
-        d = f"{o.name} = {val}{unit}"
-        r = f"{o.equation} = {subst} = {val}{unit}"
-        e = f"{o.teaching_focus or o.name}: {o.equation} = {val}{unit}."
+        d = _apply_display_names(f"{o.name} = {val}{unit}", spec.display_names)
+        r = _apply_display_names(f"{o.equation} = {subst} = {val}{unit}", spec.display_names)
+        e = _apply_display_names(f"{o.teaching_focus or o.name}: {o.equation} = {val}{unit}.", spec.display_names)
         fk = o.fact_kind or o.name
         after = dict(prior); after[o.name] = val
         steps.append(Step(id=f"s{k}", operation=o.stage(), prior_state=dict(prior), state_after=after,
                           inputs={o.name: val}, decision=d, reason=r,
                           visual_state={"kind": "equation", o.name: val}, expected_visible_result=e,
                           facts={"allowed_values": _ints(d, r, e, *answer.values()),
-                                 "required_facts": [fact(fk, f"{o.name} = {val}")], "forbidden_claims": []}))
+                                 "required_facts": [fact(fk, _apply_display_names(f"{o.name} = {val}",
+                                                                                 spec.display_names))],
+                                 "forbidden_claims": []}))
         prior = after
 
     # coverage case for this instance (optional; predicate reads the knowns env)

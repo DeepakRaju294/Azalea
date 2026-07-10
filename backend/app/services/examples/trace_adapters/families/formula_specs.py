@@ -731,7 +731,9 @@ LAW_OF_TOTAL_PROBABILITY = FormulaSpec(
                "the remaining partition probability"),
         Output("P_A", "P_A = P_A_given_B1*P_B1 + P_A_given_B2*P_B2",
                "P_A_given_B1*P_B1 + P_A_given_B2*P_B2", "", "compute_total_probability", "total probability")],
-    conventions={"law": "P(A) = P(A|B1)P(B1) + P(A|B2)P(B2), where the partition satisfies P(B1) + P(B2) = 1"})
+    conventions={"law": "P(A) = P(A|B1)P(B1) + P(A|B2)P(B2), where the partition satisfies P(B1) + P(B2) = 1"},
+    display_names={"P_A_given_B1": "P(A|B1)", "P_A_given_B2": "P(A|B2)",
+                   "P_B1": "P(B1)", "P_B2": "P(B2)", "P_A": "P(A)"})
 
 BAYES_THEOREM = FormulaSpec(
     slug="bayes_theorem", title="Bayes' theorem", family="statistics",
@@ -753,7 +755,9 @@ BAYES_THEOREM = FormulaSpec(
         Output("P_D_given_pos", "P_D_given_pos = P_pos_given_D*P_D / P_pos",
                "P_pos_given_D*P_D / P_pos", "", "apply_bayes_theorem", "posterior probability")],
     conventions={"theorem": "P(D|pos) = P(pos|D)P(D) / P(pos); the evidence P(pos) itself comes from the law "
-                            "of total probability: P(pos) = P(pos|D)P(D) + P(pos|not D)P(not D)"})
+                            "of total probability: P(pos) = P(pos|D)P(D) + P(pos|not D)P(not D)"},
+    display_names={"P_pos_given_D": "P(pos|D)", "P_pos_given_notD": "P(pos|not D)", "P_not_D": "P(not D)",
+                   "P_D_given_pos": "P(D|pos)", "P_pos": "P(pos)", "P_D": "P(D)"})
 
 CONDITIONAL_PROBABILITY = FormulaSpec(
     slug="conditional_probability", title="conditional probability", family="statistics",
@@ -767,7 +771,9 @@ CONDITIONAL_PROBABILITY = FormulaSpec(
                "outcomes satisfying B"),
         Output("P_A_given_B", "P_A_given_B = n_A_and_B / n_B", "n_A_and_B / n_B", "",
                "compute_conditional_probability", "conditional probability")],
-    conventions={"definition": "P(A|B) = P(A and B) / P(B) = (outcomes with A and B) / (outcomes with B)"})
+    conventions={"definition": "P(A|B) = P(A and B) / P(B) = (outcomes with A and B) / (outcomes with B)"},
+    display_names={"n_A_and_B": "n(A and B)", "n_B_not_A": "n(B but not A)", "n_B": "n(B)",
+                   "P_A_given_B": "P(A|B)"})
 
 MOLE_FRACTION = FormulaSpec(
     slug="mole_fraction", title="mole fraction", family="chemistry",
