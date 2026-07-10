@@ -2012,6 +2012,31 @@ _UNIVERSAL_LEAN_RULES: dict[str, CardStageRule] = {
 }
 
 
+# A math method applies a formula; it is NOT a loop. Its process card must not borrow the algorithm
+# "starting state / repeated action / stopping condition / output rule" scaffold (jarring on a formula —
+# a one-shot calculation has no iteration or termination). Override the `process` rule for the math family.
+_MATH_PROCESS_RULE = _lean_rule(
+    "identify the givens and the quantity to find — name each symbol and what it represents",
+    "state the formula or rule that applies, and the precondition under which it is valid",
+    "substitute the known values into the formula",
+    "compute and simplify to the result, showing the arithmetic",
+    "interpret the result — what the value means in the problem's context",
+    visual="plain-English visual_description of the relationship the formula expresses (labeled quantities "
+          "or a simple diagram), only when one genuinely clarifies it",
+    notes=[
+        "This is a MATH method, NOT an algorithm. Do NOT use 'Starting state', 'Repeated action', 'State "
+        "update', 'Stopping condition', or 'Output rule' framing — a formula application has no iteration "
+        "or termination. Describe applying the formula, not running a loop.",
+        "Keep the process card symbolic and general: name the symbols and the order of operations without "
+        "concrete example numbers — concrete values belong in the worked_example.",
+        "Name the actual formula and its variables for THIS topic, not a generic 'apply the formula' step.",
+        "Only when the method is genuinely iterative (e.g. Newton's method, a converging series) is a "
+        "repeated-step framing appropriate; a one-shot formula application is not iterative.",
+    ],
+)
+_MATH_FAMILY_LEAN_RULES = {**_UNIVERSAL_LEAN_RULES, "process": _MATH_PROCESS_RULE}
+
+
 STAGE_RULES.update(
     {
         "concept_intuition": _UNIVERSAL_LEAN_RULES,
@@ -2020,10 +2045,10 @@ STAGE_RULES.update(
         "algorithm_walkthrough": _UNIVERSAL_LEAN_RULES,
         "data_structure_operation": _UNIVERSAL_LEAN_RULES,
         "coding_implementation": _UNIVERSAL_LEAN_RULES,
-        "math_formula_method": _UNIVERSAL_LEAN_RULES,
+        "math_formula_method": _MATH_FAMILY_LEAN_RULES,
         "proof_reasoning": _UNIVERSAL_LEAN_RULES,
         "compare_distinguish": _UNIVERSAL_LEAN_RULES,
-        "problem_solving_application": _UNIVERSAL_LEAN_RULES,
+        "problem_solving_application": _MATH_FAMILY_LEAN_RULES,
         "science_mechanism": _UNIVERSAL_LEAN_RULES,
         "study_path_introduction": {
             "background": _lean_rule(
