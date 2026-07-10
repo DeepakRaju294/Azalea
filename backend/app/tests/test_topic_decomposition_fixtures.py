@@ -39,10 +39,12 @@ class MultiConceptFixtures(unittest.TestCase):
 
     def test_both_concepts_emitted_are_kept_and_ordered(self):
         topics = self._run({"path_plan": _PLAN_BOTH, "topics": [_BAYES_TOPIC, _TP_TOPIC]})  # emitted out of order
-        titles = [t["title"] for t in topics]
-        self.assertEqual(titles, ["Law of Total Probability", "Bayes' Theorem"])   # prereq order: TP before Bayes
-        self.assertEqual([t["order_index"] for t in topics], [1, 2])
-        self.assertEqual({t["course_type"] for t in topics}, {"math_formula_method"})
+        self.assertEqual(topics[0]["course_type"], "study_path_introduction")  # synthesized intro leads
+        self.assertTrue(topics[0]["title"].startswith("Introduction to"))
+        self.assertEqual([t["title"] for t in topics[1:]],
+                         ["Law of Total Probability", "Bayes' Theorem"])   # prereq order: TP before Bayes
+        self.assertEqual([t["order_index"] for t in topics], [1, 2, 3])
+        self.assertEqual({t["course_type"] for t in topics[1:]}, {"math_formula_method"})
 
     def test_dropped_concept_is_synthesized(self):
         # THE regression: the model returns only the Bayes topic; the path plan requires both.
@@ -50,10 +52,28 @@ class MultiConceptFixtures(unittest.TestCase):
         titles = [t["title"] for t in topics]
         self.assertIn("Law of Total Probability", titles)   # synthesized back in
         self.assertIn("Bayes' Theorem", titles)
-        self.assertEqual(len(topics), 2)
-        tp = next(t for t in topics if "Total Probability" in t["title"])
+        self.assertEqual(len(topics), 3)   # intro + the two concepts
+        self.assertEqual(topics[0]["course_type"], "study_path_introduction")  # intro first
+        tp = next(t for t in topics if t["course_type"] == "math_formula_method"
+                  and "Total Probability" in t["title"])
         self.assertEqual(tp["course_type"], "math_formula_method")   # type from the capability's content_role
-        self.assertEqual([t["order_index"] for t in topics], [1, 2])  # contiguous order indices
+        self.assertEqual([t["order_index"] for t in topics], [1, 2, 3])  # contiguous order indices
+
+    def test_emitted_intro_is_not_duplicated(self):
+        # when the model DOES emit an orientation topic, we must NOT synthesize a second one.
+        intro = {"topic_id": "t_intro", "capability_id": "orient", "subject_key": "probability",
+                 "primary_action": "understand", "content_role": "orientation",
+                 "topic_type": "study_path_introduction", "title": "Probability, Start Here",
+                 "unit_title": "u", "purpose": "orient", "in_scope": ["x"], "basis": "goal"}
+        plan = {"end_capability_actions": ["calculate"],
+                "required_capabilities": [{"capability_id": "orient", "ownership_mode": "standalone",
+                                           "owner_topic_id": None, "prerequisite_capability_ids": [],
+                                           "satisfies_end_actions": [], "basis": "goal"}, _TP_CAP, _BAYES_CAP]}
+        topics = self._run({"path_plan": plan, "topics": [intro, _TP_TOPIC, _BAYES_TOPIC]})
+        intros = [t for t in topics if t["course_type"] == "study_path_introduction"]
+        self.assertEqual(len(intros), 1)                       # exactly one, the model's own
+        self.assertEqual(intros[0]["title"], "Probability, Start Here")
+        self.assertEqual(topics[0]["course_type"], "study_path_introduction")  # still first
 
     def test_dropped_concept_ordered_before_its_dependent(self):
         topics = self._run({"path_plan": _PLAN_BOTH, "topics": [_BAYES_TOPIC]})

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Any, Callable, Optional
 
 from app.core.topic_decomposition import (
@@ -131,6 +132,58 @@ def _to_legacy(topic: dict[str, Any], title_by_id: dict[str, str], fallback_orde
     }
 
 
+def _is_opener(topic: dict[str, Any]) -> bool:
+    return (str(topic.get("topic_type") or "") == "study_path_introduction"
+            or str(topic.get("content_role") or "").lower() == "orientation")
+
+
+# Leading goal-preamble words stripped when deriving the intro title ("I want to learn about X" -> "X").
+_INTRO_FILLER = frozenset({
+    "i", "want", "wanna", "would", "like", "wish", "need", "hope", "aim", "trying", "try", "to",
+    "learn", "learning", "understand", "understanding", "study", "studying", "know", "knowing",
+    "master", "mastering", "explore", "exploring", "review", "reviewing", "about", "more", "get",
+})
+_TITLE_SMALL_WORDS = frozenset({"and", "or", "of", "the", "a", "an", "to", "for", "in", "on", "with", "by"})
+
+
+def _intro_title(goal: str | None) -> str:
+    """A clean, presentable intro title from a messy goal ('wANT TO LEARN ABOUT bayes...' ->
+    'Introduction to Bayes Theorem ...'). Strips leading preamble words and normalizes wild casing."""
+    tokens = re.findall(r"[A-Za-z0-9'+#/-]+", str(goal or ""))
+    i = 0
+    while i < len(tokens) and tokens[i].lower() in _INTRO_FILLER:
+        i += 1
+    core = tokens[i:]
+    if not core:
+        return "Introduction & Key Terms"
+    titled = " ".join(w.lower() if (j and w.lower() in _TITLE_SMALL_WORDS) else w.capitalize()
+                      for j, w in enumerate(core))
+    return f"Introduction to {titled}"[:255]
+
+
+def _synthesize_intro_topic(goal: str | None) -> dict[str, Any]:
+    """A lightweight orientation opener (study_path_introduction). Its cards — background, prerequisites
+    (named, not taught), shared terms, roadmap — are generated downstream from the blueprint + siblings;
+    here we only mint the topic shell so a multi-topic path never starts cold when the LLM omits an intro."""
+    return {
+        "topic_id": "synth_intro",
+        "capability_id": "orientation",
+        "title": _intro_title(goal),
+        "subject_key": normalize_subject_key(str(goal or "")) or "overview",
+        "primary_action": "understand",
+        "content_role": "orientation",
+        "topic_type": "study_path_introduction",
+        "practice_target": "", "practice_format": "", "practice_evidence_type": "", "expected_output": "",
+        "in_scope": [], "out_of_scope": [],
+        "basis": "goal",
+        "estimated_minutes": 8,
+        "purpose": ("Orient the learner: frame the area, name the assumed prerequisites (without teaching "
+                    "them), define the shared terms, and preview the topics ahead."),
+        "topic_relationships": [],
+        "provenance": {"synthesized": True, "reason": "intro_guarantee"},
+    }
+
+
 def generate_decomposed_topics(
     goal: str | None,
     chunks_text: str,
@@ -160,7 +213,18 @@ def generate_decomposed_topics(
         _log.info("topic_decomposition: validator flagged %d issues: %s",
                   len(result.actions), [a.detail for a in result.actions if a.outcome == "FLAG"][:5])
 
-    ordered = sorted(result.topics, key=lambda t: int(t.get("order_index") or 0))
+    # Intro guarantee — a multi-topic path ALWAYS opens with a lightweight orientation topic. The LLM
+    # does not reliably emit one (and the validator stays pure), so synthesize it here when missing;
+    # order_index 0 puts it ahead of the validated topics before the renumber below.
+    topics_out = list(result.topics)
+    non_intro = [t for t in topics_out if not _is_opener(t)]
+    if not any(_is_opener(t) for t in topics_out) and len(non_intro) >= 2:
+        intro = _synthesize_intro_topic(goal)
+        intro["order_index"] = 0
+        topics_out = [intro, *topics_out]
+        _log.info("topic_decomposition: synthesized orientation intro (LLM emitted none)")
+
+    ordered = sorted(topics_out, key=lambda t: int(t.get("order_index") or 0))
     title_by_id = {str(t.get("topic_id")): str(t.get("title") or "") for t in ordered if t.get("title")}
     # synthesized follow-ups have no title yet — give title_by_id their adapted title too
     for i, t in enumerate(ordered, start=1):
