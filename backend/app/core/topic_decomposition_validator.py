@@ -11,8 +11,11 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from app.core.topic_decomposition import (
+    canonical_action,
     is_coding_type,
     match_action,
+    normalize_subject_key,
+    resolve_topic_type,
     role_matches_type,
 )
 
@@ -22,6 +25,7 @@ IMPLEMENTATION_FOLLOW_UP = "implementation_follow_up"
 CLEAR_DUPLICATE = "CLEAR_DUPLICATE"
 SAFE_REPAIR = "SAFE_REPAIR"
 AMBIGUOUS_OVERLAP = "AMBIGUOUS_OVERLAP"
+REPAIR = "REPAIR"                    # a coverage gap repaired by synthesizing a topic (B.4.1)
 
 
 @dataclass
@@ -169,6 +173,32 @@ def _sole_owner_of_required(topic: dict[str, Any], topics: list[dict[str, Any]],
 # --------------------------------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------------------------------
+def _synthesize_topic_for_capability(cid: str, cap: dict[str, Any]) -> dict[str, Any]:
+    """Build a standalone topic for a REQUIRED capability the model dropped (B.4.1 coverage repair). Deterministic:
+    identity + role/type/action come from the capability record, so a goal that names two techniques always yields
+    two topics even if the LLM emitted one. Ordering is assigned afterward by _assign_order_index."""
+    subject = normalize_subject_key(str(cap.get("subject_key") or cid))
+    role = str(cap.get("content_role") or cap.get("role") or "concept_intuition")
+    ttype = resolve_topic_type(role) or "concept_intuition"
+    title = str(cap.get("primary_capability") or subject.replace("_", " ")).strip()
+    if title:
+        title = title[0].upper() + title[1:]
+    return {
+        "topic_id": f"synth_{cid}",
+        "capability_id": cid,
+        "title": title,
+        "subject_key": subject,
+        "primary_action": canonical_action(cap.get("primary_action")) or "explain",
+        "content_role": role,
+        "topic_type": ttype,
+        "practice_evidence_type": str(cap.get("practice_evidence_type") or ""),
+        "expected_output": str(cap.get("expected_output") or ""),
+        "basis": str(cap.get("basis") or "coverage_repair"),
+        "topic_relationships": [],
+        "provenance": {"synthesized": True, "reason": "coverage_repair"},
+    }
+
+
 def validate_topic_decomposition(
     path_plan: dict[str, Any],
     topics: list[dict[str, Any]],
@@ -229,6 +259,19 @@ def validate_topic_decomposition(
         if not dropped:
             survivors.append(t)
     topics = survivors
+
+    # B.4.1 coverage REPAIR — synthesize a topic for any REQUIRED standalone capability the model dropped, BEFORE
+    # ordering so the new topic is ordered by its prerequisites. This is the fix for the dropped-concept bug: a
+    # goal naming two techniques (e.g. total probability + Bayes) always yields a topic for each.
+    owned_now = {str(t.get("capability_id")) for t in topics}
+    for cid, cap in caps.items():
+        if str(cap.get("ownership_mode") or "") == "standalone" and cid not in owned_now:
+            synth = _synthesize_topic_for_capability(cid, cap)
+            topics.append(synth)
+            owned_now.add(cid)
+            actions.append(ValidatorAction(
+                "coverage", REPAIR, f"synthesized topic for uncovered required capability {cid}",
+                [synth["topic_id"]]))
 
     # B.4.4 ordering from capability prerequisites.
     _assign_order_index(topics, caps, actions)

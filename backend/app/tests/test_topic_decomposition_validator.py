@@ -95,12 +95,23 @@ class RepairAndCoverageTests(unittest.TestCase):
         idx = {t["topic_id"]: t["order_index"] for t in res.topics}
         self.assertLess(idx["ta"], idx["tb"])  # prerequisite 'a' first
 
-    def test_unowned_capability_fails(self):
+    def test_unowned_standalone_capability_is_repaired(self):
+        # B.4.1 coverage REPAIR: a required standalone capability the model dropped is SYNTHESIZED, not failed,
+        # so a goal's named concept always gets a topic (fixes the dropped-concept bug).
         plan = {"end_capability_actions": [],
                 "required_capabilities": [cap("missing")]}
         res = validate_topic_decomposition(plan, [])
+        self.assertTrue(res.ok)                                            # repaired, not failed
+        self.assertEqual([t["capability_id"] for t in res.topics], ["missing"])   # a topic now owns it
+        self.assertTrue(any(x.outcome == "REPAIR" for x in res.actions))
+
+    def test_embedded_capability_without_owner_still_fails(self):
+        # embedded/unowned-mode gaps are NOT auto-repaired (ambiguous) — they still flag
+        plan = {"end_capability_actions": [],
+                "required_capabilities": [cap("emb", mode="embedded", owner=None)]}
+        res = validate_topic_decomposition(plan, [])
         self.assertFalse(res.ok)
-        self.assertTrue(any("unowned" in x.detail for x in res.actions))
+        self.assertTrue(any("no owner" in x.detail for x in res.actions))
 
     def test_reachability_requires_practice_capable_owner(self):
         plan = {"end_capability_actions": ["implement"],
