@@ -103,6 +103,15 @@ class FormulaGrounding(unittest.TestCase):
             self.assertTrue(_ground_edge_case_card(fc, _T(title)), f"edge {title}")
             self.assertIn("$$", " ".join(fc[0]["points"]))
 
+    def test_physics_geometry_finance_chemistry_are_grounded(self):
+        # grounding spans families: physics / geometry / finance / chemistry all ground with $$ math and edges.
+        for title in ("Kinetic Energy", "Ohm law", "Compound Interest", "Pythagorean", "Density", "Ideal Gas"):
+            fc = [{"blueprint_key": "formula_breakdown", "points": ["The formula:", "WRONG"]},
+                  {"blueprint_key": "edge_case", "points": ["x"]}]
+            self.assertTrue(_ground_formula_card(fc, _T(title)), f"formula {title}")
+            self.assertTrue(_ground_edge_case_card(fc, _T(title)), f"edge {title}")
+            self.assertTrue(fc[0]["points"][0].startswith("$$"), title)
+
     def test_greek_and_roots_render_plain_in_takeaways(self):
         cards = [{"blueprint_key": "background",
                   "points": ["Standard deviation measures how spread out a dataset is around its mean."]},

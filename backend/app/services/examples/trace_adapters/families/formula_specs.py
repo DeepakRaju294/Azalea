@@ -20,6 +20,15 @@ KINEMATICS = FormulaSpec(  # register=False: the hand-coded `kinematics` owns th
     outputs=[Output("v", "v = u + a*t", "u + a*t", "m/s", "compute_final_velocity", "final velocity"),
              Output("s", "s = u*t + (a*t^2)/2", "u*t + (a*t**2)/2", "m", "compute_displacement", "displacement")],
     conventions={"model": "constant (uniform) acceleration", "units": "SI (m, s, m/s, m/s^2)"},
+    canonical_latex="v = u + at",
+    canonical_notes=[
+        "\\(u\\): initial velocity.  \\(a\\): the (constant) acceleration.  \\(t\\): elapsed time.",
+        "Displacement over the same time: \\(s = ut + \\frac{1}{2}at^2\\).",
+    ],
+    edge_cases=[
+        "These hold ONLY for constant acceleration; if \\(a\\) varies over time they do not apply.",
+        "With \\(a = 0\\) the motion is uniform: \\(v = u\\) and \\(s = ut\\).",
+    ],
     cases=[Case("zero_initial_velocity", lambda g: g["u"] == 0),
            Case("nonzero_initial_velocity", lambda g: g["u"] != 0)], must_avoid=["zero_time"])
 
@@ -29,7 +38,16 @@ KINETIC_ENERGY = FormulaSpec(
     problem_template="A body of mass m = {m} kg moves at v = {v} m/s. Find its kinetic energy.",
     givens=[Given("m", "kg", 1, 20), Given("v", "m/s", 1, 15)],
     outputs=[Output("KE", "KE = (m*v^2)/2", "(m*v**2)/2", "J", "compute_kinetic_energy", "kinetic energy")],
-    conventions={"units": "SI (kg, m/s, J)"})
+    conventions={"units": "SI (kg, m/s, J)"},
+    canonical_latex="KE = \\frac{1}{2}mv^2",
+    canonical_notes=[
+        "\\(m\\): mass (kg).  \\(v\\): speed (m/s).  Kinetic energy is measured in joules (J).",
+        "Energy grows with the SQUARE of speed — doubling \\(v\\) quadruples \\(KE\\).",
+    ],
+    edge_cases=[
+        "Kinetic energy is never negative; it is 0 only when the body is at rest (\\(v = 0\\)).",
+        "It depends on speed, not direction — the sign of the velocity does not matter.",
+    ])
 
 NEWTONS_SECOND_LAW = FormulaSpec(
     slug="newtons_second_law", title="Newton's second law", family="physics",
@@ -37,7 +55,17 @@ NEWTONS_SECOND_LAW = FormulaSpec(
     problem_template="A mass m = {m} kg accelerates at a = {a} m/s^2. Find the net force on it.",
     givens=[Given("m", "kg", 1, 20), Given("a", "m/s^2", 1, 15)],
     outputs=[Output("F", "F = m*a", "m*a", "N", "compute_force", "net force")],
-    conventions={"law": "F = m*a", "units": "SI (kg, m/s^2, N)"})
+    conventions={"law": "F = m*a", "units": "SI (kg, m/s^2, N)"},
+    canonical_latex="F = ma",
+    canonical_notes=[
+        "\\(F\\): net force (N).  \\(m\\): mass (kg).  \\(a\\): acceleration (m/s²).",
+        "Force and acceleration point in the SAME direction; a larger mass needs more force for the same "
+        "acceleration.",
+    ],
+    edge_cases=[
+        "Zero net force → zero acceleration: the body keeps a constant velocity (Newton's first law).",
+        "\\(F\\) is the NET force — add all the forces (as vectors) first.",
+    ])
 
 WEIGHT_FORCE = FormulaSpec(
     slug="weight_force", title="weight from mass", family="physics",
@@ -53,7 +81,16 @@ MOMENTUM = FormulaSpec(
     problem_template="A body of mass m = {m} kg moves at v = {v} m/s. Find its momentum.",
     givens=[Given("m", "kg", 1, 20), Given("v", "m/s", 1, 25)],
     outputs=[Output("p", "p = m*v", "m*v", "kg*m/s", "compute_momentum", "momentum")],
-    conventions={"units": "SI (kg, m/s, kg*m/s)"})
+    conventions={"units": "SI (kg, m/s, kg*m/s)"},
+    canonical_latex="p = mv",
+    canonical_notes=[
+        "\\(p\\): momentum.  \\(m\\): mass.  \\(v\\): velocity.  Momentum is a VECTOR — direction matters.",
+        "Units: kg·m/s.",
+    ],
+    edge_cases=[
+        "Momentum is 0 at rest (\\(v = 0\\)).",
+        "In an isolated system the TOTAL momentum is conserved — internal forces cannot change it.",
+    ])
 
 WORK_DONE = FormulaSpec(
     slug="work_done", title="work done by a constant force", family="physics",
@@ -84,7 +121,16 @@ OHMS_LAW = FormulaSpec(
     givens=[Given("V", "V", 2, 24), Given("R", "ohm", 1, 12)],
     outputs=[Output("I", "I = V/R", "V/R", "A", "compute_current", "current"),
              Output("P", "P = V*I", "V*(V/R)", "W", "compute_power", "power dissipated")],
-    conventions={"law": "Ohm's law V = I*R", "units": "SI (V, A, ohm, W)"})
+    conventions={"law": "Ohm's law V = I*R", "units": "SI (V, A, ohm, W)"},
+    canonical_latex="I = \\frac{V}{R}",
+    canonical_notes=[
+        "\\(V\\): voltage across the resistor.  \\(R\\): resistance.  \\(I\\): current through it.",
+        "Power dissipated: \\(P = VI\\).",
+    ],
+    edge_cases=[
+        "As \\(R \\to 0\\) (a short circuit) the current grows without bound; \\(I\\) is undefined at \\(R = 0\\).",
+        "Zero voltage → zero current.",
+    ])
 
 # ======================================================================================================
 # FINANCE (B11) — family "finance"
@@ -97,7 +143,16 @@ SIMPLE_INTEREST = FormulaSpec(
     givens=[Given("P", "$", 100, 5000), Given("r", "%", 1, 12), Given("t", "yr", 1, 10)],
     outputs=[Output("I", "I = P*r*t/100", "P*r*t/100", "$", "compute_interest", "interest earned"),
              Output("A", "A = P + I", "P + P*r*t/100", "$", "compute_amount", "final amount")],
-    conventions={"model": "simple interest (not compounded)", "units": "dollars, percent per year"})
+    conventions={"model": "simple interest (not compounded)", "units": "dollars, percent per year"},
+    canonical_latex="I = \\frac{P r t}{100}",
+    canonical_notes=[
+        "\\(P\\): principal.  \\(r\\): annual rate (percent).  \\(t\\): time in years.",
+        "Interest is charged on the ORIGINAL principal only; the final amount is \\(A = P + I\\).",
+    ],
+    edge_cases=[
+        "Simple interest grows LINEARLY with time — unlike compound interest, earlier interest never itself "
+        "earns interest.",
+    ])
 
 COMPOUND_INTEREST = FormulaSpec(
     slug="compound_interest", title="compound interest (annual)", family="finance",
@@ -106,7 +161,16 @@ COMPOUND_INTEREST = FormulaSpec(
                      "Find the final amount.",
     givens=[Given("P", "$", 100, 5000), Given("r", "%", 1, 12), Given("t", "yr", 1, 8)],
     outputs=[Output("A", "A = P*(1 + r/100)^t", "P*(1 + r/100)**t", "$", "compute_amount", "final amount")],
-    conventions={"model": "annual compounding", "units": "dollars, percent per year"})
+    conventions={"model": "annual compounding", "units": "dollars, percent per year"},
+    canonical_latex="A = P(1 + \\frac{r}{100})^t",
+    canonical_notes=[
+        "\\(P\\): principal.  \\(r\\): annual rate (percent).  \\(t\\): number of years.  Compounds once per year.",
+        "Each year's interest is added to the balance and then itself earns interest.",
+    ],
+    edge_cases=[
+        "Compound interest grows FASTER than simple interest (exponential vs linear); at \\(r = 0\\) the amount "
+        "stays at \\(P\\).",
+    ])
 
 PRESENT_VALUE = FormulaSpec(
     slug="present_value", title="present value (discounting)", family="finance",
@@ -125,7 +189,15 @@ PERCENT_CHANGE = FormulaSpec(
     givens=[Given("old", "", 10, 200), Given("new", "", 10, 200)],
     outputs=[Output("pct", "pct = (new - old)/old * 100", "(new - old)/old * 100", "%", "compute_percent_change",
                     "percent change")],
-    conventions={"definition": "percent change = (new - old) / old * 100"})
+    conventions={"definition": "percent change = (new - old) / old * 100"},
+    canonical_latex="\\frac{new - old}{old} \\times 100",
+    canonical_notes=[
+        "\\(old\\): the starting value.  \\(new\\): the ending value.",
+        "A positive result is an increase; a negative result is a decrease.",
+    ],
+    edge_cases=[
+        "Undefined when \\(old = 0\\) (division by zero — there is no baseline to compare against).",
+    ])
 
 # ======================================================================================================
 # GEOMETRY (B2) — family "geometry"
@@ -136,7 +208,10 @@ CIRCLE_AREA = FormulaSpec(
     problem_template="A circle has radius r = {r}. Find its area.",
     givens=[Given("r", "", 1, 20)],
     outputs=[Output("A", "A = pi*r^2", "pi*r**2", "sq units", "compute_area", "area")],
-    conventions={"units": "square units", "pi": "3.14159..."})
+    conventions={"units": "square units", "pi": "3.14159..."},
+    canonical_latex="A = \\pi r^2",
+    canonical_notes=["\\(r\\): the radius.  Area is in square units."],
+    edge_cases=["Doubling the radius QUADRUPLES the area (it scales with \\(r^2\\))."])
 
 CIRCLE_CIRCUMFERENCE = FormulaSpec(
     slug="circle_circumference", title="circumference of a circle", family="geometry",
@@ -144,7 +219,10 @@ CIRCLE_CIRCUMFERENCE = FormulaSpec(
     problem_template="A circle has radius r = {r}. Find its circumference.",
     givens=[Given("r", "", 1, 20)],
     outputs=[Output("C", "C = 2*pi*r", "2*pi*r", "units", "compute_circumference", "circumference")],
-    conventions={"pi": "3.14159..."})
+    conventions={"pi": "3.14159..."},
+    canonical_latex="C = 2\\pi r",
+    canonical_notes=["\\(r\\): the radius.  Since the diameter is \\(d = 2r\\), this is equivalently \\(C = \\pi d\\)."],
+    edge_cases=["Circumference grows LINEARLY with the radius — doubling \\(r\\) doubles \\(C\\)."])
 
 RECTANGLE_AREA = FormulaSpec(
     slug="rectangle_area", title="area of a rectangle", family="geometry",
@@ -152,7 +230,10 @@ RECTANGLE_AREA = FormulaSpec(
     problem_template="A rectangle is l = {l} by w = {w}. Find its area.",
     givens=[Given("l", "", 1, 30), Given("w", "", 1, 30)],
     outputs=[Output("A", "A = l*w", "l*w", "sq units", "compute_area", "area")],
-    conventions={"units": "square units"})
+    conventions={"units": "square units"},
+    canonical_latex="A = lw",
+    canonical_notes=["\\(l\\): length.  \\(w\\): width."],
+    edge_cases=["A square is the special case \\(l = w\\), giving \\(A = l^2\\)."])
 
 TRIANGLE_AREA = FormulaSpec(
     slug="triangle_area", title="area of a triangle", family="geometry",
@@ -160,7 +241,10 @@ TRIANGLE_AREA = FormulaSpec(
     problem_template="A triangle has base b = {b} and height h = {h}. Find its area.",
     givens=[Given("b", "", 1, 30), Given("h", "", 1, 30)],
     outputs=[Output("A", "A = (b*h)/2", "(b*h)/2", "sq units", "compute_area", "area")],
-    conventions={"units": "square units"})
+    conventions={"units": "square units"},
+    canonical_latex="A = \\frac{1}{2}bh",
+    canonical_notes=["\\(b\\): the base.  \\(h\\): the height PERPENDICULAR to that base."],
+    edge_cases=["\\(h\\) must be the perpendicular height, not a slanted side."])
 
 PYTHAGOREAN = FormulaSpec(
     slug="pythagorean", title="Pythagorean theorem", family="geometry",
@@ -168,7 +252,16 @@ PYTHAGOREAN = FormulaSpec(
     problem_template="A right triangle has legs a = {a} and b = {b}. Find the hypotenuse.",
     givens=[Given("a", "", 1, 20), Given("b", "", 1, 20)],
     outputs=[Output("c", "c = sqrt(a^2 + b^2)", "sqrt(a**2 + b**2)", "", "compute_hypotenuse", "hypotenuse")],
-    conventions={"theorem": "a^2 + b^2 = c^2"})
+    conventions={"theorem": "a^2 + b^2 = c^2"},
+    canonical_latex="c = \\sqrt{a^2 + b^2}",
+    canonical_notes=[
+        "\\(a\\), \\(b\\): the two legs (the sides meeting at the right angle).  \\(c\\): the hypotenuse.",
+        "Equivalently, \\(a^2 + b^2 = c^2\\).",
+    ],
+    edge_cases=[
+        "Applies ONLY to right triangles.",
+        "The hypotenuse is always the longest side, so \\(c > a\\) and \\(c > b\\).",
+    ])
 
 SPHERE_VOLUME = FormulaSpec(
     slug="sphere_volume", title="volume of a sphere", family="geometry",
@@ -195,7 +288,10 @@ MOLARITY = FormulaSpec(
     problem_template="A solution contains n = {n} mol of solute in V = {V} L. Find its molarity.",
     givens=[Given("n", "mol", 1, 10), Given("V", "L", 1, 8)],
     outputs=[Output("M", "M = n/V", "n/V", "mol/L", "compute_molarity", "molarity")],
-    conventions={"definition": "molarity = moles of solute per litre of solution"})
+    conventions={"definition": "molarity = moles of solute per litre of solution"},
+    canonical_latex="M = \\frac{n}{V}",
+    canonical_notes=["\\(n\\): moles of solute.  \\(V\\): volume of SOLUTION in litres.  \\(M\\): molarity (mol/L)."],
+    edge_cases=["Use the total solution volume, not just the volume of solvent."])
 
 DENSITY = FormulaSpec(
     slug="density", title="density from mass and volume", family="chemistry",
@@ -203,7 +299,10 @@ DENSITY = FormulaSpec(
     problem_template="A sample has mass m = {m} g and volume V = {V} mL. Find its density.",
     givens=[Given("m", "g", 5, 500), Given("V", "mL", 1, 50)],
     outputs=[Output("rho", "rho = m/V", "m/V", "g/mL", "compute_density", "density")],
-    conventions={"definition": "density = mass per unit volume"})
+    conventions={"definition": "density = mass per unit volume"},
+    canonical_latex="\\rho = \\frac{m}{V}",
+    canonical_notes=["\\(m\\): mass.  \\(V\\): volume.  \\(\\rho\\): density (e.g. g/mL)."],
+    edge_cases=["Density is an INTENSIVE property — it does not change with the amount of material."])
 
 IDEAL_GAS_PRESSURE = FormulaSpec(
     slug="ideal_gas_pressure", title="ideal gas law (solve for pressure)", family="chemistry",
@@ -212,7 +311,16 @@ IDEAL_GAS_PRESSURE = FormulaSpec(
                      "(R = 0.0821 L*atm/mol/K).",
     givens=[Given("n", "mol", 1, 10), Given("T", "K", 200, 500), Given("V", "L", 1, 20)],
     outputs=[Output("P", "P = n*R*T/V", "n*R*T/V", "atm", "compute_pressure", "pressure")],
-    conventions={"law": "PV = nRT", "R": "0.0821 L*atm/mol/K"})
+    conventions={"law": "PV = nRT", "R": "0.0821 L*atm/mol/K"},
+    canonical_latex="P = \\frac{nRT}{V}",
+    canonical_notes=[
+        "\\(n\\): moles.  \\(R\\): gas constant (0.0821 L·atm/mol/K).  \\(T\\): temperature in KELVIN.  \\(V\\): volume.",
+        "This is \\(PV = nRT\\) solved for pressure.",
+    ],
+    edge_cases=[
+        "\\(T\\) must be in KELVIN, not Celsius.",
+        "The IDEAL gas law is an approximation — best at low pressure and high temperature.",
+    ])
 
 DILUTION = FormulaSpec(
     slug="dilution", title="dilution (M1V1 = M2V2)", family="chemistry",
@@ -221,7 +329,13 @@ DILUTION = FormulaSpec(
                      "Find the new concentration.",
     givens=[Given("M1", "mol/L", 1, 10), Given("V1", "mL", 1, 10), Given("V2", "mL", 20, 100)],
     outputs=[Output("M2", "M2 = M1*V1/V2", "M1*V1/V2", "mol/L", "compute_concentration", "diluted concentration")],
-    conventions={"law": "M1*V1 = M2*V2"})
+    conventions={"law": "M1*V1 = M2*V2"},
+    canonical_latex="M_2 = \\frac{M_1 V_1}{V_2}",
+    canonical_notes=[
+        "\\(M_1, V_1\\): the stock concentration and volume.  \\(V_2\\): the final (diluted) volume.",
+        "Comes from \\(M_1 V_1 = M_2 V_2\\) — the moles of solute do not change on dilution.",
+    ],
+    edge_cases=["Diluting means \\(V_2 > V_1\\), so the concentration drops (\\(M_2 < M_1\\))."])
 
 PERCENT_YIELD = FormulaSpec(
     slug="percent_yield", title="percent yield", family="chemistry",

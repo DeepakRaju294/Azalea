@@ -6528,6 +6528,7 @@ function formatLatexForDisplayStrict(latex: string) {
   output = output.replace(/\\lambda/g, "\u03bb");
   output = output.replace(/\\mu/g, "\u03bc");
   output = output.replace(/\\sigma/g, "\u03c3");
+  output = output.replace(/\\rho/g, "\u03c1");
   output = output.replace(/\\pi/g, "\u03c0");
   output = output.replace(/\\alpha/g, "\u03b1");
   output = output.replace(/\\beta/g, "\u03b2");

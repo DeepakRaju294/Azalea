@@ -7041,7 +7041,7 @@ def _is_lead_in_header(raw_point: str) -> bool:
 
 # LaTeX command → readable plain-text glyph, for the takeaways list (not a math renderer).
 _LATEX_PLAIN = {"\\sum": "Σ", "\\cdot": "·", "\\times": "×", "\\sigma": "σ", "\\mu": "μ", "\\pi": "π",
-                "\\theta": "θ", "\\lambda": "λ", "\\alpha": "α", "\\beta": "β", "\\gamma": "γ",
+                "\\rho": "ρ", "\\theta": "θ", "\\lambda": "λ", "\\alpha": "α", "\\beta": "β", "\\gamma": "γ",
                 "\\delta": "δ", "\\Delta": "Δ", "\\leq": "≤", "\\geq": "≥", "\\neq": "≠", "\\approx": "≈"}
 
 
