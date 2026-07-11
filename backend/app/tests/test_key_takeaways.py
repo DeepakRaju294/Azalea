@@ -81,6 +81,23 @@ class KeyTakeaways(unittest.TestCase):
         tk = _derive_key_takeaways(cards)
         self.assertFalse(any(t.lower().startswith(("identify", "state")) for t in tk))
 
+    def test_formula_restatement_in_background_does_not_become_a_takeaway(self):
+        # regression: a background card that restates the formula as prose ("P(A|B) = ... where ...,") produced
+        # a run-on takeaway and stole it from the clean formula card. The formula card should own it; the
+        # background should fall through to its real insight.
+        cards = [_card("background", ["Bayes' Theorem states",
+                                      "  - P(A|B) = \\frac{P(B|A)P(A)}{P(B)} where P(A|B) is the conditional probability of A given B,",
+                                      "  - P(B|A) is the likelihood of event B given A,",
+                                      "  - P(A) is the prior probability of event A,",
+                                      "Key insight",
+                                      "  - It allows updating probabilities based on new evidence."]),
+                 _card("formula_breakdown", ["$$P(A|B) = \\frac{P(B|A)P(A)}{P(B)}$$"]),
+                 _card("edge_case", ["When P(B) = 0 the conditional probability is undefined."])]
+        tk = _derive_key_takeaways(cards)
+        self.assertFalse(any(t.rstrip().endswith(",") for t in tk))       # no run-on/dangling comma
+        self.assertTrue(any("updating probabilities based on new evidence" in t for t in tk))  # real insight
+        self.assertTrue(any(t == "P(A|B) = (P(B|A)P(A))/(P(B))" for t in tk))   # clean formula from the card
+
     def test_intro_topic_gets_no_takeaways(self):
         tk = _derive_key_takeaways(self._sample(), topic_type="study_path_introduction")
         self.assertEqual(tk, [])   # an orientation intro has nothing to consolidate

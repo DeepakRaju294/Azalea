@@ -6992,12 +6992,22 @@ def _tk_tokens(s: str) -> set[str]:
 
 def _weak_takeaway(t: str) -> bool:
     """A poor standalone takeaway: too short, a lead-in header ('Formula meaning' / 'X states'), or a
-    glossary entry ('P(A): The probability of A')."""
+    glossary entry ('P(A): The probability of A' / 'P(B|A) is the likelihood')."""
     if len(t) < 25 or t.endswith(":"):
         return True
     if re.search(r"\b(states|is|are|means|include|includes|as follows|given by|the following)$", t, re.I):
         return True                                             # lead-in fragment
+    if re.match(r"^[\w()|Σ'.]{1,10}\s+(is|are|denotes|represents|refers to)\s+the\b", t, re.I):
+        return True                                             # "P(A) is the prior probability" — glossary
     return bool(re.match(r"^[\w()|Σ'.\s]{1,14}:\s", t))          # "<short symbol>: definition"
+
+
+def _starts_with_equation(text: str) -> bool:
+    """A bullet whose leading clause (before a 'where'/'with'/',' aside) is a bare equation is a FORMULA
+    restatement. The formula card owns the canonical equation, so a background/prose card must not also surface
+    it as a takeaway — that produced run-ons like 'P(A|B) = … where P(A|B) is the conditional probability …,'."""
+    head = re.split(r"\s+where\b|\s+with\b|,", str(text), maxsplit=1)[0].strip()
+    return _is_bare_equation(head)
 
 
 # Imperative openers of a PROCESS step ("Identify the givens", "Recognize the prior…") — an instruction, not
@@ -7071,9 +7081,10 @@ def _derive_key_takeaways(cards: list[dict[str, Any]], max_items: int = 5,
             cand = next((c for c, r in pairs if "=" in c and not _weak_takeaway(c)), None) \
                 or next((c for c, r in pairs if "=" in c), None)
         else:
-            # skip lead-in headers (payload lives in the sub-bullet) and imperative process steps.
-            cand = next((c for c, r in pairs if not _weak_takeaway(c)
-                         and not _is_lead_in_header(r) and not _STEP_VERB.match(c)), None)
+            # skip lead-in headers (payload lives in the sub-bullet), imperative process steps, and formula
+            # restatements (the formula card owns the equation — a prose card must not re-surface it).
+            cand = next((c for c, r in pairs if not _weak_takeaway(c) and not _is_lead_in_header(r)
+                         and not _STEP_VERB.match(c) and not _starts_with_equation(c)), None)
         if not cand:
             continue
         cand = _latex_to_plain(cand)                             # never surface raw $$…$$ / \sum in a takeaway
