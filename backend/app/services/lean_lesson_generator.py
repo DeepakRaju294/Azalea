@@ -6998,6 +6998,31 @@ def _weak_takeaway(t: str) -> bool:
     return bool(re.match(r"^[\w()|Σ'.\s]{1,14}:\s", t))          # "<short symbol>: definition"
 
 
+# Imperative openers of a PROCESS step ("Identify the givens", "Recognize the prior…") — an instruction, not
+# an insight. A step card's headline is a step, never a takeaway.
+_STEP_VERB = re.compile(
+    r"^(identify|state|recognize|use|compute|solve|substitute|insert|determine|apply|interpret|find|"
+    r"calculate|write|check|ensure|consider|note|list|select|plug|understand|explain|set up)\b", re.I)
+
+
+def _is_lead_in_header(raw_point: str) -> bool:
+    """A raw bullet that ends with ':' is a header whose payload is the sub-bullet beneath it (e.g. 'When the
+    prior probability, P(H), is zero:' → the real claim is the next line). Not a standalone takeaway."""
+    return str(raw_point).rstrip().endswith(":")
+
+
+def _latex_to_plain(text: str) -> str:
+    """Render an isolated `$$…$$` formula bullet as readable plain text for a takeaway (the takeaways list is
+    not a math renderer): strip delimiters, `\\frac{a}{b}`→(a)/(b), `\\sum`→Σ, drop `_{}`/`^{}` braces."""
+    t = re.sub(r"\$\$|\\\(|\\\)|\\\[|\\\]", "", str(text))
+    t = re.sub(r"\\frac\{([^{}]+)\}\{([^{}]+)\}", r"(\1)/(\2)", t)
+    t = t.replace("\\sum", "Σ").replace("\\cdot", "·").replace("\\times", "×")
+    t = re.sub(r"_\{([^{}]+)\}", r"_\1", t)
+    t = re.sub(r"\^\{([^{}]+)\}", r"^\1", t)
+    t = t.replace("{", "").replace("}", "")
+    return re.sub(r"\s+", " ", t).strip()
+
+
 def _derive_key_takeaways(cards: list[dict[str, Any]], max_items: int = 5,
                           topic_type: str = "") -> list[str]:
     """Populate the lesson's key_takeaways from the finished cards (the lean path leaves it empty and no
@@ -7022,14 +7047,18 @@ def _derive_key_takeaways(cards: list[dict[str, Any]], max_items: int = 5,
             by_bp[bp] = c
     out: list[str] = []
     for bp in sorted(by_bp, key=lambda b: _TAKEAWAY_SOURCE_ORDER[b]):
-        pts = [_clean_takeaway(p) for p in _flatten_points(by_bp[bp])]
+        raw_pts = _flatten_points(by_bp[bp])
+        pairs = [(_clean_takeaway(r), r) for r in raw_pts]       # (cleaned, raw) — raw keeps the trailing ':'
         if bp == "formula_breakdown":                            # the formula line, even if short
-            cand = next((p for p in pts if "=" in p and not _weak_takeaway(p)), None) \
-                or next((p for p in pts if "=" in p), None)
+            cand = next((c for c, r in pairs if "=" in c and not _weak_takeaway(c)), None) \
+                or next((c for c, r in pairs if "=" in c), None)
         else:
-            cand = next((p for p in pts if not _weak_takeaway(p)), None)
+            # skip lead-in headers (payload lives in the sub-bullet) and imperative process steps.
+            cand = next((c for c, r in pairs if not _weak_takeaway(c)
+                         and not _is_lead_in_header(r) and not _STEP_VERB.match(c)), None)
         if not cand:
             continue
+        cand = _latex_to_plain(cand)                             # never surface raw $$…$$ / \sum in a takeaway
         ct = _tk_tokens(cand)
         if ct and any(len(ct & _tk_tokens(o)) >= 0.7 * len(ct) for o in out):
             continue                                             # near-duplicate of an existing takeaway
@@ -7049,16 +7078,23 @@ def _ground_formula_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
         spec = getattr(adapter, "_formula_spec", None) if adapter is not None else None
         if spec is None:
             return False
-        canonical = next((str(v) for v in (getattr(spec, "conventions", {}) or {}).values()), None)
-        if not canonical:
-            return False
-        names = getattr(spec, "display_names", {}) or {}
-        glossary = [f"{names.get(o.name, o.name)}: {o.teaching_focus}"
-                    for o in spec.outputs if getattr(o, "teaching_focus", "")]
+        # Prefer isolated canonical math (renders via `$$…$$`, general notation); else the prose `conventions`
+        # string with an output-derived symbol glossary (legacy path).
+        latex = getattr(spec, "canonical_latex", None)
+        if latex:
+            points = ["The formula:", f"$${latex}$$", *(getattr(spec, "canonical_notes", []) or [])]
+        else:
+            canonical = next((str(v) for v in (getattr(spec, "conventions", {}) or {}).values()), None)
+            if not canonical:
+                return False
+            names = getattr(spec, "display_names", {}) or {}
+            glossary = [f"{names.get(o.name, o.name)}: {o.teaching_focus}"
+                        for o in spec.outputs if getattr(o, "teaching_focus", "")]
+            points = ["The formula:", canonical, *glossary]
         for card in cards:
             key = str(card.get("blueprint_key") or card.get("card_type") or "").lower()
             if key in ("formula", "formula_breakdown"):
-                card["points"] = ["The formula:", canonical, *glossary]
+                card["points"] = points
                 card.pop("body", None)
                 card["_formula_grounded"] = True
                 return True

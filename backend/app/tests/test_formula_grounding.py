@@ -29,16 +29,20 @@ class FormulaGrounding(unittest.TestCase):
         self.assertTrue(_ground_formula_card(cards, _T("Law of Total Probability")))
         fc = next(c for c in cards if c["blueprint_key"] == "formula_breakdown")
         joined = " ".join(fc["points"])
-        self.assertIn("P(A) = P(A|B1)P(B1) + P(A|B2)P(B2)", joined)   # canonical formula
+        self.assertIn("$$", joined)                                  # isolated math, not buried in prose
+        self.assertIn("\\sum_{i} P(A|B_i)P(B_i)", joined)            # canonical GENERAL n-partition form
         self.assertNotIn("P(+)", joined)                             # garbled free-prose gone
-        # the derived takeaway now carries the correct formula, not the wrong one
-        self.assertTrue(any("P(A|B1)P(B1)" in t for t in _derive_key_takeaways(cards)))
+        tk = _derive_key_takeaways(cards)
+        self.assertTrue(any("P(A|B_i)P(B_i)" in t for t in tk))      # takeaway carries the correct formula
+        self.assertFalse(any("$$" in t for t in tk))                 # takeaways render clean, no raw delimiters
 
     def test_bayes_formula_is_corrected(self):
         cards = _wrong_formula_cards("Bayes' Theorem", "P(A|B) = P(A) + P(B)")
         self.assertTrue(_ground_formula_card(cards, _T("Bayes' Theorem")))
         fc = next(c for c in cards if c["blueprint_key"] == "formula_breakdown")
-        self.assertIn("P(D|pos) = P(pos|D)P(D) / P(pos)", " ".join(fc["points"]))
+        joined = " ".join(fc["points"])
+        self.assertIn("$$P(H|E) = \\frac{P(E|H)P(H)}{P(E)}$$", joined)   # canonical form, general notation
+        self.assertNotIn("P(A|B) = P(A) + P(B)", joined)                # wrong free-prose gone
 
     def test_non_adapter_topic_is_untouched(self):
         cards = [{"blueprint_key": "formula_breakdown", "points": ["Z = made up"]}]

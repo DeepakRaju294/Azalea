@@ -50,6 +50,25 @@ class KeyTakeaways(unittest.TestCase):
         self.assertEqual(len([t for t in tk if "P(B|A)" in t]), 1)   # formula appears once, not twice
         self.assertEqual(len(tk), 2)                                 # formula + edge case
 
+    def test_leadin_header_falls_through_to_its_payload(self):
+        # regression: the edge-case header "When the prior probability, P(H), is zero:" was surfaced as a
+        # truncated takeaway; the real claim lives in the sub-bullet beneath it.
+        cards = [_card("background", ["Bayes' Theorem updates a prior probability using new evidence."]),
+                 _card("edge_case", ["When the prior probability, P(H), is zero:",
+                                     "  - The posterior probability P(H|E) is also zero, so the theorem cannot support that hypothesis."])]
+        tk = _derive_key_takeaways(cards)
+        self.assertFalse(any(t.rstrip().endswith("is zero") for t in tk))     # no dangling condition
+        self.assertTrue(any("posterior probability P(H|E) is also zero" in t for t in tk))
+
+    def test_process_step_imperatives_are_not_takeaways(self):
+        # regression: "Identify the event and possible partitions" (a process step) surfaced as a takeaway.
+        cards = [_card("background", ["The Law of Total Probability combines conditional probabilities over a partition."]),
+                 _card("process", ["Identify the event and possible partitions",
+                                   "State the conditional probability for each partition"]),
+                 _card("edge_case", ["With a single partition the formula reduces to one conditional term."])]
+        tk = _derive_key_takeaways(cards)
+        self.assertFalse(any(t.lower().startswith(("identify", "state")) for t in tk))
+
     def test_intro_topic_gets_no_takeaways(self):
         tk = _derive_key_takeaways(self._sample(), topic_type="study_path_introduction")
         self.assertEqual(tk, [])   # an orientation intro has nothing to consolidate

@@ -732,6 +732,14 @@ LAW_OF_TOTAL_PROBABILITY = FormulaSpec(
         Output("P_A", "P_A = P_A_given_B1*P_B1 + P_A_given_B2*P_B2",
                "P_A_given_B1*P_B1 + P_A_given_B2*P_B2", "", "compute_total_probability", "total probability")],
     conventions={"law": "P(A) = P(A|B1)P(B1) + P(A|B2)P(B2), where the partition satisfies P(B1) + P(B2) = 1"},
+    # General n-partition form as isolated math; the worked example uses the concrete 2-partition instance.
+    canonical_latex="P(A) = \\sum_{i} P(A|B_i)P(B_i)",
+    canonical_notes=[
+        "A is the event; the partitions B_i are disjoint and together cover the whole sample space, so their "
+        "probabilities sum to 1.",
+        "P(A|B_i): probability of A within partition B_i.",
+        "P(B_i): probability of partition B_i.",
+    ],
     display_names={"P_A_given_B1": "P(A|B1)", "P_A_given_B2": "P(A|B2)",
                    "P_B1": "P(B1)", "P_B2": "P(B2)", "P_A": "P(A)"})
 
@@ -756,6 +764,15 @@ BAYES_THEOREM = FormulaSpec(
                "P_pos_given_D*P_D / P_pos", "", "apply_bayes_theorem", "posterior probability")],
     conventions={"theorem": "P(D|pos) = P(pos|D)P(D) / P(pos); the evidence P(pos) itself comes from the law "
                             "of total probability: P(pos) = P(pos|D)P(D) + P(pos|not D)P(not D)"},
+    # Canonical hypothesis/evidence form as isolated math (matches the definition card's prior/likelihood/
+    # posterior language); the worked example keeps the concrete disease/test symbols.
+    canonical_latex="P(H|E) = \\frac{P(E|H)P(H)}{P(E)}",
+    canonical_notes=[
+        "H is the hypothesis; E is the observed evidence.",
+        "P(H): prior probability.  P(E|H): likelihood.  P(H|E): posterior probability.",
+        "The denominator is the total probability of the evidence: "
+        "$$P(E) = P(E|H)P(H) + P(E|H^c)P(H^c)$$",
+    ],
     display_names={"P_pos_given_D": "P(pos|D)", "P_pos_given_notD": "P(pos|not D)", "P_not_D": "P(not D)",
                    "P_D_given_pos": "P(D|pos)", "P_pos": "P(pos)", "P_D": "P(D)"})
 
@@ -772,6 +789,11 @@ CONDITIONAL_PROBABILITY = FormulaSpec(
         Output("P_A_given_B", "P_A_given_B = n_A_and_B / n_B", "n_A_and_B / n_B", "",
                "compute_conditional_probability", "conditional probability")],
     conventions={"definition": "P(A|B) = P(A and B) / P(B) = (outcomes with A and B) / (outcomes with B)"},
+    canonical_latex="P(A|B) = \\frac{P(A∩B)}{P(B)}",
+    canonical_notes=[
+        "P(A∩B): probability that A and B both occur.",
+        "P(B): probability of the condition B (must be greater than 0).",
+    ],
     display_names={"n_A_and_B": "n(A and B)", "n_B_not_A": "n(B but not A)", "n_B": "n(B)",
                    "P_A_given_B": "P(A|B)"})
 

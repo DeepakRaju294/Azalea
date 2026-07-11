@@ -143,6 +143,12 @@ class FormulaSpec:
     priority: int = 50                          # routing precedence (higher wins on overlap)
     register: bool = True                       # False = gate-only (e.g. a migration proof), not a live adapter
     display_names: dict[str, str] = field(default_factory=dict)   # eval id -> textbook label in learner prose
+    # The CANONICAL formula for the formula card, as isolated math (renders via `$$...$$` on the frontend
+    # instead of being buried in a prose sentence, and in GENERAL notation, not the worked instance's symbols).
+    # `canonical_notes` are extra bullets (a caveat / symbol glossary / a linked identity, each may itself carry
+    # `$$...$$`). When set, the grounder uses these verbatim in place of the prose `conventions` string.
+    canonical_latex: Optional[str] = None
+    canonical_notes: list[str] = field(default_factory=list)
 
     # ------- derived -------------------------------------------------------------------------------
     def base_env(self, example_input: dict[str, Any]) -> dict[str, Any]:

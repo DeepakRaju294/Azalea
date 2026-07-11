@@ -6324,6 +6324,14 @@ function renderMathText(text: string): ReactNode[] {
     return [];
   }
 
+  // A bullet that is ENTIRELY one display-math block ("$$…$$" / "\[…\]") — e.g. a grounded formula card's
+  // canonical equation — renders as math with the delimiters stripped (the strict auto-gate below would keep
+  // the literal "$$"). This is what lets an isolated equation render like an equation instead of prose.
+  const wholeMath = text.trim().match(/^\$\$([\s\S]+)\$\$$/) ?? text.trim().match(/^\\\[([\s\S]+)\\\]$/);
+  if (wholeMath) {
+    return [renderLatexExpression(normalizeMathExpressionStrict(wholeMath[1].trim()), true, "whole-math")];
+  }
+
   if (shouldAutoRenderAsMathStrict(text)) {
     return [renderLatexExpression(normalizeMathExpressionStrict(text), true, "auto-math")];
   }
