@@ -37,6 +37,10 @@ class FormulaGrounding(unittest.TestCase):
         tk = _derive_key_takeaways(cards)
         self.assertTrue(any("P(A|B_i)P(B_i)" in t for t in tk))      # takeaway carries the correct formula
         self.assertFalse(any("$$" in t for t in tk))                 # takeaways render clean, no raw delimiters
+        self.assertNotIn("The formula:", fc["points"])               # no dangling colon lead-in bullet
+        self.assertEqual(fc["points"][0], "$$P(A) = \\sum_{i} P(A|B_i)P(B_i)$$")   # equation is the first bullet
+        # subscript symbols in the PROSE are wrapped in inline math so B_i renders as a subscript too.
+        self.assertTrue(any("\\(B_i\\)" in p for p in fc["points"]))
 
     def test_bayes_formula_is_corrected(self):
         cards = _wrong_formula_cards("Bayes' Theorem", "P(A|B) = P(A) + P(B)")

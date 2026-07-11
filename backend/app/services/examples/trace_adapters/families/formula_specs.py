@@ -738,11 +738,13 @@ LAW_OF_TOTAL_PROBABILITY = FormulaSpec(
     instance_ok=lambda r: abs(r["P_A_given_B1"] - r["P_A_given_B2"]) >= 0.2 and abs(r["P_B1"] - 0.5) >= 0.1,
     # General n-partition form as isolated math; the worked example uses the concrete 2-partition instance.
     canonical_latex="P(A) = \\sum_{i} P(A|B_i)P(B_i)",
+    # Symbols are wrapped in inline math \(...\) so B_i renders as a subscript in the prose too — matching the
+    # equation (otherwise the prose shows a literal "B_i" while the equation shows B-subscript-i).
     canonical_notes=[
-        "A is the event; the partitions B_i are disjoint and together cover the whole sample space, so their "
-        "probabilities sum to 1.",
-        "P(A|B_i): probability of A within partition B_i.",
-        "P(B_i): probability of partition B_i.",
+        "A is the event; the partitions \\(B_i\\) are disjoint and together cover the whole sample space, so "
+        "their probabilities sum to 1.",
+        "\\(P(A|B_i)\\): probability of A within partition \\(B_i\\).",
+        "\\(P(B_i)\\): probability of partition \\(B_i\\).",
     ],
     display_names={"P_A_given_B1": "P(A|B1)", "P_A_given_B2": "P(A|B2)",
                    "P_B1": "P(B1)", "P_B2": "P(B2)", "P_A": "P(A)"})
@@ -774,7 +776,7 @@ BAYES_THEOREM = FormulaSpec(
     canonical_latex="P(A|B) = \\frac{P(B|A)P(A)}{P(B)}",
     canonical_notes=[
         "A is the hypothesis (the event whose probability you are updating); B is the observed evidence.",
-        "P(A): prior probability.  P(B|A): likelihood.  P(A|B): posterior probability.",
+        "\\(P(A)\\): prior probability.  \\(P(B|A)\\): likelihood.  \\(P(A|B)\\): posterior probability.",
         "The denominator is the total probability of the evidence: "
         "$$P(B) = P(B|A)P(A) + P(B|A^c)P(A^c)$$",
     ],
@@ -796,8 +798,8 @@ CONDITIONAL_PROBABILITY = FormulaSpec(
     conventions={"definition": "P(A|B) = P(A and B) / P(B) = (outcomes with A and B) / (outcomes with B)"},
     canonical_latex="P(A|B) = \\frac{P(A∩B)}{P(B)}",
     canonical_notes=[
-        "P(A∩B): probability that A and B both occur.",
-        "P(B): probability of the condition B (must be greater than 0).",
+        "\\(P(A∩B)\\): probability that A and B both occur.",
+        "\\(P(B)\\): probability of the condition B (must be greater than 0).",
     ],
     display_names={"n_A_and_B": "n(A and B)", "n_B_not_A": "n(B but not A)", "n_B": "n(B)",
                    "P_A_given_B": "P(A|B)"})

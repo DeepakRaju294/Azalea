@@ -7082,9 +7082,11 @@ def _ground_formula_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
             return False
         # Prefer isolated canonical math (renders via `$$…$$`, general notation); else the prose `conventions`
         # string with an output-derived symbol glossary (legacy path).
+        # The equation is the FIRST bullet — no "The formula:" lead-in (a colon-terminated bullet with no
+        # sub-bullet reads as a dangling label next to the equation; the card title already says "Formula").
         latex = getattr(spec, "canonical_latex", None)
         if latex:
-            points = ["The formula:", f"$${latex}$$", *(getattr(spec, "canonical_notes", []) or [])]
+            points = [f"$${latex}$$", *(getattr(spec, "canonical_notes", []) or [])]
         else:
             canonical = next((str(v) for v in (getattr(spec, "conventions", {}) or {}).values()), None)
             if not canonical:
@@ -7092,7 +7094,7 @@ def _ground_formula_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
             names = getattr(spec, "display_names", {}) or {}
             glossary = [f"{names.get(o.name, o.name)}: {o.teaching_focus}"
                         for o in spec.outputs if getattr(o, "teaching_focus", "")]
-            points = ["The formula:", canonical, *glossary]
+            points = [canonical, *glossary]
         for card in cards:
             key = str(card.get("blueprint_key") or card.get("card_type") or "").lower()
             if key in ("formula", "formula_breakdown"):
