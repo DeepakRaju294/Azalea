@@ -149,6 +149,10 @@ class FormulaSpec:
     # `$$...$$`). When set, the grounder uses these verbatim in place of the prose `conventions` string.
     canonical_latex: Optional[str] = None
     canonical_notes: list[str] = field(default_factory=list)
+    # Authored, CORRECT boundary facts for the edge-case card. The LLM often states a wrong edge case (e.g.
+    # "P(A)=0 gives indeterminate results"); the true behavior is known to the spec author. When set, the
+    # grounder replaces the edge-case card's content with these (each may carry inline `\(...\)` math).
+    edge_cases: list[str] = field(default_factory=list)
     # Optional teaching-quality filter on a generated instance: return False to reject a DEGENERATE example
     # (e.g. total probability with P(A|B1)==P(A|B2), where the answer trivially equals the common conditional
     # and the partition weighting looks irrelevant). None = accept every candidate.

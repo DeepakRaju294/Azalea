@@ -746,6 +746,12 @@ LAW_OF_TOTAL_PROBABILITY = FormulaSpec(
         "\\(P(A|B_i)\\): probability of A within partition \\(B_i\\).",
         "\\(P(B_i)\\): probability of partition \\(B_i\\).",
     ],
+    edge_cases=[
+        "If a partition has \\(P(B_i) = 0\\), that term contributes 0 to \\(P(A)\\) — an impossible condition "
+        "simply drops out of the sum.",
+        "The partitions must be disjoint and together cover the whole sample space; if they overlap or leave "
+        "gaps, the sum is not a valid total probability.",
+    ],
     display_names={"P_A_given_B1": "P(A|B1)", "P_A_given_B2": "P(A|B2)",
                    "P_B1": "P(B1)", "P_B2": "P(B2)", "P_A": "P(A)"})
 
@@ -780,6 +786,12 @@ BAYES_THEOREM = FormulaSpec(
         "The denominator is the total probability of the evidence: "
         "$$P(B) = P(B|A)P(A) + P(B|A^c)P(A^c)$$",
     ],
+    edge_cases=[
+        "If the evidence is impossible (\\(P(B) = 0\\)), the posterior \\(P(A|B)\\) is undefined — the formula "
+        "divides by zero.",
+        "If the prior \\(P(A) = 0\\), then \\(P(A|B) = 0\\): an impossible hypothesis stays impossible no "
+        "matter what evidence appears.",
+    ],
     display_names={"P_pos_given_D": "P(pos|D)", "P_pos_given_notD": "P(pos|not D)", "P_not_D": "P(not D)",
                    "P_D_given_pos": "P(D|pos)", "P_pos": "P(pos)", "P_D": "P(D)"})
 
@@ -800,6 +812,9 @@ CONDITIONAL_PROBABILITY = FormulaSpec(
     canonical_notes=[
         "\\(P(A∩B)\\): probability that A and B both occur.",
         "\\(P(B)\\): probability of the condition B (must be greater than 0).",
+    ],
+    edge_cases=[
+        "\\(P(A|B)\\) is only defined when \\(P(B) > 0\\); conditioning on an impossible event is undefined.",
     ],
     display_names={"n_A_and_B": "n(A and B)", "n_B_not_A": "n(B but not A)", "n_B": "n(B)",
                    "P_A_given_B": "P(A|B)"})

@@ -7153,6 +7153,31 @@ def _dedupe_formula_from_prose(cards: list[dict[str, Any]]) -> None:
             card["points"] = [p for p in pts if not _is_bare_equation(p)]
 
 
+def _ground_edge_case_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
+    """For an adapter-backed formula topic, replace the edge-case card's CONTENT with the adapter spec's
+    authored, correct boundary facts. The lean LLM often states a wrong edge case (e.g. "P(A)=0 gives
+    indeterminate results" — actually the posterior is 0; the undefined case is P(B)=0). The true behavior is
+    known to the spec author, so use it. No-op for non-adapter topics or specs without authored edge_cases."""
+    try:
+        from app.services.examples.trace_pipeline import route_adapter
+        adapter = route_adapter({"title": getattr(topic, "title", "") or "",
+                                 "course_type": _topic_type_key(topic)})
+        spec = getattr(adapter, "_formula_spec", None) if adapter is not None else None
+        edges = list(getattr(spec, "edge_cases", None) or []) if spec is not None else []
+        if not edges:
+            return False
+        for card in cards:
+            key = str(card.get("blueprint_key") or card.get("card_type") or "").lower()
+            if key in ("edge_case", "edge_cases"):
+                card["points"] = edges
+                card.pop("body", None)
+                card["_edge_case_grounded"] = True
+                return True
+    except Exception as exc:  # noqa: BLE001 — grounding is best-effort, never break generation
+        _log.debug("edge-case grounding skipped: %s", exc)
+    return False
+
+
 def _estimate_minutes(cards: list[dict[str, Any]]) -> int:
     """A consistent read-time estimate from the finished cards — the LLM's own number is unreliable (a
     4-card intro came back as 30 min, a 10-card lesson as 5). Weight by card kind: worked-example step
@@ -7305,6 +7330,8 @@ def _convert_lean_to_legacy(
     # any restatement of it from the background/purpose card so the equation appears once.
     if _ground_formula_card(legacy_cards, topic):
         _dedupe_formula_from_prose(legacy_cards)
+    # Replace the LLM's edge case with the adapter's authored, correct boundary facts (before takeaways derive).
+    _ground_edge_case_card(legacy_cards, topic)
 
     empty_report = {"is_valid": True, "requires_regeneration": False, "issues": []}
 

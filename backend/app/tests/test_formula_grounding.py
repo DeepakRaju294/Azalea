@@ -6,7 +6,8 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.lean_lesson_generator import (
-    _ground_formula_card, _derive_key_takeaways, _dedupe_formula_from_prose, _is_bare_equation,
+    _ground_formula_card, _ground_edge_case_card, _derive_key_takeaways, _dedupe_formula_from_prose,
+    _is_bare_equation,
 )
 
 
@@ -70,6 +71,27 @@ class FormulaGrounding(unittest.TestCase):
         cards = [{"blueprint_key": "formula_breakdown", "points": ["Z = made up"]}]
         self.assertFalse(_ground_formula_card(cards, _T("Zorble Coefficient")))
         self.assertEqual(cards[0]["points"], ["Z = made up"])
+
+    def test_bayes_edge_case_replaces_wrong_llm_claim(self):
+        # the LLM's "P(A)=0 -> indeterminate" is wrong; grounding installs the correct boundary facts.
+        cards = [{"blueprint_key": "edge_case",
+                  "points": ["When P(A) = 0, Bayes' theorem gives indeterminate results."]}]
+        self.assertTrue(_ground_edge_case_card(cards, _T("Bayes' Theorem")))
+        joined = " ".join(cards[0]["points"])
+        self.assertNotIn("indeterminate", joined.lower())            # wrong claim gone
+        self.assertIn("P(B) = 0", joined)                            # undefined when the evidence is impossible
+        self.assertIn("P(A|B) = 0", joined)                          # prior 0 -> posterior 0 (determinate)
+        self.assertTrue(cards[0].get("_edge_case_grounded"))
+
+    def test_total_probability_edge_case_is_grounded(self):
+        cards = [{"blueprint_key": "edge_case", "points": ["maybe-wrong edge case"]}]
+        self.assertTrue(_ground_edge_case_card(cards, _T("Law of Total Probability")))
+        self.assertIn("P(B_i) = 0", " ".join(cards[0]["points"]))
+
+    def test_edge_case_grounding_is_noop_for_non_adapter(self):
+        cards = [{"blueprint_key": "edge_case", "points": ["Zorble edge case."]}]
+        self.assertFalse(_ground_edge_case_card(cards, _T("Zorble Coefficient")))
+        self.assertEqual(cards[0]["points"], ["Zorble edge case."])
 
     def test_no_double_article_in_glossary(self):
         cards = _wrong_formula_cards("Law of Total Probability", "P(+) = wrong")
