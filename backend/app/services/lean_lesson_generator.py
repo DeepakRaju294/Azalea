@@ -7204,6 +7204,41 @@ def _ground_edge_case_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
     return False
 
 
+# The frontend renders bare LaTeX (\frac, \sqrt, greek) as LITERAL text unless it is delimited ($$…$$ / \(…\)),
+# and it does not support \text{}. LLM-authored cards routinely write "\text{I} = \frac{\text{V}}{\text{R}}"
+# with no delimiters, so the learner sees raw LaTeX. The sanitizer fixes that.
+_GREEK_ATOM = (r"\\(?:mu|sigma|rho|pi|theta|lambda|alpha|beta|gamma|delta|Delta|phi|omega|epsilon|tau|nabla)"
+               r"\b(?:_\{[^{}]+\}|\^\{[^{}]+\}|_[A-Za-z0-9]|\^[A-Za-z0-9])?")
+_BARE_LATEX = re.compile(r"\\(?:frac|sqrt|sum|prod|int)\b|" + _GREEK_ATOM)
+# LHS (e.g. "I", "P(A|B)", "V_2") = a \frac{a}{b} or \sqrt{x} (single-level braces — deep nesting is rare in prose).
+_FRAC_SQRT_EQN = re.compile(r"(?:[A-Za-z][\w()|^]*\s*=\s*)?\\(?:frac\{[^{}]+\}\{[^{}]+\}|sqrt\{[^{}]+\})")
+
+
+def _sanitize_math_in_text(text: str) -> str:
+    """Make LLM-authored math render: strip unsupported `\\text{}`, and wrap bare `\\frac`/`\\sqrt` (with an
+    optional 'LHS =' prefix) and standalone greek in inline `\\(...\\)`. Leaves bullets that are already
+    delimited (grounded `$$`/`\\(` content) untouched."""
+    s = str(text)
+    if "$$" in s or "\\(" in s or "\\[" in s:
+        return s
+    s = re.sub(r"\\text\s*\{([^{}]*)\}", r"\1", s)          # \text{V} -> V (drop the unsupported command)
+    if not _BARE_LATEX.search(s):
+        return s
+    if re.search(r"\\(?:frac|sqrt)\b", s):
+        s = _FRAC_SQRT_EQN.sub(lambda m: "\\(" + m.group(0) + "\\)", s)
+    else:                                                    # standalone greek/operators, no fraction
+        s = re.sub(_GREEK_ATOM, lambda m: "\\(" + m.group(0) + "\\)", s)
+    return s
+
+
+def _sanitize_card_math(cards: list[dict[str, Any]]) -> None:
+    """Apply `_sanitize_math_in_text` to every card's point/bullet text so no card renders raw LaTeX."""
+    for card in cards:
+        pts = card.get("points")
+        if isinstance(pts, list):
+            card["points"] = [_sanitize_math_in_text(p) if isinstance(p, str) else p for p in pts]
+
+
 def _estimate_minutes(cards: list[dict[str, Any]]) -> int:
     """A consistent read-time estimate from the finished cards — the LLM's own number is unreliable (a
     4-card intro came back as 30 min, a 10-card lesson as 5). Weight by card kind: worked-example step
@@ -7358,6 +7393,8 @@ def _convert_lean_to_legacy(
         _dedupe_formula_from_prose(legacy_cards)
     # Replace the LLM's edge case with the adapter's authored, correct boundary facts (before takeaways derive).
     _ground_edge_case_card(legacy_cards, topic)
+    # Make any LLM-authored math render: strip \text{}, delimit bare \frac/\sqrt/greek (grounded $$ untouched).
+    _sanitize_card_math(legacy_cards)
 
     empty_report = {"is_valid": True, "requires_regeneration": False, "issues": []}
 

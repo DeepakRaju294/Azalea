@@ -6430,6 +6430,7 @@ function shouldAutoRenderAsMathStrict(text: string) {
 function normalizeMathExpressionStrict(text: string) {
   let output = String(text || "").replace(/^\s*-\s*/, "").trim();
 
+  output = output.replace(/\\text\s*\{([^{}]*)\}/g, "$1");   // \text{V} -> V (renderer has no \text)
   output = output.replace(/^mu\s*\(([^)]+)\)$/i, "\\mu = $1");
   output = output.replace(/^sigma\s*\(([^)]+)\)$/i, "\\sigma = $1");
   output = output.replace(/^mean\s*\(([^)]+)\)$/i, "\\mu = $1");
@@ -6508,6 +6509,7 @@ function normalizeCommonExponentFractions(source: string) {
 function formatLatexForDisplayStrict(latex: string) {
   let output = latex.trim();
 
+  output = output.replace(/\\text\s*\{([^{}]*)\}/g, "$1");   // \text{V} -> V (unsupported; render its content)
   output = output.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1)/($2)");
   output = output.replace(/\\sqrt\{([^{}]+)\}/g, "sqrt($1)");
   output = output.replace(/\\leq/g, "\u2264");
