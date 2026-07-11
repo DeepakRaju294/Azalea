@@ -82,6 +82,7 @@ class FormulaGrounding(unittest.TestCase):
         self.assertIn("P(B) = 0", joined)                            # undefined when the evidence is impossible
         self.assertIn("P(A|B) = 0", joined)                          # prior 0 -> posterior 0 (determinate)
         self.assertTrue(cards[0].get("_edge_case_grounded"))
+        self.assertEqual(cards[0]["title"], "Edge Cases")            # narrow LLM title neutralized (2 cases)
 
     def test_total_probability_edge_case_is_grounded(self):
         cards = [{"blueprint_key": "edge_case", "points": ["maybe-wrong edge case"]}]

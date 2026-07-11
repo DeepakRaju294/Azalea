@@ -7181,6 +7181,12 @@ def _ground_edge_case_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
             key = str(card.get("blueprint_key") or card.get("card_type") or "").lower()
             if key in ("edge_case", "edge_cases"):
                 card["points"] = edges
+                # neutralize the LLM's title/heading — it was written for its (narrower, often wrong) single
+                # case and now undersells the grounded content (e.g. "Prior Probability of Zero" for a card
+                # that also covers the evidence-impossible case).
+                title = "Edge Case" if len(edges) == 1 else "Edge Cases"
+                card["title"] = title
+                card["main_concept"] = title
                 card.pop("body", None)
                 card["_edge_case_grounded"] = True
                 return True
