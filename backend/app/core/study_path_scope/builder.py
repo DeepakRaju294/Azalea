@@ -62,6 +62,7 @@ class DecompositionInput(BaseModel):
     selection_sources: list[ConceptSelectionSource] = Field(default_factory=list)
     mention_order: list[str] = Field(default_factory=list)          # canonical keys, goal/user mention order
     source_order: list[str] = Field(default_factory=list)           # canonical keys, source order
+    unresolved_ambiguities: list[str] = Field(default_factory=list)  # e.g. "'expected value' discrete|continuous"
 
 
 def build_plan(inp: DecompositionInput) -> StudyPathScopePlan:
@@ -125,7 +126,8 @@ def build_plan(inp: DecompositionInput) -> StudyPathScopePlan:
             prereq_cov.append(build_prereq_mapping(requirement_id=rid, prereq_id=p.id, evidence=ev))
 
     record = DecompositionRecord(goal_claims=list(inp.requirements), concept_coverage=concept_cov,
-                                 prereq_coverage=prereq_cov)
+                                 prereq_coverage=prereq_cov,
+                                 unresolved_ambiguities=list(inp.unresolved_ambiguities))
 
     plan = StudyPathScopePlan(
         identity=ScopeIdentity(scope_id=scope_id_for(inp.goal, inp.domain, inp.source_revision),
