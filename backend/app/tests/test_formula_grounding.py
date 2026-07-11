@@ -94,6 +94,24 @@ class FormulaGrounding(unittest.TestCase):
         self.assertFalse(_ground_edge_case_card(cards, _T("Zorble Coefficient")))
         self.assertEqual(cards[0]["points"], ["Zorble edge case."])
 
+    def test_statistics_family_is_grounded(self):
+        # grounding extends beyond probability: the statistics family is grounded too.
+        for title in ("Standard Deviation", "Z-score", "Weighted Mean"):
+            fc = [{"blueprint_key": "formula_breakdown", "points": ["The formula:", "WRONG"]},
+                  {"blueprint_key": "edge_case", "points": ["x"]}]
+            self.assertTrue(_ground_formula_card(fc, _T(title)), f"formula {title}")
+            self.assertTrue(_ground_edge_case_card(fc, _T(title)), f"edge {title}")
+            self.assertIn("$$", " ".join(fc[0]["points"]))
+
+    def test_greek_and_roots_render_plain_in_takeaways(self):
+        cards = [{"blueprint_key": "background",
+                  "points": ["Standard deviation measures how spread out a dataset is around its mean."]},
+                 {"blueprint_key": "formula_breakdown", "points": ["The formula:", "WRONG"]}]
+        _ground_formula_card(cards, _T("Standard Deviation"))
+        tk = _derive_key_takeaways(cards)
+        self.assertFalse(any("\\sigma" in t or "\\sqrt" in t or "\\frac" in t for t in tk))  # no raw LaTeX
+        self.assertTrue(any("σ" in t and "√" in t for t in tk))                              # glyphs instead
+
     def test_no_double_article_in_glossary(self):
         cards = _wrong_formula_cards("Law of Total Probability", "P(+) = wrong")
         _ground_formula_card(cards, _T("Law of Total Probability"))

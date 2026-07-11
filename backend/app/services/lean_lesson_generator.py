@@ -7039,12 +7039,21 @@ def _is_lead_in_header(raw_point: str) -> bool:
                           r"expressed as|defined as|namely)$", body, re.I))
 
 
+# LaTeX command → readable plain-text glyph, for the takeaways list (not a math renderer).
+_LATEX_PLAIN = {"\\sum": "Σ", "\\cdot": "·", "\\times": "×", "\\sigma": "σ", "\\mu": "μ", "\\pi": "π",
+                "\\theta": "θ", "\\lambda": "λ", "\\alpha": "α", "\\beta": "β", "\\gamma": "γ",
+                "\\delta": "δ", "\\Delta": "Δ", "\\leq": "≤", "\\geq": "≥", "\\neq": "≠", "\\approx": "≈"}
+
+
 def _latex_to_plain(text: str) -> str:
     """Render an isolated `$$…$$` formula bullet as readable plain text for a takeaway (the takeaways list is
-    not a math renderer): strip delimiters, `\\frac{a}{b}`→(a)/(b), `\\sum`→Σ, drop `_{}`/`^{}` braces."""
+    not a math renderer): strip delimiters, `\\frac{a}{b}`→(a)/(b), `\\sqrt{x}`→√(x), greek/operators→glyphs,
+    drop `_{}`/`^{}` braces."""
     t = re.sub(r"\$\$|\\\(|\\\)|\\\[|\\\]", "", str(text))
-    t = re.sub(r"\\frac\{([^{}]+)\}\{([^{}]+)\}", r"(\1)/(\2)", t)
-    t = t.replace("\\sum", "Σ").replace("\\cdot", "·").replace("\\times", "×")
+    t = re.sub(r"\\frac\{([^{}]+)\}\{([^{}]+)\}", r"(\1)/(\2)", t)      # frac first (may nest inside sqrt)
+    t = re.sub(r"\\sqrt\{([^{}]+)\}", r"√(\1)", t)
+    for cmd, glyph in _LATEX_PLAIN.items():
+        t = t.replace(cmd, glyph)
     t = re.sub(r"_\{([^{}]+)\}", r"_\1", t)
     t = re.sub(r"\^\{([^{}]+)\}", r"^\1", t)
     t = t.replace("{", "").replace("}", "")

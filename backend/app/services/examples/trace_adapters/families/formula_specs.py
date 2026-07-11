@@ -249,7 +249,19 @@ DESCRIPTIVE_STATS = FormulaSpec(
                show=[("sum of squared deviations from the mean", "sum((x-mean)**2 for x in xs)"), ("n", "n")]),
         Output("sd", "sd = sqrt(variance)", "sqrt(variance)", "", "compute_std_dev", "standard deviation",
                show=[("variance", "variance")])],
-    conventions={"model": "population (divide by n, not n-1)"})
+    conventions={"model": "population (divide by n, not n-1)"},
+    canonical_latex="\\sigma = \\sqrt{\\frac{\\sum (x_i - \\mu)^2}{n}}",
+    canonical_notes=[
+        "The mean is \\(\\mu = \\frac{\\sum x_i}{n}\\) — the sum of the values divided by how many there are.",
+        "The variance is \\(\\sigma^2 = \\frac{\\sum (x_i - \\mu)^2}{n}\\), the mean squared deviation from \\(\\mu\\).",
+        "The standard deviation \\(\\sigma\\) is the square root of the variance, back in the data's own units.",
+        "This is the POPULATION form (divide by \\(n\\)); the sample form divides by \\(n-1\\).",
+    ],
+    edge_cases=[
+        "Variance and standard deviation are never negative; \\(\\sigma = 0\\) exactly when every value equals "
+        "the mean (no spread).",
+        "The standard deviation is in the same units as the data; the variance is in those units squared.",
+    ])
 
 MEDIAN_RANGE = FormulaSpec(
     slug="median_range", title="median and range of a dataset", family="statistics",
@@ -273,7 +285,17 @@ WEIGHTED_MEAN = FormulaSpec(
                     "sum(v*w for v, w in zip(xs, ws))/sum(ws)", "", "compute_weighted_mean", "weighted mean",
                     show=[("sum of value x weight", "sum(v*w for v, w in zip(xs, ws))"),
                           ("sum of weights", "sum(ws)")])],
-    conventions={"definition": "weighted mean = sum(value x weight) / sum(weights)"})
+    conventions={"definition": "weighted mean = sum(value x weight) / sum(weights)"},
+    canonical_latex="\\mu_w = \\frac{\\sum w_i x_i}{\\sum w_i}",
+    canonical_notes=[
+        "\\(x_i\\): each value.  \\(w_i\\): its weight (how much that value counts).",
+        "Each value is scaled by its weight, then divided by the total weight — heavier weights pull the mean "
+        "toward their values.",
+    ],
+    edge_cases=[
+        "Requires \\(\\sum w_i > 0\\); if every weight is 0 the weighted mean is undefined.",
+        "With equal weights, the weighted mean reduces to the ordinary (unweighted) mean.",
+    ])
 
 COVARIANCE = FormulaSpec(
     slug="covariance", title="covariance of two datasets", family="statistics",
@@ -299,7 +321,16 @@ Z_SCORE = FormulaSpec(
                      "sd = {sd}. Find its z-score.",
     givens=[Given("x", "", 1, 100), Given("mean", "", 1, 100), Given("sd", "", 1, 20)],
     outputs=[Output("z", "z = (x - mean)/sd", "(x - mean)/sd", "", "compute_z_score", "z-score")],
-    conventions={"definition": "z = (x - mean) / standard deviation"})
+    conventions={"definition": "z = (x - mean) / standard deviation"},
+    canonical_latex="z = \\frac{x - \\mu}{\\sigma}",
+    canonical_notes=[
+        "\\(x\\): the value.  \\(\\mu\\): the distribution's mean.  \\(\\sigma\\): its standard deviation.",
+        "A z-score is how many standard deviations \\(x\\) lies above (\\(z>0\\)) or below (\\(z<0\\)) the mean.",
+    ],
+    edge_cases=[
+        "The z-score is undefined when \\(\\sigma = 0\\) (no spread — every value equals the mean).",
+        "\\(z = 0\\) exactly when \\(x = \\mu\\); the sign of \\(z\\) shows which side of the mean \\(x\\) falls on.",
+    ])
 
 # ======================================================================================================
 # PHYSICS — second wave — family "physics"
