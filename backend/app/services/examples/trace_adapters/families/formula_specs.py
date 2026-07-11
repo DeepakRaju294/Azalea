@@ -764,14 +764,15 @@ BAYES_THEOREM = FormulaSpec(
                "P_pos_given_D*P_D / P_pos", "", "apply_bayes_theorem", "posterior probability")],
     conventions={"theorem": "P(D|pos) = P(pos|D)P(D) / P(pos); the evidence P(pos) itself comes from the law "
                             "of total probability: P(pos) = P(pos|D)P(D) + P(pos|not D)P(not D)"},
-    # Canonical hypothesis/evidence form as isolated math (matches the definition card's prior/likelihood/
-    # posterior language); the worked example keeps the concrete disease/test symbols.
-    canonical_latex="P(H|E) = \\frac{P(E|H)P(H)}{P(E)}",
+    # Canonical A|B form as isolated math — the most common textbook intro notation, so it matches the
+    # LLM-authored definition/background cards (which use P(A|B) = P(B|A)P(A)/P(B)); the worked example keeps
+    # the concrete disease/test symbols.
+    canonical_latex="P(A|B) = \\frac{P(B|A)P(A)}{P(B)}",
     canonical_notes=[
-        "H is the hypothesis; E is the observed evidence.",
-        "P(H): prior probability.  P(E|H): likelihood.  P(H|E): posterior probability.",
+        "A is the hypothesis (the event whose probability you are updating); B is the observed evidence.",
+        "P(A): prior probability.  P(B|A): likelihood.  P(A|B): posterior probability.",
         "The denominator is the total probability of the evidence: "
-        "$$P(E) = P(E|H)P(H) + P(E|H^c)P(H^c)$$",
+        "$$P(B) = P(B|A)P(A) + P(B|A^c)P(A^c)$$",
     ],
     display_names={"P_pos_given_D": "P(pos|D)", "P_pos_given_notD": "P(pos|not D)", "P_not_D": "P(not D)",
                    "P_D_given_pos": "P(D|pos)", "P_pos": "P(pos)", "P_D": "P(D)"})

@@ -6963,9 +6963,11 @@ def _materialize_node_link_worked_example_to_cards(
 
 
 # Cards whose headline claim makes a good end-of-lesson takeaway, in the order they should appear.
-# (components_terms is excluded — glossary definitions are not takeaways.)
+# (components_terms is excluded — glossary definitions are not takeaways. `process` is excluded too — a
+# method card is a sequence of STEPS; its headline is an imperative or a section label ("Identification",
+# "Start by identifying the event A", "P(B) — state what these represent"), never a standalone insight.)
 _TAKEAWAY_SOURCE_ORDER: dict[str, int] = {
-    "background": 0, "formula_breakdown": 1, "process": 2, "edge_case": 3,
+    "background": 0, "formula_breakdown": 1, "edge_case": 2,
 }
 
 

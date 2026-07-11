@@ -41,7 +41,7 @@ class FormulaGrounding(unittest.TestCase):
         self.assertTrue(_ground_formula_card(cards, _T("Bayes' Theorem")))
         fc = next(c for c in cards if c["blueprint_key"] == "formula_breakdown")
         joined = " ".join(fc["points"])
-        self.assertIn("$$P(H|E) = \\frac{P(E|H)P(H)}{P(E)}$$", joined)   # canonical form, general notation
+        self.assertIn("$$P(A|B) = \\frac{P(B|A)P(A)}{P(B)}$$", joined)   # canonical form, standard A|B notation
         self.assertNotIn("P(A|B) = P(A) + P(B)", joined)                # wrong free-prose gone
 
     def test_non_adapter_topic_is_untouched(self):
