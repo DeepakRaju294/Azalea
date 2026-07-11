@@ -7037,6 +7037,36 @@ def _derive_key_takeaways(cards: list[dict[str, Any]], max_items: int = 5,
     return out[:max_items] if len(out) >= 2 else []              # don't force a single hollow takeaway
 
 
+def _ground_formula_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
+    """For an adapter-backed formula topic, replace the free-prose formula_breakdown card with the adapter's
+    CANONICAL formula. The lean LLM writes the formula card from its own knowledge and sometimes gets it
+    wrong (e.g. 'P(A) + P(B) = P(+)'), contradicting the adapter-verified worked example in the same topic.
+    The correct formula is right there in the adapter spec — use it. No-op for non-adapter topics."""
+    try:
+        from app.services.examples.trace_pipeline import route_adapter
+        adapter = route_adapter({"title": getattr(topic, "title", "") or "",
+                                 "course_type": _topic_type_key(topic)})
+        spec = getattr(adapter, "_formula_spec", None) if adapter is not None else None
+        if spec is None:
+            return False
+        canonical = next((str(v) for v in (getattr(spec, "conventions", {}) or {}).values()), None)
+        if not canonical:
+            return False
+        names = getattr(spec, "display_names", {}) or {}
+        glossary = [f"{names.get(o.name, o.name)}: {o.teaching_focus}"
+                    for o in spec.outputs if getattr(o, "teaching_focus", "")]
+        for card in cards:
+            key = str(card.get("blueprint_key") or card.get("card_type") or "").lower()
+            if key in ("formula", "formula_breakdown"):
+                card["points"] = ["The formula:", canonical, *glossary]
+                card.pop("body", None)
+                card["_formula_grounded"] = True
+                return True
+    except Exception as exc:  # noqa: BLE001 — grounding is best-effort, never break generation
+        _log.debug("formula grounding skipped: %s", exc)
+    return False
+
+
 def _estimate_minutes(cards: list[dict[str, Any]]) -> int:
     """A consistent read-time estimate from the finished cards — the LLM's own number is unreliable (a
     4-card intro came back as 30 min, a 10-card lesson as 5). Weight by card kind: worked-example step
@@ -7185,6 +7215,8 @@ def _convert_lean_to_legacy(
     # edge cases, then group the rest AFTER the worked example (never between steps).
     _drop_trace_style_edge_cases(legacy_cards)
     _group_edge_cases_after_worked_examples(legacy_cards)
+    # Anchor the formula card to the adapter's canonical formula (before takeaways derive from it).
+    _ground_formula_card(legacy_cards, topic)
 
     empty_report = {"is_valid": True, "requires_regeneration": False, "issues": []}
 
