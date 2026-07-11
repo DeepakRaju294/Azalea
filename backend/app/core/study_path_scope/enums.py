@@ -125,3 +125,36 @@ class DecompositionMethod(str, Enum):     # §1.4 — how the draft decompositio
     goal_only = "goal_only"
     source_driven = "source_driven"
     curriculum = "curriculum"
+
+
+# --- PR4: validation + telemetry (§4, §10) ----------------------------------------------------------------
+
+class ValidatorKind(str, Enum):           # §4 — which validator an audit belongs to
+    planning = "planning"                 # runs in Phase 1A over the ungrounded plan
+    certification = "certification"        # runs once grounding exists (Phase 1B+)
+
+
+class AuditType(str, Enum):               # §4 — what KIND of check (audit_type says what kind…)
+    structural = "structural"             # deterministic over the data model
+    executable = "executable"             # runs a check
+    semantic = "semantic"                 # judgement; hard
+
+
+class Severity(str, Enum):                # §4 — …severity says the EFFECT ("semantic" ≠ "always warn-only")
+    info = "info"
+    warning = "warning"
+    high = "high"
+    blocking = "blocking"
+
+
+class AuditStatus(str, Enum):             # §4
+    passed = "pass"
+    failed = "fail"
+    not_applicable = "not_applicable"     # a certification invariant evaluated before grounding
+
+
+class DiffClass(str, Enum):               # §10 — a shadow diff is classified, never assumed a regression
+    same = "same"
+    scope_improvement = "scope_improvement"
+    scope_regression = "scope_regression"
+    needs_review = "needs_review"

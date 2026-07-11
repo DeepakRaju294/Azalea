@@ -11,9 +11,10 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from .enums import (
-    CardinalityPolicy, CertificationStatus, ConceptRelation, DecompositionMethod, EvidenceStatus, Facet,
-    Grammar, MappingHealth, MappingStatus, PlannedGrammarStatus, PlanningStatus, SectionType,
-    SelectionMethod, SelectionSourceRole, SelectionStatus, SourceAlignmentMode,
+    AuditStatus, AuditType, CardinalityPolicy, CertificationStatus, ConceptRelation, DecompositionMethod,
+    EvidenceStatus, Facet, Grammar, MappingHealth, MappingStatus, PlannedGrammarStatus, PlanningStatus,
+    SectionType, SelectionMethod, SelectionSourceRole, SelectionStatus, Severity, SourceAlignmentMode,
+    ValidatorKind,
 )
 from .ids import concept_local_id, record_id, section_id_for, stable_slug, topic_id_for
 
@@ -246,6 +247,40 @@ class CurriculumGraph(BaseModel):
     decomposition_record: DecompositionRecord = Field(default_factory=DecompositionRecord)   # §1.4 (PR2)
 
 
+class AuditRecord(BaseModel):
+    """One invariant result (§4). `audit_type` says what KIND of check; `severity` says the EFFECT — a
+    blocking planning failure rejects the plan, a warning does not."""
+    audit_id: str
+    invariant: str
+    validator: ValidatorKind = ValidatorKind.planning
+    audit_type: AuditType = AuditType.structural
+    severity: Severity = Severity.blocking
+    status: AuditStatus = AuditStatus.passed
+    confidence: float = 1.0
+    affected_dimension: Optional[str] = None
+    fallback_action: Optional[str] = None
+    evidence: str = ""
+
+
+class RepairRecord(BaseModel):
+    """A recorded repair (§7). Present for schema completeness; Phase 1A performs no auto-repairs."""
+    repair_id: str
+    invariant: str
+    repair_class: str
+    original: str = ""
+    repaired: str = ""
+    method: str = ""
+    severity: Severity = Severity.warning
+    requires_review: bool = False
+    lifecycle_effect: str = ""
+    evidence: str = ""
+
+
+class ValidationReport(BaseModel):
+    invariants: list[AuditRecord] = Field(default_factory=list)
+    repair_history: list[RepairRecord] = Field(default_factory=list)
+
+
 class StudyPathScopePlan(BaseModel):
     """The Phase-1A aggregate. Serializes/deserializes losslessly (round-trip identity is an exit criterion)."""
     schema_version: int = 1
@@ -254,6 +289,7 @@ class StudyPathScopePlan(BaseModel):
     classification: Classification
     curriculum: CurriculumGraph = Field(default_factory=CurriculumGraph)
     selection_sources: SelectionSourceRegistry = Field(default_factory=SelectionSourceRegistry)   # §12 (PR2)
+    validation: ValidationReport = Field(default_factory=ValidationReport)                         # §4 (PR4)
     provenance: ScopeProvenance = Field(default_factory=ScopeProvenance)
 
     def to_json(self) -> str:
