@@ -60,6 +60,18 @@ class KeyTakeaways(unittest.TestCase):
         self.assertFalse(any(t.rstrip().endswith("is zero") for t in tk))     # no dangling condition
         self.assertTrue(any("posterior probability P(H|E) is also zero" in t for t in tk))
 
+    def test_complete_claim_ending_in_colon_is_kept(self):
+        # regression: "Bayes' theorem calculates conditional probabilities:" is a complete claim (the colon
+        # introduces a sub-bullet); it must survive as a takeaway, not be dropped as a lead-in header.
+        cards = [_card("background", ["Bayes' theorem calculates conditional probabilities:",
+                                      "  - Expressed as: P(A|B) = \\frac{P(B|A)P(A)}{P(B)}",
+                                      "  - Here, P(A|B) is the posterior probability of A given B."]),
+                 _card("formula_breakdown", ["$$P(A|B) = \\frac{P(B|A)P(A)}{P(B)}$$"]),
+                 _card("edge_case", ["When P(B) = 0 the conditional probability is undefined."])]
+        tk = _derive_key_takeaways(cards)
+        self.assertTrue(any("Bayes' theorem calculates conditional probabilities" in t for t in tk))
+        self.assertGreaterEqual(len(tk), 2)                          # not emptied out
+
     def test_process_step_imperatives_are_not_takeaways(self):
         # regression: "Identify the event and possible partitions" (a process step) surfaced as a takeaway.
         cards = [_card("background", ["The Law of Total Probability combines conditional probabilities over a partition."]),

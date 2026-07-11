@@ -7007,10 +7007,26 @@ _STEP_VERB = re.compile(
     r"calculate|write|check|ensure|consider|note|list|select|plug|understand|explain|set up)\b", re.I)
 
 
+# Subordinating openers: a clause starting with one of these is INCOMPLETE on its own ("When P(B)=0:" needs
+# its payload), unlike a complete main clause that merely ends with a colon ("Bayes' theorem calculates …:").
+_SUBORDINATOR = re.compile(
+    r"^(when|if|for|given|because|while|after|before|unless|as|since|although|though|whenever|where)\b", re.I)
+
+
 def _is_lead_in_header(raw_point: str) -> bool:
-    """A raw bullet that ends with ':' is a header whose payload is the sub-bullet beneath it (e.g. 'When the
-    prior probability, P(H), is zero:' → the real claim is the next line). Not a standalone takeaway."""
-    return str(raw_point).rstrip().endswith(":")
+    """A colon-terminated bullet is a lead-in ONLY when the clause before the colon is not a self-contained
+    claim — a subordinate/conditional opener ('When the prior … is zero:' → payload is the sub-bullet), a very
+    short label ('Identify the givens:'), or a trailing lead-in verb ('… states:', '… expressed as:'). A
+    COMPLETE main clause that ends with a colon ('Bayes' theorem calculates conditional probabilities:') is a
+    fine takeaway and is kept (the colon just introduces elaboration)."""
+    r = str(raw_point).rstrip()
+    if not r.endswith(":"):
+        return False
+    body = r[:-1].strip()
+    if _SUBORDINATOR.match(body) or len(body) < 20:
+        return True
+    return bool(re.search(r"\b(states|is|are|means|include|includes|as follows|given by|the following|"
+                          r"expressed as|defined as|namely)$", body, re.I))
 
 
 def _latex_to_plain(text: str) -> str:
