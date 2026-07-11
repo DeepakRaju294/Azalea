@@ -4,7 +4,7 @@ import unittest
 
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
-from app.services.lean_lesson_generator import _derive_key_takeaways
+from app.services.lean_lesson_generator import _derive_key_takeaways, _estimate_minutes
 
 
 def _card(bp, points):
@@ -58,6 +58,22 @@ class KeyTakeaways(unittest.TestCase):
         # only one usable claim -> not "key takeaways"; return [] rather than a hollow one-item list
         cards = [_card("background", ["This lesson introduces the idea at a high level and why it matters."])]
         self.assertEqual(_derive_key_takeaways(cards), [])
+
+
+class EstimateMinutes(unittest.TestCase):
+    def test_light_intro_is_a_few_minutes(self):
+        intro = [_card(bp, ["x"]) for bp in ("background", "prerequisites", "components_terms", "roadmap")]
+        self.assertEqual(_estimate_minutes(intro), 6)          # not the LLM's 30
+
+    def test_worked_example_steps_are_cheap_practice_is_pricier(self):
+        cards = ([_card(bp, ["x"]) for bp in ("background", "formula_breakdown", "process", "edge_case")]
+                 + [_card("worked_example", ["x"]) for _ in range(5)]
+                 + [_card("practice", ["x"])])
+        # 4*1.5 + 5*0.75 + 1*3 = 6 + 3.75 + 3 = 12.75 -> 13
+        self.assertEqual(_estimate_minutes(cards), 13)
+
+    def test_floor(self):
+        self.assertGreaterEqual(_estimate_minutes([_card("background", ["x"])]), 3)
 
 
 if __name__ == "__main__":

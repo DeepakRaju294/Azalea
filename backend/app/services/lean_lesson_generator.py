@@ -7037,6 +7037,15 @@ def _derive_key_takeaways(cards: list[dict[str, Any]], max_items: int = 5,
     return out[:max_items] if len(out) >= 2 else []              # don't force a single hollow takeaway
 
 
+def _estimate_minutes(cards: list[dict[str, Any]]) -> int:
+    """A consistent read-time estimate from the finished cards — the LLM's own number is unreliable (a
+    4-card intro came back as 30 min, a 10-card lesson as 5). Weight by card kind: worked-example step
+    cards are quick, a practice task takes longer, everything else is a normal read."""
+    weight = {"worked_example": 0.75, "practice": 3.0}
+    total = sum(weight.get(str(c.get("blueprint_key") or ""), 1.5) for c in cards)
+    return max(3, round(total))
+
+
 def _convert_lean_to_legacy(
     lean_json: dict[str, Any],
     topic: Topic,
@@ -7183,7 +7192,7 @@ def _convert_lean_to_legacy(
         "lesson_version": 2,
         "title": str(lean_json.get("title") or topic.title),
         "topic_summary": str(lean_json.get("topic_summary") or ""),
-        "estimated_minutes": int(lean_json.get("estimated_minutes") or 8),
+        "estimated_minutes": _estimate_minutes(legacy_cards),
         "example_plan": _normalize_example_plan(lean_json.get("example_plan")),
         "lesson_cards": legacy_cards,
         "practice_questions": practice_questions,

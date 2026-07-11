@@ -64,6 +64,11 @@ PROCESS (capability-first):
    description, prerequisite_capability_ids (earlier capabilities it depends on), satisfies_end_actions
    (which end actions it provides, or []), ownership_mode ("standalone" -> its own topic; "embedded" ->
    folded into one owner topic, set owner_topic_id), and basis ("goal" | "source" | "essential_prerequisite").
+   ORDERING IS DRIVEN BY prerequisite_capability_ids — so whenever one capability's METHOD USES another's
+   result or formula, you MUST list that other capability as a prerequisite, or they order arbitrarily.
+   Example: Bayes' theorem computes its denominator P(B) with the law of total probability, so
+   `bayes_theorem.prerequisite_capability_ids` MUST include the total-probability capability — total
+   probability is taught FIRST, then Bayes. Do not rely on the order you happen to list them in.
 3. topics: ONE per standalone capability. Fold supporting capabilities (terminology, setup, edge cases,
    one-line paradigm framing) into their parent as embedded capabilities — do NOT give them topics.
 4. For every algorithm_walkthrough or data_structure_operation topic, a coding follow-up will be added
