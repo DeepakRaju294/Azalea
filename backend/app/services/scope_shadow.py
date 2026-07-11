@@ -113,6 +113,20 @@ def shadow_report(goal: str, domain: str, topics: list[Any], source_revision: st
     }
 
 
+def _append_telemetry(report: dict[str, Any], goal: str, domain: str) -> None:
+    """Persist one shadow report as a JSONL line when AZALEA_STUDY_PATH_SCOPE_TELEMETRY_PATH is set, so diffs
+    accumulate across generations for analysis (mirrors the other shadow telemetry sinks). Best-effort."""
+    path = os.getenv("AZALEA_STUDY_PATH_SCOPE_TELEMETRY_PATH", "").strip()
+    if not path:
+        return
+    import datetime
+    import json
+    row = {"ts": datetime.datetime.utcnow().isoformat(), "goal": goal, "domain": domain, **report}
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
 def maybe_log_shadow(goal: str, domain: str, topics: list[Any],
                      source_revision: str = "") -> Optional[dict[str, Any]]:
     """Flag-gated, never-throwing shadow log. Safe to call from anywhere in the pipeline: returns None when the
@@ -122,6 +136,7 @@ def maybe_log_shadow(goal: str, domain: str, topics: list[Any],
     try:
         report = shadow_report(goal, domain, topics, source_revision)
         _log.info("scope_shadow %s", report)
+        _append_telemetry(report, goal, domain)
         return report
     except Exception as exc:  # noqa: BLE001 — shadow telemetry must never break generation
         _log.warning("scope_shadow failed: %s", exc)

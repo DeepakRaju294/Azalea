@@ -76,6 +76,23 @@ class ShadowReport(unittest.TestCase):
         finally:
             os.environ.pop("AZALEA_STUDY_PATH_SCOPE", None)
 
+    def test_telemetry_sink_appends_jsonl_when_path_set(self):
+        import json
+        import tempfile
+        os.environ["AZALEA_STUDY_PATH_SCOPE"] = "1"
+        path = os.path.join(tempfile.mkdtemp(), "scope_shadow.jsonl")
+        os.environ["AZALEA_STUDY_PATH_SCOPE_TELEMETRY_PATH"] = path
+        try:
+            maybe_log_shadow("bayes", "math", _bayes_topics())
+            maybe_log_shadow("bayes", "math", _bayes_topics())
+            rows = [json.loads(x) for x in open(path, encoding="utf-8") if x.strip()]
+            self.assertEqual(len(rows), 2)                                   # appends, one row per generation
+            self.assertEqual(rows[0]["diff_class"], "same")
+            self.assertIn("goal", rows[0])
+        finally:
+            os.environ.pop("AZALEA_STUDY_PATH_SCOPE", None)
+            os.environ.pop("AZALEA_STUDY_PATH_SCOPE_TELEMETRY_PATH", None)
+
 
 if __name__ == "__main__":
     unittest.main()
