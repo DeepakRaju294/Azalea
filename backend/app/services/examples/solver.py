@@ -1163,6 +1163,28 @@ def _step_card_title(raw_title: Any, goal: str, result: str, n: int) -> str:
     return f"Step {n + 1}"
 
 
+def _fold_redundant_knowns_step(sol: dict[str, Any]) -> None:
+    """A formula-family worked example opens with an `identify_knowns` step that only RESTATES the givens
+    (result 'Knowns: …') already present in the setup card's problem statement — a dead first card. Fold those
+    givens onto the setup card and drop the step, decrementing the step-count contract so the completeness
+    oracle stays consistent (no false 'skipped' → no spurious re-solve). Conservative and IDEMPOTENT: only the
+    formula family's exact restatement is folded (a real first step such as `identify_coefficients`, which
+    transforms the input, does not match and is left alone); a second call is a no-op."""
+    cards = sol.get("cards") or []
+    if not cards:
+        return
+    first = cards[0]
+    result = str(first.get("result") or "").strip()
+    reasoning = str(first.get("reasoning") or "").strip()
+    if not (result.startswith("Knowns:") and reasoning.startswith("the given quantities are")):
+        return
+    sol["setup_givens"] = result[len("Knowns:"):].strip().rstrip(".")
+    sol["cards"] = cards[1:]
+    for k in ("expected_steps", "full_steps"):
+        if isinstance(sol.get(k), int) and sol[k] > 0:
+            sol[k] = sol[k] - 1
+
+
 def _build_solution_cards(
     sol: dict[str, Any], topic: dict[str, Any], *, code: Optional[str] = None,
 ) -> list[dict[str, Any]]:
@@ -1179,13 +1201,18 @@ def _build_solution_cards(
     def _code_fields() -> dict[str, Any]:
         return {"code_snippet": code, "code_language": "python"} if code else {}
 
-    # Always open with an explicit setup card stating the problem; `cards` are the steps.
+    # Always open with an explicit setup card stating the problem; `cards` are the steps. When a redundant
+    # identify-knowns step was folded away (§ _fold_redundant_knowns_step), list the givens here once.
+    setup_points = ["Problem:", f"  - {problem}"]
+    givens = str(sol.get("setup_givens") or "").strip()
+    if givens:
+        setup_points.append(f"Given: {givens}")
     cards: list[dict[str, Any]] = [{
         "id": f"we-solve-{tid}-setup",
         "blueprint_key": "worked_example",
         "card_type": "worked_example",
         "title": "Worked Example",
-        "points": ["Problem:", f"  - {problem}"],
+        "points": setup_points,
         "visual_description": str(sol.get("problem_visual") or ""),
         "continuation_group_id": gid,
         "metadata": {
@@ -1728,6 +1755,8 @@ def apply_llm_solved_worked_example(
         attempts = 0
         for attempt in range(_MAX_RESOLVE_ATTEMPTS + 1):
             attempts = attempt + 1
+            _fold_redundant_knowns_step(sol)          # drop the dead 'Knowns' restatement (idempotent; a
+            #                                            re-solve returns a fresh sol, so fold each iteration)
             step_cards = _build_solution_cards(sol, topic, code=code)
             if not step_cards:
                 return False
