@@ -7105,6 +7105,36 @@ def _ground_formula_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
     return False
 
 
+# Multi-letter tokens that are legitimate MATH (function names / greek), so a bullet built only from these +
+# single-letter variables + numbers + operators is a bare equation, not prose.
+_MATH_WORDS = {"frac", "sqrt", "sum", "prod", "cdot", "times", "sin", "cos", "tan", "cot", "sec", "csc",
+               "log", "ln", "exp", "int", "lim", "pi", "mu", "sigma", "theta", "alpha", "beta", "lambda",
+               "approx", "leq", "geq", "neq", "infty", "left", "right", "text"}
+
+
+def _is_bare_equation(text: str) -> bool:
+    """A bullet that is entirely an equation (every word is a math token), e.g. 'P(A|B) = \\frac{P(B|A)P(A)}
+    {P(B)}' — not a prose sentence that merely mentions a symbol."""
+    t = re.sub(r"^[\s\-•*]+", "", str(text)).strip()
+    t = re.sub(r"\$\$|\\\(|\\\)|\\\[|\\\]", "", t).strip()
+    if "=" not in t or len(t) > 120:
+        return False
+    words = re.findall(r"[A-Za-z]{2,}", t)
+    return all(w.lower() in _MATH_WORDS for w in words)
+
+
+def _dedupe_formula_from_prose(cards: list[dict[str, Any]]) -> None:
+    """Once the formula card owns the canonical equation, drop bare-equation bullets from the background/
+    purpose card so the formula is not stated twice (the LLM often restates it as motivation)."""
+    for card in cards:
+        key = str(card.get("blueprint_key") or card.get("card_type") or "").lower()
+        if key not in ("background", "purpose_context"):
+            continue
+        pts = card.get("points")
+        if isinstance(pts, list):
+            card["points"] = [p for p in pts if not _is_bare_equation(p)]
+
+
 def _estimate_minutes(cards: list[dict[str, Any]]) -> int:
     """A consistent read-time estimate from the finished cards — the LLM's own number is unreliable (a
     4-card intro came back as 30 min, a 10-card lesson as 5). Weight by card kind: worked-example step
@@ -7253,8 +7283,10 @@ def _convert_lean_to_legacy(
     # edge cases, then group the rest AFTER the worked example (never between steps).
     _drop_trace_style_edge_cases(legacy_cards)
     _group_edge_cases_after_worked_examples(legacy_cards)
-    # Anchor the formula card to the adapter's canonical formula (before takeaways derive from it).
-    _ground_formula_card(legacy_cards, topic)
+    # Anchor the formula card to the adapter's canonical formula (before takeaways derive from it), then drop
+    # any restatement of it from the background/purpose card so the equation appears once.
+    if _ground_formula_card(legacy_cards, topic):
+        _dedupe_formula_from_prose(legacy_cards)
 
     empty_report = {"is_valid": True, "requires_regeneration": False, "issues": []}
 

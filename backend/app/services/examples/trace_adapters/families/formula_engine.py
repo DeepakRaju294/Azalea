@@ -149,6 +149,10 @@ class FormulaSpec:
     # `$$...$$`). When set, the grounder uses these verbatim in place of the prose `conventions` string.
     canonical_latex: Optional[str] = None
     canonical_notes: list[str] = field(default_factory=list)
+    # Optional teaching-quality filter on a generated instance: return False to reject a DEGENERATE example
+    # (e.g. total probability with P(A|B1)==P(A|B2), where the answer trivially equals the common conditional
+    # and the partition weighting looks irrelevant). None = accept every candidate.
+    instance_ok: Optional[Callable[[dict[str, Any]], bool]] = None
 
     # ------- derived -------------------------------------------------------------------------------
     def base_env(self, example_input: dict[str, Any]) -> dict[str, Any]:
@@ -185,6 +189,8 @@ def _candidates(self, seed: int) -> Iterable[dict[str, Any]]:
                 row[d2.name] = [rng.randint(d2.val_lo, d2.val_hi) for _ in range(size)]
         for g in spec.givens:
             row[g.name] = rng.randint(g.lo, g.hi) if g.integer else round(rng.uniform(g.lo, g.hi), 1)
+        if spec.instance_ok is not None and not spec.instance_ok(row):
+            continue                                         # skip a degenerate / poor teaching instance
         row["_id"] = f"{spec.slug}_v1_case_{i}"
         yield row
 

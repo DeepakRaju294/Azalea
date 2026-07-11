@@ -732,6 +732,10 @@ LAW_OF_TOTAL_PROBABILITY = FormulaSpec(
         Output("P_A", "P_A = P_A_given_B1*P_B1 + P_A_given_B2*P_B2",
                "P_A_given_B1*P_B1 + P_A_given_B2*P_B2", "", "compute_total_probability", "total probability")],
     conventions={"law": "P(A) = P(A|B1)P(B1) + P(A|B2)P(B2), where the partition satisfies P(B1) + P(B2) = 1"},
+    # Reject a degenerate instance: with P(A|B1)==P(A|B2) the total trivially equals the common conditional and
+    # the partition weighting looks irrelevant — a poor first illustration of the law. Also keep the partition
+    # off a 50/50 split so the weighting is visibly doing work.
+    instance_ok=lambda r: abs(r["P_A_given_B1"] - r["P_A_given_B2"]) >= 0.2 and abs(r["P_B1"] - 0.5) >= 0.1,
     # General n-partition form as isolated math; the worked example uses the concrete 2-partition instance.
     canonical_latex="P(A) = \\sum_{i} P(A|B_i)P(B_i)",
     canonical_notes=[

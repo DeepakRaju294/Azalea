@@ -5,7 +5,9 @@ import unittest
 
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
-from app.services.lean_lesson_generator import _ground_formula_card, _derive_key_takeaways
+from app.services.lean_lesson_generator import (
+    _ground_formula_card, _derive_key_takeaways, _dedupe_formula_from_prose, _is_bare_equation,
+)
 
 
 class _T:
@@ -43,6 +45,22 @@ class FormulaGrounding(unittest.TestCase):
         joined = " ".join(fc["points"])
         self.assertIn("$$P(A|B) = \\frac{P(B|A)P(A)}{P(B)}$$", joined)   # canonical form, standard A|B notation
         self.assertNotIn("P(A|B) = P(A) + P(B)", joined)                # wrong free-prose gone
+
+    def test_bare_equation_is_deduped_from_background(self):
+        # the equation lives in the formula card; a restatement in the background card is redundant.
+        cards = [{"blueprint_key": "background",
+                  "points": ["Bayes' theorem updates a prior using new evidence.",
+                             "P(A|B) = \\frac{P(B|A) \\cdot P(A)}{P(B)}",
+                             "Goal: find the probability of A given B."]},
+                 {"blueprint_key": "formula_breakdown", "points": ["The formula:", "grounded"]}]
+        _dedupe_formula_from_prose(cards)
+        bg = next(c for c in cards if c["blueprint_key"] == "background")
+        self.assertNotIn("P(A|B) = \\frac{P(B|A) \\cdot P(A)}{P(B)}", bg["points"])   # bare equation gone
+        self.assertTrue(any("updates a prior" in p for p in bg["points"]))            # prose kept
+
+    def test_prose_mentioning_a_symbol_is_kept(self):
+        self.assertFalse(_is_bare_equation("The prior P(A) is your belief before seeing evidence."))
+        self.assertTrue(_is_bare_equation("P(A|B) = \\frac{P(B|A)P(A)}{P(B)}"))
 
     def test_non_adapter_topic_is_untouched(self):
         cards = [{"blueprint_key": "formula_breakdown", "points": ["Z = made up"]}]
