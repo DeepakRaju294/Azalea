@@ -24,6 +24,10 @@ from .selection import (
     build_concept_mapping, build_prereq_mapping, check_decomposition, check_referential_integrity,
     derive_mapping_status, uncovered_required_requirements,
 )
+from .construction import (
+    DiscoveredFacet, OrderingResult, bridge_insertion_allowed, cardinality_of, consolidate_facets,
+    count_hard_edge_violations, hard_edges_from_concepts, resolve_concept_order,
+)
 
 __all__ = [
     # enums
@@ -44,4 +48,7 @@ __all__ = [
     "derive_mapping_status", "build_concept_mapping", "build_prereq_mapping", "aggregate_concept_selection",
     "apply_selection_status", "check_referential_integrity", "uncovered_required_requirements",
     "check_decomposition", "DecompositionCheck", "IntegrityIssue",
+    # construction (facets→sections, ordering, bridge guard — PR3)
+    "DiscoveredFacet", "consolidate_facets", "resolve_concept_order", "OrderingResult",
+    "count_hard_edge_violations", "hard_edges_from_concepts", "bridge_insertion_allowed", "cardinality_of",
 ]
