@@ -104,6 +104,16 @@ def effective_generation_feedback(study_path: StudyPath, feedback: str | None = 
     return "\n\n".join(parts) or None
 
 
+def _sync_topic_estimated_minutes(topic: Topic, lesson_json: dict) -> None:
+    """Keep the topic's displayed time in sync with the lesson's card-derived estimate. `topic.estimated_minutes`
+    (a decomposition guess, and the value summed into the path total + shown in the topic list) otherwise
+    disagrees with the lesson header's `estimated_minutes`, which is grounded in the actual cards. Caller must
+    hold `topic` in the session it will commit."""
+    minutes = (lesson_json or {}).get("estimated_minutes")
+    if isinstance(minutes, int) and minutes > 0:
+        topic.estimated_minutes = minutes
+
+
 class StudyPathRegenerateRequest(BaseModel):
     feedback: str | None = None
     overwrite_existing: bool = False
@@ -407,6 +417,7 @@ def _generate_remaining_lessons_sequentially(
                         source_chunk_ids=source_chunk_ids, source_summary=source_summary,
                         generation_status="ready",
                     ))
+                _sync_topic_estimated_minutes(topic, lj)
                 tdb.commit()
 
             if use_v2:
@@ -759,6 +770,7 @@ def generate_initial_study_path_content(
                 source_summary=source_summary,
                 generation_status="ready",
             )
+            _sync_topic_estimated_minutes(first_topic, lesson_json)
             db.add(first_lesson)
             db.commit()
             db.refresh(first_lesson)
@@ -828,6 +840,7 @@ def generate_initial_study_path_content(
         source_summary=source_summary,
         generation_status="ready",
     )
+    _sync_topic_estimated_minutes(first_topic, first_lesson_json)
     db.add(first_lesson)
     recalculate_study_path_progress(db, study_path_id)
     db.commit()
@@ -1281,6 +1294,7 @@ def regenerate_study_path(
 
     for topic in created_topics:
         lesson_json = topic_lessons[topic.id]
+        _sync_topic_estimated_minutes(topic, lesson_json)
         lesson = Lesson(
             topic_id=topic.id,
             title=topic.title,
