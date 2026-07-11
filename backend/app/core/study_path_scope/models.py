@@ -11,10 +11,11 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from .enums import (
-    CardinalityPolicy, CertificationStatus, Facet, Grammar, MappingHealth, PlannedGrammarStatus,
-    PlanningStatus, SectionType, SelectionSourceRole, SelectionStatus, SourceAlignmentMode,
+    CardinalityPolicy, CertificationStatus, ConceptRelation, DecompositionMethod, EvidenceStatus, Facet,
+    Grammar, MappingHealth, MappingStatus, PlannedGrammarStatus, PlanningStatus, SectionType,
+    SelectionMethod, SelectionSourceRole, SelectionStatus, SourceAlignmentMode,
 )
-from .ids import concept_local_id, section_id_for, stable_slug, topic_id_for
+from .ids import concept_local_id, record_id, section_id_for, stable_slug, topic_id_for
 
 
 class ScopeIdentity(BaseModel):
@@ -77,11 +78,85 @@ class Objective(BaseModel):
 
 
 class ConceptSelectionSource(BaseModel):
+    """A source span that justified a CURRICULUM decision (why-selected). Lives once in the scope-level
+    `SelectionSourceRegistry`; `SelectionEvidence.evidence_ref` points at its id — never copied per concept
+    (§12)."""
     selection_source_id: str
     source_id: str
     chunk_id: str = ""
     span: str = ""
     role: SelectionSourceRole = SelectionSourceRole.scope
+
+    @classmethod
+    def create(cls, *, source_id: str, chunk_id: str = "", span: str = "",
+               role: SelectionSourceRole = SelectionSourceRole.scope) -> "ConceptSelectionSource":
+        return cls(selection_source_id=record_id("selsrc", source_id, chunk_id, span, role),
+                   source_id=source_id, chunk_id=chunk_id, span=span, role=role)
+
+
+class SelectionSourceRegistry(BaseModel):
+    """Scope-level `{selection_source_id → ConceptSelectionSource}` (§12 code-time decision). Single ownership:
+    one span can justify several mappings by id, with no duplicated spans."""
+    sources: dict[str, ConceptSelectionSource] = Field(default_factory=dict)
+
+    def add(self, source: ConceptSelectionSource) -> str:
+        self.sources[source.selection_source_id] = source
+        return source.selection_source_id
+
+    def get(self, selection_source_id: str) -> Optional[ConceptSelectionSource]:
+        return self.sources.get(selection_source_id)
+
+    def __contains__(self, selection_source_id: str) -> bool:
+        return selection_source_id in self.sources
+
+
+class SelectionEvidence(BaseModel):
+    """One evidenced reason a requirement×concept (or requirement×prereq) mapping holds. `evidence_ref` points
+    into the `SelectionSourceRegistry` — no duplicated spans (§1.4). `status`/`method` drive the DERIVED
+    mapping status (owner: `selection.derive_mapping_status`)."""
+    evidence_id: str
+    method: SelectionMethod
+    evidence_ref: str = ""                 # → ConceptSelectionSource.selection_source_id (may be "" for goal)
+    status: EvidenceStatus = EvidenceStatus.supporting
+    confidence: float = 0.0
+
+    @classmethod
+    def create(cls, *, method: SelectionMethod, requirement_id: str, target_id: str, evidence_ref: str = "",
+               status: EvidenceStatus = EvidenceStatus.supporting, confidence: float = 0.0) -> "SelectionEvidence":
+        eid = record_id("evidence", requirement_id, target_id, method, evidence_ref, status)
+        return cls(evidence_id=eid, method=method, evidence_ref=evidence_ref, status=status,
+                   confidence=confidence)
+
+
+class RequirementConceptMapping(BaseModel):
+    """A requirement covered by a concept, via a relation, backed by evidence. `status` is DERIVED from the
+    evidence (one owner: `selection.build_concept_mapping`)."""
+    mapping_id: str
+    requirement_id: str
+    concept_id: str
+    relation: ConceptRelation = ConceptRelation.direct
+    evidence: list[SelectionEvidence] = Field(default_factory=list)
+    status: MappingStatus = MappingStatus.ambiguous
+
+
+class RequirementPrereqMapping(BaseModel):
+    """A requirement's prerequisite. Prerequisites map SEPARATELY from concepts — a prereq is never a concept
+    (§1.4). `status` derived from evidence (one owner: `selection.build_prereq_mapping`)."""
+    mapping_id: str
+    requirement_id: str
+    prereq_id: str
+    evidence: list[SelectionEvidence] = Field(default_factory=list)
+    status: MappingStatus = MappingStatus.ambiguous
+
+
+class DecompositionRecord(BaseModel):
+    """The evidenced decomposition: which requirements are covered by which concepts/prereqs, and what stayed
+    ambiguous. Coverage is a list of evidenced mappings, not a bare requirement→concept[] map (§1.4)."""
+    goal_claims: list[GoalRequirement] = Field(default_factory=list)
+    concept_coverage: list[RequirementConceptMapping] = Field(default_factory=list)
+    prereq_coverage: list[RequirementPrereqMapping] = Field(default_factory=list)
+    decomposition_method: DecompositionMethod = DecompositionMethod.goal_only
+    unresolved_ambiguities: list[str] = Field(default_factory=list)
 
 
 class PlannedGrounding(BaseModel):
@@ -139,7 +214,8 @@ class Concept(BaseModel):
     key_terms: list[str] = Field(default_factory=list)
     learning_objectives: list[Objective] = Field(default_factory=list)
     section_plan: list[LessonSectionPlan] = Field(default_factory=list)
-    selection_sources: list[ConceptSelectionSource] = Field(default_factory=list)
+    # WHY-selected sources live once in the scope-level SelectionSourceRegistry, referenced by mapping
+    # evidence — never copied per concept (§12). So a concept holds no selection_sources list.
     planned_grounding: Optional[PlannedGrounding] = None
     split_reason: Optional[str] = None                 # authored; cardinality.policy is DERIVED from below
     # derived (one owner — read, don't recompute elsewhere):
@@ -167,7 +243,7 @@ class CurriculumGraph(BaseModel):
     ordering_constraints: OrderingConstraints = Field(default_factory=OrderingConstraints)
     glossary: list[GlossaryTerm] = Field(default_factory=list)
     resolved_concept_order: list[str] = Field(default_factory=list)   # owned derived value (§11); readers consume it
-    # decomposition_record (mappings) is PR2 — intentionally absent from the PR1 schema.
+    decomposition_record: DecompositionRecord = Field(default_factory=DecompositionRecord)   # §1.4 (PR2)
 
 
 class StudyPathScopePlan(BaseModel):
@@ -177,6 +253,7 @@ class StudyPathScopePlan(BaseModel):
     intent: ScopeIntent
     classification: Classification
     curriculum: CurriculumGraph = Field(default_factory=CurriculumGraph)
+    selection_sources: SelectionSourceRegistry = Field(default_factory=SelectionSourceRegistry)   # §12 (PR2)
     provenance: ScopeProvenance = Field(default_factory=ScopeProvenance)
 
     def to_json(self) -> str:
