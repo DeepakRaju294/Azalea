@@ -7,7 +7,7 @@ os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.lean_lesson_generator import (
     _ground_formula_card, _ground_edge_case_card, _derive_key_takeaways, _dedupe_formula_from_prose,
-    _is_bare_equation,
+    _is_bare_equation, _inject_grounded_cards,
 )
 
 
@@ -88,6 +88,30 @@ class FormulaGrounding(unittest.TestCase):
         cards = [{"blueprint_key": "edge_case", "points": ["maybe-wrong edge case"]}]
         self.assertTrue(_ground_edge_case_card(cards, _T("Law of Total Probability")))
         self.assertIn("P(B_i) = 0", " ".join(cards[0]["points"]))
+
+    def test_grounded_cards_injected_when_mechanism_topic_has_none(self):
+        # Ohm's law decomposed as science_mechanism emits no formula/edge card; inject the grounded ones.
+        class M:
+            def __init__(s): s.title = "Understanding Ohm's Law"; s.course_type = "science_mechanism"; s.topic_type = "science_mechanism"
+        cards = [{"blueprint_key": "definition", "points": ["V, I, R defined"]},
+                 {"blueprint_key": "method_process", "points": ["apply it"]},
+                 {"blueprint_key": "quick_practice", "points": ["practice"]}]
+        _inject_grounded_cards(cards, M(), have_formula=False, have_edge=False)
+        kinds = [c.get("blueprint_key") for c in cards]
+        self.assertIn("formula_breakdown", kinds)                # a formula card now exists
+        self.assertIn("edge_case", kinds)
+        fc = next(c for c in cards if c["blueprint_key"] == "formula_breakdown")
+        self.assertTrue(fc["points"][0].startswith("$$") and "I = \\frac{V}{R}" in fc["points"][0])
+        # placed after the definition, before the method
+        self.assertLess(kinds.index("definition"), kinds.index("formula_breakdown"))
+        self.assertLess(kinds.index("formula_breakdown"), kinds.index("method_process"))
+
+    def test_injection_is_noop_when_already_grounded_or_no_adapter(self):
+        class Z:
+            def __init__(s): s.title = "Zorble Coefficient"; s.course_type = "science_mechanism"; s.topic_type = "science_mechanism"
+        cards = [{"blueprint_key": "definition", "points": ["x"]}]
+        _inject_grounded_cards(cards, Z(), have_formula=False, have_edge=False)   # no adapter
+        self.assertEqual([c["blueprint_key"] for c in cards], ["definition"])
 
     def test_edge_case_grounding_is_noop_for_non_adapter(self):
         cards = [{"blueprint_key": "edge_case", "points": ["Zorble edge case."]}]

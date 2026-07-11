@@ -7239,6 +7239,51 @@ def _sanitize_card_math(cards: list[dict[str, Any]]) -> None:
             card["points"] = [_sanitize_math_in_text(p) if isinstance(p, str) else p for p in pts]
 
 
+def _card_kind(card: dict[str, Any]) -> str:
+    return str(card.get("blueprint_key") or card.get("card_type") or "").lower()
+
+
+def _inject_grounded_cards(cards: list[dict[str, Any]], topic: Topic, *, have_formula: bool,
+                           have_edge: bool) -> None:
+    """When a formula concept is decomposed as a type that emits NO formula/edge card (e.g. `science_mechanism`
+    for Ohm's law) but an adapter routes for it, INSERT the grounded formula card + edge card so the learner
+    still gets the isolated `$$` math and the correct boundary facts instead of LLM prose. No-op when the cards
+    already exist (grounded in place) or no adapter routes."""
+    if have_formula and have_edge:
+        return
+    try:
+        from app.services.examples.trace_pipeline import route_adapter
+        adapter = route_adapter({"title": getattr(topic, "title", "") or "",
+                                 "course_type": _topic_type_key(topic)})
+        spec = getattr(adapter, "_formula_spec", None) if adapter is not None else None
+        if spec is None:
+            return
+        latex = getattr(spec, "canonical_latex", None)
+        edges = list(getattr(spec, "edge_cases", None) or [])
+        if not have_formula and latex:
+            # place after the concept is introduced (definition/background), before it is applied.
+            idx = next((i for i, c in enumerate(cards)
+                        if _card_kind(c) in ("process", "method_process", "worked_example")), None)
+            if idx is None:
+                idx = 1 + max((i for i, c in enumerate(cards)
+                               if _card_kind(c) in ("definition", "components_terms", "background",
+                                                    "purpose_context")), default=-1)
+            cards.insert(idx, {
+                "id": "formula-grounded", "blueprint_key": "formula_breakdown", "card_type": "formula",
+                "title": "Formula", "main_concept": "Formula",
+                "points": [f"$${latex}$$", *(getattr(spec, "canonical_notes", []) or [])],
+                "_formula_grounded": True})
+        if not have_edge and edges:
+            title = "Edge Case" if len(edges) == 1 else "Edge Cases"
+            idx = next((i for i, c in enumerate(cards)
+                        if _card_kind(c) in ("practice", "quick_practice")), len(cards))
+            cards.insert(idx, {
+                "id": "edge-grounded", "blueprint_key": "edge_case", "card_type": "edge_case",
+                "title": title, "main_concept": title, "points": edges, "_edge_case_grounded": True})
+    except Exception as exc:  # noqa: BLE001 — best-effort; never break generation
+        _log.debug("grounded-card injection skipped: %s", exc)
+
+
 def _estimate_minutes(cards: list[dict[str, Any]]) -> int:
     """A consistent read-time estimate from the finished cards — the LLM's own number is unreliable (a
     4-card intro came back as 30 min, a 10-card lesson as 5). Weight by card kind: worked-example step
@@ -7389,10 +7434,14 @@ def _convert_lean_to_legacy(
     _group_edge_cases_after_worked_examples(legacy_cards)
     # Anchor the formula card to the adapter's canonical formula (before takeaways derive from it), then drop
     # any restatement of it from the background/purpose card so the equation appears once.
-    if _ground_formula_card(legacy_cards, topic):
+    _grounded_formula = _ground_formula_card(legacy_cards, topic)
+    if _grounded_formula:
         _dedupe_formula_from_prose(legacy_cards)
     # Replace the LLM's edge case with the adapter's authored, correct boundary facts (before takeaways derive).
-    _ground_edge_case_card(legacy_cards, topic)
+    _grounded_edge = _ground_edge_case_card(legacy_cards, topic)
+    # If the topic type emitted no formula/edge card but an adapter routes (e.g. Ohm's law as science_mechanism),
+    # inject the grounded cards so the formula is still isolated math, not LLM prose.
+    _inject_grounded_cards(legacy_cards, topic, have_formula=_grounded_formula, have_edge=_grounded_edge)
     # Make any LLM-authored math render: strip \text{}, delimit bare \frac/\sqrt/greek (grounded $$ untouched).
     _sanitize_card_math(legacy_cards)
 
