@@ -44,9 +44,20 @@ class KeyTakeaways(unittest.TestCase):
 
     def test_dedupes_repeated_formula(self):
         cards = [_card("background", ["P(A|B) = (P(B|A) * P(A)) / P(B) is the core relationship."]),
-                 _card("formula_breakdown", ["P(A|B) = (P(B|A) * P(A)) / P(B)"])]
+                 _card("formula_breakdown", ["P(A|B) = (P(B|A) * P(A)) / P(B)"]),
+                 _card("edge_case", ["When P(B) = 0 the conditional probability is undefined."])]
         tk = _derive_key_takeaways(cards)
-        self.assertEqual(len(tk), 1)   # the formula is not repeated
+        self.assertEqual(len([t for t in tk if "P(B|A)" in t]), 1)   # formula appears once, not twice
+        self.assertEqual(len(tk), 2)                                 # formula + edge case
+
+    def test_intro_topic_gets_no_takeaways(self):
+        tk = _derive_key_takeaways(self._sample(), topic_type="study_path_introduction")
+        self.assertEqual(tk, [])   # an orientation intro has nothing to consolidate
+
+    def test_single_weak_takeaway_is_suppressed(self):
+        # only one usable claim -> not "key takeaways"; return [] rather than a hollow one-item list
+        cards = [_card("background", ["This lesson introduces the idea at a high level and why it matters."])]
+        self.assertEqual(_derive_key_takeaways(cards), [])
 
 
 if __name__ == "__main__":

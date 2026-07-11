@@ -77,6 +77,24 @@ class MultiConceptFixtures(unittest.TestCase):
         self.assertEqual(tp["course_type"], "math_formula_method")
         self.assertEqual(len(topics), 3)                                  # intro + both concepts
 
+    def test_prerequisite_topic_is_folded_into_the_intro_not_taught(self):
+        # The model promoted a prerequisite (conditional probability, role 'foundation') to a full topic.
+        # Prereqs are NAMED not taught: drop it and surface it as an assumed prerequisite on the intro.
+        cond = _topic("cond", subject="conditional_probability", title="Conditional Probability",
+                      role="foundation", tt="math_formula_method")
+        plan = {"end_capability_actions": ["calculate"],
+                "required_capabilities": [
+                    _cap("cond", subject="conditional_probability", primary="Conditional Probability", role="foundation"),
+                    _cap("ltp", subject="law_total_probability", primary="Law of Total Probability", role="application")]}
+        ltp = _topic("ltp", subject="law_total_probability", title="Law of Total Probability", role="application")
+        topics = generate_decomposed_topics("learn the law of total probability", "s",
+                                            model_fn=lambda p: {"path_plan": plan, "topics": [cond, ltp]})
+        titles = [t["title"] for t in topics]
+        self.assertNotIn("Conditional Probability", titles)               # not a standalone teaching topic
+        self.assertIn("Law of Total Probability", titles)
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        self.assertIn("Conditional Probability", intro.get("assumed_prerequisites") or [])   # named as a prereq
+
     def test_emitted_intro_is_not_duplicated(self):
         # when the model DOES emit an orientation topic, we must NOT synthesize a second one.
         intro = {"topic_id": "t_intro", "capability_id": "orient", "subject_key": "probability",

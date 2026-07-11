@@ -6998,12 +6998,16 @@ def _weak_takeaway(t: str) -> bool:
     return bool(re.match(r"^[\w()|Σ'.\s]{1,14}:\s", t))          # "<short symbol>: definition"
 
 
-def _derive_key_takeaways(cards: list[dict[str, Any]], max_items: int = 5) -> list[str]:
+def _derive_key_takeaways(cards: list[dict[str, Any]], max_items: int = 5,
+                          topic_type: str = "") -> list[str]:
     """Populate the lesson's key_takeaways from the finished cards (the lean path leaves it empty and no
     takeaway card is emitted in practice). Prefer an explicit takeaway/summary card; otherwise distill ONE
     strong claim from each key card (background, terms, formula, method, edge case), dropping lead-ins and
     glossary lines and de-duplicating (e.g. the formula appearing in both background and the formula card).
-    Deterministic — no LLM."""
+    Deterministic — no LLM. Returns [] rather than force a hollow list: an orientation intro has nothing to
+    consolidate, and a single stray claim is not 'key takeaways'."""
+    if str(topic_type or "").lower() == "study_path_introduction":
+        return []
     for c in cards:
         if (str(c.get("blueprint_key") or "").lower() in ("takeaway", "summary")
                 or str(c.get("card_type") or "").lower() == "summary"):
@@ -7030,7 +7034,7 @@ def _derive_key_takeaways(cards: list[dict[str, Any]], max_items: int = 5) -> li
         if ct and any(len(ct & _tk_tokens(o)) >= 0.7 * len(ct) for o in out):
             continue                                             # near-duplicate of an existing takeaway
         out.append(cand)
-    return out[:max_items]
+    return out[:max_items] if len(out) >= 2 else []              # don't force a single hollow takeaway
 
 
 def _convert_lean_to_legacy(
@@ -7184,7 +7188,7 @@ def _convert_lean_to_legacy(
         "lesson_cards": legacy_cards,
         "practice_questions": practice_questions,
         "visual_plan": [],
-        "key_takeaways": _derive_key_takeaways(legacy_cards),
+        "key_takeaways": _derive_key_takeaways(legacy_cards, topic_type=_topic_type_key(topic)),
         "source_chunk_ids": build_source_chunk_ids(chunks),
         "source_summary": build_source_summary(chunks),
         "adaptation_metadata": {

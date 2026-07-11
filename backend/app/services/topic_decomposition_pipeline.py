@@ -247,12 +247,44 @@ def generate_decomposed_topics(
             t["content_role"] = "calculation"
             _log.info("topic_decomposition: de-conflated mislabeled intro %r -> teaching topic", t.get("title"))
 
+    # Prerequisites are NAMED, not taught: a `foundation`-role topic is a building block the learner is
+    # assumed to have. When the path also has a real (non-foundation) concept topic, drop the foundation
+    # topics and carry them as ASSUMED PREREQUISITES on the intro — mentioned in its prerequisites card,
+    # never a standalone teaching topic. If EVERY teaching topic is foundation, keep them (the goal IS that
+    # foundation).
+    def _role(t: dict[str, Any]) -> str:
+        return str(t.get("content_role") or "").lower()
+
+    foundations = [t for t in topics_out if not _is_opener(t) and _role(t) == "foundation"]
+    real_concepts = [t for t in topics_out if not _is_opener(t) and _role(t) != "foundation"]
+    dropped_prereqs: list[str] = []
+    if foundations and real_concepts:
+        dropped_prereqs = [str(t.get("title") or _subject_phrase(str(t.get("subject_key") or ""))).strip()
+                           for t in foundations]
+        drop_ids = {id(t) for t in foundations}
+        topics_out = [t for t in topics_out if id(t) not in drop_ids]
+        _log.info("topic_decomposition: folded %d prerequisite topic(s) into the intro: %s",
+                  len(dropped_prereqs), dropped_prereqs)
+
     non_intro = [t for t in topics_out if not _is_opener(t)]
-    if not any(_is_opener(t) for t in topics_out) and len(non_intro) >= 2:
+    has_opener = any(_is_opener(t) for t in topics_out)
+    # Synthesize an intro for a multi-topic path — OR whenever we folded prerequisites that need a home.
+    if not has_opener and (len(non_intro) >= 2 or (dropped_prereqs and non_intro)):
         intro = _synthesize_intro_topic(goal)
         intro["order_index"] = 0
         topics_out = [intro, *topics_out]
         _log.info("topic_decomposition: synthesized orientation intro (LLM emitted none)")
+
+    # Name the folded prerequisites on the intro so its prerequisites card mentions them (not taught).
+    if dropped_prereqs:
+        for t in topics_out:
+            if _is_opener(t):
+                ap = list(t.get("assumed_prerequisites") or [])
+                for p in dropped_prereqs:
+                    if p and p not in ap:
+                        ap.append(p)
+                t["assumed_prerequisites"] = ap
+                break
 
     ordered = sorted(topics_out, key=lambda t: int(t.get("order_index") or 0))
     title_by_id = {str(t.get("topic_id")): str(t.get("title") or "") for t in ordered if t.get("title")}
