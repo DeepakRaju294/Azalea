@@ -247,7 +247,18 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
             for tok, expr in o.show:
                 subst = subst.replace(tok, str(_num(_eval(expr, env))))
         else:                                               # scalar concepts: substitute the variable values
-            subst = _substitute(rhs, {n: env[n] for n in env if not isinstance(env[n], list)})
+            scalars = {n: env[n] for n in env if not isinstance(env[n], list)}
+            subst = _substitute(rhs, scalars)
+            # Reproducibility: the shown arithmetic must equal the shown result. When the equation display uses
+            # a ROUNDED intermediate (P = V*I) but o.expr recomputes it at full precision (V*(V/R)), the
+            # substitution "13*1.18" (=15.34) would not match val (15.36). Show the actual computed form
+            # (13*(13/11)) so the learner can reproduce the result.
+            try:
+                # ^ is the display caret (power); Python eval reads it as XOR, so normalise before checking.
+                if abs(_eval(subst.replace("^", "**"), {}) - float(val)) > 0.005:
+                    subst = _substitute(o.expr, scalars)
+            except Exception:  # noqa: BLE001 — display-only guard; never break the trace
+                pass
         env[o.name] = val
         answer[o.name] = val
         unit = (" " + o.unit) if o.unit else ""
