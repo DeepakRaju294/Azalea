@@ -103,6 +103,16 @@ class FormulaGrounding(unittest.TestCase):
             self.assertTrue(_ground_edge_case_card(fc, _T(title)), f"edge {title}")
             self.assertIn("$$", " ".join(fc[0]["points"]))
 
+    def test_every_formula_spec_is_grounded(self):
+        # uniformity invariant: EVERY formula adapter carries canonical_latex + edge_cases, so no formula
+        # topic falls back to an LLM-written formula/edge card. A new FormulaSpec must add grounding.
+        from app.services.examples.trace_adapters.families.formula_engine import FormulaSpec
+        from app.services.examples.trace_adapters.families import formula_specs as FS
+        specs = [v for v in vars(FS).values() if isinstance(v, FormulaSpec)]
+        self.assertGreater(len(specs), 100)
+        self.assertEqual([s.slug for s in specs if not s.canonical_latex], [])   # all have a formula
+        self.assertEqual([s.slug for s in specs if not s.edge_cases], [])        # all have edge cases
+
     def test_physics_geometry_finance_chemistry_are_grounded(self):
         # grounding spans families: physics / geometry / finance / chemistry all ground with $$ math and edges.
         for title in ("Kinetic Energy", "Ohm law", "Compound Interest", "Pythagorean", "Density", "Ideal Gas"):
