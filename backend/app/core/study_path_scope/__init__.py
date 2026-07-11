@@ -34,6 +34,7 @@ from .validation import (
     derive_planning_status, failed_invariants, run_planning_validator, validate_and_stamp,
 )
 from .telemetry import ShadowBaseline, ShadowMetrics, classify_shadow_diff, shadow_diff
+from .builder import ConceptDraft, DecompositionInput, PrereqDraft, build_plan
 
 __all__ = [
     # enums
@@ -60,4 +61,6 @@ __all__ = [
     # validation + telemetry (PlanningValidator §4.1–4.9, dual status, shadow diff — PR4)
     "run_planning_validator", "derive_planning_status", "validate_and_stamp", "failed_invariants",
     "shadow_diff", "classify_shadow_diff", "ShadowBaseline", "ShadowMetrics",
+    # builder (decomposition → validated plan — PR5)
+    "build_plan", "DecompositionInput", "ConceptDraft", "PrereqDraft",
 ]
