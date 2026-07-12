@@ -71,6 +71,24 @@ def _subject_phrase(subject_key: str) -> str:
 _LEADING_TITLE_JUNK = frozenset({"with", "of", "by", "to", "from", "at", "and", "or"})
 
 
+_GOAL_MATCH_GLUE = frozenset({"the", "a", "an", "of", "and", "or", "for", "to", "in", "on", "with", "by", "as"})
+
+
+def _goal_names_topic(topic: dict[str, Any], goal: str | None) -> bool:
+    """True when the learner's goal explicitly names this concept (so it belongs IN scope as a taught topic, not
+    demoted to an external prerequisite). Matches when the concept's distinctive title/subject words all appear
+    in the goal — e.g. goal '…law of total probability' names the 'Law of Total Probability' topic."""
+    goal_words = set(re.findall(r"[a-z]+", str(goal or "").lower()))
+    if not goal_words:
+        return False
+    for field in ("subject_key", "title"):
+        raw = str(topic.get(field) or "").replace("_", " ").lower()
+        terms = {w for w in re.findall(r"[a-z]+", raw) if len(w) >= 3 and w not in _GOAL_MATCH_GLUE}
+        if terms and terms <= goal_words:
+            return True
+    return False
+
+
 def _repair_topic_title(title: str, subject_key: str) -> str:
     """Repair a title that begins with a dangling preposition/conjunction (an LLM decomposition artifact) by
     stripping the leading run; if that empties it, fall back to the subject phrase. A clean title is unchanged."""
@@ -278,7 +296,11 @@ def generate_decomposed_topics(
     def _role(t: dict[str, Any]) -> str:
         return str(t.get("content_role") or "").lower()
 
-    foundations = [t for t in topics_out if not _is_opener(t) and _role(t) == "foundation"]
+    # A concept the GOAL explicitly names is IN scope — it must stay a taught topic, never be demoted to an
+    # external prerequisite (§3.1 rule 1). E.g. goal "…and law of total probability" → Law of Total Probability
+    # is a topic, not a prereq link. So such foundations are excluded from the fold below.
+    foundations = [t for t in topics_out
+                   if not _is_opener(t) and _role(t) == "foundation" and not _goal_names_topic(t, goal)]
     real_concepts = [t for t in topics_out if not _is_opener(t) and _role(t) != "foundation"]
     dropped_prereqs: list[str] = []
     if foundations and real_concepts:
