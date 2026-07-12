@@ -3215,6 +3215,26 @@ def _topic_title_aliases(title: str) -> list[str]:
     return []
 
 
+def _model_popup_links(card: dict[str, Any], card_text: str) -> list[dict[str, Any]]:
+    """Validated `popup_only` glosses the MODEL authored for undefined terms (§2.1). Keeps only entries whose
+    action is popup_only, whose anchor appears verbatim in the card, and which carry a non-empty explanation;
+    caps at 2 per card. (open_study_path / review_earlier_topic the model may have emitted are ignored — those
+    are added deterministically.)"""
+    out: list[dict[str, Any]] = []
+    for link in (card.get("interactive_links") or []):
+        if not isinstance(link, dict) or str(link.get("action") or "") != "popup_only":
+            continue
+        text = str(link.get("text") or "").strip()
+        expl = str(link.get("explanation") or "").strip()
+        if not text or not expl or text not in (card_text or ""):
+            continue
+        out.append({"text": text, "explanation": expl, "action": "popup_only",
+                    "target": None, "concept_id": None})
+        if len(out) >= 2:
+            break
+    return out
+
+
 def _is_prereq_card(card: dict[str, Any]) -> bool:
     """Whether a card is the prerequisites / foundational-knowledge card that DECLARES the assumed prereqs.
     open_study_path links live ONLY here — not scattered on every card that happens to mention a prereq."""
@@ -3297,6 +3317,7 @@ def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) ->
         for card in cards:
             is_prereq_card = _is_prereq_card(card)
             text = project_to_plain_text(_card_scan_text(card))
+            model_popups = _model_popup_links(card, text)   # LLM-authored glosses for undefined terms (§2.1)
             result = scan_card(text, ctx)
             valid = validate_links(result.links, text)
             links: list[dict[str, Any]] = []
@@ -3318,6 +3339,15 @@ def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) ->
                     expl = ""
                 links.append({"text": l.text, "explanation": expl, "action": l.action.value,
                               "target": l.target, "concept_id": l.concept_id})
+            # Merge the model's undefined-term popups AFTER the deterministic nav links, skipping any whose anchor
+            # a nav link already claimed (never double-link the same phrase). Cap the card at 3 links total (§2.5).
+            nav_texts = {str(l["text"]).lower() for l in links}
+            for p in model_popups:
+                if len(links) >= 3:
+                    break
+                if str(p["text"]).lower() in nav_texts:
+                    continue
+                links.append(p)
             card["interactive_links"] = links
     except Exception:  # noqa: BLE001 — link enrichment must never break generation (§6.6 Tier 1)
         return cards

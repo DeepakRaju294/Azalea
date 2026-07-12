@@ -320,7 +320,8 @@ Hard rules:
 - Generate cards only from allowed_card_sequence.
 - Preserve blueprint_key on every card.
 - Skip optional cards only when they would be filler.
-- Do not create popups, interactive links, underlined terms, microchecks, generated visual assets, or interactive visuals.
+- Do not create underlined terms, microchecks, generated visual assets, or interactive visuals.
+- You MAY add a POPUP GLOSS for a technical term this lesson USES but never defines, and that is neither a prerequisite nor a term taught in another topic — so a first-time learner meeting it has a brief explanation. Add it to that card's `interactive_links` as: {"text": "<the exact term as it appears verbatim in this card's text>", "action": "popup_only", "explanation": "<a 1-2 sentence plain-language definition>"}. ONLY for a genuinely undefined technical term a beginner would not know; never for ordinary words, prerequisites, or terms this lesson already explains. Emit at most 2 such glosses per card. Do NOT create any other kind of interactive link — open_study_path and review_earlier_topic are added automatically, so never emit those actions yourself.
 - Use visual_type plus visual_description for visuals: visual_type chooses the family, visual_description gives the exact plain-English storyboard. For node_link_diagram: node labels are always DATA VALUES (integers, letters, codes) — visual_description never determines what goes in visual_nodes[i].label.
 - Leave visual_description empty when no visual would help.
 - Use concise but complete bullet points.

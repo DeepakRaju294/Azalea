@@ -7,7 +7,7 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.lean_lesson_generator import (
-    _emit_prereq_interactive_links, _lean_card_to_legacy, _topic_title_aliases,
+    _emit_prereq_interactive_links, _lean_card_to_legacy, _model_popup_links, _topic_title_aliases,
 )
 
 _FLAG = "AZALEA_PREREQ_LINKS"
@@ -101,6 +101,29 @@ class PrereqLinkEmission(unittest.TestCase):
     def test_conversion_defaults_empty_when_no_links(self):
         legacy = _lean_card_to_legacy({"card_type": "formula", "title": "X", "points": ["a"]}, 0, [])
         self.assertEqual(legacy["interactive_links"], [])
+
+    def test_model_popup_glosses_are_preserved(self):
+        # An LLM-authored popup_only gloss for an undefined term must survive the emission (not be overwritten).
+        os.environ[_FLAG] = "1"
+        intro = _Topic("i", "Intro", 0, course_type="study_path_introduction")
+        body = _Topic("t1", "Sampling", 1)
+        _Path([intro, body])
+        cards = [{"card_type": "background", "points": ["A partition splits the space."],
+                  "interactive_links": [
+                      {"text": "partition", "action": "popup_only",
+                       "explanation": "A split of the sample space into disjoint parts."}]}]
+        out = _emit_prereq_interactive_links(cards, body)
+        links = out[0]["interactive_links"]
+        self.assertTrue(any(l["action"] == "popup_only" and l["text"] == "partition" for l in links))
+
+    def test_model_popup_dropped_when_anchor_absent(self):
+        card = {"points": ["nothing here"], "interactive_links": [
+            {"text": "entropy", "action": "popup_only", "explanation": "disorder"}]}
+        self.assertEqual(_model_popup_links(card, "nothing here"), [])   # "entropy" not in text
+
+    def test_model_popup_requires_explanation(self):
+        card = {"interactive_links": [{"text": "partition", "action": "popup_only", "explanation": ""}]}
+        self.assertEqual(_model_popup_links(card, "a partition"), [])
 
     def test_title_aliases(self):
         self.assertEqual(_topic_title_aliases("Law of Total Probability"), ["Total Probability"])
