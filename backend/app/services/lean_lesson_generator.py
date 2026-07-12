@@ -3078,6 +3078,38 @@ def _enforce_roadmap_coverage(cards: list[dict[str, Any]], topic: Topic) -> list
     }]
 
 
+def _ground_roadmap_card(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
+    """Deterministically author a roadmap card's bullets from the REAL upcoming topics, replacing whatever
+    free-text lead-in / non-topic prose the model produced. This kills hallucinated framings (e.g. "Uh oh! Why
+    did we avoid practicing Ohm's Law? It's because it's uniquely tied to:") and concept-salad bullets that are
+    not actual topic previews — the roadmap becomes exactly a clean "what's ahead" list, one entry per topic.
+    Coverage is guaranteed by construction, so this subsumes _enforce_roadmap_coverage / _prune_phantom for the
+    card's `points`. Runs AFTER those (which also ensure a roadmap card EXISTS)."""
+    study_path = getattr(topic, "study_path", None)
+    sibs = getattr(study_path, "topics", None) if study_path is not None else None
+    if not sibs:
+        return cards
+    current_id = str(getattr(topic, "id", "") or "")
+    siblings = [s for s in sorted(sibs, key=lambda x: int(getattr(x, "order_index", 0) or 0))
+                if str(getattr(s, "id", "") or "") != current_id
+                and _topic_type_key(s) != "study_path_introduction"
+                and str(getattr(s, "title", "") or "").strip()]
+    if not siblings:
+        return cards
+    lead = "Here's what's ahead:" if len(siblings) > 1 else "Next up:"
+    points = [lead]
+    for s in siblings:
+        points.append(f"{str(s.title).strip()}:")
+        points.append(f"  - {_roadmap_summary_for(s)}.")
+    out: list[dict[str, Any]] = []
+    for c in cards:
+        if _lean_card_key(c) == "roadmap":
+            c = {**c, "points": points}
+            c.pop("bullets", None)
+        out.append(c)
+    return out
+
+
 _ROADMAP_SENTENCE_STARTERS = {
     "this", "these", "those", "here", "next", "after", "then", "first", "second", "third",
     "finally", "we", "you", "our", "in", "throughout", "during", "by",
@@ -3211,6 +3243,9 @@ def _normalize_lean_card_order(
         normalized = _enforce_roadmap_coverage(normalized, topic)
         # …and drop any phantom preview of a topic the path does not actually contain (over-promising).
         normalized = _prune_phantom_roadmap_previews(normalized, topic)
+        # …then REBUILD the roadmap bullets deterministically from the real upcoming topics, discarding any
+        # hallucinated lead-in / concept-salad prose the model produced (accurate + confusion-free by construction).
+        normalized = _ground_roadmap_card(normalized, topic)
         # Intro = background(s) then roadmap(s); everything else has been filtered out.
         backgrounds = [c for c in normalized if _lean_card_key(c) == "background"]
         roadmaps = [c for c in normalized if _lean_card_key(c) == "roadmap"]
