@@ -1335,11 +1335,13 @@ def generate_title(prompt: str) -> str:
                 {
                     "role": "system",
                     "content": (
-                        "Generate a concise 2-5 word title that captures the core topic of the user's learning goal. "
-                        "Write it as a topic name, not a question or sentence. Use title case. "
-                        "Examples: 'React Component Fundamentals', 'Quadratic Functions', "
-                        "'Binary Search Trees', 'SQL Window Functions', 'Photosynthesis'. "
-                        "Return only the title — no punctuation, no quotes, nothing else."
+                        "Generate a concise title (up to 6 words) naming the core concept(s) of the user's learning "
+                        "goal. Keep the STANDARD, COMPLETE name of each concept — do not drop qualifiers "
+                        "(e.g. 'Law of Total Probability', never 'Total Probability'). Write it as a topic name, "
+                        "not a question or sentence. Use title case. Apostrophes ARE allowed where part of a name "
+                        "(e.g. \"Bayes' Theorem\"). Examples: 'React Component Fundamentals', 'Quadratic Functions', "
+                        "\"Bayes' Theorem and the Law of Total Probability\", 'SQL Window Functions'. "
+                        "Return only the title — no surrounding quotes, no trailing punctuation, nothing else."
                     ),
                 },
                 {"role": "user", "content": prompt},

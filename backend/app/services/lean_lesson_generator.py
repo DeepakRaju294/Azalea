@@ -3120,9 +3120,14 @@ _KEY_TERM_CARD_KEYS = frozenset({"definition", "components_terms", "key_terms"})
 
 
 def _norm_term(text: str) -> str:
-    """Normalize a key-term header for cross-topic matching (drop parenthetical notation, case, whitespace)."""
+    """Normalize a key-term header for cross-topic matching (case + whitespace). A trailing parenthetical is
+    dropped ONLY when a real word precedes it ("Voltage (V)" → "voltage"), NOT for math notation where the
+    parenthetical IS the term ("P(A|B)" must stay distinct from "P(B|A)" — never collapse both to "p")."""
     import re
-    s = re.sub(r"\(.*?\)", "", str(text or ""))
+    s = str(text or "").strip()
+    m = re.match(r"^(.*?[A-Za-z]{3,}.*?)\s*\([^()]*\)\s*$", s)   # word(s) then a trailing (...)
+    if m:
+        s = m.group(1)
     return " ".join(s.lower().split())
 
 
