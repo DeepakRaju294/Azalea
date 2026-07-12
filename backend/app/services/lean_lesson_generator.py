@@ -722,6 +722,8 @@ def _lean_card_to_legacy(
         # [] here, which silently discarded EVERY emitted link during lean→legacy conversion — the real reason no
         # links ever reached the stored lesson.
         "interactive_links": lean_card.get("interactive_links") or [],
+        # References (e.g. the headline equation shown on a formula topic's key-terms card); empty otherwise.
+        "references": lean_card.get("references") or [],
         "styled_elements": styled_elements,
         "visual_plan": visual_plan,
         "visual_description": visual_description,
@@ -3119,6 +3121,39 @@ def _ground_roadmap_card(cards: list[dict[str, Any]], topic: Topic) -> list[dict
 _KEY_TERM_CARD_KEYS = frozenset({"definition", "components_terms", "key_terms"})
 
 
+def _equation_from_cards(cards: list[dict[str, Any]]) -> str | None:
+    """The topic's headline equation — the first display-math point on a formula/formula_breakdown card
+    ($$…$$ or \\[…\\] or \\(…\\)). None for a non-formula (non math/science) topic."""
+    for c in cards:
+        if _lean_card_key(c) not in ("formula", "formula_breakdown"):
+            continue
+        for p in (c.get("points") or c.get("bullets") or []):
+            s = str(p).strip()
+            if s.startswith("$$") or s.startswith("\\[") or s.startswith("\\("):
+                return s
+    return None
+
+
+def _prepend_equation_to_key_terms(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """For a math/science formula topic, show the equation as the FIRST point of the key-terms
+    (components_terms/definition) card — alone on its own point — so the learner sees the equation while reading
+    the terms that appear in it. No-op when the topic has no equation (the 'references' is empty)."""
+    equation = _equation_from_cards(cards)
+    if not equation:
+        return cards
+    out: list[dict[str, Any]] = []
+    for c in cards:
+        if _lean_card_key(c) in ("definition", "components_terms", "key_terms"):
+            pts = list(c.get("points") or c.get("bullets") or [])
+            first = str(pts[0]).strip() if pts else ""
+            already = first == equation or first.startswith("$$") or first.startswith("\\[")
+            if not already:
+                c = {**c, "points": [equation, *pts], "references": [equation]}
+                c.pop("bullets", None)
+        out.append(c)
+    return out
+
+
 def _norm_term(text: str) -> str:
     """Normalize a key-term header for cross-topic matching (case + whitespace). A trailing parenthetical is
     dropped ONLY when a real word precedes it ("Voltage (V)" → "voltage"), NOT for math notation where the
@@ -3592,6 +3627,11 @@ def _normalize_lean_card_order(
     # Enforce the layered key-terms model deterministically: strip terms an earlier topic already defined, and
     # drop the card if nothing new remains (the prompt/ledger nudge alone is not reliably obeyed by the model).
     normalized = _dedupe_key_terms_against_earlier(normalized, topic)
+
+    # THEN, for a math/science formula topic, put the equation as the first point of the surviving key-terms card
+    # so the learner sees it while reading the terms it uses (after dedup, so the equation never keeps an
+    # otherwise-empty card alive; no-op for non-formula topics).
+    normalized = _prepend_equation_to_key_terms(normalized)
 
     # PREREQ_LINKS §6.2: emit deterministic interactive links (review_earlier_topic / open_study_path) onto the
     # cards, replacing the hardcoded []. Flag-gated (AZALEA_PREREQ_LINKS) and best-effort — off ⇒ links stay [].
