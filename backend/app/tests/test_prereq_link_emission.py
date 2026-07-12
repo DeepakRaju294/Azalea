@@ -7,7 +7,7 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.lean_lesson_generator import (
-    _emit_prereq_interactive_links, _topic_title_aliases,
+    _emit_prereq_interactive_links, _lean_card_to_legacy, _topic_title_aliases,
 )
 
 _FLAG = "AZALEA_PREREQ_LINKS"
@@ -87,6 +87,20 @@ class PrereqLinkEmission(unittest.TestCase):
         self.assertEqual(links[0]["action"], "review_earlier_topic")
         self.assertEqual(links[0]["target"], "t1")
         self.assertEqual(links[0]["text"], "total probability")
+
+    def test_conversion_preserves_interactive_links(self):
+        # THE bug that hid every link: the lean->legacy conversion hardcoded interactive_links: [], discarding
+        # whatever the emission put on the lean card. It must carry them through.
+        lean = {"card_type": "formula", "title": "X", "points": ["a"], "interactive_links": [
+            {"text": "total probability", "action": "review_earlier_topic", "target": "t2",
+             "concept_id": "ltp", "explanation": "e"}]}
+        legacy = _lean_card_to_legacy(lean, 0, [])
+        self.assertEqual(len(legacy["interactive_links"]), 1)
+        self.assertEqual(legacy["interactive_links"][0]["action"], "review_earlier_topic")
+
+    def test_conversion_defaults_empty_when_no_links(self):
+        legacy = _lean_card_to_legacy({"card_type": "formula", "title": "X", "points": ["a"]}, 0, [])
+        self.assertEqual(legacy["interactive_links"], [])
 
     def test_title_aliases(self):
         self.assertEqual(_topic_title_aliases("Law of Total Probability"), ["Total Probability"])

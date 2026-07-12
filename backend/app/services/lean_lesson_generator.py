@@ -718,7 +718,10 @@ def _lean_card_to_legacy(
         "prerequisite_concepts": [],
         "common_misconceptions": [],
         "concept_support": [],
-        "interactive_links": [],
+        # Carry through the interactive links the scanner emitted onto the lean card (§6.2). Previously hardcoded
+        # [] here, which silently discarded EVERY emitted link during lean→legacy conversion — the real reason no
+        # links ever reached the stored lesson.
+        "interactive_links": lean_card.get("interactive_links") or [],
         "styled_elements": styled_elements,
         "visual_plan": visual_plan,
         "visual_description": visual_description,
