@@ -112,13 +112,28 @@ class PrereqLinkEmission(unittest.TestCase):
         intro = _Topic("i", "Introduction to Ohm's Law", 0, prereqs=["Voltage"],
                        course_type="study_path_introduction")
         _Path([intro, _Topic("t1", "Ohm's Law", 1)])
-        cards = [{"card_type": "background", "points": ["This path assumes you know Voltage."]}]
+        cards = [{"card_type": "definition", "title": "Prerequisites", "points": ["You should know Voltage."]}]
         out = _emit_prereq_interactive_links(cards, intro)
         links = out[0]["interactive_links"]
         self.assertEqual(len(links), 1)
         self.assertEqual(links[0]["action"], "open_study_path")
         self.assertEqual(links[0]["text"], "Voltage")
         self.assertTrue(links[0]["target"])                        # a scoped target goal
+
+    def test_open_study_path_only_on_prereq_card_not_scattered(self):
+        # A prereq mentioned on a non-prereq card AND the prereq card → the link appears ONLY on the prereq card.
+        os.environ[_FLAG] = "1"
+        intro = _Topic("i", "Intro to Ohm's Law", 0, prereqs=["Voltage"],
+                       course_type="study_path_introduction")
+        _Path([intro, _Topic("t1", "Ohm's Law", 1)])
+        cards = [
+            {"card_type": "purpose_context", "title": "Overview", "points": ["Voltage drives current here."]},
+            {"card_type": "purpose_context", "title": "Prerequisites for Ohm's Law", "points": ["Voltage basics."]},
+        ]
+        out = _emit_prereq_interactive_links(cards, intro)
+        self.assertEqual(out[0]["interactive_links"], [])                       # overview card: no scattered link
+        self.assertEqual(len(out[1]["interactive_links"]), 1)                   # prereq card: the link
+        self.assertEqual(out[1]["interactive_links"][0]["action"], "open_study_path")
 
 
 if __name__ == "__main__":

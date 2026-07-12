@@ -3215,6 +3215,13 @@ def _topic_title_aliases(title: str) -> list[str]:
     return []
 
 
+def _is_prereq_card(card: dict[str, Any]) -> bool:
+    """Whether a card is the prerequisites / foundational-knowledge card that DECLARES the assumed prereqs.
+    open_study_path links live ONLY here — not scattered on every card that happens to mention a prereq."""
+    title = str(card.get("title") or "").lower()
+    return "prerequisite" in title or "foundational" in title or "assumed" in title
+
+
 def _card_scan_text(card: dict[str, Any]) -> str:
     """Learner-visible text of a card (points + bullets + body) — the eligible scan surface (§2.2); the card
     TITLE is deliberately excluded (ineligible region)."""
@@ -3288,11 +3295,17 @@ def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) ->
 
         linked_in_topic: set[str] = set()   # ≤ 1 link per concept per topic (§2.5); first occurrence wins (§2.6)
         for card in cards:
+            is_prereq_card = _is_prereq_card(card)
             text = project_to_plain_text(_card_scan_text(card))
             result = scan_card(text, ctx)
             valid = validate_links(result.links, text)
             links: list[dict[str, Any]] = []
             for l in valid.links:
+                # open_study_path (external prereqs) belong ONLY on the prerequisite card, never scattered on
+                # every card that mentions a prereq. Filter BEFORE the dedup so a mention elsewhere doesn't
+                # consume the concept's one slot. review_earlier_topic is unaffected (link where referenced).
+                if l.action == LinkAction.open_study_path and not is_prereq_card:
+                    continue
                 if l.concept_id and l.concept_id in linked_in_topic:
                     continue
                 if l.concept_id:
