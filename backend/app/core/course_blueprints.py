@@ -1177,8 +1177,12 @@ TOPIC_BLUEPRINTS: dict[str, Blueprint] = {
         "description": "Teach formula meaning, symbols, conditions, setup, calculation, and interpretation.",
         "default_card_sequence": sequence(
             "background",
-            "components_terms",
+            # Formula BEFORE the term breakdown: the learner sees the whole equation first, so when each symbol
+            # is defined they know WHERE it sits (a bare symbol list with no formula in sight is disorienting).
+            # formula_breakdown is self-contained (formula + symbols), so components_terms often folds away via
+            # the "only if >= 3 NEW terms remain" rule once the formula card has covered the symbols.
             "formula_breakdown",
+            "components_terms",
             "process",
             "worked_example",
             "edge_case",

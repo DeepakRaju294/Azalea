@@ -3096,8 +3096,11 @@ def _ground_roadmap_card(cards: list[dict[str, Any]], topic: Topic) -> list[dict
                 and str(getattr(s, "title", "") or "").strip()]
     if not siblings:
         return cards
-    lead = "Here's what's ahead:" if len(siblings) > 1 else "Next up:"
-    points = [lead]
+    # No colon lead-in ("Here's what's ahead:"): a colon main bullet implies the following lines are its
+    # SUBbullets, but the topics render as sibling main bullets — a false nesting cue (the system has only one
+    # subbullet level). The card TITLE already frames it, so emit clean "Topic:" → subbullet-summary pairs,
+    # which nest correctly.
+    points: list[str] = []
     for s in siblings:
         points.append(f"{str(s.title).strip()}:")
         points.append(f"  - {_roadmap_summary_for(s)}.")

@@ -50,8 +50,8 @@ class RoadmapGrounding(unittest.TestCase):
         blob = " ".join(pts)
         self.assertNotIn("Uh oh", blob)
         self.assertNotIn("Fluidic", blob)
-        self.assertEqual(pts[0], "Next up:")                       # single sibling
-        self.assertIn("Ohm's Law:", pts)
+        self.assertEqual(pts[0], "Ohm's Law:")                     # no misleading colon lead-in; topic first
+        self.assertTrue(pts[1].strip().startswith("-"))            # its summary is a SUBbullet (correct nesting)
         self.assertTrue(any("Apply Ohm's Law" in p for p in pts))  # accurate summary from learner_outcome
 
     def test_multiple_siblings_listed_in_order(self):
@@ -60,7 +60,7 @@ class RoadmapGrounding(unittest.TestCase):
         intro = self._intro_and_siblings(sibs)
         cards = [{"card_type": "roadmap", "points": ["whatever the model said"]}]
         pts = _roadmap_points(_ground_roadmap_card(cards, intro))
-        self.assertEqual(pts[0], "Here's what's ahead:")
+        self.assertEqual(pts[0], "Voltage Basics:")                              # first topic, no lead-in
         self.assertLess(pts.index("Voltage Basics:"), pts.index("Ohm's Law:"))   # topic order preserved
 
     def test_no_siblings_leaves_cards_untouched(self):
