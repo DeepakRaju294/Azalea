@@ -221,7 +221,8 @@ def _defined_terms_from_lesson(lesson_json: dict[str, Any]) -> list[str]:
             s = str(point)
             if not s or s[0].isspace() or s.lstrip().startswith("-"):
                 continue  # an indented definition line, not a term header
-            term = s.strip().rstrip(":").strip()
+            # the term is the header, whether "Term" (meaning on a sub-bullet) or "Term: meaning" (inline).
+            term = s.split(":", 1)[0].strip().rstrip(":").strip()
             if term and len(term) <= 60:
                 terms.append(term)
     return terms

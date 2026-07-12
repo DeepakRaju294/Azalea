@@ -3113,6 +3113,71 @@ def _ground_roadmap_card(cards: list[dict[str, Any]], topic: Topic) -> list[dict
     return out
 
 
+_KEY_TERM_CARD_KEYS = frozenset({"definition", "components_terms", "key_terms"})
+
+
+def _norm_term(text: str) -> str:
+    """Normalize a key-term header for cross-topic matching (drop parenthetical notation, case, whitespace)."""
+    import re
+    s = re.sub(r"\(.*?\)", "", str(text or ""))
+    return " ".join(s.lower().split())
+
+
+def _dedupe_key_terms_against_earlier(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
+    """Deterministically enforce the layered key-terms model: remove from a topic's key-terms card any term an
+    EARLIER topic already defined, and drop the card if nothing new remains. The ledger already flags these in
+    do_not_reteach, but the model doesn't reliably obey it (seen live: a body topic re-defined "Conditional
+    Probability" the intro had defined), so we enforce it post-generation. Best-effort; never raises."""
+    try:
+        from app.services.assumption_ledger_service import _defined_terms_from_lesson
+        study_path = getattr(topic, "study_path", None)
+        sibs = getattr(study_path, "topics", None) if study_path is not None else None
+        if not sibs:
+            return cards
+        current_index = int(getattr(topic, "order_index", 0) or 0)
+        earlier: set[str] = set()
+        for s in sibs:
+            if int(getattr(s, "order_index", 0) or 0) >= current_index:
+                continue
+            lesson = getattr(s, "lesson", None)
+            lj = getattr(lesson, "lesson_json", None) if lesson is not None else None
+            if isinstance(lj, dict):
+                for term in _defined_terms_from_lesson(lj):
+                    earlier.add(_norm_term(term))
+        if not earlier:
+            return cards
+
+        out: list[dict[str, Any]] = []
+        for card in cards:
+            if _lean_card_key(card) not in _KEY_TERM_CARD_KEYS:
+                out.append(card)
+                continue
+            pts = list(card.get("points") or card.get("bullets") or [])
+            kept: list[Any] = []
+            i = 0
+            while i < len(pts):
+                p = str(pts[i])
+                is_header = bool(p) and not p[0].isspace() and not p.lstrip().startswith("-")
+                if is_header and _norm_term(p.split(":", 1)[0]) in earlier:
+                    i += 1  # drop this term header AND its following indented sub-bullets
+                    while i < len(pts) and (not str(pts[i]) or str(pts[i])[0].isspace()
+                                            or str(pts[i]).lstrip().startswith("-")):
+                        i += 1
+                    continue
+                kept.append(pts[i])
+                i += 1
+            remaining_terms = sum(1 for p in kept
+                                  if str(p) and not str(p)[0].isspace() and not str(p).lstrip().startswith("-"))
+            if remaining_terms == 0:
+                continue  # every term was already defined earlier → drop the redundant card
+            new_card = {**card, "points": kept}
+            new_card.pop("bullets", None)
+            out.append(new_card)
+        return out
+    except Exception:  # noqa: BLE001 — content cleanup must never break generation
+        return cards
+
+
 def _prereq_links_enabled() -> bool:
     import os
     return os.getenv("AZALEA_PREREQ_LINKS", "").strip().lower() in ("1", "true", "yes", "on")
@@ -3420,6 +3485,10 @@ def _normalize_lean_card_order(
         evaluate_free_text_plan(topic_type, normalized)
     except Exception:  # noqa: BLE001 — observability must never break generation
         pass
+
+    # Enforce the layered key-terms model deterministically: strip terms an earlier topic already defined, and
+    # drop the card if nothing new remains (the prompt/ledger nudge alone is not reliably obeyed by the model).
+    normalized = _dedupe_key_terms_against_earlier(normalized, topic)
 
     # PREREQ_LINKS §6.2: emit deterministic interactive links (review_earlier_topic / open_study_path) onto the
     # cards, replacing the hardcoded []. Flag-gated (AZALEA_PREREQ_LINKS) and best-effort — off ⇒ links stay [].
