@@ -3247,6 +3247,51 @@ def _is_prereq_card(card: dict[str, Any]) -> bool:
     return "prerequisite" in title or "foundational" in title or "assumed" in title
 
 
+# Leading learning-goal phrasing stripped from a prerequisite bullet to recover the bare concept name for the
+# anchor ("Understanding conditional probability" → "conditional probability"). Longest-first.
+_PREREQ_GOAL_PREFIXES = (
+    "a basic understanding of ", "an understanding of ", "basic understanding of ", "basic knowledge of ",
+    "some knowledge of ", "knowledge of ", "understanding of ", "understanding ", "understand ",
+    "awareness of ", "familiarity with ", "a grasp of ", "grasp of ", "comfort with ",
+)
+
+
+def _strip_prereq_goal_phrase(text: str) -> str:
+    low = text.lower()
+    for pre in _PREREQ_GOAL_PREFIXES:
+        if low.startswith(pre) and len(text) > len(pre) + 2:
+            return text[len(pre):].strip()
+    return text
+
+
+def _prereq_links_from_card(card: dict[str, Any], card_text: str, taught_norm: set[str],
+                            linked_concept_ids: set[str]) -> list[dict[str, Any]]:
+    """Turn each prerequisite LISTED on the prereq card into an open_study_path link, so prereqs are clickable
+    even when decomposition left assumed_prerequisites empty (they exist only as card prose). Main bullets only;
+    the leading goal-phrase is stripped to recover the concept, which must appear verbatim in the card."""
+    import re
+    from app.core.study_path_scope import stable_slug
+    out: list[dict[str, Any]] = []
+    for point in (card.get("points") or card.get("bullets") or []):
+        s = str(point).strip()
+        if not s or s.endswith(":") or s[0].isspace() or s.lstrip().startswith("-"):
+            continue  # lead-in header or sub-bullet, not a top-level prereq
+        concept = re.split(r"[.;]", _strip_prereq_goal_phrase(s), 1)[0].strip().rstrip(".").strip()
+        if not concept or len(concept) > 50 or len(concept.split()) > 6 or concept not in card_text:
+            continue
+        cid = stable_slug(concept)
+        if cid in linked_concept_ids or _norm_term(concept) in taught_norm:
+            continue
+        linked_concept_ids.add(cid)
+        out.append({"text": concept,
+                    "explanation": "A prerequisite this path assumes — you can learn it in a dedicated path.",
+                    "action": "open_study_path", "target": f"Understand the basics of {concept}.",
+                    "concept_id": cid})
+        if len(out) >= 4:
+            break
+    return out
+
+
 def _card_scan_text(card: dict[str, Any]) -> str:
     """Learner-visible text of a card (points + bullets + body) — the eligible scan surface (§2.2); the card
     TITLE is deliberately excluded (ineligible region)."""
@@ -3317,6 +3362,7 @@ def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) ->
                 target_goal=f"Understand the basics of {name}.", scope_rule=ScopeRule.recognition_only_fallback)
         ctx = ScanContext(current_topic_index=current_index, topic_identities=idents,
                           assumed_prerequisites=list(prereqs.values()))
+        taught_norm = {_norm_term(i.canonical_name) for i in idents}   # never link a prereq that IS a taught topic
 
         linked_in_topic: set[str] = set()   # ≤ 1 link per concept per topic (§2.5); first occurrence wins (§2.6)
         for card in cards:
@@ -3344,6 +3390,12 @@ def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) ->
                     expl = ""
                 links.append({"text": l.text, "explanation": expl, "action": l.action.value,
                               "target": l.target, "concept_id": l.concept_id})
+            # On the prereq card, FALL BACK to turning each LISTED prerequisite into an open_study_path link when
+            # the scanner found none — i.e. decomposition left assumed_prerequisites empty (the common case; the
+            # prereqs exist only as card prose). When the structured field IS populated, the scanner already
+            # produced clean links, so we don't second-guess it.
+            if is_prereq_card and not any(l["action"] == LinkAction.open_study_path.value for l in links):
+                links.extend(_prereq_links_from_card(card, text, taught_norm, linked_in_topic))
             # Merge the model's undefined-term popups AFTER the deterministic nav links, skipping any whose anchor
             # a nav link already claimed (never double-link the same phrase). Cap the card at 3 links total (§2.5).
             nav_texts = {str(l["text"]).lower() for l in links}

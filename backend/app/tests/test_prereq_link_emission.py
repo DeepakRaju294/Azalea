@@ -7,7 +7,8 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.lean_lesson_generator import (
-    _emit_prereq_interactive_links, _lean_card_to_legacy, _model_popup_links, _topic_title_aliases,
+    _emit_prereq_interactive_links, _lean_card_to_legacy, _model_popup_links, _strip_prereq_goal_phrase,
+    _topic_title_aliases,
 )
 
 _FLAG = "AZALEA_PREREQ_LINKS"
@@ -101,6 +102,27 @@ class PrereqLinkEmission(unittest.TestCase):
     def test_conversion_defaults_empty_when_no_links(self):
         legacy = _lean_card_to_legacy({"card_type": "formula", "title": "X", "points": ["a"]}, 0, [])
         self.assertEqual(legacy["interactive_links"], [])
+
+    def test_prereq_links_extracted_from_card_when_field_empty(self):
+        # assumed_prerequisites is empty (common), but the prereq card lists prereqs → they become links anyway.
+        os.environ[_FLAG] = "1"
+        intro = _Topic("i", "Intro", 0, course_type="study_path_introduction")
+        _Path([intro, _Topic("t1", "Bayes", 1)])
+        cards = [{"card_type": "purpose_context", "title": "Foundational Ideas",
+                  "points": ["Basic probability concepts", "  - probabilities sum to 1",
+                             "Understanding conditional probability", "  - needed for Bayes"]}]
+        out = _emit_prereq_interactive_links(cards, intro)
+        links = out[0]["interactive_links"]
+        texts = {l["text"] for l in links}
+        self.assertIn("Basic probability concepts", texts)
+        self.assertIn("conditional probability", texts)                # goal-phrase "Understanding " stripped
+        self.assertTrue(all(l["action"] == "open_study_path" for l in links))
+
+    def test_strip_prereq_goal_phrase(self):
+        self.assertEqual(_strip_prereq_goal_phrase("Understanding conditional probability"),
+                         "conditional probability")
+        self.assertEqual(_strip_prereq_goal_phrase("Knowledge of vectors"), "vectors")
+        self.assertEqual(_strip_prereq_goal_phrase("Sample spaces"), "Sample spaces")   # no prefix
 
     def test_model_popup_glosses_are_preserved(self):
         # An LLM-authored popup_only gloss for an undefined term must survive the emission (not be overwritten).
