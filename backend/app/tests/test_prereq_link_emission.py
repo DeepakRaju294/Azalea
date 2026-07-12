@@ -6,7 +6,9 @@ import unittest
 
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
-from app.services.lean_lesson_generator import _emit_prereq_interactive_links
+from app.services.lean_lesson_generator import (
+    _emit_prereq_interactive_links, _topic_title_aliases,
+)
 
 _FLAG = "AZALEA_PREREQ_LINKS"
 
@@ -69,6 +71,27 @@ class PrereqLinkEmission(unittest.TestCase):
         cards = [{"card_type": "background", "points": ["Quick Sort is a fast sort."]}]  # mentions itself only
         out = _emit_prereq_interactive_links(cards, quick)
         self.assertEqual(out[0]["interactive_links"], [])
+
+    def test_short_form_reference_links_via_title_alias(self):
+        # A later topic that refers to an earlier one by its SHORT name ("total probability") must still link
+        # to the full-title topic ("Law of Total Probability"). This is why a live Bayes path showed no links.
+        os.environ[_FLAG] = "1"
+        intro = _Topic("i", "Bayesian Overview", 0, course_type="study_path_introduction")
+        totalp = _Topic("t1", "Law of Total Probability", 1)
+        bayes = _Topic("t2", "Bayes' Theorem", 2)
+        _Path([intro, totalp, bayes])
+        cards = [{"card_type": "formula", "points": ["Bayes' theorem builds on total probability."]}]
+        out = _emit_prereq_interactive_links(cards, bayes)
+        links = out[0]["interactive_links"]
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0]["action"], "review_earlier_topic")
+        self.assertEqual(links[0]["target"], "t1")
+        self.assertEqual(links[0]["text"], "total probability")
+
+    def test_title_aliases(self):
+        self.assertEqual(_topic_title_aliases("Law of Total Probability"), ["Total Probability"])
+        self.assertEqual(_topic_title_aliases("Calculating Voltage"), ["Voltage"])
+        self.assertEqual(_topic_title_aliases("Bayes' Theorem"), [])   # no leading filler → no alias
 
     def test_open_study_path_for_external_prerequisite_on_intro(self):
         os.environ[_FLAG] = "1"

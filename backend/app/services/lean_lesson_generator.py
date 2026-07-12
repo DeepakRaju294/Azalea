@@ -3126,6 +3126,27 @@ def _prereq_concept_key(topic: Topic) -> str:
     return stable_slug(md.get("subject_key") or md.get("capability_id") or str(getattr(topic, "title", "") or ""))
 
 
+# Leading phrases stripped from a topic title to form a shorter alias, so a later card that refers to the
+# concept by its SHORT name still resolves (e.g. "Law of Total Probability" → alias "Total Probability", so a
+# card that says "total probability" links back). Longest-first so "law of the " wins over "the ".
+_TITLE_ALIAS_LEADING = (
+    "law of the ", "law of ", "the theory of ", "theory of ", "introduction to ", "intro to ",
+    "understanding ", "applying ", "calculating ", "computing ", "using ", "overview of ",
+    "basics of ", "fundamentals of ", "the ", "a ", "an ",
+)
+
+
+def _topic_title_aliases(title: str) -> list[str]:
+    """Short-name aliases of a topic title (strip a single leading filler phrase). Conservative: one alias, and
+    only when a meaningful remainder is left."""
+    t = (title or "").strip()
+    low = t.lower()
+    for pre in _TITLE_ALIAS_LEADING:
+        if low.startswith(pre) and len(t[len(pre):].strip()) >= 4:
+            return [t[len(pre):].strip()]
+    return []
+
+
 def _card_scan_text(card: dict[str, Any]) -> str:
     """Learner-visible text of a card (points + bullets + body) — the eligible scan surface (§2.2); the card
     TITLE is deliberately excluded (ineligible region)."""
@@ -3182,7 +3203,7 @@ def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) ->
             owner_title[tid] = title
             idents.append(TopicConceptIdentity(
                 topic_id=tid, topic_index=int(getattr(s, "order_index", 0) or 0),
-                concept_id=cid, canonical_name=title))
+                concept_id=cid, canonical_name=title, aliases=_topic_title_aliases(title)))
         # External prerequisites = this topic's own assumed_prerequisites that name no taught topic (the intro
         # carries the path's declared prereqs, so intro cards get the open_study_path links; §2.6).
         prereqs: dict[str, AssumedPrerequisite] = {}
