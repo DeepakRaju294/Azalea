@@ -46,6 +46,7 @@ from app.services.lean_lesson_generator import build_lean_lesson_from_topic_and_
 from app.services.legacy_v2_visual_bridge import attach_v2_visuals_to_legacy_lesson
 from app.services.topic_generator import generate_topics_from_chunks
 from app.services.scope_shadow import maybe_log_shadow
+from app.services.prereq_links_shadow import maybe_log_prereq_links_shadow
 from app.services.domain_classifier import classify_domain, gate_family_of
 from app.services.domain_classifier_llm import resolve_with_llm
 from app.services.preference_service import scope_directive, write_generation_snapshot
@@ -819,6 +820,8 @@ def generate_initial_study_path_content(
     # Flag-gated (AZALEA_STUDY_PATH_SCOPE) and never-throwing — no effect on generation.
     maybe_log_shadow(study_path.goal or "", study_path.domain or "", created_topics,
                      source_revision=study_path.active_generation_id or "")
+    # Prereq-links shadow: run the Tier-2 classification validator over these topics (AZALEA_PREREQ_LINKS).
+    maybe_log_prereq_links_shadow(study_path.goal or "", study_path.domain or "", created_topics)
     first_topic = created_topics[0]
 
     source_chunk_ids, source_summary = build_lesson_source_metadata(chunks)
@@ -1249,6 +1252,8 @@ def regenerate_study_path(
     # StudyPathScope Phase-1A shadow (see the create flow above): flag-gated, never-throwing.
     maybe_log_shadow(study_path.goal or "", study_path.domain or "", created_topics,
                      source_revision=study_path.active_generation_id or "")
+    # Prereq-links shadow (see the create flow above): flag-gated, never-throwing.
+    maybe_log_prereq_links_shadow(study_path.goal or "", study_path.domain or "", created_topics)
 
     source_chunk_ids, source_summary = build_lesson_source_metadata(chunks)
     generated_lessons: list[Lesson] = []
