@@ -65,6 +65,28 @@ def _subject_phrase(subject_key: str) -> str:
     return (subject_key or "").replace("_", " ").strip().title() or "the algorithm"
 
 
+# Prepositions/conjunctions that never legitimately OPEN an educational topic title, so a title starting with
+# one is a malformed LLM fragment (e.g. "With Ohm's Law", a truncation of "Calculating With Ohm's Law").
+# Deliberately EXCLUDES "for"/"in"/"on" — those DO start real titles ("For Loops", "In-place Sorting").
+_LEADING_TITLE_JUNK = frozenset({"with", "of", "by", "to", "from", "at", "and", "or"})
+
+
+def _repair_topic_title(title: str, subject_key: str) -> str:
+    """Repair a title that begins with a dangling preposition/conjunction (an LLM decomposition artifact) by
+    stripping the leading run; if that empties it, fall back to the subject phrase. A clean title is unchanged."""
+    tokens = str(title or "").split()
+    j = 0
+    while j < len(tokens) and tokens[j].lower().strip(",.:;") in _LEADING_TITLE_JUNK:
+        j += 1
+    if j == 0:
+        return title
+    rest = tokens[j:]
+    if not rest:
+        return _subject_phrase(subject_key)
+    repaired = " ".join(rest)
+    return repaired[0].upper() + repaired[1:]
+
+
 def _to_legacy(topic: dict[str, Any], title_by_id: dict[str, str], fallback_order: int) -> dict[str, Any]:
     """Adapt one decomposed topic into the legacy topic dict the lesson pipeline consumes, carrying the
     planning fields (incl. relationship_to_parent — the Part C signal) for downstream use/audit."""
@@ -81,6 +103,7 @@ def _to_legacy(topic: dict[str, Any], title_by_id: dict[str, str], fallback_orde
         title = (f"Implementing {_subject_phrase(subject)}"
                  if canonical_action(topic.get("primary_action")) == "implement"
                  else _subject_phrase(subject))
+    title = _repair_topic_title(title, subject)
     topic_type = str(topic.get("topic_type") or resolve_topic_type(topic.get("content_role")) or "concept_intuition")
 
     modifiers = list(topic.get("modifiers") or [])
@@ -269,6 +292,7 @@ def generate_decomposed_topics(
     non_intro = [t for t in topics_out if not _is_opener(t)]
     has_opener = any(_is_opener(t) for t in topics_out)
     # Synthesize an intro for a multi-topic path — OR whenever we folded prerequisites that need a home.
+    # (A genuinely single-technique path is intentionally left lean, no intro padding — see the fixture tests.)
     if not has_opener and (len(non_intro) >= 2 or (dropped_prereqs and non_intro)):
         intro = _synthesize_intro_topic(goal)
         intro["order_index"] = 0
