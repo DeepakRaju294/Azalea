@@ -84,6 +84,14 @@ import TopicCalibrationCard from "@/components/TopicCalibrationCard";
 import DiagnosticMiniFlow from "@/components/DiagnosticMiniFlow";
 import AdaptationExplanationBanner from "@/components/AdaptationExplanationBanner";
 import { VisualRenderer as V2VisualRenderer } from "@/components/visuals_v2/VisualRenderer";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { SHOW_VISUAL_DATA_INSTEAD_OF_RENDER, VisualDataPanel } from "@/lib/visualDebug";
 import type {
   LessonV2,
@@ -6914,6 +6922,9 @@ function LearningCard({
   onOpenStudyPath?: (link: LessonInteractiveLink) => void;
   focusState?: VisualFocusState | null;
 }) {
+  // PREREQ_LINKS: an open_study_path link opens a "Want to learn more?" popup before creating/navigating.
+  const [openStudyLink, setOpenStudyLink] =
+    useState<LessonInteractiveLink | null>(null);
   const card = step.card;
   const points = step.bullets;
   const revealFromIndex = step.revealFromIndex ?? 0;
@@ -7120,13 +7131,13 @@ function LearningCard({
                     onNavigateToTopic(link.target);
                     return;
                   }
-                  // open_study_path → create + open a dedicated prerequisite path (§4).
+                  // open_study_path → show a "Want to learn more?" popup; create+navigate only on confirm (§4).
                   if (
                     link.action === "open_study_path" &&
                     link.target &&
                     onOpenStudyPath
                   ) {
-                    onOpenStudyPath(link);
+                    setOpenStudyLink(link);
                     return;
                   }
                   // popup_only / ask_question (and any unrouted action) → the gloss.
@@ -7145,6 +7156,42 @@ function LearningCard({
             ))}
           </div>
         )}
+
+        <Dialog
+          open={openStudyLink !== null}
+          onOpenChange={(next) => {
+            if (!next) setOpenStudyLink(null);
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Want to learn more?</DialogTitle>
+              {openStudyLink?.explanation && (
+                <DialogDescription>{openStudyLink.explanation}</DialogDescription>
+              )}
+            </DialogHeader>
+            <DialogFooter>
+              <button
+                type="button"
+                onClick={() => setOpenStudyLink(null)}
+                className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition hover:bg-muted"
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const link = openStudyLink;
+                  setOpenStudyLink(null);
+                  if (link && onOpenStudyPath) onOpenStudyPath(link);
+                }}
+                className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
+              >
+                Open {openStudyLink?.text}
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {!guidanceMode && annotations.length > 0 && (
           <div className="mt-5 grid gap-3 md:grid-cols-2">
