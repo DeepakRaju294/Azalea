@@ -53,15 +53,24 @@ class ShadowReport(unittest.TestCase):
         self.assertEqual(rep["n_topics"], 2)
         self.assertEqual(rep["n_prereqs"], 3)
 
-    def test_prereq_that_is_also_a_taught_topic_flags_overlap(self):
-        # A concept is taught AND named as a prerequisite → the exact contradiction the feature exists to catch.
+    def test_prereq_naming_an_earlier_topic_is_review_earlier_not_overlap(self):
+        # A later topic naming an EARLIER taught topic as a "prerequisite" is an intra-path dependency →
+        # in-scope review_earlier_topic, NOT a disjointness violation. (The corpus showed every such case is
+        # benign "topic B builds on earlier topic A".) So it is reclassified, not routed to assumed_prerequisites.
         topics = [
-            FakeTopic("t1", "Voltage", 0),                       # taught
-            FakeTopic("t2", "Ohm's Law", 1, prereqs=["Voltage"]),  # ...but also assumed
+            FakeTopic("t1", "Voltage", 0),                       # taught earlier
+            FakeTopic("t2", "Ohm's Law", 1, prereqs=["Voltage"]),  # ...and reviewed by a later topic
         ]
         rep = shadow_report(topics)
-        self.assertFalse(rep["ok"])
-        self.assertEqual(rep["fallback_reason"], "prerequisite_topic_overlap")
+        self.assertTrue(rep["ok"], rep)
+        self.assertEqual(rep["n_prereqs"], 0)                    # "Voltage" is a review ref, not an external prereq
+
+    def test_prereq_matching_no_topic_stays_external(self):
+        # A prerequisite that matches no taught topic is a true external assumed_prerequisite.
+        topics = [FakeTopic("t1", "Ohm's Law", 0, prereqs=["Voltage", "Current"])]
+        rep = shadow_report(topics)
+        self.assertTrue(rep["ok"], rep)
+        self.assertEqual(rep["n_prereqs"], 2)
 
     def test_empty_topics_do_not_throw(self):
         rep = shadow_report([])

@@ -60,25 +60,45 @@ def topics_to_classification(topics: list[Any]) -> DecompositionClassification:
     `TopicConceptIdentity` records; every distinct assumed-prerequisite name becomes an `AssumedPrerequisite`.
     Prereqs that ALSO name a taught concept are kept (NOT filtered) so the validator can flag the overlap."""
     concepts = _concept_topics(topics)
+    # One canonical OWNER per concept (§1.1b): when several topics share a concept key (the natural
+    # walkthrough + implementation shape of one algorithm), the EARLIEST is the owner and the rest are
+    # non-owning application/synthesis topics — NOT a duplicate-ownership contradiction. Collapse to the first,
+    # so the shadow models the spec invariant instead of false-flagging multi-topic-per-concept paths.
     identities: list[TopicConceptIdentity] = []
+    seen_concepts: set[str] = set()
     for i, t in enumerate(concepts):
+        cid = _concept_key(t)
+        if cid in seen_concepts:
+            continue
+        seen_concepts.add(cid)
         identities.append(TopicConceptIdentity(
             topic_id=str(getattr(t, "id", None) or f"t{i}"), topic_index=i,
-            concept_id=_concept_key(t), canonical_name=str(getattr(t, "title", "") or _concept_key(t))))
+            concept_id=cid, canonical_name=str(getattr(t, "title", "") or cid)))
 
     # Prerequisites are stored on the INTRO topic (which names them without teaching), not the concept topics —
     # so harvest from ALL topics, else n_prereqs is always 0 and the overlap check never sees them.
+    #
+    # Split by scope (the §3.1 insight the corpus revealed): a "prerequisite" whose concept is an EARLIER TOPIC
+    # in this same path is an intra-path dependency → an IN-scope review reference (review_earlier_topic), NOT an
+    # external prerequisite. Only a prereq that matches no taught topic is a true external assumed_prerequisite
+    # (open_study_path). Conflating the two is what made benign "topic B builds on earlier topic A" links look
+    # like a disjointness violation.
     prereqs: dict[str, AssumedPrerequisite] = {}
+    review_refs: set[str] = set()
     for t in topics:
         for pre in (getattr(t, "assumed_prerequisites", None) or []):
             name = str(pre)
             cid = stable_slug(name)
+            if cid in seen_concepts:                     # names an earlier taught topic → review-earlier (in-path)
+                review_refs.add(cid)
+                continue
             prereqs.setdefault(cid, AssumedPrerequisite(
                 concept_id=cid, canonical_name=name, display_text=name,
                 target_goal=f"Understand the basics of {name}.",   # synthesized (see fidelity caveat)
                 scope_rule=ScopeRule.recognition_only_fallback))
     return DecompositionClassification(
-        topic_identities=identities, assumed_prerequisites=list(prereqs.values()))
+        topic_identities=identities, assumed_prerequisites=list(prereqs.values()),
+        review_referenced_concept_ids=sorted(review_refs))
 
 
 def shadow_report(topics: list[Any]) -> dict[str, Any]:
