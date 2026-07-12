@@ -6922,8 +6922,11 @@ function LearningCard({
   onOpenStudyPath?: (link: LessonInteractiveLink) => void;
   focusState?: VisualFocusState | null;
 }) {
-  // PREREQ_LINKS: an open_study_path link opens a "Want to learn more?" popup before creating/navigating.
+  // PREREQ_LINKS: an open_study_path link opens a "Want to learn more?" popup before creating/navigating;
+  // a popup_only term opens a small gloss popup with its brief explanation.
   const [openStudyLink, setOpenStudyLink] =
+    useState<LessonInteractiveLink | null>(null);
+  const [glossLink, setGlossLink] =
     useState<LessonInteractiveLink | null>(null);
   const card = step.card;
   const points = step.bullets;
@@ -7140,7 +7143,12 @@ function LearningCard({
                     setOpenStudyLink(link);
                     return;
                   }
-                  // popup_only / ask_question (and any unrouted action) → the gloss.
+                  // popup_only → show its brief explanation inline in a small popup (no Q&A round-trip).
+                  if (link.action === "popup_only" && link.explanation) {
+                    setGlossLink(link);
+                    return;
+                  }
+                  // ask_question (and any unrouted action) → the Q&A gloss.
                   onAskAboutText(
                     `${link.text}: ${link.explanation}${
                       link.why_it_matters_here
@@ -7190,6 +7198,22 @@ function LearningCard({
                 Open {openStudyLink?.text}
               </button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={glossLink !== null}
+          onOpenChange={(next) => {
+            if (!next) setGlossLink(null);
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{glossLink?.text}</DialogTitle>
+              {glossLink?.explanation && (
+                <DialogDescription>{glossLink.explanation}</DialogDescription>
+              )}
+            </DialogHeader>
           </DialogContent>
         </Dialog>
 
