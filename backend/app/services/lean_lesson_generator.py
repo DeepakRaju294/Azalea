@@ -3110,6 +3110,115 @@ def _ground_roadmap_card(cards: list[dict[str, Any]], topic: Topic) -> list[dict
     return out
 
 
+def _prereq_links_enabled() -> bool:
+    import os
+    return os.getenv("AZALEA_PREREQ_LINKS", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _prereq_concept_key(topic: Topic) -> str:
+    """Stable concept identity for a teaching topic (subject_key / capability_id / title-slug) — mirrors the
+    prereq-links shadow so live emission and shadow validation agree."""
+    from app.core.study_path_scope import stable_slug
+    md = getattr(topic, "decomposition_metadata", None) or {}
+    return stable_slug(md.get("subject_key") or md.get("capability_id") or str(getattr(topic, "title", "") or ""))
+
+
+def _card_scan_text(card: dict[str, Any]) -> str:
+    """Learner-visible text of a card (points + bullets + body) — the eligible scan surface (§2.2); the card
+    TITLE is deliberately excluded (ineligible region)."""
+    parts: list[str] = []
+    for key in ("points", "bullets"):
+        val = card.get(key)
+        if isinstance(val, list):
+            parts.extend(str(x) for x in val)
+    body = card.get("body")
+    if isinstance(body, list):
+        parts.extend(str(x) for x in body)
+    elif isinstance(body, str) and body:
+        parts.append(body)
+    return "\n".join(parts)
+
+
+def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
+    """§6.2: replace the hardcoded `interactive_links: []` with links from the DETERMINISTIC scanner (PR2) —
+    review_earlier_topic for a concept taught by an earlier topic in this path, open_study_path for an external
+    assumed prerequisite. Gated on AZALEA_PREREQ_LINKS; best-effort; never breaks generation. Prose fields are
+    templated for now (PR3 surfaces + enriches them)."""
+    if not _prereq_links_enabled():
+        return cards
+    try:
+        from app.core.prereq_links import (
+            AssumedPrerequisite, LinkAction, ScanContext, ScopeRule, TopicConceptIdentity,
+            project_to_plain_text, scan_card, validate_links,
+        )
+        from app.core.study_path_scope import stable_slug
+    except Exception:  # noqa: BLE001 — never break generation on an import hiccup
+        return cards
+    try:
+        study_path = getattr(topic, "study_path", None)
+        sibs = getattr(study_path, "topics", None) if study_path is not None else None
+        if not sibs:
+            return cards
+        current_index = int(getattr(topic, "order_index", 0) or 0)
+        # One canonical OWNER per concept (earliest), excluding the intro. Current topic is included but the
+        # scanner's topic_index<current filter keeps a topic from self-linking.
+        idents: list[TopicConceptIdentity] = []
+        owner_title: dict[str, str] = {}
+        seen: set[str] = set()
+        for s in sorted(sibs, key=lambda x: int(getattr(x, "order_index", 0) or 0)):
+            if _topic_type_key(s) == "study_path_introduction":
+                continue
+            title = str(getattr(s, "title", "") or "").strip()
+            if not title:
+                continue
+            cid = _prereq_concept_key(s)
+            if cid in seen:
+                continue
+            seen.add(cid)
+            tid = str(getattr(s, "id", "") or cid)
+            owner_title[tid] = title
+            idents.append(TopicConceptIdentity(
+                topic_id=tid, topic_index=int(getattr(s, "order_index", 0) or 0),
+                concept_id=cid, canonical_name=title))
+        # External prerequisites = this topic's own assumed_prerequisites that name no taught topic (the intro
+        # carries the path's declared prereqs, so intro cards get the open_study_path links; §2.6).
+        prereqs: dict[str, AssumedPrerequisite] = {}
+        for pre in (getattr(topic, "assumed_prerequisites", None) or []):
+            name = str(pre).strip()
+            pid = stable_slug(name)
+            if not name or pid in seen or pid in prereqs:
+                continue
+            prereqs[pid] = AssumedPrerequisite(
+                concept_id=pid, canonical_name=name, display_text=name,
+                target_goal=f"Understand the basics of {name}.", scope_rule=ScopeRule.recognition_only_fallback)
+        ctx = ScanContext(current_topic_index=current_index, topic_identities=idents,
+                          assumed_prerequisites=list(prereqs.values()))
+
+        linked_in_topic: set[str] = set()   # ≤ 1 link per concept per topic (§2.5); first occurrence wins (§2.6)
+        for card in cards:
+            text = project_to_plain_text(_card_scan_text(card))
+            result = scan_card(text, ctx)
+            valid = validate_links(result.links, text)
+            links: list[dict[str, Any]] = []
+            for l in valid.links:
+                if l.concept_id and l.concept_id in linked_in_topic:
+                    continue
+                if l.concept_id:
+                    linked_in_topic.add(l.concept_id)
+                if l.action == LinkAction.review_earlier_topic:
+                    expl = f"You saw this earlier in “{owner_title.get(l.target or '', 'an earlier topic')}”."
+                elif l.action == LinkAction.open_study_path:
+                    expl = "A prerequisite this path assumes — you can learn it in a dedicated path."
+                else:
+                    expl = ""
+                links.append({"text": l.text, "explanation": expl, "action": l.action.value,
+                              "target": l.target, "concept_id": l.concept_id})
+            card["interactive_links"] = links
+    except Exception:  # noqa: BLE001 — link enrichment must never break generation (§6.6 Tier 1)
+        return cards
+    return cards
+
+
 _ROADMAP_SENTENCE_STARTERS = {
     "this", "these", "those", "here", "next", "after", "then", "first", "second", "third",
     "finally", "we", "you", "our", "in", "throughout", "during", "by",
@@ -3287,6 +3396,10 @@ def _normalize_lean_card_order(
         evaluate_free_text_plan(topic_type, normalized)
     except Exception:  # noqa: BLE001 — observability must never break generation
         pass
+
+    # PREREQ_LINKS §6.2: emit deterministic interactive links (review_earlier_topic / open_study_path) onto the
+    # cards, replacing the hardcoded []. Flag-gated (AZALEA_PREREQ_LINKS) and best-effort — off ⇒ links stay [].
+    normalized = _emit_prereq_interactive_links(normalized, topic)
 
     return normalized
 
