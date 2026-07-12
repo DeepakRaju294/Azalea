@@ -81,6 +81,34 @@ def ensure_study_path_domain_columns() -> None:
         )
 
 
+def ensure_prereq_link_columns() -> None:
+    # PREREQ_LINKS_SPEC §1.4/§4: provenance + operational idempotency for a path created from an
+    # open_study_path prerequisite link. No alembic in this repo — idempotent additive ALTERs.
+    with engine.begin() as connection:
+        for col, ddl in (
+            ("origin_path_id", "VARCHAR"),
+            ("origin_topic_id", "VARCHAR"),
+            ("origin_card_id", "VARCHAR"),
+            ("origin_link_text", "TEXT"),
+            ("origin_concept_id", "VARCHAR"),
+            ("creation_source", "VARCHAR(40) NOT NULL DEFAULT 'user_goal'"),
+            ("creation_request_id", "VARCHAR"),
+            ("prerequisite_lineage_concept_ids", "JSONB"),
+            ("generation_status", "VARCHAR(20) NOT NULL DEFAULT 'complete'"),
+        ):
+            connection.execute(
+                text(f"ALTER TABLE study_paths ADD COLUMN IF NOT EXISTS {col} {ddl}")
+            )
+        # §4: one path per (user, request_id) — partial so existing NULL rows never collide. This is the
+        # operational-idempotency guard (a double-click / retry returns the existing path, never a 2nd).
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_study_paths_user_creation_request "
+                "ON study_paths (user_id, creation_request_id) WHERE creation_request_id IS NOT NULL"
+            )
+        )
+
+
 def ensure_quick_practice_schema() -> None:
     with engine.begin() as connection:
         connection.execute(
@@ -234,6 +262,7 @@ def ensure_topic_course_type_schema() -> None:
 ensure_learning_material_scope_columns()
 ensure_study_path_language_column()
 ensure_study_path_domain_columns()
+ensure_prereq_link_columns()
 ensure_quick_practice_schema()
 ensure_quick_practice_title_column()
 ensure_topic_course_type_schema()

@@ -17,6 +17,7 @@ except ValueError:
 
 from pydantic import BaseModel
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -1321,8 +1322,13 @@ def regenerate_study_path(
 
 
 class OpenStudyPathRequest(BaseModel):
-    target: str
-    source_study_path_id: str | None = None
+    target: str                              # the scoped goal from the link (§3)
+    target_concept_id: str | None = None     # the clicked prerequisite's identity (§4)
+    request_id: str | None = None            # operational idempotency, one per click attempt (§4)
+    origin_path_id: str | None = None        # §1.4 provenance
+    origin_topic_id: str | None = None
+    origin_card_id: str | None = None
+    origin_link_text: str | None = None
 
 
 class OpenStudyPathResponse(BaseModel):
@@ -1337,43 +1343,70 @@ def resolve_open_study_path(
     db: Session = Depends(get_db),
     current_user: dict[str, Any] = Depends(get_current_user),
 ):
-    """Find or create a study path for the given target concept (used by open_study_path interactive links)."""
+    """Create (or idempotently return) a study path for an open_study_path prerequisite link (PREREQ_LINKS §4).
+
+    v1 does NO semantic dedup — each COMPLETED, INTENTIONAL click yields a fresh path. The ONLY reuse is
+    operational idempotency: a repeated `request_id` (double-click / retry) returns the already-created path,
+    never a second generation. Provenance (§1.4) is recorded and the prerequisite lineage (§4.1) is
+    SERVER-computed from the parent — never client-supplied."""
     user_id = get_user_id(current_user)
     target = payload.target.strip()
-
     if not target:
         raise HTTPException(status_code=400, detail="target cannot be empty")
 
-    target_lower = target.lower()
-    existing_paths = (
-        db.query(StudyPath)
-        .filter(StudyPath.user_id == user_id)
-        .order_by(StudyPath.created_at.desc())
-        .all()
-    )
+    def _existing_for_request() -> StudyPath | None:
+        if not payload.request_id:
+            return None
+        return (
+            db.query(StudyPath)
+            .filter(StudyPath.user_id == user_id, StudyPath.creation_request_id == payload.request_id)
+            .first()
+        )
 
-    for path in existing_paths:
-        path_title_lower = (path.title or "").lower()
-        path_goal_lower = (path.goal or "").lower()
-        if target_lower in path_title_lower or target_lower in path_goal_lower:
-            return OpenStudyPathResponse(
-                study_path_id=str(path.id),
-                title=path.title,
-                created=False,
-            )
+    existing = _existing_for_request()
+    if existing is not None:
+        return OpenStudyPathResponse(study_path_id=str(existing.id), title=existing.title, created=False)
 
-    title = generate_title(target)
+    # Server-computed lineage (§4.1): parent's lineage + this clicked concept; client input is ignored.
+    lineage: list[str] = []
+    if payload.origin_path_id:
+        parent = (
+            db.query(StudyPath)
+            .filter(StudyPath.id == payload.origin_path_id, StudyPath.user_id == user_id)
+            .first()
+        )
+        if parent and parent.prerequisite_lineage_concept_ids:
+            lineage = list(parent.prerequisite_lineage_concept_ids)
+    if payload.target_concept_id:
+        lineage.append(payload.target_concept_id)
+
     new_path = StudyPath(
         user_id=user_id,
-        title=title,
-        goal=f"Learn {target}",
+        title=generate_title(target),
+        goal=target,
+        creation_source="prerequisite_link",
+        creation_request_id=payload.request_id,
+        origin_path_id=payload.origin_path_id,
+        origin_topic_id=payload.origin_topic_id,
+        origin_card_id=payload.origin_card_id,
+        origin_link_text=payload.origin_link_text,
+        origin_concept_id=payload.target_concept_id,
+        prerequisite_lineage_concept_ids=lineage or None,
     )
     db.add(new_path)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # A concurrent request with the same request_id won the UNIQUE(user_id, creation_request_id) index —
+        # return the winner so both callers get one path / one generation (§A39).
+        db.rollback()
+        winner = _existing_for_request()
+        if winner is not None:
+            return OpenStudyPathResponse(study_path_id=str(winner.id), title=winner.title, created=False)
+        raise
     db.refresh(new_path)
 
-    return OpenStudyPathResponse(
-        study_path_id=str(new_path.id),
-        title=new_path.title,
-        created=True,
-    )
+    # Classify goal → domain at creation, mirroring create_study_path (§3).
+    ensure_study_path_domain(new_path, db)
+
+    return OpenStudyPathResponse(study_path_id=str(new_path.id), title=new_path.title, created=True)

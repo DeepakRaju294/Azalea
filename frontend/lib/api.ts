@@ -789,6 +789,22 @@ export function getTopicLearnerState(topicId: string) {
   return request<LearnerConceptState[]>(`/learner-state/topics/${topicId}`);
 }
 
+// PREREQ_LINKS §4: create (or idempotently return) a study path for an open_study_path prerequisite link.
+export function resolveOpenStudyPath(payload: {
+  target: string;
+  target_concept_id?: string | null;
+  request_id?: string | null;
+  origin_path_id?: string | null;
+  origin_topic_id?: string | null;
+  origin_card_id?: string | null;
+  origin_link_text?: string | null;
+}) {
+  return request<{ study_path_id: string; title: string; created: boolean }>(
+    "/study-paths/resolve-target",
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
 export function getTopicAlignment(topicId: string) {
   return request<AlignmentSummary>(
     `/learner-state/topics/${topicId}/alignment`

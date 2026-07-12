@@ -70,6 +70,7 @@ import {
   type PracticeHintResponse,
   type PracticeSubmitResponse,
   type StudyPath,
+  resolveOpenStudyPath,
   type StudyPathMemorySummary,
   type StudySessionActivityType,
   type Topic,
@@ -280,6 +281,7 @@ type LessonInteractiveLink = {
   why_it_matters_here?: string;
   action?: "popup_only" | "open_study_path" | "review_earlier_topic" | "ask_question" | string;
   target?: string;
+  concept_id?: string | null;
 };
 
 type LessonCardType =
@@ -737,6 +739,8 @@ export default function StudyPathLearnPage() {
   const recentPracticeLevelsRef = useRef<string[]>([]);
   const strongStreakRef = useRef(0);
   const confusionSignalCountRef = useRef(0);
+  // PREREQ_LINKS §4: guard against a double-click spawning two prerequisite paths while one is in flight.
+  const openStudyPathBusyRef = useRef(false);
 
   const lessonJson = useMemo(() => {
     return (lesson?.lesson_json ?? {}) as LessonJson;
@@ -3556,6 +3560,32 @@ export default function StudyPathLearnPage() {
             setFlowCheckpoint(null);
             setSelectedTopicId(topicId);
             setCurrentStepIndex(0);
+          }}
+          onOpenStudyPath={(link) => {
+            // open_study_path (§4): create/return a prerequisite path and navigate to it. The in-flight
+            // guard makes a double-click idempotent (one intent → one path).
+            if (!link.target || openStudyPathBusyRef.current) return;
+            openStudyPathBusyRef.current = true;
+            void (async () => {
+              try {
+                const res = await resolveOpenStudyPath({
+                  target: link.target as string,
+                  target_concept_id: link.concept_id ?? null,
+                  request_id:
+                    typeof crypto !== "undefined" && "randomUUID" in crypto
+                      ? crypto.randomUUID()
+                      : `${Date.now()}-${Math.random()}`,
+                  origin_path_id: studyPathId,
+                  origin_topic_id: selectedTopicId || null,
+                  origin_link_text: link.text ?? null,
+                });
+                router.push(`/study-paths/${res.study_path_id}`);
+              } catch {
+                // Best-effort — a failed create must never trap the learner; they keep the inline gloss.
+              } finally {
+                openStudyPathBusyRef.current = false;
+              }
+            })();
           }}
         />
       );
@@ -6867,6 +6897,7 @@ function LearningCard({
   guidanceMode = false,
   onAskAboutText,
   onNavigateToTopic,
+  onOpenStudyPath,
   focusState,
 }: {
   step: Extract<LearningStep, { type: "flow_card" }>;
@@ -6878,6 +6909,9 @@ function LearningCard({
   // PREREQ_LINKS §6.4: navigate to an earlier topic in the same path (review_earlier_topic). Optional —
   // when absent, such links fall back to the gloss (onAskAboutText).
   onNavigateToTopic?: (topicId: string) => void;
+  // PREREQ_LINKS §4/§6.4: create + open a prerequisite study path (open_study_path). Optional — when absent,
+  // the link falls back to the gloss.
+  onOpenStudyPath?: (link: LessonInteractiveLink) => void;
   focusState?: VisualFocusState | null;
 }) {
   const card = step.card;
@@ -7086,7 +7120,16 @@ function LearningCard({
                     onNavigateToTopic(link.target);
                     return;
                   }
-                  // popup_only / open_study_path (until its endpoint lands) / ask_question → the gloss.
+                  // open_study_path → create + open a dedicated prerequisite path (§4).
+                  if (
+                    link.action === "open_study_path" &&
+                    link.target &&
+                    onOpenStudyPath
+                  ) {
+                    onOpenStudyPath(link);
+                    return;
+                  }
+                  // popup_only / ask_question (and any unrouted action) → the gloss.
                   onAskAboutText(
                     `${link.text}: ${link.explanation}${
                       link.why_it_matters_here

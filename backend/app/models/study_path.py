@@ -59,6 +59,18 @@ class StudyPath(Base):
         nullable=True,
     )
 
+    # PREREQ_LINKS_SPEC §1.4: provenance for a path created from an open_study_path prerequisite link.
+    # All NULL for a normal user_goal path. `prerequisite_lineage_concept_ids` is SERVER-COMPUTED (§4.1).
+    origin_path_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    origin_topic_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    origin_card_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    origin_link_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin_concept_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    creation_source: Mapped[str] = mapped_column(String(40), nullable=False, default="user_goal")
+    creation_request_id: Mapped[str | None] = mapped_column(String, nullable=True)   # §4 operational idempotency
+    prerequisite_lineage_concept_ids: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    generation_status: Mapped[str] = mapped_column(String(20), nullable=False, default="complete")
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,
