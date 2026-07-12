@@ -187,5 +187,41 @@ def _derive_prior_taught_content(
         practice_target = str(getattr(item, "practice_target", "") or "").strip()
         if practice_target:
             content.append(practice_target)
+        # The structured fields above rarely name the actual TERMS an earlier topic DEFINED (an intro's in_scope
+        # is typically empty), so a later topic re-defines them (e.g. an intro defines Voltage/Current, then the
+        # teaching topic defines them again). Harvest the terms from an earlier topic's already-generated
+        # key-terms card so they land in do_not_reteach and the dedup rules (prompt §309-310) actually fire.
+        # Best-effort — earlier lessons are generated first (intro synchronously), but a missing/lazy one is fine.
+        try:
+            lesson = getattr(item, "lesson", None)
+            lesson_json = getattr(lesson, "lesson_json", None) if lesson is not None else None
+            if isinstance(lesson_json, dict):
+                content.extend(_defined_terms_from_lesson(lesson_json))
+        except Exception:  # noqa: BLE001 — a detached/lazy relationship must never break generation
+            pass
 
     return content
+
+
+_KEY_TERM_CARD_TYPES = frozenset({"definition", "components_terms", "key_terms"})
+
+
+def _defined_terms_from_lesson(lesson_json: dict[str, Any]) -> list[str]:
+    """The TERM headers an earlier lesson's key-terms card defined. In a key-terms card the term is a MAIN
+    bullet ("Voltage") and its meaning is the indented sub-bullet ("  - The potential difference ..."), so the
+    defined terms are the short, non-indented points."""
+    terms: list[str] = []
+    for card in (lesson_json.get("lesson_cards") or []):
+        if not isinstance(card, dict):
+            continue
+        ct = str(card.get("card_type") or card.get("blueprint_key") or "")
+        if ct not in _KEY_TERM_CARD_TYPES:
+            continue
+        for point in (card.get("points") or card.get("bullets") or []):
+            s = str(point)
+            if not s or s[0].isspace() or s.lstrip().startswith("-"):
+                continue  # an indented definition line, not a term header
+            term = s.strip().rstrip(":").strip()
+            if term and len(term) <= 60:
+                terms.append(term)
+    return terms
