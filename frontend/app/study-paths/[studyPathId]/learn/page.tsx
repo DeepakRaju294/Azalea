@@ -3549,6 +3549,14 @@ export default function StudyPathLearnPage() {
               selectedText: text,
             })
           }
+          onNavigateToTopic={(topicId) => {
+            // review_earlier_topic (§6.4): switch to an earlier topic in this path. No-op if the target
+            // is not a real topic in this path.
+            if (!topics.some((topic) => topic.id === topicId)) return;
+            setFlowCheckpoint(null);
+            setSelectedTopicId(topicId);
+            setCurrentStepIndex(0);
+          }}
         />
       );
     }
@@ -6858,6 +6866,7 @@ function LearningCard({
   compact = false,
   guidanceMode = false,
   onAskAboutText,
+  onNavigateToTopic,
   focusState,
 }: {
   step: Extract<LearningStep, { type: "flow_card" }>;
@@ -6866,6 +6875,9 @@ function LearningCard({
   compact?: boolean;
   guidanceMode?: boolean;
   onAskAboutText: (text: string) => void;
+  // PREREQ_LINKS §6.4: navigate to an earlier topic in the same path (review_earlier_topic). Optional —
+  // when absent, such links fall back to the gloss (onAskAboutText).
+  onNavigateToTopic?: (topicId: string) => void;
   focusState?: VisualFocusState | null;
 }) {
   const card = step.card;
@@ -7064,15 +7076,25 @@ function LearningCard({
               <button
                 key={`${link.text}-${link.action}-${link.target}`}
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  // review_earlier_topic → jump to that already-taught topic in this path (§6.4).
+                  if (
+                    link.action === "review_earlier_topic" &&
+                    link.target &&
+                    onNavigateToTopic
+                  ) {
+                    onNavigateToTopic(link.target);
+                    return;
+                  }
+                  // popup_only / open_study_path (until its endpoint lands) / ask_question → the gloss.
                   onAskAboutText(
                     `${link.text}: ${link.explanation}${
                       link.why_it_matters_here
                         ? `\n\nWhy it matters here: ${link.why_it_matters_here}`
                         : ""
                     }`,
-                  )
-                }
+                  );
+                }}
                 className="rounded-full border border-primary/20 bg-accent px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary hover:text-primary-foreground"
               >
                 {link.text}
