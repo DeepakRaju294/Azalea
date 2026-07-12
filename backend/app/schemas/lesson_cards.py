@@ -116,6 +116,8 @@ class InteractiveLink(BaseModel):
     why_it_matters_here: str | None = None
     action: InteractiveLinkAction = "popup_only"
     target: str | None = None
+    concept_id: str | None = None   # PREREQ_LINKS_SPEC §1.3 (M1): canonical identity the link represents;
+                                     # additive/optional — unused while AZALEA_PREREQ_LINKS is off.
 
 
 class LessonCard(BaseModel):

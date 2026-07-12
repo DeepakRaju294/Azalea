@@ -15,6 +15,11 @@ from .models import (
 from .validation import (
     ClassificationFailure, ClassificationValidationResult, normalize_identity, validate_classification,
 )
+from .projection import find_token_matches, project_to_plain_text
+from .scan import (
+    DroppedCandidate, GlossaryIdentity, ScanContext, ScanResult, ScannedLink, scan_card,
+)
+from .link_validation import LinkDrop, LinkValidationResult, validate_links
 
 __all__ = [
     # enums
@@ -24,4 +29,9 @@ __all__ = [
     "PrerequisitePrioritySignals", "PrerequisiteScopeWarning", "DecompositionClassification",
     # validation (§6.3a Tier-2)
     "validate_classification", "ClassificationValidationResult", "ClassificationFailure", "normalize_identity",
+    # projection + scan (§2.2/§2/§2.5a/§5)
+    "project_to_plain_text", "find_token_matches", "scan_card", "ScanContext", "ScanResult", "ScannedLink",
+    "GlossaryIdentity", "DroppedCandidate",
+    # link validation (§6.3b Tier-1)
+    "validate_links", "LinkValidationResult", "LinkDrop",
 ]
