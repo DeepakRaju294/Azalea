@@ -67,6 +67,18 @@ class ShadowReport(unittest.TestCase):
         rep = shadow_report([])
         self.assertTrue(rep["ok"])
 
+    def test_prereqs_stored_on_intro_are_counted(self):
+        # The real DB shape: the intro names the prerequisites (not the concept topics). Harvesting only from
+        # concept topics would report n_prereqs=0 and never see the overlap.
+        topics = [
+            FakeTopic("i", "Introduction", 0, prereqs=["Voltage", "Current", "Resistance"],
+                      course_type="study_path_introduction"),
+            FakeTopic("t1", "Ohm's Law", 1),
+        ]
+        rep = shadow_report(topics)
+        self.assertEqual(rep["n_prereqs"], 3)
+        self.assertTrue(rep["ok"])   # prereqs disjoint from the one taught concept
+
 
 class FlagGating(unittest.TestCase):
     def setUp(self):

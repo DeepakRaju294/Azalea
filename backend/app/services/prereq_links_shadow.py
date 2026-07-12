@@ -66,8 +66,10 @@ def topics_to_classification(topics: list[Any]) -> DecompositionClassification:
             topic_id=str(getattr(t, "id", None) or f"t{i}"), topic_index=i,
             concept_id=_concept_key(t), canonical_name=str(getattr(t, "title", "") or _concept_key(t))))
 
+    # Prerequisites are stored on the INTRO topic (which names them without teaching), not the concept topics —
+    # so harvest from ALL topics, else n_prereqs is always 0 and the overlap check never sees them.
     prereqs: dict[str, AssumedPrerequisite] = {}
-    for t in concepts:
+    for t in topics:
         for pre in (getattr(t, "assumed_prerequisites", None) or []):
             name = str(pre)
             cid = stable_slug(name)
