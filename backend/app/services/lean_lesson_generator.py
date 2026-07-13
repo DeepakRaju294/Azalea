@@ -3328,10 +3328,30 @@ def _clean_concept(s: str) -> str:
     return " ".join(words)
 
 
+# A concept phrase is REJECTED (precision-first — a junk link is worse than a missing one) when it opens with
+# one of these (clause/verb/quantifier starters that never begin a clean concept name).
+_PREREQ_REJECT_START = frozenset({"if", "when", "where", "while", "these", "this", "that", "those", "some",
+                                  "many", "most", "review", "see", "note", "recall", "knowing", "having",
+                                  "being", "there", "having", "any", "all", "each"})
+
+
+def _acceptable_concept(c: str) -> bool:
+    """A concept phrase is a clean, linkable noun phrase: 1–4 words, no embedded verb/qualifier, and not opening
+    with a clause/stopword. (Precision over recall.)"""
+    words = c.split()
+    if not (1 <= len(words) <= 4):
+        return False
+    if words[0].lower() in _PREREQ_REJECT_START:
+        return False
+    if _PREREQ_VERB_CUT.search(c):                   # a residual verb ⇒ it's a clause fragment, not a concept
+        return False
+    return True
+
+
 def _concepts_from_prereq_line(s: str) -> list[str]:
-    """Candidate concept phrase(s) from one prereq bullet (handles short bullets AND prose sentences). A 'such
-    as A and B' list → [A, B]; else the leading noun phrase before the first verb → [X]. Trailing clauses and
-    stray verbs/stopwords are trimmed so we don't produce junk like 'is crucial'."""
+    """Clean concept phrase(s) from one prereq bullet. A 'such as A and B' list → [A, B]; else the leading noun
+    phrase before the first verb → [X]. Everything is trimmed and filtered (_acceptable_concept) so complex
+    sentences yield clean concepts or nothing — never junk like 'is crucial' or 'If these ideas'."""
     m = _PREREQ_SUCH_AS.search(s)
     if m:
         tail = s[m.end():]
@@ -3339,14 +3359,14 @@ def _concepts_from_prereq_line(s: str) -> list[str]:
         if mv:
             tail = tail[:mv.start()]
         tail = _re.split(r"[.;]", tail, 1)[0]
-        items = _re.split(r"\s*,\s*|\s+and\s+", tail)
-        return [c for c in (_clean_concept(i) for i in items) if c]
+        items = (_clean_concept(i) for i in _re.split(r"\s*,\s*|\s+and\s+", tail))
+        return [c for c in items if _acceptable_concept(c)]
     core = _strip_prereq_goal_phrase(s)
     mv = _PREREQ_VERB_CUT.search(core)
     if mv:
         core = core[:mv.start()]
     core = _clean_concept(_re.split(r"[.;,:]", core, 1)[0])
-    return [core] if core and len(core.split()) <= 4 else []
+    return [core] if _acceptable_concept(core) else []
 
 
 def _prereq_links_from_card(card: dict[str, Any], card_text: str, taught_norm: set[str],
