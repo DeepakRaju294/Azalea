@@ -3299,31 +3299,56 @@ def _strip_prereq_goal_phrase(text: str) -> str:
     return text
 
 
+import re as _re
+# The prereq card is often prose, not a concept list. Recover concept phrases two ways: items listed after
+# "such as"/"including", or the leading noun phrase before the first verb/qualifier.
+_PREREQ_SUCH_AS = _re.compile(r"\b(?:such as|including|like|e\.g\.,?|for example[,:]?)\b", _re.I)
+_PREREQ_VERB_CUT = _re.compile(
+    r"\b(is|are|was|were|helps?|aids?|matters?|allows?|enables?|requires?|provides?|forms?|involves?|"
+    r"underlies?|essential|necessary|needed|assumed|important|crucial|useful|fundamental|key|relevant)\b", _re.I)
+
+
+def _concepts_from_prereq_line(s: str) -> list[str]:
+    """Candidate concept phrase(s) from one prereq bullet (handles both short concept bullets and full
+    sentences). 'such as A and B' → [A, B]; 'Understanding X is essential …' → [X]."""
+    m = _PREREQ_SUCH_AS.search(s)
+    if m:
+        tail = s[m.end():].strip().rstrip(".")
+        items = _re.split(r"\s*,\s*|\s+and\s+|\s*;\s*", tail)
+        return [i.strip() for i in items if i.strip()]
+    core = _strip_prereq_goal_phrase(s)
+    mv = _PREREQ_VERB_CUT.search(core)
+    if mv:
+        core = core[:mv.start()]
+    core = _re.split(r"[.;,:]", core, 1)[0].strip().rstrip(".").strip()
+    return [core] if core else []
+
+
 def _prereq_links_from_card(card: dict[str, Any], card_text: str, taught_norm: set[str],
                             linked_concept_ids: set[str]) -> list[dict[str, Any]]:
-    """Turn each prerequisite LISTED on the prereq card into an open_study_path link, so prereqs are clickable
-    even when decomposition left assumed_prerequisites empty (they exist only as card prose). Main bullets only;
-    the leading goal-phrase is stripped to recover the concept, which must appear verbatim in the card."""
-    import re
+    """Turn each prerequisite named on the prereq card into an open_study_path link, so prereqs are clickable
+    even when decomposition left assumed_prerequisites empty (they exist only as card prose). Concept phrases are
+    recovered from bullet prose (§_concepts_from_prereq_line) and must appear verbatim in the card."""
     from app.core.study_path_scope import stable_slug
     out: list[dict[str, Any]] = []
     for point in (card.get("points") or card.get("bullets") or []):
         s = str(point).strip()
         if not s or s.endswith(":") or s[0].isspace() or s.lstrip().startswith("-"):
-            continue  # lead-in header or sub-bullet, not a top-level prereq
-        concept = re.split(r"[.;]", _strip_prereq_goal_phrase(s), 1)[0].strip().rstrip(".").strip()
-        if not concept or len(concept) > 50 or len(concept.split()) > 6 or concept not in card_text:
-            continue
-        cid = stable_slug(concept)
-        if cid in linked_concept_ids or _norm_term(concept) in taught_norm:
-            continue
-        linked_concept_ids.add(cid)
-        out.append({"text": concept,
-                    "explanation": "A prerequisite this path assumes — you can learn it in a dedicated path.",
-                    "action": "open_study_path", "target": f"Understand the basics of {concept}.",
-                    "concept_id": cid})
-        if len(out) >= 4:
-            break
+            continue  # lead-in header or sub-bullet
+        for concept in _concepts_from_prereq_line(s):
+            concept = concept.strip().rstrip(".,;:").strip()
+            if not concept or len(concept.split()) > 5 or len(concept) < 3 or concept not in card_text:
+                continue
+            cid = stable_slug(concept)
+            if cid in linked_concept_ids or _norm_term(concept) in taught_norm:
+                continue
+            linked_concept_ids.add(cid)
+            out.append({"text": concept,
+                        "explanation": "A prerequisite this path assumes — you can learn it in a dedicated path.",
+                        "action": "open_study_path", "target": f"Understand the basics of {concept}.",
+                        "concept_id": cid})
+            if len(out) >= 4:
+                return out
     return out
 
 
