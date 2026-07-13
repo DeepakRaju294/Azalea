@@ -3275,11 +3275,17 @@ def _model_popup_links(card: dict[str, Any], card_text: str) -> list[dict[str, A
     return out
 
 
+_PREREQ_CARD_TITLE_CUES = ("prerequisite", "foundational", "assumed", "essential background",
+                           "background knowledge", "prior knowledge", "what you", "before you",
+                           "background for", "essential knowledge", "foundation")
+
+
 def _is_prereq_card(card: dict[str, Any]) -> bool:
     """Whether a card is the prerequisites / foundational-knowledge card that DECLARES the assumed prereqs.
-    open_study_path links live ONLY here — not scattered on every card that happens to mention a prereq."""
+    Titles vary a lot across generations ("Foundational Ideas", "Prerequisites for …", "Essential Background
+    for …"), so match several cues. open_study_path links live ONLY here — never scattered elsewhere."""
     title = str(card.get("title") or "").lower()
-    return "prerequisite" in title or "foundational" in title or "assumed" in title
+    return any(cue in title for cue in _PREREQ_CARD_TITLE_CUES)
 
 
 # Leading learning-goal phrasing stripped from a prerequisite bullet to recover the bare concept name for the
@@ -3304,24 +3310,43 @@ import re as _re
 # "such as"/"including", or the leading noun phrase before the first verb/qualifier.
 _PREREQ_SUCH_AS = _re.compile(r"\b(?:such as|including|like|e\.g\.,?|for example[,:]?)\b", _re.I)
 _PREREQ_VERB_CUT = _re.compile(
-    r"\b(is|are|was|were|helps?|aids?|matters?|allows?|enables?|requires?|provides?|forms?|involves?|"
-    r"underlies?|essential|necessary|needed|assumed|important|crucial|useful|fundamental|key|relevant)\b", _re.I)
+    r"\b(is|are|was|were|be|been|being|helps?|aids?|matters?|allows?|enables?|requires?|provides?|forms?|"
+    r"involves?|underlies?|can|could|will|would|may|might|should|must|grasp\w*|cover\w*|essential|necessary|"
+    r"needed|assumed|important|crucial|useful|fundamental|key|relevant)\b", _re.I)
+# Words that must not START or END a concept phrase (verbs/auxiliaries/stopwords).
+_PREREQ_TRIM = frozenset({"is", "are", "was", "were", "be", "been", "being", "can", "could", "will", "would",
+                          "may", "might", "should", "must", "the", "a", "an", "and", "or", "for", "to", "of",
+                          "with", "that", "this", "these", "those", "it", "which", "in", "on", "as", "good"})
+
+
+def _clean_concept(s: str) -> str:
+    words = s.strip().strip(",.;:").split()
+    while words and words[0].lower() in _PREREQ_TRIM:
+        words.pop(0)
+    while words and words[-1].lower() in _PREREQ_TRIM:
+        words.pop()
+    return " ".join(words)
 
 
 def _concepts_from_prereq_line(s: str) -> list[str]:
-    """Candidate concept phrase(s) from one prereq bullet (handles both short concept bullets and full
-    sentences). 'such as A and B' → [A, B]; 'Understanding X is essential …' → [X]."""
+    """Candidate concept phrase(s) from one prereq bullet (handles short bullets AND prose sentences). A 'such
+    as A and B' list → [A, B]; else the leading noun phrase before the first verb → [X]. Trailing clauses and
+    stray verbs/stopwords are trimmed so we don't produce junk like 'is crucial'."""
     m = _PREREQ_SUCH_AS.search(s)
     if m:
-        tail = s[m.end():].strip().rstrip(".")
-        items = _re.split(r"\s*,\s*|\s+and\s+|\s*;\s*", tail)
-        return [i.strip() for i in items if i.strip()]
+        tail = s[m.end():]
+        mv = _PREREQ_VERB_CUT.search(tail)          # cut a trailing clause ("…, is crucial")
+        if mv:
+            tail = tail[:mv.start()]
+        tail = _re.split(r"[.;]", tail, 1)[0]
+        items = _re.split(r"\s*,\s*|\s+and\s+", tail)
+        return [c for c in (_clean_concept(i) for i in items) if c]
     core = _strip_prereq_goal_phrase(s)
     mv = _PREREQ_VERB_CUT.search(core)
     if mv:
         core = core[:mv.start()]
-    core = _re.split(r"[.;,:]", core, 1)[0].strip().rstrip(".").strip()
-    return [core] if core else []
+    core = _clean_concept(_re.split(r"[.;,:]", core, 1)[0])
+    return [core] if core and len(core.split()) <= 4 else []
 
 
 def _prereq_links_from_card(card: dict[str, Any], card_text: str, taught_norm: set[str],
@@ -3450,11 +3475,13 @@ def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) ->
                     expl = ""
                 links.append({"text": l.text, "explanation": expl, "action": l.action.value,
                               "target": l.target, "concept_id": l.concept_id})
-            # On the prereq card, FALL BACK to turning each LISTED prerequisite into an open_study_path link when
-            # the scanner found none — i.e. decomposition left assumed_prerequisites empty (the common case; the
-            # prereqs exist only as card prose). When the structured field IS populated, the scanner already
-            # produced clean links, so we don't second-guess it.
-            if is_prereq_card and not any(l["action"] == LinkAction.open_study_path.value for l in links):
+            # On the INTRO's prereq card, FALL BACK to turning each LISTED prerequisite into an open_study_path
+            # link when the scanner found none — i.e. decomposition left assumed_prerequisites empty (the common
+            # case; the prereqs exist only as card prose). Gated to the intro so a body topic's own "Background"
+            # card never yields spurious prereq links. When the structured field IS populated the scanner's clean
+            # links win.
+            if (is_prereq_card and _topic_type_key(topic) == "study_path_introduction"
+                    and not any(l["action"] == LinkAction.open_study_path.value for l in links)):
                 links.extend(_prereq_links_from_card(card, text, taught_norm, linked_in_topic))
             # Merge the model's undefined-term popups AFTER the deterministic nav links, skipping any whose anchor
             # a nav link already claimed (never double-link the same phrase). Cap the card at 3 links total (§2.5).
