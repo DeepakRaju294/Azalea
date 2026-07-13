@@ -3275,9 +3275,10 @@ def _model_popup_links(card: dict[str, Any], card_text: str) -> list[dict[str, A
     return out
 
 
-_PREREQ_CARD_TITLE_CUES = ("prerequisite", "foundational", "assumed", "essential background",
-                           "background knowledge", "prior knowledge", "what you", "before you",
-                           "background for", "essential knowledge", "foundation")
+# Specific prereq-card title cues actually seen across generations. Deliberately NOT "what you" / "foundation"
+# (they match objectives cards like "What You Will Learn" — false positives).
+_PREREQ_CARD_TITLE_CUES = ("prerequisite", "foundational", "assumed knowledge", "essential background",
+                           "background knowledge", "prior knowledge", "background for", "assumed background")
 
 
 def _is_prereq_card(card: dict[str, Any]) -> bool:
@@ -3335,13 +3336,20 @@ _PREREQ_REJECT_START = frozenset({"if", "when", "where", "while", "these", "this
                                   "being", "there", "having", "any", "all", "each"})
 
 
+# Too-generic single words that are not a linkable concept on their own.
+_PREREQ_GENERIC = frozenset({"concepts", "concept", "ideas", "idea", "topics", "topic", "material", "basics",
+                             "things", "fundamentals", "knowledge", "notation", "terms", "definitions", "theory"})
+
+
 def _acceptable_concept(c: str) -> bool:
-    """A concept phrase is a clean, linkable noun phrase: 1–4 words, no embedded verb/qualifier, and not opening
-    with a clause/stopword. (Precision over recall.)"""
+    """A concept phrase is a clean, linkable noun phrase: 1–4 words, no embedded verb/qualifier, not opening
+    with a clause/stopword, and not a single too-generic word. (Precision over recall.)"""
     words = c.split()
     if not (1 <= len(words) <= 4):
         return False
     if words[0].lower() in _PREREQ_REJECT_START:
+        return False
+    if len(words) == 1 and words[0].lower() in _PREREQ_GENERIC:
         return False
     if _PREREQ_VERB_CUT.search(c):                   # a residual verb ⇒ it's a clause fragment, not a concept
         return False
