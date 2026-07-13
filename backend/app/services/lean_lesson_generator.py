@@ -3321,7 +3321,8 @@ _PREREQ_TRIM = frozenset({"is", "are", "was", "were", "be", "been", "being", "ca
 
 
 def _clean_concept(s: str) -> str:
-    words = s.strip().strip(",.;:").split()
+    s = s.strip().strip(",.;:").strip("'\"“”‘’").strip()   # drop surrounding quotes ('event' → event)
+    words = s.split()
     while words and words[0].lower() in _PREREQ_TRIM:
         words.pop(0)
     while words and words[-1].lower() in _PREREQ_TRIM:
