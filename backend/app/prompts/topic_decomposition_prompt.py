@@ -101,6 +101,14 @@ RULES:
   representative). The "unique delta" here is the TECHNIQUE, not the runtime class or the shared umbrella
   subject. (This does NOT apply when the goal targets ONE specific method — then include only what that
   method needs, not its whole family.)
+- path_plan.assumed_prerequisites: the STRUCTURED list of OUT-OF-SCOPE concepts this path assumes the learner
+  already knows and does NOT teach (the external prerequisites). Each is {{"name": <the bare concept name, a
+  1-3 word noun phrase, lowercase unless a proper noun — e.g. "conditional probability", "vectors", "the
+  chain rule">, "gloss": <a one-line plain-language "what it is">}}. Name the CONCEPT itself, never a goal
+  phrase ("conditional probability", NOT "understanding conditional probability"). Include only genuine
+  external prerequisites (not concepts taught by a topic in this path, not the goal concept itself). Usually
+  2-5; [] if the path is truly self-contained. This is the source of truth the intro's prerequisites card and
+  the prerequisite links are built from — so keep the names clean and canonical.
 - The path BEGINS with exactly one orientation topic: content_role "orientation", topic_type
   "study_path_introduction", primary_action "understand". It FRAMES the area, NAMES the assumed
   prerequisites WITHOUT teaching them (a one-line "if X is new to you, review it first" — a prereq is
@@ -140,6 +148,9 @@ Return ONLY JSON of this shape:
   "path_plan": {{
     "end_capability": "...",
     "end_capability_actions": ["trace", "implement"],
+    "assumed_prerequisites": [
+      {{"name": "conditional probability", "gloss": "the probability of one event given another has occurred"}}
+    ],
     "required_capabilities": [
       {{"capability_id": "...", "description": "...", "prerequisite_capability_ids": [],
         "satisfies_end_actions": [], "ownership_mode": "standalone", "owner_topic_id": null, "basis": "goal"}}

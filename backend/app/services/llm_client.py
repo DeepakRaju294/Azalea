@@ -2451,6 +2451,54 @@ CARD_SLOT_JSON_SCHEMA = {
 }
 
 
+_TERM_GLOSSES_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "glosses": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {"term": {"type": "string"}, "gloss": {"type": "string"}},
+                "required": ["term", "gloss"],
+            },
+        },
+    },
+    "required": ["glosses"],
+}
+
+
+def generate_term_glosses(prose: str, exclude: list[str], topic_title: str) -> list[dict[str, str]]:
+    """The popup_only glossary: short glosses for TECHNICAL terms the lesson prose USES but never defines (and
+    that are not prerequisites or taught-topic names). Deterministic prompting can't get the model to emit these
+    inline, so this is a dedicated pass. Best-effort — returns [] on any error (generation must never break)."""
+    system = (
+        "You help a FIRST-TIME learner read one lesson. You are given the lesson prose and a list of terms to "
+        "EXCLUDE. Return a short gloss for each TECHNICAL term the prose USES but never defines — a term a "
+        "motivated beginner would have to look up to follow the sentence. Rules: (1) the term MUST appear verbatim "
+        "in the prose; copy it EXACTLY as written (same spelling and case). (2) NEVER return any term in the "
+        "exclude list, nor ordinary English words, nor the lesson's own headline topic. (3) gloss = one "
+        "plain-language clause, at most 18 words, no jargon, and it must not merely restate the term. (4) Return at "
+        "most 6, choosing the terms a beginner most needs. (5) If every term is ordinary or already excluded, "
+        'return an empty list. Return JSON {"glosses":[{"term":...,"gloss":...}]}.'
+    )
+    user = (f"Lesson topic: {topic_title}\n\nEXCLUDE (never gloss these): "
+            f"{', '.join(exclude) if exclude else '(none)'}\n\nLESSON PROSE:\n{prose}")
+    try:
+        response = _create_with_usage(
+            "term_glosses",
+            model=OPENAI_MODEL,
+            input=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            text={"format": {"type": "json_schema", "name": "azalea_term_glosses",
+                             "schema": _TERM_GLOSSES_JSON_SCHEMA, "strict": True}},
+        )
+        data = _loads_llm_json(response.output_text)
+        return [g for g in (data.get("glosses") or []) if isinstance(g, dict)]
+    except Exception:  # noqa: BLE001 — glossary enrichment must never break generation
+        return []
+
+
 def generate_card_slot(system_prompt: str, user_prompt: str) -> dict[str, Any]:
     """Generate one card's {title, points} from a focused prompt."""
     response = _create_with_usage(

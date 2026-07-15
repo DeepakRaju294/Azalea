@@ -3295,6 +3295,7 @@ _PREREQ_GOAL_PREFIXES = (
     "a basic understanding of ", "an understanding of ", "basic understanding of ", "basic knowledge of ",
     "some knowledge of ", "knowledge of ", "understanding of ", "understanding ", "understand ",
     "awareness of ", "familiarity with ", "a grasp of ", "grasp of ", "comfort with ",
+    "recognition of ", "recognizing ", "recognize ", "an ability to ", "ability to ",
 )
 
 
@@ -3422,6 +3423,587 @@ def _card_scan_text(card: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def _assumed_prereq_glosses(topic: Topic) -> dict[str, str]:
+    """The name->gloss map decomposition stashed on the intro (path_plan.assumed_prerequisites glosses),
+    keyed case-insensitively. Empty when decomposition emitted none. Best-effort; never raises."""
+    try:
+        meta = getattr(topic, "decomposition_metadata", None) or {}
+        raw = meta.get("assumed_prerequisite_glosses") or {}
+        return {str(k).strip().lower(): str(v).strip() for k, v in raw.items() if str(v).strip()}
+    except Exception:  # noqa: BLE001 — never break generation on a metadata shape surprise
+        return {}
+
+
+_KEY_TERM_CARD_KEYS = frozenset({"definition", "components_terms", "key_terms"})
+
+
+def _relocate_prereq_defs_from_key_terms(cards: list[dict[str, Any]], names: list[str]) -> dict[str, str]:
+    """A prerequisite belongs on the prerequisites card, NOT duplicated as an intro key term. For each named
+    prereq that the intro's key-terms card also DEFINES, harvest that definition (to use as the prereq's gloss)
+    and REMOVE the term from the key-terms card. Returns {lowercased name: gloss}. Best-effort; mutates cards."""
+    wanted = {n.strip().lower() for n in names if n and n.strip()}
+    if not wanted:
+        return {}
+    harvested: dict[str, str] = {}
+    for card in cards:
+        if _is_prereq_card(card) or _lean_card_key(card) not in _KEY_TERM_CARD_KEYS:
+            continue
+        field = "points" if isinstance(card.get("points"), list) else ("bullets" if isinstance(card.get("bullets"), list) else None)
+        if field is None:
+            continue
+        pts = card[field]
+        kept: list[Any] = []
+        i = 0
+        removed = False
+        while i < len(pts):
+            p = str(pts[i])
+            is_header = bool(p.strip()) and not p[:1].isspace() and not p.lstrip().startswith("-")
+            if not is_header:
+                kept.append(pts[i]); i += 1; continue
+            j = i + 1                                   # gather this term's indented definition lines
+            while j < len(pts) and (str(pts[j])[:1].isspace() or str(pts[j]).lstrip().startswith("-")):
+                j += 1
+            term = p.split(":", 1)[0].strip().rstrip(":").strip()
+            key = term.lower()
+            if key in wanted and key not in harvested:
+                inline = p.split(":", 1)[1].strip() if ":" in p else ""
+                defs = [_re.sub(r"^\s*[-•]\s*", "", str(pts[k]).strip()) for k in range(i + 1, j)]
+                gloss = " ".join(s for s in ([inline, *defs]) if s).strip().rstrip(".")
+                if gloss:
+                    harvested[key] = gloss
+                removed = True
+                i = j                                    # drop the header + its definition lines
+            else:
+                kept.extend(pts[i:j]); i = j
+        if removed:
+            card[field] = kept
+    return harvested
+
+
+def _merge_duplicate_edge_cases(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A lesson's blueprint has ONE edge_case slot; when the model emits several, collapse them into the first
+    (union of points, order-preserving, deduped) so the learner sees one consolidated edge-case card instead of a
+    redundant filler second one. No content is lost. No-op when there is 0 or 1 edge_case card."""
+    idxs = [i for i, c in enumerate(cards) if _lean_card_key(c) == "edge_case"]
+    if len(idxs) <= 1:
+        return cards
+    first = cards[idxs[0]]
+    field = "points" if isinstance(first.get("points"), list) else "bullets"
+    merged = list(first.get(field) or [])
+    seen = {str(p).strip().lower() for p in merged}
+    for i in idxs[1:]:
+        for p in (cards[i].get("points") or cards[i].get("bullets") or []):
+            key = str(p).strip().lower()
+            if key and key not in seen:
+                seen.add(key)
+                merged.append(p)
+    first[field] = merged
+    drop = set(idxs[1:])
+    return [c for i, c in enumerate(cards) if i not in drop]
+
+
+_PURPOSE_CARD_KEYS = frozenset({"purpose_context", "purpose", "objectives"})
+_FORMULA_CUE_RE = _re.compile(r"\b(mathematically|defined as|given by|as follows|the formula|where each)\b", _re.I)
+_BREAKDOWN_SCAFFOLD_TAILS = ("calculates:", "as follows:", "given by:", "formula is:", "formula:")
+
+
+def _deco_stripped(point: str) -> str:
+    """A point with leading indent/dash and LaTeX delimiters removed, for structural matching."""
+    s = _re.sub(r"^\s*[-•]\s*", "", str(point).strip())
+    return s.replace("\\(", "").replace("\\)", "").replace("$", "").strip()
+
+
+def _is_symbol_def_point(point: str) -> bool:
+    """A point whose HEAD is a probability symbol, i.e. a formula-breakdown line like 'P(A|B): posterior'."""
+    return bool(_re.match(r"^P\s*\(", _deco_stripped(point)))
+
+
+def _is_breakdown_scaffold(point: str) -> bool:
+    """A scaffolding line that only introduces a symbol breakdown ('Where:', 'For events A and B, it
+    calculates:') — meaningless once the breakdown lines are removed."""
+    low = _deco_stripped(point).lower()
+    if not low.endswith(":"):
+        return False
+    return low == "where:" or low.startswith("where ") or low.endswith(_BREAKDOWN_SCAFFOLD_TAILS)
+
+
+def _is_inline_formula_point(point: str) -> bool:
+    """A point that restates the full equation inline ('The formula is given by: P(H|E) = ...'). The equation
+    belongs on the formula card, so it does not belong on a purpose card — and inline restatements are the main
+    source of notation drift (P(H|E) here vs P(A|B) on the formula card)."""
+    return bool(_re.search(r"P\s*\([^)]*\)\s*=", _deco_stripped(point)))
+
+
+def _is_prose_symbol_breakdown(point: str) -> bool:
+    """A prose sentence that defines two or more symbols ('Where P(H|E) is the posterior, P(E|H) is the
+    likelihood, ...') — the formula card's job, duplicated on a purpose card."""
+    s = _deco_stripped(point)
+    return len(_re.findall(r"P\s*\(", s)) >= 2 and bool(_re.search(r"\b(is|are|represents?|denotes?)\b", s))
+
+
+def _strip_formula_breakdown_from_purpose(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A purpose_context card should MOTIVATE, not do the formula card's job. In a card that PRECEDES the formula
+    card, remove (a) formula symbol-definition lines ('P(A|B): posterior probability') and their scaffolding
+    ('Where:'), which duplicate the formula breakdown, and (b) a dangling trailing colon lead-in that promises a
+    formula never shown on that card ('Mathematically defined as where each B ...:'). No-op without a formula
+    card; never empties a card. Best-effort."""
+    formula_idx = next((i for i, c in enumerate(cards) if _lean_card_key(c) == "formula"), -1)
+    if formula_idx < 0:
+        return cards
+    for c in cards[:formula_idx]:
+        if _lean_card_key(c) not in _PURPOSE_CARD_KEYS:
+            continue
+        field = "points" if isinstance(c.get("points"), list) else ("bullets" if isinstance(c.get("bullets"), list) else None)
+        if field is None:
+            continue
+        pts = [p for p in c[field] if not (_is_symbol_def_point(p) or _is_breakdown_scaffold(p)
+                                           or _is_inline_formula_point(p) or _is_prose_symbol_breakdown(p))]
+        while pts:                                       # trim dangling trailing colon lead-ins with no payoff
+            last = str(pts[-1]).strip()
+            if last.endswith(":") and _FORMULA_CUE_RE.search(last):
+                pts.pop()
+            else:
+                break
+        if pts:
+            c[field] = pts
+    return cards
+
+
+_P_ARGS_RE = _re.compile(r"P\s*\(([^)]*)\)")
+
+
+def _formula_variable_letters(text: str) -> set[str]:
+    """The uppercase variable letters used inside P(...) in some text — the notation footprint of a formula.
+    'P(A) = Σ P(A|B_i)P(B_i)' → {A, B}; subscripts/digits/lowercase are ignored."""
+    letters: set[str] = set()
+    for arg in _P_ARGS_RE.findall(text or ""):
+        letters |= set(_re.findall(r"[A-Z]", arg))
+    return letters
+
+
+def _reconcile_formula_notation_conflict(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Notation consistency: in a formula-driven lesson the formula equation is the CANONICAL notation. When a
+    components/key-terms card introduces a variable LETTER the formula never uses — e.g. defining the event as E
+    and the partitions as A_i while the formula uses A and B_i — it contradicts the formula and confuses a
+    first-time learner. Drop that card; the formula card's own component breakdown already defines the symbols
+    consistently. No-op when there is no formula (canonical set empty) or the terms card agrees with it."""
+    canonical: set[str] = set()
+    for c in cards:
+        if _lean_card_key(c) == "formula":
+            canonical |= _formula_variable_letters(_card_scan_text(c))
+    if not canonical:
+        return cards
+    out: list[dict[str, Any]] = []
+    for c in cards:
+        if _lean_card_key(c) in _KEY_TERM_CARD_KEYS:
+            used = _formula_variable_letters(_card_scan_text(c))
+            if used and (used - canonical):
+                logger.info("lean_lesson: dropped key-terms card with notation %s conflicting with formula %s",
+                            sorted(used), sorted(canonical))
+                continue
+        out.append(c)
+    return out
+
+
+def _key_term_header(point: str) -> str:
+    """The term named at the head of a key-terms bullet, handling every separator generations use: "Term: def",
+    "Term - def", "Term — def", or a bare "Term" (definition on the next indented line)."""
+    for sep in (":", " — ", " – ", " - "):
+        if sep in point:
+            return point.split(sep, 1)[0].strip()
+    return point.strip()
+
+
+def _strip_prerequisite_key_terms(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
+    """A path prerequisite is delivered as a LINK and is never re-taught — so it must not reappear as a key term
+    inside a body topic either (e.g. the Law-of-Total-Probability topic re-defining 'conditional probability', a
+    declared prerequisite). Drop any key-term header matching a path prerequisite (this topic's + the intro's
+    assumed_prerequisites), with its definition; drop an emptied card. Skips the intro (its prereqs are handled by
+    _relocate_prereq_defs_from_key_terms / _ground_prereq_card)."""
+    if _topic_type_key(topic) == "study_path_introduction":
+        return cards
+    prereqs: set[str] = set()
+    study_path = getattr(topic, "study_path", None)
+    sources = [topic, *(getattr(study_path, "topics", None) or [])]
+    for src in sources:
+        for p in (getattr(src, "assumed_prerequisites", None) or []):
+            k = _norm_gloss_key(str(p))
+            if k:
+                prereqs.add(k)
+    if not prereqs:
+        return cards
+    result: list[dict[str, Any]] = []
+    for card in cards:
+        if _is_prereq_card(card) or _lean_card_key(card) not in _KEY_TERM_CARD_KEYS:
+            result.append(card)
+            continue
+        field = "points" if isinstance(card.get("points"), list) else ("bullets" if isinstance(card.get("bullets"), list) else None)
+        if field is None:
+            result.append(card)
+            continue
+        pts = card[field]
+        kept: list[Any] = []
+        kept_headers = 0
+        i = 0
+        while i < len(pts):
+            p = str(pts[i])
+            is_header = (bool(p.strip()) and not p[:1].isspace() and not p.lstrip().startswith("-")
+                        and not p.lstrip().startswith(("$", "\\")))
+            if not is_header:
+                kept.append(pts[i]); i += 1; continue
+            j = i + 1
+            while j < len(pts) and (str(pts[j])[:1].isspace() or str(pts[j]).lstrip().startswith("-")):
+                j += 1
+            if _norm_gloss_key(_key_term_header(p)) in prereqs:
+                i = j; continue                          # a declared prerequisite — drop header + its defs
+            kept.extend(pts[i:j]); kept_headers += 1; i = j
+        if kept_headers == 0:
+            continue
+        card[field] = kept
+        result.append(card)
+    return result
+
+
+# Head nouns too ELEMENTARY to define as an intro key term — they are covered by the "basic <subject>"
+# prerequisite (e.g. "Probability", "Event") or are topic-specific "<x> probability". Singular forms only
+# (`_norm_gloss_key` singularizes). Deliberately tight to avoid dropping real shared vocab (sample space, vertex).
+_ELEMENTARY_KEY_TERM_HEADS = frozenset({
+    "probability", "event", "outcome", "number", "thing", "concept", "idea", "information", "data", "quantity",
+})
+
+
+def _strip_generic_intro_key_terms(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
+    """The intro's key-terms card should define SHARED, non-trivial vocabulary the path introduces — NOT elementary
+    terms the 'basic <subject>' prerequisite already assumes ('Probability', 'Event', 'Conditional Probability')
+    nor topic-specific '<x> probability' terms. These both overlap the prerequisites card and read as
+    condescending to someone who typed this goal. Drop an intro key-term whose HEAD noun is elementary; drop the
+    card if nothing substantive remains. Intro-only."""
+    if _topic_type_key(topic) != "study_path_introduction":
+        return cards
+    result: list[dict[str, Any]] = []
+    for card in cards:
+        if _is_prereq_card(card) or _lean_card_key(card) not in _KEY_TERM_CARD_KEYS:
+            result.append(card)
+            continue
+        field = "points" if isinstance(card.get("points"), list) else ("bullets" if isinstance(card.get("bullets"), list) else None)
+        if field is None:
+            result.append(card)
+            continue
+        pts = card[field]
+        kept: list[Any] = []
+        kept_headers = 0
+        i = 0
+        while i < len(pts):
+            p = str(pts[i])
+            is_header = (bool(p.strip()) and not p[:1].isspace() and not p.lstrip().startswith("-")
+                        and not p.lstrip().startswith(("$", "\\")))
+            if not is_header:
+                kept.append(pts[i]); i += 1; continue
+            j = i + 1
+            while j < len(pts) and (str(pts[j])[:1].isspace() or str(pts[j]).lstrip().startswith("-")):
+                j += 1
+            words = _norm_gloss_key(_key_term_header(p)).split()
+            if words and words[-1] in _ELEMENTARY_KEY_TERM_HEADS:
+                i = j; continue                          # too elementary for an intro key term
+            kept.extend(pts[i:j]); kept_headers += 1; i = j
+        if kept_headers == 0:
+            continue                                     # nothing substantive left → drop the card
+        card[field] = kept
+        result.append(card)
+    return result
+
+
+def _strip_taught_topics_from_prereq_card(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
+    """A prerequisite is an OUT-OF-SCOPE concept — it can never be a topic the path itself teaches. When the model
+    writes the intro's prereq card as prose (no structured assumed_prerequisites), it sometimes lists a taught
+    topic as a 'foundation' (e.g. 'Recognition of Bayes' Theorem' on a path whose topic 3 IS Bayes' Theorem). Drop
+    any prereq bullet that, after stripping goal phrasing, NAMES a sibling teaching topic. Title-based, so it works
+    even when in_scope/assumed_prerequisites are empty. Intro-only; never touches the term's sub-bullets' siblings."""
+    if _topic_type_key(topic) != "study_path_introduction":
+        return cards
+    study_path = getattr(topic, "study_path", None)
+    taught: list[str] = []
+    for s in (getattr(study_path, "topics", None) or []):
+        if _topic_type_key(s) == "study_path_introduction":
+            continue
+        title = str(getattr(s, "title", "") or "").strip()
+        for name in [title, *_topic_title_aliases(title)]:
+            nk = _norm_gloss_key(name)
+            if nk:
+                taught.append(nk)
+    if not taught:
+        return cards
+
+    def _names_taught_topic(point: str) -> bool:
+        head = _norm_gloss_key(_strip_prereq_goal_phrase(_deco_stripped(point)))
+        return any(head == t or head.startswith(t + " ") for t in taught)
+
+    for card in cards:
+        if not _is_prereq_card(card):
+            continue
+        field = "points" if isinstance(card.get("points"), list) else ("bullets" if isinstance(card.get("bullets"), list) else None)
+        if field is None:
+            continue
+        pts = card[field]
+        kept: list[Any] = []
+        i = 0
+        while i < len(pts):
+            p = str(pts[i])
+            is_header = (bool(p.strip()) and not p[:1].isspace() and not p.lstrip().startswith("-"))
+            if not is_header:
+                kept.append(pts[i]); i += 1; continue
+            j = i + 1
+            while j < len(pts) and (str(pts[j])[:1].isspace() or str(pts[j]).lstrip().startswith("-")):
+                j += 1
+            if _names_taught_topic(p):
+                i = j; continue                          # a taught topic is not a prerequisite — drop the bullet
+            kept.extend(pts[i:j]); i = j
+        if kept:
+            card[field] = kept
+    return cards
+
+
+def _dedupe_intro_key_terms_against_scope(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
+    """The intro's key-terms card should hold only SHARED, cross-cutting terms — never a term a single later topic
+    teaches (e.g. the Bayes path's intro previewing 'Bayes' Theorem' or 'prior/posterior probability', which the
+    Bayes topic then defines again). Remove any intro key-term whose name matches a sibling teaching topic's TITLE
+    (always populated) or a concept in its in_scope (that topic owns it); drop the card if nothing shared remains.
+    No-op off-intro."""
+    if _topic_type_key(topic) != "study_path_introduction":
+        return cards
+    study_path = getattr(topic, "study_path", None)
+    owned_norm: set[str] = set()
+    owned_wordsets: list[set[str]] = []
+    for s in (getattr(study_path, "topics", None) or []):
+        if _topic_type_key(s) == "study_path_introduction":
+            continue
+        # The topic's TITLE (and short aliases) — the reliable signal when the model left in_scope empty — plus
+        # whatever in_scope it did populate.
+        title = str(getattr(s, "title", "") or "").strip()
+        for owned in [title, *_topic_title_aliases(title), *(getattr(s, "in_scope", None) or [])]:
+            nk = _norm_gloss_key(str(owned))    # singularizes so plural/singular unify
+            if nk:
+                owned_norm.add(nk)
+                owned_wordsets.append(set(nk.split()))
+    if not owned_norm:
+        return cards
+
+    def _owned(term: str) -> bool:
+        # Exact normalized match, OR (for a multi-word term) all its words appear inside one in_scope phrase —
+        # so "Prior Probability" is caught by a topic listing "prior and posterior probabilities" in_scope.
+        nk = _norm_gloss_key(term)
+        if not nk:
+            return False
+        if nk in owned_norm:
+            return True
+        words = set(nk.split())
+        return len(words) >= 2 and any(words <= ws for ws in owned_wordsets)
+    result: list[dict[str, Any]] = []
+    for card in cards:
+        if _is_prereq_card(card) or _lean_card_key(card) not in _KEY_TERM_CARD_KEYS:
+            result.append(card)
+            continue
+        field = "points" if isinstance(card.get("points"), list) else ("bullets" if isinstance(card.get("bullets"), list) else None)
+        if field is None:
+            result.append(card)
+            continue
+        pts = card[field]
+        kept: list[Any] = []
+        kept_headers = 0
+        i = 0
+        while i < len(pts):
+            p = str(pts[i])
+            is_header = (bool(p.strip()) and not p[:1].isspace() and not p.lstrip().startswith("-")
+                        and not p.lstrip().startswith(("$", "\\")))
+            if not is_header:
+                kept.append(pts[i]); i += 1; continue
+            j = i + 1
+            while j < len(pts) and (str(pts[j])[:1].isspace() or str(pts[j]).lstrip().startswith("-")):
+                j += 1
+            term = p.split(":", 1)[0].strip().rstrip(":").strip()
+            if _owned(term):
+                i = j; continue                         # a later topic owns this term — drop header + its defs
+            kept.extend(pts[i:j]); kept_headers += 1; i = j
+        if kept_headers == 0:
+            continue                                     # nothing shared left → drop the empty key-terms card
+        card[field] = kept
+        result.append(card)
+    return result
+
+
+def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
+    """For the intro, REBUILD the prerequisites card's bullets from the STRUCTURED assumed_prerequisites that
+    decomposition emitted (clean concept name + optional gloss). This makes the bullets clean AND — critically —
+    guarantees each prereq name appears VERBATIM, so the scanner turns it into a reliable open_study_path link
+    (no prose parsing). No-op when decomposition emitted no structured prereqs (the model's prose + the
+    prose-extraction fallback still apply)."""
+    if _topic_type_key(topic) != "study_path_introduction":
+        return cards
+    names: list[str] = []
+    seen: set[str] = set()
+    for p in (getattr(topic, "assumed_prerequisites", None) or []):
+        name = str(p).strip()
+        if name and name.lower() not in seen:
+            seen.add(name.lower())
+            names.append(name)
+    if not names:
+        return cards
+    glosses = dict(_assumed_prereq_glosses(topic))
+    # For prereqs decomposition gave no gloss (e.g. auto-detected cross-topic foundations like "conditional
+    # probability"), harvest a definition from the intro's key-terms card AND remove it there — a prerequisite
+    # belongs on the prerequisites card, not duplicated as a key term.
+    missing = [n for n in names if not glosses.get(n.lower())]
+    for key, gloss in _relocate_prereq_defs_from_key_terms(cards, missing).items():
+        glosses.setdefault(key, gloss)
+    points = [f"{n} — {glosses[n.lower()]}" if glosses.get(n.lower()) else n for n in names]
+
+    idx = next((i for i, c in enumerate(cards)
+                if _lean_card_key(c) == "prerequisites" or _is_prereq_card(c)), -1)
+    if idx >= 0:
+        cards[idx]["points"] = points
+        if not str(cards[idx].get("title") or "").strip():
+            cards[idx]["title"] = "Prerequisites"
+    else:
+        # No prereq card survived the blueprint filter — mint one and place it after background, before roadmap.
+        card = {"card_type": "prerequisites", "blueprint_key": "prerequisites",
+                "title": "Prerequisites", "points": points, "references": []}
+        insert_at = next((i for i, c in enumerate(cards) if _lean_card_key(c) == "roadmap"), len(cards))
+        cards.insert(insert_at, card)
+    return cards
+
+
+def _term_glosses_enabled() -> bool:
+    import os
+    return os.getenv("AZALEA_TERM_GLOSSES", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _lesson_defined_term_names(cards: list[dict[str, Any]]) -> set[str]:
+    """Lowercased header terms this lesson's own key-terms cards DEFINE — excluded from the glossary pass (a
+    term the lesson defines is not 'used but never defined')."""
+    names: set[str] = set()
+    for c in cards:
+        if _lean_card_key(c) not in _KEY_TERM_CARD_KEYS:
+            continue
+        field = "points" if isinstance(c.get("points"), list) else ("bullets" if isinstance(c.get("bullets"), list) else None)
+        if field is None:
+            continue
+        for p in c[field]:
+            s = str(p)
+            if not s.strip() or s[:1].isspace() or s.lstrip().startswith("-") or s.lstrip().startswith(("$", "\\")):
+                continue  # indented definition line or a display-equation, not a term header
+            term = s.split(":", 1)[0].strip().rstrip(":").strip()
+            if term:
+                names.add(term.lower())
+    return names
+
+
+def _default_gloss_model_fn(prose: str, exclude: list[str], topic_title: str) -> list[dict[str, str]]:
+    from app.services.llm_client import generate_term_glosses
+    return generate_term_glosses(prose, exclude, topic_title)
+
+
+# HEAD-noun words that make a gloss candidate ordinary/redundant rather than a technical term worth a popup. The
+# model over-glosses despite the prompt ("scenarios", "decisions", "probabilities"), so reject deterministically:
+# a term is rejected when its head noun (last word) is one of these, or every word is. "probability" is here so
+# "X probability" phrases (prior/posterior/conditional probability) never get a popup — they are the course's own
+# vocabulary (defined as key terms or prerequisites), not undefined jargon. "space"/"reasoning" are NOT here, so
+# "sample space" / "probabilistic reasoning" survive.
+_GLOSS_STOP_HEADS = frozenset({
+    "probability", "scenario", "decision", "outcome", "value", "situation", "result", "number", "case",
+    "condition", "calculation", "belief", "example", "concept", "idea", "information", "data", "event",
+    "problem", "step", "part", "thing", "way", "point", "factor", "measure", "amount", "quantity",
+})
+
+
+def _norm_gloss_key(text: str) -> str:
+    """Match key for glossary terms: lowercase, drop parentheticals ("Prior Probability (P(A))" → "prior
+    probability"), strip punctuation, and singularize each word so plural/singular unify ("probabilities" ==
+    "probability")."""
+    s = _re.sub(r"\([^)]*\)", " ", str(text or "").lower())
+    s = _re.sub(r"[^a-z0-9 ]+", " ", s)
+    words = []
+    for w in s.split():
+        if w.endswith("ies") and len(w) > 4:
+            w = w[:-3] + "y"
+        elif w.endswith("s") and not w.endswith("ss") and len(w) > 3:
+            w = w[:-1]
+        words.append(w)
+    return " ".join(words).strip()
+
+
+def _acceptable_gloss_term(term: str, exclude_norm: set[str]) -> bool:
+    """Precision filter for a model-proposed gloss term: reject ordinary words, the lesson's own vocabulary
+    (defined terms / prerequisites / topic titles, matched on the normalized key), and '<x> probability'-style
+    phrases whose head noun is a course-vocabulary word."""
+    key = _norm_gloss_key(term)
+    if not key or key in exclude_norm:
+        return False
+    words = key.split()
+    if all(w in _GLOSS_STOP_HEADS for w in words):
+        return False
+    if words[-1] in _GLOSS_STOP_HEADS:
+        return False
+    return True
+
+
+def _attach_undefined_term_glosses(cards: list[dict[str, Any]], topic: Topic, model_fn=None) -> list[dict[str, Any]]:
+    """Glossary popups (AZALEA_TERM_GLOSSES): an LLM pass finds TECHNICAL terms the prose uses but never defines —
+    and that are not prerequisites or taught-topic names — and attaches a popup_only gloss to the card where each
+    first appears. Attached BEFORE _emit_prereq_interactive_links so they flow through its popup validation/cap.
+    Best-effort; never breaks generation."""
+    if not _term_glosses_enabled():
+        return cards
+    try:
+        defined = _lesson_defined_term_names(cards)
+        exclude: set[str] = set(defined)
+        exclude |= {str(p).strip().lower() for p in (getattr(topic, "assumed_prerequisites", None) or [])}
+        study_path = getattr(topic, "study_path", None)
+        for s in (getattr(study_path, "topics", None) or []):
+            title = str(getattr(s, "title", "") or "").strip()
+            if title:
+                exclude.add(title.lower())
+                exclude |= {a.lower() for a in _topic_title_aliases(title)}
+        own_title = str(getattr(topic, "title", "") or "").strip().lower()
+        if own_title:
+            exclude.add(own_title)
+
+        glossable_cards = [c for c in cards if not _is_prereq_card(c) and _lean_card_key(c) not in _KEY_TERM_CARD_KEYS]
+        prose = "\n".join(t for t in (_card_scan_text(c) for c in glossable_cards) if t.strip())
+        if not prose.strip():
+            return cards
+
+        raw = (model_fn or _default_gloss_model_fn)(prose, sorted(exclude), str(getattr(topic, "title", "") or ""))
+        exclude_norm = {_norm_gloss_key(x) for x in exclude}
+        glossed: set[str] = set()
+        for g in (raw or []):
+            if not isinstance(g, dict):
+                continue
+            term = str(g.get("term") or "").strip()
+            gloss = str(g.get("gloss") or "").strip()
+            key = term.lower()
+            if not term or not gloss or key in glossed:
+                continue
+            if not _acceptable_gloss_term(term, exclude_norm):   # drop ordinary words + course vocabulary
+                continue
+            for c in glossable_cards:
+                ctext = _card_scan_text(c)
+                idx = ctext.find(term)                       # _model_popup_links needs a case-SENSITIVE anchor hit
+                if idx < 0:
+                    li = ctext.lower().find(key)
+                    if li < 0:
+                        continue
+                    term = ctext[li:li + len(term)]          # use the surface form actually present
+                links = c.setdefault("interactive_links", [])
+                if any(isinstance(x, dict) and str(x.get("text", "")).lower() == key for x in links):
+                    glossed.add(key); break
+                links.append({"text": term, "action": "popup_only", "explanation": gloss})
+                glossed.add(key)
+                break
+    except Exception:  # noqa: BLE001 — glossary enrichment must never break generation
+        return cards
+    return cards
+
+
 def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
     """§6.2: replace the hardcoded `interactive_links: []` with links from the DETERMINISTIC scanner (PR2) —
     review_earlier_topic for a concept taught by an earlier topic in this path, open_study_path for an external
@@ -3482,7 +4064,9 @@ def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) ->
         for card in cards:
             is_prereq_card = _is_prereq_card(card)
             text = project_to_plain_text(_card_scan_text(card))
-            model_popups = _model_popup_links(card, text)   # LLM-authored glosses for undefined terms (§2.1)
+            # popup_only glosses (both the LLM gloss pass and any model-authored ones) are the "popups"; they are
+            # gated on AZALEA_TERM_GLOSSES so they can be turned off wholesale without touching the nav links.
+            model_popups = _model_popup_links(card, text) if _term_glosses_enabled() else []
             result = scan_card(text, ctx)
             valid = validate_links(result.links, text)
             links: list[dict[str, Any]] = []
@@ -3499,7 +4083,9 @@ def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) ->
                 if l.action == LinkAction.review_earlier_topic:
                     expl = f"You saw this earlier in “{owner_title.get(l.target or '', 'an earlier topic')}”."
                 elif l.action == LinkAction.open_study_path:
-                    expl = "A prerequisite this path assumes — you can learn it in a dedicated path."
+                    # The popup is intentionally just a CTA ("Want to learn more? Open <name>"); the prereq's
+                    # one-line gloss already lives on the prerequisites-card bullet, so keep this terse.
+                    expl = ""
                 else:
                     expl = ""
                 links.append({"text": l.text, "explanation": expl, "action": l.action.value,
@@ -3600,6 +4186,25 @@ def _prune_phantom_roadmap_previews(cards: list[dict[str, Any]], topic: Topic) -
     return cards
 
 
+def _split_embedded_newline_points(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Split each point/bullet on embedded newlines into separate points. The model sometimes packs a term header
+    and its definition into one string ("Term\\n  - meaning"); splitting recovers the intended header + sub-bullet
+    structure. Preserves order; drops empty fragments. Best-effort — never raises."""
+    for card in cards:
+        for field in ("points", "bullets"):
+            val = card.get(field)
+            if not isinstance(val, list):
+                continue
+            out: list[Any] = []
+            for p in val:
+                if isinstance(p, str) and "\n" in p:
+                    out.extend(seg for seg in p.split("\n") if seg.strip())
+                else:
+                    out.append(p)
+            card[field] = out
+    return cards
+
+
 def _normalize_lean_card_order(
     cards: list[Any],
     topic: Topic,
@@ -3608,6 +4213,11 @@ def _normalize_lean_card_order(
     normalized = [card for card in cards if isinstance(card, dict)]
     if not normalized:
         return []
+
+    # Split any point that carries embedded newlines into separate points, so a model glitch like
+    # "Conditional Probability\n  - the probability ..." becomes a proper header + sub-bullet instead of one
+    # mangled bullet (and downstream key-terms parsing sees clean headers).
+    normalized = _split_embedded_newline_points(normalized)
 
     normalized = _normalize_lean_card_classification(normalized)
     topic_type = _topic_type_key(topic)
@@ -3653,6 +4263,10 @@ def _normalize_lean_card_order(
     # is not part of this topic type's structure (e.g. a worked_example/edge_case/
     # components card in a study-path intro, which the blueprint forbids).
     normalized = _enforce_blueprint_cards(normalized, topic_type)
+
+    # A lesson's blueprint has one edge_case slot; collapse any duplicate edge_case cards the model emitted into
+    # one consolidated card (union of points) so there is no redundant filler second edge-case card.
+    normalized = _merge_duplicate_edge_cases(normalized)
 
     if topic_type == "study_path_introduction":
         # Guarantee every non-intro topic is previewed (the roadmap rule is prompt-only) BEFORE ordering,
@@ -3705,14 +4319,48 @@ def _normalize_lean_card_order(
     except Exception:  # noqa: BLE001 — observability must never break generation
         pass
 
+    # A purpose card should motivate, not pre-empt the formula card: strip a duplicated symbol breakdown and any
+    # dangling "…defined as …:" colon lead-in from a purpose card that precedes the formula.
+    normalized = _strip_formula_breakdown_from_purpose(normalized)
+
+    # Notation consistency: drop a key-terms card that contradicts the formula's variable notation (e.g. defines
+    # the event as E / partitions as A_i while the formula uses A / B_i). The formula card's own breakdown then
+    # remains the single, consistent source of symbol meanings.
+    normalized = _reconcile_formula_notation_conflict(normalized)
+
     # Enforce the layered key-terms model deterministically: strip terms an earlier topic already defined, and
     # drop the card if nothing new remains (the prompt/ledger nudge alone is not reliably obeyed by the model).
     normalized = _dedupe_key_terms_against_earlier(normalized, topic)
+
+    # A path prerequisite is a link, never re-taught: strip it from a body topic's key-terms card too.
+    normalized = _strip_prerequisite_key_terms(normalized, topic)
+
+    # On the intro, strip key-terms a single later topic owns (in its in_scope) so the intro previews only SHARED
+    # terms, not vocabulary the topic will teach in depth (e.g. prior/posterior probability belong to the Bayes
+    # topic, not the intro). No-op off-intro or when siblings carry no in_scope.
+    normalized = _dedupe_intro_key_terms_against_scope(normalized, topic)
+
+    # …and drop elementary intro key-terms ("Probability", "Event") the prerequisites already cover, so the intro
+    # key-terms and prerequisites cards stop overlapping on foundational material.
+    normalized = _strip_generic_intro_key_terms(normalized, topic)
 
     # THEN, for a math/science formula topic, put the equation as the first point of the surviving key-terms card
     # so the learner sees it while reading the terms it uses (after dedup, so the equation never keeps an
     # otherwise-empty card alive; no-op for non-formula topics).
     normalized = _prepend_equation_to_key_terms(normalized)
+
+    # First GROUND the intro's prerequisites card from decomposition's structured assumed_prerequisites (clean
+    # name + gloss bullets), so the names are canonical + verbatim; then emit links off them. No-op off-intro or
+    # when decomposition emitted no structured prereqs (the model prose + prose-extraction fallback still apply).
+    normalized = _ground_prereq_card(normalized, topic)
+
+    # A path prerequisite can never be a topic the path teaches: drop a prose prereq bullet that names a taught
+    # sibling topic (e.g. the intro listing "Recognition of Bayes' Theorem" when Bayes' Theorem is a later topic).
+    normalized = _strip_taught_topics_from_prereq_card(normalized, topic)
+
+    # Glossary popups (AZALEA_TERM_GLOSSES): LLM pass attaches popup_only glosses for undefined technical terms.
+    # Runs BEFORE emission so the glosses flow through its popup validation + per-card cap. Off ⇒ no-op, no call.
+    normalized = _attach_undefined_term_glosses(normalized, topic)
 
     # PREREQ_LINKS §6.2: emit deterministic interactive links (review_earlier_topic / open_study_path) onto the
     # cards, replacing the hardcoded []. Flag-gated (AZALEA_PREREQ_LINKS) and best-effort — off ⇒ links stay [].

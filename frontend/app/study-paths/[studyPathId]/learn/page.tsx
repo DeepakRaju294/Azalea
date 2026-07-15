@@ -6215,7 +6215,13 @@ function normalizeInteractiveLinks(value?: LessonInteractiveLink[]) {
       target: String(link.target || "").trim(),
     }))
     .filter((link) => {
-      if (!link.text || !link.explanation) {
+      if (!link.text) {
+        return false;
+      }
+      // Only popup_only renders the explanation AS its content, so it must have one. Navigation links
+      // (open_study_path → "Want to learn more?" CTA; review_earlier_topic → jump) carry their own UI and
+      // intentionally have no explanation body — never filter those out for a missing explanation.
+      if (link.action === "popup_only" && !link.explanation) {
         return false;
       }
       const key = link.text.toLowerCase();
@@ -7174,9 +7180,11 @@ function LearningCard({
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Want to learn more?</DialogTitle>
-              {openStudyLink?.explanation && (
-                <DialogDescription>{openStudyLink.explanation}</DialogDescription>
-              )}
+              {/* Deliberately no explanation body — the prereq's one-line gloss already sits on the
+                  prerequisites card bullet; this popup is just the CTA (kept sr-only for a11y). */}
+              <DialogDescription className="sr-only">
+                Open a dedicated study path for {openStudyLink?.text}.
+              </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <button

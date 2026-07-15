@@ -65,6 +65,32 @@ def _subject_phrase(subject_key: str) -> str:
     return (subject_key or "").replace("_", " ").strip().title() or "the algorithm"
 
 
+def _cross_topic_foundations(teaching_topics: list[dict[str, Any]], goal: str | None) -> list[str]:
+    """A concept named in the in_scope of ≥2 teaching topics but TAUGHT by none (matches no topic's
+    subject/title) is a shared assumed foundation — a prerequisite the LLM often forgets to declare. E.g. on a
+    Bayes path both 'Law of Total Probability' and 'Bayes Theorem' list 'conditional probability' in_scope, yet
+    no topic teaches it → it is a prerequisite, not a key term. Deterministic backstop to the LLM's
+    path_plan.assumed_prerequisites. Excludes anything the goal names (that stays in-scope/taught)."""
+    def _norm(s: str) -> str:
+        return re.sub(r"[^a-z0-9 ]+", "", str(s or "").replace("_", " ").lower()).strip()
+
+    subjects = {_norm(t.get("subject_key")) for t in teaching_topics} | {_norm(t.get("title")) for t in teaching_topics}
+    subjects.discard("")
+    counts: dict[str, tuple[str, int]] = {}   # norm -> (display, topic_count)
+    for t in teaching_topics:
+        for concept in {_norm(c): str(c).strip() for c in (t.get("in_scope") or [])}.items():
+            norm, display = concept
+            if not norm or norm in subjects:
+                continue
+            disp, n = counts.get(norm, (display, 0))
+            counts[norm] = (disp, n + 1)
+    out: list[str] = []
+    for norm, (display, n) in counts.items():
+        if n >= 2 and not _goal_names_topic({"title": display, "subject_key": display}, goal):
+            out.append(display)
+    return out
+
+
 # Prepositions/conjunctions that never legitimately OPEN an educational topic title, so a title starting with
 # one is a malformed LLM fragment (e.g. "With Ohm's Law", a truncation of "Calculating With Ohm's Law").
 # Deliberately EXCLUDES "for"/"in"/"on" — those DO start real titles ("For Loops", "In-place Sorting").
@@ -128,6 +154,10 @@ def _to_legacy(topic: dict[str, Any], title_by_id: dict[str, str], fallback_orde
     if rel == IMPLEMENTATION_FOLLOW_UP and IMPLEMENTATION_FOLLOW_UP not in modifiers:
         modifiers.append(IMPLEMENTATION_FOLLOW_UP)
 
+    _incoming_meta = topic.get("decomposition_metadata")
+    _glosses = _incoming_meta.get("assumed_prerequisite_glosses") if isinstance(_incoming_meta, dict) else None
+    _carried_meta = {"assumed_prerequisite_glosses": _glosses} if _glosses else {}
+
     return {
         "title": title[:255],
         "purpose": str(topic.get("purpose") or topic.get("primary_capability") or
@@ -169,6 +199,9 @@ def _to_legacy(topic: dict[str, Any], title_by_id: dict[str, str], fallback_orde
             "basis": str(topic.get("basis") or "goal"),
             "policy_reason": topic.get("policy_reason"),
             "relationship_to_parent": rel,
+            # carry the intro's structured prereq glosses (name->one-line "what it is") so the lean generator
+            # can render "name — gloss" bullets and thread the gloss into the open_study_path popup.
+            **_carried_meta,
         },
     }
 
@@ -221,6 +254,35 @@ def _intro_title(goal: str | None) -> str:
     titled = " ".join(w.lower() if (j and w.lower() in _TITLE_SMALL_WORDS) else w.capitalize()
                       for j, w in enumerate(core))
     return f"Introduction to {titled}"[:255]
+
+
+def _path_assumed_prereqs(path_plan: dict[str, Any]) -> tuple[list[str], dict[str, str]]:
+    """Parse path_plan.assumed_prerequisites — the LLM's STRUCTURED external-prerequisite list — into an
+    ordered list of clean concept names plus a name->gloss map. This is the source of truth for the intro's
+    prerequisites card and the prerequisite links, replacing prose extraction. Tolerates plain strings or
+    {name, gloss} dicts and dedupes case-insensitively."""
+    names: list[str] = []
+    glosses: dict[str, str] = {}
+    seen: set[str] = set()
+    for item in (path_plan.get("assumed_prerequisites") or []):
+        if isinstance(item, str):
+            name, gloss = item.strip(), ""
+        elif isinstance(item, dict):
+            name = str(item.get("name") or item.get("concept") or item.get("title") or "").strip()
+            gloss = str(item.get("gloss") or item.get("description") or "").strip()
+        else:
+            continue
+        name = name.strip().strip(".").strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        names.append(name)
+        if gloss:
+            glosses[name] = gloss
+    return names, glosses
 
 
 def _synthesize_intro_topic(goal: str | None) -> dict[str, Any]:
@@ -321,15 +383,32 @@ def generate_decomposed_topics(
         topics_out = [intro, *topics_out]
         _log.info("topic_decomposition: synthesized orientation intro (LLM emitted none)")
 
-    # Name the folded prerequisites on the intro so its prerequisites card mentions them (not taught).
-    if dropped_prereqs:
+    # The intro's prerequisites are the SINGLE structured source of truth for its prerequisites card and the
+    # prereq links: the LLM's explicit path_plan.assumed_prerequisites (clean concept names + glosses) plus
+    # any foundation topics we folded above. No prose parsing — these names are canonical by construction.
+    # Exclude any prereq the GOAL itself names (that concept is in-scope, taught, not an external prereq).
+    llm_prereqs, prereq_glosses = _path_assumed_prereqs(path_plan)
+    llm_prereqs = [p for p in llm_prereqs if not _goal_names_topic({"title": p, "subject_key": p}, goal)]
+    # Deterministic backstop: concepts shared across ≥2 topics' in_scope but taught by none are prerequisites the
+    # LLM tends to omit (e.g. 'conditional probability' on a Bayes path). Their gloss is harvested downstream from
+    # the intro's key-terms card if it defines them (and the term is then removed from key-terms — see §overlap).
+    teaching = [t for t in topics_out if not _is_opener(t)]
+    auto_prereqs = _cross_topic_foundations(teaching, goal)
+    structured_prereqs = [*llm_prereqs, *auto_prereqs, *dropped_prereqs]
+    if structured_prereqs:
         for t in topics_out:
             if _is_opener(t):
                 ap = list(t.get("assumed_prerequisites") or [])
-                for p in dropped_prereqs:
-                    if p and p not in ap:
+                have = {a.lower() for a in ap}
+                for p in structured_prereqs:
+                    if p and p.lower() not in have:
                         ap.append(p)
+                        have.add(p.lower())
                 t["assumed_prerequisites"] = ap
+                if prereq_glosses:
+                    meta = t.setdefault("decomposition_metadata", {})
+                    meta["assumed_prerequisite_glosses"] = {
+                        **(meta.get("assumed_prerequisite_glosses") or {}), **prereq_glosses}
                 break
 
     ordered = sorted(topics_out, key=lambda t: int(t.get("order_index") or 0))

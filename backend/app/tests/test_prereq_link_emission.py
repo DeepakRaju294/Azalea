@@ -147,19 +147,38 @@ class PrereqLinkEmission(unittest.TestCase):
         self.assertIn("conditional probability", texts)
         self.assertIn("sample space", texts)
 
-    def test_model_popup_glosses_are_preserved(self):
-        # An LLM-authored popup_only gloss for an undefined term must survive the emission (not be overwritten).
+    def test_model_popup_glosses_are_preserved_when_popups_enabled(self):
+        # An LLM-authored popup_only gloss for an undefined term survives the emission when popups are ENABLED
+        # (AZALEA_TERM_GLOSSES). Nav links are unaffected either way.
         os.environ[_FLAG] = "1"
-        intro = _Topic("i", "Intro", 0, course_type="study_path_introduction")
-        body = _Topic("t1", "Sampling", 1)
-        _Path([intro, body])
-        cards = [{"card_type": "background", "points": ["A partition splits the space."],
+        os.environ["AZALEA_TERM_GLOSSES"] = "1"
+        try:
+            intro = _Topic("i", "Intro", 0, course_type="study_path_introduction")
+            body = _Topic("t1", "Sampling", 1)
+            _Path([intro, body])
+            cards = [{"card_type": "background", "points": ["A partition splits the space."],
+                      "interactive_links": [
+                          {"text": "partition", "action": "popup_only",
+                           "explanation": "A split of the sample space into disjoint parts."}]}]
+            out = _emit_prereq_interactive_links(cards, body)
+            links = out[0]["interactive_links"]
+            self.assertTrue(any(l["action"] == "popup_only" and l["text"] == "partition" for l in links))
+        finally:
+            os.environ.pop("AZALEA_TERM_GLOSSES", None)
+
+    def test_popups_suppressed_when_disabled_but_nav_links_survive(self):
+        # Popups OFF (AZALEA_TERM_GLOSSES unset): a model popup_only gloss is dropped, but the deterministic
+        # review_earlier_topic nav link is still emitted.
+        os.environ[_FLAG] = "1"
+        os.environ.pop("AZALEA_TERM_GLOSSES", None)
+        _, comp, quick = self._sorting_path()
+        cards = [{"card_type": "background", "points": ["Quick Sort builds on Comparison Sort."],
                   "interactive_links": [
-                      {"text": "partition", "action": "popup_only",
-                       "explanation": "A split of the sample space into disjoint parts."}]}]
-        out = _emit_prereq_interactive_links(cards, body)
+                      {"text": "Quick Sort", "action": "popup_only", "explanation": "a fast sort"}]}]
+        out = _emit_prereq_interactive_links(cards, quick)
         links = out[0]["interactive_links"]
-        self.assertTrue(any(l["action"] == "popup_only" and l["text"] == "partition" for l in links))
+        self.assertFalse(any(l["action"] == "popup_only" for l in links))          # popup dropped
+        self.assertTrue(any(l["action"] == "review_earlier_topic" for l in links))  # nav link kept
 
     def test_model_popup_dropped_when_anchor_absent(self):
         card = {"points": ["nothing here"], "interactive_links": [

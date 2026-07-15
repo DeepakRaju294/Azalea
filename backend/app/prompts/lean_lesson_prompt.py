@@ -321,7 +321,7 @@ Hard rules:
 - Preserve blueprint_key on every card.
 - Skip optional cards only when they would be filler.
 - Do not create underlined terms, microchecks, generated visual assets, or interactive visuals.
-- You MAY add a POPUP GLOSS for a technical term this lesson USES but never defines, and that is neither a prerequisite nor a term taught in another topic — so a first-time learner meeting it has a brief explanation. Add it to that card's `interactive_links` as: {"text": "<the exact term as it appears verbatim in this card's text>", "action": "popup_only", "explanation": "<a 1-2 sentence plain-language definition>"}. ONLY for a genuinely undefined technical term a beginner would not know; never for ordinary words, prerequisites, or terms this lesson already explains. Emit at most 2 such glosses per card. Do NOT create any other kind of interactive link — open_study_path and review_earlier_topic are added automatically, so never emit those actions yourself.
+- POPUP GLOSSES (action "popup_only") — add these actively. Apply ONE test to each technical term a card uses: "Would a motivated beginner starting this path have to pause and look this word up to follow the sentence?" If yes AND the term is not defined anywhere on this card, in a key-terms card, or as a prerequisite — gloss it. Add to that card's `interactive_links`: {"text": "<the term EXACTLY as it appears verbatim in this card's text>", "action": "popup_only", "explanation": "<a plain-language definition, ≤ 20 words, no jargon>"}. Typical glossable terms in a math/probability lesson: "partition", "disjoint", "sample space", "mutually exclusive", "complement". DO gloss such a term the first time the card uses it. Do NOT gloss: ordinary English words; the card's own headline concept; a term already defined on a key-terms card; a prerequisite (those are handled automatically); a term you gloss on another card (gloss once, on first use). Emit 1-2 glosses on any card that introduces unfamiliar terminology; emit none only when every term is either ordinary or already defined. Do NOT emit open_study_path or review_earlier_topic yourself — those are added automatically.
 - Use visual_type plus visual_description for visuals: visual_type chooses the family, visual_description gives the exact plain-English storyboard. For node_link_diagram: node labels are always DATA VALUES (integers, letters, codes) — visual_description never determines what goes in visual_nodes[i].label.
 - Leave visual_description empty when no visual would help.
 - Use concise but complete bullet points.
@@ -687,6 +687,46 @@ def _tree_value_directive(topic: "Topic", families: list[str]) -> str | None:
     )
 
 
+def _formula_notation_contract(topic: Topic, topic_type: str) -> str | None:
+    """For an adapter-backed formula topic, build a NOTATION CONTRACT from the adapter's canonical equation +
+    symbol legend, so the LLM writes EVERY card (purpose, definition, method) in the SAME variable letters the
+    (deterministically grounded) formula card will use — instead of independently reaching for a different
+    textbook convention (e.g. writing P(H|E) when the formula card uses P(A|B)). Best-effort; None when there is
+    no formula adapter for the topic."""
+    if topic_type not in ("math_formula_method", "formula_application"):
+        # cheap gate — only formula-driven topic types have a canonical equation to pin
+        return None
+    try:
+        import re as _re
+
+        from app.services.examples.trace_pipeline import route_adapter
+
+        adapter = route_adapter({"title": getattr(topic, "title", "") or "", "course_type": topic_type})
+        spec = getattr(adapter, "_formula_spec", None) if adapter is not None else None
+        latex = getattr(spec, "canonical_latex", None) if spec is not None else None
+        if not latex:
+            return None
+        notes = [str(n) for n in (getattr(spec, "canonical_notes", None) or []) if str(n).strip()]
+        letters = sorted({m for arg in _re.findall(r"P\s*\(([^)]*)\)", latex) for m in _re.findall(r"[A-Z]", arg)})
+        lines = [
+            "NOTATION CONTRACT (this topic has ONE fixed equation — you MUST use its exact notation in EVERY card):",
+            f"Equation: $${latex}$$",
+        ]
+        lines.extend(f"- {n}" for n in notes)
+        if letters:
+            lines.append(
+                f"- Use these EXACT variable letters everywhere: {', '.join(letters)}. NEVER rename them or "
+                f"substitute other letters for the same roles (e.g. do not write P(H|E) when the equation uses "
+                f"{', '.join(letters)}). Keep one consistent notation across the purpose, definition, method, and "
+                f"example cards.")
+        lines.append(
+            "- Only the formula card states the full equation; other cards refer to the symbols by name, they do "
+            "not restate the whole equation.")
+        return "\n".join(lines)
+    except Exception:  # noqa: BLE001 — prompt enrichment is additive; never block generation
+        return None
+
+
 def build_lean_user_prompt(
     topic: Topic,
     chunks: list[ContentChunk],
@@ -861,6 +901,11 @@ def build_lean_user_prompt(
             "already seen the motivation and conceptual background. Do not include a background "
             "card — start directly with the implementation plan."
         )
+
+    notation_contract = _formula_notation_contract(topic, topic_type)
+    if notation_contract:
+        parts.append("")
+        parts.append(notation_contract)
 
     parts.append("")
     parts.append("SELECTED TOPIC-TYPE CARD PLAN:")
