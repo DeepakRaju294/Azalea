@@ -1265,7 +1265,8 @@ TOPIC_BLUEPRINTS: dict[str, Blueprint] = {
         "avoid": [
             "Do not teach any individual subtopic in depth.",
             "Do not include any practice card, practice question, quiz, check, mastery task, or applied exercise.",
-            "The intro's components_terms card defines ONLY shared, cross-cutting terms used across multiple later topics (e.g. vertex, edge, weight); topic-specific terms (union-find, priority queue) belong in their subtopic, not here.",
+            "The intro's components_terms card defines ONLY terms used in EVERY later topic of this path (true path-wide vocabulary, e.g. vertex/edge/weight on a graph-algorithms path). A term used by only one or two topics — or even most but not all — belongs to those topics, not here. Never define prerequisite-level terms the learner is assumed to know. If no term is genuinely path-wide, OMIT this card entirely (a short or absent card is correct, filler is not).",
+            "The prerequisites card lists each assumed prerequisite as: 'name — what it is' (a one-line refresher) plus one line stating what the learner must already be able to do with it to follow this path. Prerequisites are FEW (0-3); nothing trivial, nothing this path teaches.",
             "Do not write vague filler — every card must have a specific orienting purpose.",
             "Do not repeat content that the first real topic will cover — the prerequisites card ANCHORS the subject in one line; the deeper intuition belongs to the concept/first topic.",
         ],

@@ -50,11 +50,12 @@ _RESP = {
 
 
 class _Topic:
-    def __init__(self, tid, title, order, prereqs=None, glosses=None, ctype="concept"):
+    def __init__(self, tid, title, order, prereqs=None, glosses=None, requirements=None, ctype="concept"):
         self.id, self.title, self.order_index = tid, title, order
         self.course_type, self.topic_type = ctype, None
         self.assumed_prerequisites = prereqs or []
-        self.decomposition_metadata = {"assumed_prerequisite_glosses": glosses or {}}
+        self.decomposition_metadata = {"assumed_prerequisite_glosses": glosses or {},
+                                       "assumed_prerequisite_requirements": requirements or {}}
         self.study_path = None
 
 
@@ -67,19 +68,28 @@ class _Path:
 
 class ParseStructuredPrereqs(unittest.TestCase):
     def test_dicts_yield_names_and_glosses(self):
-        names, glosses = _path_assumed_prereqs(
-            {"assumed_prerequisites": [{"name": "vectors", "gloss": "arrows with magnitude and direction"}]})
+        names, glosses, reqs = _path_assumed_prereqs(
+            {"assumed_prerequisites": [{"name": "vectors", "gloss": "arrows with magnitude and direction",
+                                        "required_knowledge": "add vectors and compute dot products"}]})
         self.assertEqual(names, ["vectors"])
         self.assertEqual(glosses["vectors"], "arrows with magnitude and direction")
+        self.assertEqual(reqs["vectors"], "add vectors and compute dot products")
 
     def test_plain_strings_and_dedup(self):
-        names, glosses = _path_assumed_prereqs(
+        names, glosses, reqs = _path_assumed_prereqs(
             {"assumed_prerequisites": ["Vectors", "vectors", {"name": "Sets"}]})
         self.assertEqual(names, ["Vectors", "Sets"])   # case-insensitive dedup, order kept
         self.assertEqual(glosses, {})
+        self.assertEqual(reqs, {})
 
     def test_missing_field_is_empty(self):
-        self.assertEqual(_path_assumed_prereqs({}), ([], {}))
+        self.assertEqual(_path_assumed_prereqs({}), ([], {}, {}))
+
+    def test_caps_at_four_prereqs(self):
+        # Prereqs are FEW by contract; a flooded list keeps only the leading (most essential) entries.
+        many = [{"name": f"concept {i}"} for i in range(8)]
+        names, _, _ = _path_assumed_prereqs({"assumed_prerequisites": many})
+        self.assertEqual(len(names), 4)
 
 
 class PipelineEmitsStructuredPrereqs(unittest.TestCase):
@@ -219,6 +229,45 @@ class GroundHarvestsGlossFromKeyTerms(unittest.TestCase):
         self.assertEqual(prereq["points"], ["conditional probability — probability of A given B has occurred"])
         kt = next(c for c in out if c["card_type"] == "definition")["points"]
         self.assertNotIn("Conditional Probability", kt)                 # relocated out of key terms
+
+
+class TwoLinePrereqBullets(unittest.TestCase):
+    def test_requirement_renders_as_sub_bullet(self):
+        # User spec: each prereq = one line WHAT IT IS + one line what you must know about it for this path.
+        intro = _Topic("i", "Intro", 0, prereqs=["conditional probability"],
+                       glosses={"conditional probability": "the probability of one event given another"},
+                       requirements={"conditional probability": "compute P(A|B) for concrete events"},
+                       ctype="study_path_introduction")
+        cards = [{"card_type": "prerequisites", "blueprint_key": "prerequisites",
+                  "title": "Prerequisites", "points": ["prose"]}]
+        out = _ground_prereq_card(cards, intro)
+        self.assertEqual(out[0]["points"], [
+            "conditional probability — the probability of one event given another",
+            "  - What you need: compute P(A|B) for concrete events"])
+
+    def test_no_requirement_stays_single_line(self):
+        intro = _Topic("i", "Intro", 0, prereqs=["vectors"], glosses={"vectors": "arrows"},
+                       ctype="study_path_introduction")
+        cards = [{"card_type": "prerequisites", "blueprint_key": "prerequisites",
+                  "title": "Prerequisites", "points": ["prose"]}]
+        out = _ground_prereq_card(cards, intro)
+        self.assertEqual(out[0]["points"], ["vectors — arrows"])
+
+
+class PrereqCardRecognition(unittest.TestCase):
+    def test_blueprint_key_is_authoritative(self):
+        from app.services.lean_lesson_generator import _is_prereq_card
+        self.assertTrue(_is_prereq_card({"blueprint_key": "prerequisites", "title": "Anything At All"}))
+
+    def test_essential_foundations_title_recognized(self):
+        # Live round-8 miss: "Essential Foundations for Combinatorial Analysis" got no links.
+        from app.services.lean_lesson_generator import _is_prereq_card
+        self.assertTrue(_is_prereq_card({"card_type": "purpose_context",
+                                         "title": "Essential Foundations for Combinatorial Analysis"}))
+
+    def test_objectives_card_still_not_matched(self):
+        from app.services.lean_lesson_generator import _is_prereq_card
+        self.assertFalse(_is_prereq_card({"card_type": "purpose_context", "title": "What You Will Learn"}))
 
 
 class GlossHelper(unittest.TestCase):

@@ -102,17 +102,25 @@ RULES:
   subject. (This does NOT apply when the goal targets ONE specific method — then include only what that
   method needs, not its whole family.)
 - path_plan.assumed_prerequisites: the STRUCTURED list of OUT-OF-SCOPE concepts this path assumes the learner
-  already knows and does NOT teach (the external prerequisites). Each is {{"name": <the bare concept name, a
-  1-3 word noun phrase, lowercase unless a proper noun — e.g. "conditional probability", "vectors", "the
-  chain rule">, "gloss": <a one-line plain-language "what it is">}}. Name the CONCEPT itself, never a goal
-  phrase ("conditional probability", NOT "understanding conditional probability"). Include only genuine
-  external prerequisites (not concepts taught by a topic in this path, not the goal concept itself). Usually
-  2-5; [] if the path is truly self-contained. This is the source of truth the intro's prerequisites card and
-  the prerequisite links are built from — so keep the names clean and canonical.
+  already knows and does NOT teach (the external prerequisites). THE TEST: a prerequisite is a concept that
+  would be taught in the PRECEDING lecture/unit of a college course leading up to this material — e.g. "BSTs
+  and their operations" before a BST-traversal path, "derivatives" before integration-by-parts. It must pass
+  BOTH filters: (a) NOT trivial background (multiplication is not a prerequisite for Bayes' theorem — never
+  list arithmetic, "basic math", or skills far below the path's level), and (b) NOT taught by any topic in
+  this path and not the goal concept itself. Each is {{"name": <the bare concept name, a 1-3 word noun
+  phrase, lowercase unless a proper noun — e.g. "conditional probability", "binary search trees">,
+  "gloss": <one line: WHAT IT IS, a plain-language refresher>, "required_knowledge": <one line: what the
+  learner MUST be able to do/know about it to follow THIS path — specific, e.g. "be able to compute P(A|B)
+  from a joint table", not "understand it well">}}. Name the CONCEPT itself, never a goal phrase
+  ("conditional probability", NOT "understanding conditional probability"). FEW: 0-3. An introductory path
+  to a first concept in an area has NONE ([]). This is the source of truth the intro's prerequisites card
+  and the prerequisite links are built from — so keep the names clean and canonical.
 - The path BEGINS with exactly one orientation topic: content_role "orientation", topic_type
   "study_path_introduction", primary_action "understand". It FRAMES the area, NAMES the assumed
   prerequisites WITHOUT teaching them (a one-line "if X is new to you, review it first" — a prereq is
-  mentioned, never taught), defines the shared terms used across later topics, and previews the topics.
+  mentioned, never taught), defines ONLY the terms used across ALL later topics (path-wide vocabulary; a
+  term appearing in just one or two topics belongs to those topics, not the intro — and if no term is truly
+  path-wide the intro defines none), and previews the topics.
   It teaches NO subtopic and has NO worked example and NO practice. Do NOT put a `foundation` teaching
   topic (e.g. "Interpreting Probability") in this slot — a prerequisite the learner is assumed to have is
   named in the intro, not made into its own teaching topic.
@@ -149,7 +157,8 @@ Return ONLY JSON of this shape:
     "end_capability": "...",
     "end_capability_actions": ["trace", "implement"],
     "assumed_prerequisites": [
-      {{"name": "conditional probability", "gloss": "the probability of one event given another has occurred"}}
+      {{"name": "conditional probability", "gloss": "the probability of one event given another has occurred",
+        "required_knowledge": "be able to read and compute P(A|B) for concrete events"}}
     ],
     "required_capabilities": [
       {{"capability_id": "...", "description": "...", "prerequisite_capability_ids": [],

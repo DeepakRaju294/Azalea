@@ -3276,15 +3276,20 @@ def _model_popup_links(card: dict[str, Any], card_text: str) -> list[dict[str, A
 
 
 # Specific prereq-card title cues actually seen across generations. Deliberately NOT "what you" / "foundation"
-# (they match objectives cards like "What You Will Learn" — false positives).
-_PREREQ_CARD_TITLE_CUES = ("prerequisite", "foundational", "assumed knowledge", "essential background",
-                           "background knowledge", "prior knowledge", "background for", "assumed background")
+# (they match objectives cards like "What You Will Learn" — false positives). "foundations" (plural) IS safe and
+# catches the live "Essential Foundations for …" variant.
+_PREREQ_CARD_TITLE_CUES = ("prerequisite", "foundational", "foundations", "assumed knowledge",
+                           "essential background", "background knowledge", "prior knowledge", "background for",
+                           "assumed background")
 
 
 def _is_prereq_card(card: dict[str, Any]) -> bool:
     """Whether a card is the prerequisites / foundational-knowledge card that DECLARES the assumed prereqs.
-    Titles vary a lot across generations ("Foundational Ideas", "Prerequisites for …", "Essential Background
-    for …"), so match several cues. open_study_path links live ONLY here — never scattered elsewhere."""
+    The blueprint_key ("prerequisites") is authoritative when present; titles vary a lot across generations
+    ("Foundational Ideas", "Prerequisites for …", "Essential Foundations for …"), so also match several cues.
+    open_study_path links live ONLY here — never scattered elsewhere."""
+    if _lean_card_key(card) == "prerequisites":
+        return True
     title = str(card.get("title") or "").lower()
     return any(cue in title for cue in _PREREQ_CARD_TITLE_CUES)
 
@@ -3423,15 +3428,25 @@ def _card_scan_text(card: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
-def _assumed_prereq_glosses(topic: Topic) -> dict[str, str]:
-    """The name->gloss map decomposition stashed on the intro (path_plan.assumed_prerequisites glosses),
-    keyed case-insensitively. Empty when decomposition emitted none. Best-effort; never raises."""
+def _prereq_meta_map(topic: Topic, key: str) -> dict[str, str]:
+    """A name->text map decomposition stashed on the intro's decomposition_metadata, keyed case-insensitively.
+    Empty when decomposition emitted none. Best-effort; never raises."""
     try:
         meta = getattr(topic, "decomposition_metadata", None) or {}
-        raw = meta.get("assumed_prerequisite_glosses") or {}
+        raw = meta.get(key) or {}
         return {str(k).strip().lower(): str(v).strip() for k, v in raw.items() if str(v).strip()}
     except Exception:  # noqa: BLE001 — never break generation on a metadata shape surprise
         return {}
+
+
+def _assumed_prereq_glosses(topic: Topic) -> dict[str, str]:
+    """name -> WHAT IT IS (the one-line refresher)."""
+    return _prereq_meta_map(topic, "assumed_prerequisite_glosses")
+
+
+def _assumed_prereq_requirements(topic: Topic) -> dict[str, str]:
+    """name -> what the learner MUST know about the prereq to follow this path (the actionable line)."""
+    return _prereq_meta_map(topic, "assumed_prerequisite_requirements")
 
 
 _KEY_TERM_CARD_KEYS = frozenset({"definition", "components_terms", "key_terms"})
@@ -3913,13 +3928,21 @@ def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic) -> list[dict[
     if not names:
         return cards
     glosses = dict(_assumed_prereq_glosses(topic))
+    requirements = _assumed_prereq_requirements(topic)
     # For prereqs decomposition gave no gloss (e.g. auto-detected cross-topic foundations like "conditional
     # probability"), harvest a definition from the intro's key-terms card AND remove it there — a prerequisite
     # belongs on the prerequisites card, not duplicated as a key term.
     missing = [n for n in names if not glosses.get(n.lower())]
     for key, gloss in _relocate_prereq_defs_from_key_terms(cards, missing).items():
         glosses.setdefault(key, gloss)
-    points = [f"{n} — {glosses[n.lower()]}" if glosses.get(n.lower()) else n for n in names]
+    # Two lines per prerequisite: the refresher ("name — what it is") and, when decomposition provided it, the
+    # actionable line ("what you need to know about it to follow this path") as an indented sub-bullet.
+    points: list[str] = []
+    for n in names:
+        points.append(f"{n} — {glosses[n.lower()]}" if glosses.get(n.lower()) else n)
+        req = requirements.get(n.lower())
+        if req:
+            points.append(f"  - What you need: {req}")
 
     idx = next((i for i, c in enumerate(cards)
                 if _lean_card_key(c) == "prerequisites" or _is_prereq_card(c)), -1)

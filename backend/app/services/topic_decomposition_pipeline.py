@@ -155,8 +155,13 @@ def _to_legacy(topic: dict[str, Any], title_by_id: dict[str, str], fallback_orde
         modifiers.append(IMPLEMENTATION_FOLLOW_UP)
 
     _incoming_meta = topic.get("decomposition_metadata")
-    _glosses = _incoming_meta.get("assumed_prerequisite_glosses") if isinstance(_incoming_meta, dict) else None
-    _carried_meta = {"assumed_prerequisite_glosses": _glosses} if _glosses else {}
+    _carried_meta: dict[str, Any] = {}
+    if isinstance(_incoming_meta, dict):
+        # carry the intro's structured prereq maps (gloss = what it is; requirement = what you must know
+        # about it for this path) so the lean generator can render the two-line prereq bullets.
+        for _k in ("assumed_prerequisite_glosses", "assumed_prerequisite_requirements"):
+            if _incoming_meta.get(_k):
+                _carried_meta[_k] = _incoming_meta[_k]
 
     return {
         "title": title[:255],
@@ -256,20 +261,25 @@ def _intro_title(goal: str | None) -> str:
     return f"Introduction to {titled}"[:255]
 
 
-def _path_assumed_prereqs(path_plan: dict[str, Any]) -> tuple[list[str], dict[str, str]]:
+def _path_assumed_prereqs(path_plan: dict[str, Any]) -> tuple[list[str], dict[str, str], dict[str, str]]:
     """Parse path_plan.assumed_prerequisites — the LLM's STRUCTURED external-prerequisite list — into an
-    ordered list of clean concept names plus a name->gloss map. This is the source of truth for the intro's
-    prerequisites card and the prerequisite links, replacing prose extraction. Tolerates plain strings or
-    {name, gloss} dicts and dedupes case-insensitively."""
+    ordered list of clean concept names, a name->gloss map (WHAT IT IS, the one-line refresher), and a
+    name->required_knowledge map (what the learner must know about it to follow THIS path). This is the
+    source of truth for the intro's prerequisites card and the prerequisite links, replacing prose
+    extraction. Tolerates plain strings or {name, gloss, required_knowledge} dicts; dedupes
+    case-insensitively; caps at 4 (prereqs are FEW by contract — a flooded list means the model ignored
+    the constraint, and the leading entries are the ones it considered most essential)."""
     names: list[str] = []
     glosses: dict[str, str] = {}
+    requirements: dict[str, str] = {}
     seen: set[str] = set()
     for item in (path_plan.get("assumed_prerequisites") or []):
         if isinstance(item, str):
-            name, gloss = item.strip(), ""
+            name, gloss, req = item.strip(), "", ""
         elif isinstance(item, dict):
             name = str(item.get("name") or item.get("concept") or item.get("title") or "").strip()
             gloss = str(item.get("gloss") or item.get("description") or "").strip()
+            req = str(item.get("required_knowledge") or item.get("requirement") or "").strip()
         else:
             continue
         name = name.strip().strip(".").strip()
@@ -282,7 +292,11 @@ def _path_assumed_prereqs(path_plan: dict[str, Any]) -> tuple[list[str], dict[st
         names.append(name)
         if gloss:
             glosses[name] = gloss
-    return names, glosses
+        if req:
+            requirements[name] = req
+        if len(names) >= 4:
+            break
+    return names, glosses, requirements
 
 
 def _synthesize_intro_topic(goal: str | None) -> dict[str, Any]:
@@ -387,7 +401,7 @@ def generate_decomposed_topics(
     # prereq links: the LLM's explicit path_plan.assumed_prerequisites (clean concept names + glosses) plus
     # any foundation topics we folded above. No prose parsing — these names are canonical by construction.
     # Exclude any prereq the GOAL itself names (that concept is in-scope, taught, not an external prereq).
-    llm_prereqs, prereq_glosses = _path_assumed_prereqs(path_plan)
+    llm_prereqs, prereq_glosses, prereq_requirements = _path_assumed_prereqs(path_plan)
     llm_prereqs = [p for p in llm_prereqs if not _goal_names_topic({"title": p, "subject_key": p}, goal)]
     # Deterministic backstop: concepts shared across ≥2 topics' in_scope but taught by none are prerequisites the
     # LLM tends to omit (e.g. 'conditional probability' on a Bayes path). Their gloss is harvested downstream from
@@ -405,10 +419,14 @@ def generate_decomposed_topics(
                         ap.append(p)
                         have.add(p.lower())
                 t["assumed_prerequisites"] = ap
-                if prereq_glosses:
+                if prereq_glosses or prereq_requirements:
                     meta = t.setdefault("decomposition_metadata", {})
-                    meta["assumed_prerequisite_glosses"] = {
-                        **(meta.get("assumed_prerequisite_glosses") or {}), **prereq_glosses}
+                    if prereq_glosses:
+                        meta["assumed_prerequisite_glosses"] = {
+                            **(meta.get("assumed_prerequisite_glosses") or {}), **prereq_glosses}
+                    if prereq_requirements:
+                        meta["assumed_prerequisite_requirements"] = {
+                            **(meta.get("assumed_prerequisite_requirements") or {}), **prereq_requirements}
                 break
 
     ordered = sorted(topics_out, key=lambda t: int(t.get("order_index") or 0))
