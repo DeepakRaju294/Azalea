@@ -103,7 +103,7 @@ RULES:
   method needs, not its whole family.)
 - path_plan.assumed_prerequisites: the STRUCTURED list of OUT-OF-SCOPE concepts this path assumes the learner
   already knows and does NOT teach (the external prerequisites). THE TEST: a prerequisite is a concept that
-  would be taught in the PRECEDING lecture/unit of a college course leading up to this material — e.g. "BSTs
+  would be taught in the FEW lectures/units of a college course leading up to this material — e.g. "BSTs
   and their operations" before a BST-traversal path, "derivatives" before integration-by-parts. It must pass
   BOTH filters: (a) NOT trivial background (multiplication is not a prerequisite for Bayes' theorem — never
   list arithmetic, "basic math", or skills far below the path's level), and (b) NOT taught by any topic in
