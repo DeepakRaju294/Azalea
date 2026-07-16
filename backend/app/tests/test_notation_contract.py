@@ -21,12 +21,18 @@ class NotationContract(unittest.TestCase):
         self.assertIsNotNone(c)
         self.assertIn(r"P(A|B) = \frac{P(B|A)P(A)}{P(B)}", c)
         self.assertIn("EXACT variable letters everywhere: A, B", c)
-        self.assertIn("P(H|E)", c)                      # names the wrong convention to avoid
+        self.assertIn("H/E", c)                         # names the wrong convention to avoid
 
     def test_ltp_pins_its_equation(self):
         c = _formula_notation_contract(_Topic("Law of Total Probability"), "math_formula_method")
         self.assertIn(r"P(A) = \sum_{i} P(A|B_i)P(B_i)", c)
         self.assertIn("A, B", c)
+
+    def test_combinations_pins_lowercase_n_r(self):
+        # Generalized past probability's uppercase A/B: C(n, r) must pin n, r so the topic doesn't drift to C(n,k).
+        c = _formula_notation_contract(_Topic("Combinations"), "math_formula_method")
+        self.assertIsNotNone(c)
+        self.assertIn("EXACT variable letters everywhere: n, r", c)
 
     def test_none_for_non_formula_topic_type(self):
         self.assertIsNone(_formula_notation_contract(_Topic("Bayes' Theorem", "concept_intuition"),

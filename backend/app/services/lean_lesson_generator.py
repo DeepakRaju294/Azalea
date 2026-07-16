@@ -3527,18 +3527,25 @@ def _is_breakdown_scaffold(point: str) -> bool:
     return low == "where:" or low.startswith("where ") or low.endswith(_BREAKDOWN_SCAFFOLD_TAILS)
 
 
+# A math function call with a single-letter name: C(n,r), P(A|B), f(x) — NOT prose like "Set(" or "each (". The
+# single-letter constraint keeps it to math notation. Used to detect formula restatements/breakdowns generally,
+# not just for probability P(...) — so C(n,r)=… on a combinations card is caught the same as P(H|E)=….
+_FN_CALL_RE = _re.compile(r"\b(?![aAI]\b)[A-Za-z]\s*\(")
+_FN_CALL_EQ_RE = _re.compile(r"\b(?![aAI]\b)[A-Za-z]\s*\([^)]*\)\s*=")
+
+
 def _is_inline_formula_point(point: str) -> bool:
-    """A point that restates the full equation inline ('The formula is given by: P(H|E) = ...'). The equation
-    belongs on the formula card, so it does not belong on a purpose card — and inline restatements are the main
-    source of notation drift (P(H|E) here vs P(A|B) on the formula card)."""
-    return bool(_re.search(r"P\s*\([^)]*\)\s*=", _deco_stripped(point)))
+    """A point that restates the full equation inline ('The formula is given by: P(H|E) = ...' / 'Uses the
+    formula: C(n,r) = ...'). The equation belongs on the formula card, so it does not belong on a purpose card —
+    and inline restatements are a main source of notation drift (P(H|E) vs P(A|B); C(n,k) vs C(n,r))."""
+    return bool(_FN_CALL_EQ_RE.search(_deco_stripped(point)))
 
 
 def _is_prose_symbol_breakdown(point: str) -> bool:
     """A prose sentence that defines two or more symbols ('Where P(H|E) is the posterior, P(E|H) is the
-    likelihood, ...') — the formula card's job, duplicated on a purpose card."""
+    likelihood, ...' / 'C(n,r) is ..., P(n,r) is ...') — the formula card's job, duplicated on a purpose card."""
     s = _deco_stripped(point)
-    return len(_re.findall(r"P\s*\(", s)) >= 2 and bool(_re.search(r"\b(is|are|represents?|denotes?)\b", s))
+    return len(_FN_CALL_RE.findall(s)) >= 2 and bool(_re.search(r"\b(is|are|represents?|denotes?)\b", s))
 
 
 def _strip_formula_breakdown_from_purpose(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -3711,6 +3718,63 @@ def _strip_generic_intro_key_terms(cards: list[dict[str, Any]], topic: Topic) ->
         card[field] = kept
         result.append(card)
     return result
+
+
+def _strip_sibling_topic_key_terms(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
+    """A concept taught by its OWN topic must not be re-defined as a key term inside a DIFFERENT topic (e.g. the
+    Permutations topic defining 'Combination', which the Combinations topic owns). Title-based, so — unlike the
+    lesson-reading `_dedupe_key_terms_against_earlier` — it works regardless of which lesson was generated first.
+    Removes a key-term header matching another topic's title/alias; keeps the current topic's own concept."""
+    study_path = getattr(topic, "study_path", None)
+    sibs = getattr(study_path, "topics", None) if study_path is not None else None
+    if not sibs:
+        return cards
+    own_id = str(getattr(topic, "id", "") or "")
+    own_norms: set[str] = set()
+    for name in [getattr(topic, "title", ""), *_topic_title_aliases(str(getattr(topic, "title", "") or ""))]:
+        nk = _norm_gloss_key(str(name))
+        if nk:
+            own_norms.add(nk)
+    others: set[str] = set()
+    for s in sibs:
+        if s is topic or (own_id and str(getattr(s, "id", "") or "") == own_id):
+            continue
+        for name in [getattr(s, "title", ""), *_topic_title_aliases(str(getattr(s, "title", "") or ""))]:
+            nk = _norm_gloss_key(str(name))
+            if nk and nk not in own_norms:
+                others.add(nk)
+    if not others:
+        return cards
+    out: list[dict[str, Any]] = []
+    for card in cards:
+        if _is_prereq_card(card) or _lean_card_key(card) not in _KEY_TERM_CARD_KEYS:
+            out.append(card)
+            continue
+        field = "points" if isinstance(card.get("points"), list) else ("bullets" if isinstance(card.get("bullets"), list) else None)
+        if field is None:
+            out.append(card)
+            continue
+        pts = card[field]
+        kept: list[Any] = []
+        kept_headers = 0
+        i = 0
+        while i < len(pts):
+            p = str(pts[i])
+            is_header = (bool(p.strip()) and not p[:1].isspace() and not p.lstrip().startswith("-")
+                        and not p.lstrip().startswith(("$", "\\")))
+            if not is_header:
+                kept.append(pts[i]); i += 1; continue
+            j = i + 1
+            while j < len(pts) and (str(pts[j])[:1].isspace() or str(pts[j]).lstrip().startswith("-")):
+                j += 1
+            if _norm_gloss_key(_key_term_header(p)) in others:
+                i = j; continue                          # another topic owns this concept — drop it here
+            kept.extend(pts[i:j]); kept_headers += 1; i = j
+        if kept_headers == 0:
+            continue
+        card[field] = kept
+        out.append(card)
+    return out
 
 
 def _strip_taught_topics_from_prereq_card(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
@@ -4334,6 +4398,10 @@ def _normalize_lean_card_order(
 
     # A path prerequisite is a link, never re-taught: strip it from a body topic's key-terms card too.
     normalized = _strip_prerequisite_key_terms(normalized, topic)
+
+    # A concept owned by ANOTHER topic must not be re-defined here (title-based, timing-independent — catches what
+    # the lesson-reading dedup above misses when the earlier lesson isn't generated yet).
+    normalized = _strip_sibling_topic_key_terms(normalized, topic)
 
     # On the intro, strip key-terms a single later topic owns (in its in_scope) so the intro previews only SHARED
     # terms, not vocabulary the topic will teach in depth (e.g. prior/posterior probability belong to the Bayes

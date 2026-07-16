@@ -707,7 +707,10 @@ def _formula_notation_contract(topic: Topic, topic_type: str) -> str | None:
         if not latex:
             return None
         notes = [str(n) for n in (getattr(spec, "canonical_notes", None) or []) if str(n).strip()]
-        letters = sorted({m for arg in _re.findall(r"P\s*\(([^)]*)\)", latex) for m in _re.findall(r"[A-Z]", arg)})
+        # Single-letter variables inside ANY function call in the equation — C(n, r) -> {n, r}, P(A|B) -> {A, B}
+        # — so the pinned letters generalize past probability's uppercase A/B to n/r etc.
+        args = _re.findall(r"\b[A-Za-z]\s*\(([^)]*)\)", latex)
+        letters = sorted({m for arg in args for m in _re.findall(r"(?<![A-Za-z])[A-Za-z](?![A-Za-z])", arg)})
         lines = [
             "NOTATION CONTRACT (this topic has ONE fixed equation — you MUST use its exact notation in EVERY card):",
             f"Equation: $${latex}$$",
@@ -716,9 +719,8 @@ def _formula_notation_contract(topic: Topic, topic_type: str) -> str | None:
         if letters:
             lines.append(
                 f"- Use these EXACT variable letters everywhere: {', '.join(letters)}. NEVER rename them or "
-                f"substitute other letters for the same roles (e.g. do not write P(H|E) when the equation uses "
-                f"{', '.join(letters)}). Keep one consistent notation across the purpose, definition, method, and "
-                f"example cards.")
+                f"introduce different letters for the same roles (e.g. do not switch to H/E, k, or x). Keep ONE "
+                f"consistent notation across the purpose, definition, method, and example cards.")
         lines.append(
             "- Only the formula card states the full equation; other cards refer to the symbols by name, they do "
             "not restate the whole equation.")

@@ -6,9 +6,10 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.lean_lesson_generator import (
-    _dedupe_intro_key_terms_against_scope, _formula_variable_letters, _key_term_header,
-    _merge_duplicate_edge_cases, _reconcile_formula_notation_conflict, _split_embedded_newline_points,
-    _strip_formula_breakdown_from_purpose, _strip_generic_intro_key_terms, _strip_prerequisite_key_terms,
+    _dedupe_intro_key_terms_against_scope, _formula_variable_letters, _is_inline_formula_point,
+    _is_prose_symbol_breakdown, _key_term_header, _merge_duplicate_edge_cases,
+    _reconcile_formula_notation_conflict, _split_embedded_newline_points, _strip_formula_breakdown_from_purpose,
+    _strip_generic_intro_key_terms, _strip_prerequisite_key_terms, _strip_sibling_topic_key_terms,
     _strip_taught_topics_from_prereq_card,
 )
 
@@ -181,6 +182,41 @@ class StripPrerequisiteKeyTerms(unittest.TestCase):
         cards = [{"card_type": "definition", "points": ["Conditional Probability - x"]}]
         self.assertEqual(_strip_prerequisite_key_terms(cards, intro)[0]["points"],
                          ["Conditional Probability - x"])
+
+
+class FunctionGeneralFormulaDetectors(unittest.TestCase):
+    def test_inline_formula_beyond_probability(self):
+        self.assertTrue(_is_inline_formula_point(r"Uses the formula: \(C(n,r) = \frac{n!}{r!(n-r)!}\)"))
+        self.assertTrue(_is_inline_formula_point("The formula is given by: P(H|E) = P(E|H)P(H)/P(E)"))
+        self.assertFalse(_is_inline_formula_point("Combinations count selections where order is irrelevant."))
+
+    def test_prose_breakdown_beyond_probability(self):
+        self.assertTrue(_is_prose_symbol_breakdown("Where C(n,r) is the count and P(n,r) is the arrangements."))
+        self.assertFalse(_is_prose_symbol_breakdown("Consider a (specific) case and an (edge) case here."))  # a/an excluded
+
+
+class StripSiblingTopicKeyTerms(unittest.TestCase):
+    def test_permutations_topic_drops_the_combination_key_term(self):
+        perms = _Topic("t4", "Permutations", 4)
+        combos = _Topic("t3", "Combinations", 3)
+        _Path([combos, perms])
+        cards = [{"card_type": "definition", "points": [
+            "Permutation: An arrangement where order matters.",
+            "Factorial (n!): product of positive integers up to n.",
+            "Combination: A selection where order does not matter."]}]
+        out = _strip_sibling_topic_key_terms(cards, perms)
+        pts = out[0]["points"]
+        self.assertTrue(any(p.startswith("Permutation") for p in pts))     # own concept stays
+        self.assertTrue(any("Factorial" in p for p in pts))
+        self.assertFalse(any(p.startswith("Combination:") for p in pts))   # sibling-owned → dropped
+
+    def test_combinations_topic_keeps_its_own_combination_term(self):
+        combos = _Topic("t3", "Combinations", 3)
+        perms = _Topic("t4", "Permutations", 4)
+        _Path([combos, perms])
+        cards = [{"card_type": "definition", "points": ["Combination: order does not matter.", "  - detail"]}]
+        out = _strip_sibling_topic_key_terms(cards, combos)
+        self.assertTrue(any(p.startswith("Combination") for p in out[0]["points"]))   # its own topic → kept
 
 
 class StripGenericIntroKeyTerms(unittest.TestCase):
