@@ -101,7 +101,7 @@ def validate_and_repair_interactive_links(
     return report
 
 
-def normalize_link(value: Any) -> dict[str, str] | None:
+def normalize_link(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
 
@@ -111,19 +111,28 @@ def normalize_link(value: Any) -> dict[str, str] | None:
     action = clean_text(value.get("action")) or "popup_only"
     target = clean_text(value.get("target"))
 
-    if not text or not explanation:
-        return None
-
     if action not in ALLOWED_ACTIONS:
         action = "popup_only"
 
-    return {
+    # Only popup_only/ask_question RENDER the explanation as their content, so only they require one.
+    # Navigation links (open_study_path CTA, review_earlier_topic jump) intentionally allow an empty
+    # explanation — removing them here silently destroyed valid nav links during card regeneration.
+    if not text:
+        return None
+    if action in ("popup_only", "ask_question") and not explanation:
+        return None
+
+    normalized: dict[str, Any] = {
         "text": text,
         "explanation": explanation,
         "why_it_matters_here": why_it_matters_here,
         "action": action,
         "target": target,
     }
+    # Canonical concept identity must survive every normalization (backend dedup/lineage depend on it).
+    if value.get("concept_id"):
+        normalized["concept_id"] = str(value.get("concept_id"))
+    return normalized
 
 
 def clean_text(value: Any) -> str:

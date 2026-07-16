@@ -6213,6 +6213,9 @@ function normalizeInteractiveLinks(value?: LessonInteractiveLink[]) {
       why_it_matters_here: String(link.why_it_matters_here || "").trim(),
       action: String(link.action || "popup_only").trim(),
       target: String(link.target || "").trim(),
+      // Canonical concept identity MUST survive normalization — the open_study_path click sends it as
+      // target_concept_id for backend dedup/lineage/cycle-suppression (dropping it made every click null).
+      concept_id: link.concept_id ?? null,
     }))
     .filter((link) => {
       if (!link.text) {
