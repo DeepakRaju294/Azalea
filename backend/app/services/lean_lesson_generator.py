@@ -3935,14 +3935,18 @@ def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic) -> list[dict[
     missing = [n for n in names if not glosses.get(n.lower())]
     for key, gloss in _relocate_prereq_defs_from_key_terms(cards, missing).items():
         glosses.setdefault(key, gloss)
-    # Two lines per prerequisite: the refresher ("name — what it is") and, when decomposition provided it, the
-    # actionable line ("what you need to know about it to follow this path") as an indented sub-bullet.
+    # One prereq = one idea group: the MAIN bullet is the bare topic name (also the interactive-link anchor —
+    # the name of the study path the link opens), with the refresher ("what it is") and the actionable line
+    # ("what to learn there before this path") as its indented sub-bullets.
     points: list[str] = []
     for n in names:
-        points.append(f"{n} — {glosses[n.lower()]}" if glosses.get(n.lower()) else n)
+        points.append(n)
+        gloss = glosses.get(n.lower())
+        if gloss:
+            points.append(f"  - {gloss}")
         req = requirements.get(n.lower())
         if req:
-            points.append(f"  - What you need: {req}")
+            points.append(f"  - What to learn: {req}")
 
     idx = next((i for i, c in enumerate(cards)
                 if _lean_card_key(c) == "prerequisites" or _is_prereq_card(c)), -1)

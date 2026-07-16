@@ -116,8 +116,9 @@ class GroundPrereqCard(unittest.TestCase):
                   "points": ["some vague model prose that does not name the concepts cleanly"]}]
         out = _ground_prereq_card(cards, intro)
         pts = out[0]["points"]
-        self.assertEqual(pts[0], "conditional probability — prob. of A given B")
-        self.assertEqual(pts[1], "sample space — all outcomes")
+        # main bullet = bare topic name (the link anchor); the gloss is its sub-bullet
+        self.assertEqual(pts, ["conditional probability", "  - prob. of A given B",
+                               "sample space", "  - all outcomes"])
 
     def test_mints_prereq_card_when_none_present(self):
         intro = _Topic("i", "Intro", 0, prereqs=["vectors"], ctype="study_path_introduction")
@@ -226,14 +227,16 @@ class GroundHarvestsGlossFromKeyTerms(unittest.TestCase):
         ]
         out = _ground_prereq_card(cards, intro)
         prereq = next(c for c in out if (c.get("blueprint_key") or c.get("card_type")) in ("prerequisites",))
-        self.assertEqual(prereq["points"], ["conditional probability — probability of A given B has occurred"])
+        self.assertEqual(prereq["points"], ["conditional probability",
+                                            "  - probability of A given B has occurred"])
         kt = next(c for c in out if c["card_type"] == "definition")["points"]
         self.assertNotIn("Conditional Probability", kt)                 # relocated out of key terms
 
 
-class TwoLinePrereqBullets(unittest.TestCase):
-    def test_requirement_renders_as_sub_bullet(self):
-        # User spec: each prereq = one line WHAT IT IS + one line what you must know about it for this path.
+class PrereqIdeaGroupBullets(unittest.TestCase):
+    def test_name_is_main_bullet_gloss_and_requirement_are_sub_bullets(self):
+        # User spec: main bullet = the bare prereq/topic name (the link anchor); sub-bullets = the
+        # what-it-is refresher and what to learn in the linked study path.
         intro = _Topic("i", "Intro", 0, prereqs=["conditional probability"],
                        glosses={"conditional probability": "the probability of one event given another"},
                        requirements={"conditional probability": "compute P(A|B) for concrete events"},
@@ -242,16 +245,17 @@ class TwoLinePrereqBullets(unittest.TestCase):
                   "title": "Prerequisites", "points": ["prose"]}]
         out = _ground_prereq_card(cards, intro)
         self.assertEqual(out[0]["points"], [
-            "conditional probability — the probability of one event given another",
-            "  - What you need: compute P(A|B) for concrete events"])
+            "conditional probability",
+            "  - the probability of one event given another",
+            "  - What to learn: compute P(A|B) for concrete events"])
 
-    def test_no_requirement_stays_single_line(self):
+    def test_no_gloss_or_requirement_stays_bare_name(self):
         intro = _Topic("i", "Intro", 0, prereqs=["vectors"], glosses={"vectors": "arrows"},
                        ctype="study_path_introduction")
         cards = [{"card_type": "prerequisites", "blueprint_key": "prerequisites",
                   "title": "Prerequisites", "points": ["prose"]}]
         out = _ground_prereq_card(cards, intro)
-        self.assertEqual(out[0]["points"], ["vectors — arrows"])
+        self.assertEqual(out[0]["points"], ["vectors", "  - arrows"])
 
 
 class PrereqCardRecognition(unittest.TestCase):
