@@ -287,7 +287,10 @@ def _clean_work(card: dict[str, Any], fallback: str) -> tuple[list[str], Optiona
     line count so the anchors stay aligned — only strip the label. On a WALKTHROUGH card, also drop a line
     that reduced to nothing (a bare "aggregated supporting: -"); if that empties the card, fall back to the
     step's verified decision so the card is never blank."""
-    raw = [str(w) for w in (card.get("work") or [])]
+    _work = card.get("work")
+    if isinstance(_work, str):                 # a bare string must never be char-iterated
+        _work = [_work] if _work else []
+    raw = [str(w) for w in (_work or [])]
     code_lines = card.get("code_lines") if isinstance(card.get("code_lines"), list) else None
     if code_lines is not None:
         return [_strip_work_label(w) for w in raw], code_lines

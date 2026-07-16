@@ -177,6 +177,31 @@ class TestSolve(unittest.TestCase):
         self.assertEqual(last["result"], "x = 3 or x = -1")
 
 
+class TestStringWorkNeverCharIterated(unittest.TestCase):
+    """Regression: a card whose `work` arrived as a bare STRING (a pipeline that bypassed
+    _normalize_solution_cards) must render whole lines — the live bug char-iterated it into
+    one bullet per character ('- L', '- e', '- t', …), destroying every non-adapter example."""
+
+    def test_string_work_renders_whole_lines(self):
+        sol = {
+            "problem": "Choose 3 fruits from 6.",
+            "expected_final_answer": "20",
+            "final_answer": "20",
+            "cards": [{
+                "title": "Identify variables", "goal": "Set n and r.", "reasoning": "Define counts.",
+                "work": "Let n = 6 // six fruits available\nLet r = 3",   # bare multi-line STRING
+                "result": "n = 6, r = 3", "visual": "",
+            }],
+        }
+        cards = _build_solution_cards(sol, {"id": "t1"})
+        step = cards[1]
+        self.assertEqual(step["work"], ["Let n = 6 // six fruits available", "Let r = 3"])
+        work_bullets = [p for p in step["points"] if p.startswith("  - ")]
+        self.assertEqual(work_bullets,
+                         ["  - Let n = 6 // six fruits available", "  - Let r = 3"])
+        self.assertFalse(any(len(p.strip().lstrip("- ").strip()) <= 1 for p in work_bullets))
+
+
 class TestCoding(unittest.TestCase):
     def test_coding_uses_structural_path_and_attaches_ide_code(self):
         seen = {"systems": []}

@@ -954,12 +954,19 @@ def _coerce_points(value: Any) -> list[str]:
 
 
 def _coerce_lines(value: Any) -> list[str]:
-    """A field that should be a list of short lines — accept a single string too."""
+    """A field that should be a list of short lines — accept a single (possibly multi-line) string too.
+    NEVER iterate a bare string as if it were a list (that yields one CHARACTER per line — the live bug
+    that rendered a worked example as '- L', '- e', '- t', …); wrap it, then split embedded newlines."""
     if isinstance(value, str):
         value = [value]
     if not isinstance(value, list):
         return []
-    return [str(p).rstrip() for p in value if str(p).strip()]
+    lines: list[str] = []
+    for p in value:
+        for part in str(p).split("\n"):
+            if part.strip():
+                lines.append(part.rstrip())
+    return lines
 
 
 _NOTE_TYPES = {"key_idea", "invariant", "watch_for", "check"}
@@ -1230,7 +1237,7 @@ def _build_solution_cards(
     for n, card in enumerate(norm):
         goal = str(card.get("goal") or "").strip()
         reasoning = str(card.get("reasoning") or "").strip()
-        work = [str(w) for w in (card.get("work") or [])]
+        work = _coerce_lines(card.get("work"))   # a bare string must never be char-iterated (live bug)
         result = str(card.get("result") or "").strip()
         card_title = _step_card_title(card.get("title"), goal, result, n)
         # Prose (goal/reasoning/result/title): match FUNCTION names to code casing only — leave other

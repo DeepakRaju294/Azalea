@@ -334,7 +334,9 @@ def _decision_contradiction(card: dict[str, Any], step, i: int) -> list[ProseVio
     reject_like = any(dec.startswith(v) for v in _REJECT_VERBS)
     if not (accept_like or reject_like):
         return []
-    for line in [str(w) for w in (card.get("work") or [])] + [str(card.get("result", ""))]:
+    _work = card.get("work")
+    _work_list = _work if isinstance(_work, list) else ([_work] if isinstance(_work, str) and _work else [])
+    for line in [str(w) for w in _work_list] + [str(card.get("result", ""))]:
         t = re.sub(r"\s+", " ", line.lower())
         if accept_like and _asserts(t, _REJECT_VERBS, _REJECT_PHRASES) and not _asserts(t, _ACCEPT_VERBS):
             return [ProseViolation("decision_contradiction", f"decision={dec!r}; line rejects: {line[:48]!r}", i, step.id)]
