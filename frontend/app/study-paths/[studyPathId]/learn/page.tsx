@@ -6237,6 +6237,12 @@ function normalizeInteractiveLinks(value?: LessonInteractiveLink[]) {
     .slice(0, 6);
 }
 
+// Double-render policy (v1): each link renders in exactly ONE place. INLINE anchors carry the content
+// affordances (popup_only / ask_question glosses — their details-popup shows the explanation). PILLS carry
+// the navigation actions (open_study_path / review_earlier_topic — real click handlers live only there),
+// plus any gloss whose text never appears in the card (fallback, so it isn't silently lost).
+const INLINE_ANCHOR_ACTIONS = new Set(["popup_only", "ask_question"]);
+
 function splitTextByInteractiveLinks(
   text: string,
   links: LessonInteractiveLink[],
@@ -6246,6 +6252,7 @@ function splitTextByInteractiveLinks(
 > {
   const lowerText = text.toLowerCase();
   const matches = normalizeInteractiveLinks(links)
+    .filter((link) => INLINE_ANCHOR_ACTIONS.has(link.action))
     .map((link) => {
       const needle = String(link.text || "").toLowerCase();
       const start = needle ? lowerText.indexOf(needle) : -1;
@@ -6952,6 +6959,21 @@ function LearningCard({
       (item) => item.concept && item.hover_explanation,
     ) ?? [];
   const interactiveLinks = normalizeInteractiveLinks(card?.interactive_links);
+  // Pills = navigation actions (their real click handlers live only here) + glosses whose text never
+  // appears in the card (fallback). An anchorable gloss renders inline only — never in both places.
+  const cardVisibleText = [
+    ...(card?.points ?? []),
+    ...(card?.bullets ?? []),
+    ...(Array.isArray(card?.body) ? card.body : card?.body ? [card.body] : []),
+  ]
+    .map((entry) => String(entry ?? ""))
+    .join("\n")
+    .toLowerCase();
+  const pillLinks = interactiveLinks.filter(
+    (link) =>
+      !INLINE_ANCHOR_ACTIONS.has(link.action) ||
+      !cardVisibleText.includes(link.text.toLowerCase()),
+  );
   const effectiveCompact = compact || guidanceMode;
   const visibleBulletTree = guidanceMode ? bulletTree.slice(0, 4) : bulletTree;
   const hiddenBulletCount = guidanceMode ? Math.max(0, bulletTree.length - 4) : 0;
@@ -7127,9 +7149,9 @@ function LearningCard({
           </div>
         )}
 
-        {interactiveLinks.length > 0 && (
+        {pillLinks.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2">
-            {interactiveLinks.map((link) => (
+            {pillLinks.map((link) => (
               <button
                 key={`${link.text}-${link.action}-${link.target}`}
                 type="button"

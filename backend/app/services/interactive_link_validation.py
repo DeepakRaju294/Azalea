@@ -14,11 +14,12 @@ ALLOWED_ACTIONS = {
 def validate_and_repair_interactive_links(
     lesson_json: dict[str, Any],
 ) -> dict[str, Any]:
+    from app.services.link_report import attach_link_report, build_link_report
+
     cards = lesson_json.get("lesson_cards")
     if not isinstance(cards, list):
-        report = build_report(0, 0, ["lesson_cards was not a list."])
-        lesson_json["interactive_link_report"] = report
-        return report
+        return attach_link_report(lesson_json, build_link_report(
+            None, source="legacy_validator", issues=["lesson_cards was not a list."]))
 
     seen_terms: set[str] = set()
     removed_count = 0
@@ -96,9 +97,9 @@ def validate_and_repair_interactive_links(
 
         card["interactive_links"] = cleaned_links
 
-    report = build_report(removed_count, repaired_count, issues)
-    lesson_json["interactive_link_report"] = report
-    return report
+    report = build_link_report(cards, source="legacy_validator", removed_count=removed_count,
+                               repaired_card_count=repaired_count, issues=issues)
+    return attach_link_report(lesson_json, report)
 
 
 def normalize_link(value: Any) -> dict[str, Any] | None:
@@ -142,16 +143,3 @@ def clean_text(value: Any) -> str:
 def normalize_term(value: Any) -> str:
     text = clean_text(value).lower()
     return " ".join(text.replace("_", " ").replace("-", " ").split())
-
-
-def build_report(
-    removed_count: int,
-    repaired_card_count: int,
-    issues: list[str],
-) -> dict[str, Any]:
-    return {
-        "passed": not issues,
-        "removed_link_count": removed_count,
-        "repaired_card_count": repaired_card_count,
-        "issues": issues,
-    }

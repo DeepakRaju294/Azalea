@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 from app.core.topic_assumptions import normalize_assumption_phrase
 from app.prompts.lean_lesson_prompt import build_lean_system_prompt, build_lean_user_prompt
 from app.services.assumption_ledger_service import build_assumption_ledger
+from app.services.link_report import LINK_REPORT_KEY as _LINK_REPORT_KEY, build_link_report
 from app.services.llm_client import generate_lean_structured_lesson
 from app.services.lesson_generator import (
     build_source_chunk_ids,
@@ -3373,14 +3374,14 @@ def _concepts_from_prereq_line(s: str) -> list[str]:
         mv = _PREREQ_VERB_CUT.search(tail)          # cut a trailing clause ("…, is crucial")
         if mv:
             tail = tail[:mv.start()]
-        tail = _re.split(r"[.;]", tail, 1)[0]
+        tail = _re.split(r"[.;]", tail, maxsplit=1)[0]
         items = (_clean_concept(i) for i in _re.split(r"\s*,\s*|\s+and\s+", tail))
         return [c for c in items if _acceptable_concept(c)]
     core = _strip_prereq_goal_phrase(s)
     mv = _PREREQ_VERB_CUT.search(core)
     if mv:
         core = core[:mv.start()]
-    core = _clean_concept(_re.split(r"[.;,:]", core, 1)[0])
+    core = _clean_concept(_re.split(r"[.;,:]", core, maxsplit=1)[0])
     return [core] if _acceptable_concept(core) else []
 
 
@@ -8678,7 +8679,9 @@ def _convert_lean_to_legacy(
         "topic_quality_report": empty_report,
         "validation_report": empty_report,
         "microcheck_validation_report": empty_report,
-        "interactive_link_validation_report": empty_report,
+        # THE canonical link report (see link_report.py) — real counts from the final cards, replacing
+        # the old always-valid placeholder that made lean lessons invisible to link monitoring.
+        _LINK_REPORT_KEY: build_link_report(legacy_cards, source="lean_emission"),
     }
 
 

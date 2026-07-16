@@ -226,12 +226,10 @@ def strip_rich_card_interactions(lesson_json: dict[str, Any]) -> None:
         "issues": [],
         "mode": CORE_TEXT_ONLY_GENERATION_MODE,
     }
-    lesson_json["interactive_link_validation_report"] = {
-        "is_valid": True,
-        "requires_regeneration": False,
-        "issues": [],
-        "mode": CORE_TEXT_ONLY_GENERATION_MODE,
-    }
+    # Canonical link report (link_report.py): core-text-only mode strips all links by design.
+    from app.services.link_report import attach_link_report, build_link_report
+
+    attach_link_report(lesson_json, build_link_report(None, source=CORE_TEXT_ONLY_GENERATION_MODE))
 
     cards = lesson_json.get("lesson_cards")
     if not isinstance(cards, list):
