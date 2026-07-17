@@ -9,7 +9,7 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.topic_decomposition_pipeline import (
-    _cross_topic_foundations, _path_assumed_prereqs, generate_decomposed_topics,
+    _cross_topic_foundations, _is_circular_prereq, _path_assumed_prereqs, generate_decomposed_topics,
 )
 from app.services.lean_lesson_generator import (
     _assumed_prereq_glosses, _emit_prereq_interactive_links, _ground_prereq_card,
@@ -160,6 +160,88 @@ class GroundPrereqCard(unittest.TestCase):
             self.assertEqual(links[0]["explanation"], "")   # popup is a bare CTA; gloss lives on the card bullet
         finally:
             os.environ.pop(_FLAG, None)
+
+
+_CA_GOAL = "Want to learn about combinatorial analysis"
+
+
+class CircularPrereqGuard(unittest.TestCase):
+    def test_goal_subject_in_generic_wrapping_is_circular(self):
+        # Live failure: the path collapsed because 'Combinatorial Principles' became a prereq whose linked
+        # study path would teach the very subject the learner asked for.
+        for name in ("Combinatorial Principles", "combinatorics basics", "fundamentals of combinatorial analysis"):
+            self.assertTrue(_is_circular_prereq(name, _CA_GOAL), name)
+
+    def test_all_generic_name_is_circular(self):
+        self.assertTrue(_is_circular_prereq("basic fundamentals", _CA_GOAL))   # names no outside subject
+
+    def test_different_subject_prereqs_pass(self):
+        self.assertFalse(_is_circular_prereq("basic probability", _CA_GOAL))
+        self.assertFalse(_is_circular_prereq("binary search trees", "learn BST traversal algorithms"))
+        self.assertFalse(_is_circular_prereq("derivatives", "learn integration by parts"))
+
+    def test_llm_emitted_circular_prereq_is_dropped(self):
+        resp = {
+            "path_plan": {
+                "end_capability": "x", "end_capability_actions": ["apply"],
+                "assumed_prerequisites": [
+                    {"name": "Combinatorial Principles", "gloss": "g", "required_knowledge": "r"},
+                    {"name": "basic probability", "gloss": "chance of events", "required_knowledge": "compute simple probabilities"},
+                ],
+                "required_capabilities": [
+                    {"capability_id": "c1", "description": "d", "prerequisite_capability_ids": [],
+                     "satisfies_end_actions": ["apply"], "ownership_mode": "standalone",
+                     "owner_topic_id": None, "basis": "goal"}],
+            },
+            "topics": [
+                {"topic_id": "t1", "capability_id": "c1", "subject_key": "binomial_theorem",
+                 "primary_action": "apply", "content_role": "math_formula_method",
+                 "topic_type": "math_formula_method", "title": "Binomial Theorem", "unit_title": "Core",
+                 "purpose": "p", "in_scope": ["expansion"], "practice_target": "x",
+                 "practice_format": "short_answer", "practice_evidence_type": "solve_numeric",
+                 "expected_output": "poly", "basis": "goal"},
+                {"topic_id": "t2", "capability_id": "c1", "subject_key": "combinatorial_probability",
+                 "primary_action": "apply", "content_role": "application",
+                 "topic_type": "problem_solving_application", "title": "Applying Combinatorial Analysis",
+                 "unit_title": "Core", "purpose": "p", "in_scope": ["applications"], "practice_target": "x",
+                 "practice_format": "short_answer", "practice_evidence_type": "solve_numeric",
+                 "expected_output": "count", "basis": "goal"},
+            ],
+        }
+        topics = generate_decomposed_topics(_CA_GOAL, "src", model_fn=lambda p: resp)
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        ap = [a.lower() for a in (intro.get("assumed_prerequisites") or [])]
+        self.assertNotIn("combinatorial principles", ap)     # circular → dropped
+        self.assertIn("basic probability", ap)               # real outside-subject prereq kept
+
+    def test_circular_foundation_topic_stays_taught_not_folded(self):
+        resp = {
+            "path_plan": {"end_capability": "x", "end_capability_actions": ["apply"],
+                          "required_capabilities": [
+                              {"capability_id": "c1", "description": "d", "prerequisite_capability_ids": [],
+                               "satisfies_end_actions": ["apply"], "ownership_mode": "standalone",
+                               "owner_topic_id": None, "basis": "goal"}]},
+            "topics": [
+                {"topic_id": "t0", "capability_id": "c1", "subject_key": "combinatorial_principles",
+                 "primary_action": "understand", "content_role": "foundation",
+                 "topic_type": "math_formula_method", "title": "Combinatorial Principles",
+                 "unit_title": "Foundations", "purpose": "p", "in_scope": ["counting"],
+                 "practice_target": "x", "practice_format": "short_answer",
+                 "practice_evidence_type": "solve_numeric", "expected_output": "count", "basis": "goal"},
+                {"topic_id": "t1", "capability_id": "c1", "subject_key": "binomial_theorem",
+                 "primary_action": "apply", "content_role": "math_formula_method",
+                 "topic_type": "math_formula_method", "title": "Binomial Theorem", "unit_title": "Core",
+                 "purpose": "p", "in_scope": ["expansion"], "practice_target": "x",
+                 "practice_format": "short_answer", "practice_evidence_type": "solve_numeric",
+                 "expected_output": "poly", "basis": "goal"},
+            ],
+        }
+        topics = generate_decomposed_topics(_CA_GOAL, "src", model_fn=lambda p: resp)
+        titles = [t["title"] for t in topics]
+        self.assertIn("Combinatorial Principles", titles)    # NOT folded away — stays a taught topic
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        ap = [a.lower() for a in (intro.get("assumed_prerequisites") or [])]
+        self.assertNotIn("combinatorial principles", ap)
 
 
 class CrossTopicFoundations(unittest.TestCase):

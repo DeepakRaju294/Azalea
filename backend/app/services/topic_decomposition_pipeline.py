@@ -86,7 +86,8 @@ def _cross_topic_foundations(teaching_topics: list[dict[str, Any]], goal: str | 
             counts[norm] = (disp, n + 1)
     out: list[str] = []
     for norm, (display, n) in counts.items():
-        if n >= 2 and not _goal_names_topic({"title": display, "subject_key": display}, goal):
+        if (n >= 2 and not _goal_names_topic({"title": display, "subject_key": display}, goal)
+                and not _is_circular_prereq(display, goal)):
             out.append(display)
     return out
 
@@ -113,6 +114,42 @@ def _goal_names_topic(topic: dict[str, Any], goal: str | None) -> bool:
         if terms and terms <= goal_words:
             return True
     return False
+
+
+# Generic wrapper words that carry no subject identity in a prerequisite name ("Combinatorial PRINCIPLES",
+# "counting BASICS"). Stripped before deciding whether a prereq is just the goal subject in disguise.
+_GENERIC_PREREQ_WORDS = frozenset({
+    "principle", "principles", "basic", "basics", "fundamental", "fundamentals", "foundation", "foundations",
+    "essential", "essentials", "concept", "concepts", "idea", "ideas", "theory", "introduction", "intro",
+    "overview", "notation", "method", "methods", "technique", "techniques", "skill", "skills", "analysis",
+})
+
+
+def _is_circular_prereq(name: str, goal: str | None) -> bool:
+    """True when a proposed prerequisite is really THE GOAL SUBJECT wrapped in generic words — e.g. goal
+    'learn combinatorial analysis' with prereq 'Combinatorial Principles'. Such a prereq is CIRCULAR (its
+    open_study_path link would open a path teaching the very subject the learner asked for) and the concepts
+    it hides are this path's own first topics. After dropping generic wrapper words, if every remaining
+    distinctive word appears in the goal (light stemming so 'combinatorics'≈'combinatorial'), it's circular.
+    A prereq from a DIFFERENT subject ('basic probability', 'binary search trees') keeps a distinctive word
+    the goal lacks and passes."""
+    goal_words = set(re.findall(r"[a-z]+", str(goal or "").lower()))
+    if not goal_words:
+        return False
+
+    def _in_goal(w: str) -> bool:
+        if w in goal_words:
+            return True
+        # light stem: shared 6+ char prefix ("combinatorics" ~ "combinatorial")
+        return any(len(w) >= 6 and len(g) >= 6 and (g.startswith(w[:6]) or w.startswith(g[:6]))
+                   for g in goal_words)
+
+    words = [w for w in re.findall(r"[a-z]+", str(name or "").lower())
+             if len(w) >= 3 and w not in _GOAL_MATCH_GLUE and w not in _GENERIC_PREREQ_WORDS]
+    # All generic ("basics", "fundamentals") → names no outside subject at all → circular/useless as a prereq.
+    if not words:
+        return True
+    return all(_in_goal(w) for w in words)
 
 
 def _repair_topic_title(title: str, subject_key: str) -> str:
@@ -374,9 +411,13 @@ def generate_decomposed_topics(
 
     # A concept the GOAL explicitly names is IN scope — it must stay a taught topic, never be demoted to an
     # external prerequisite (§3.1 rule 1). E.g. goal "…and law of total probability" → Law of Total Probability
-    # is a topic, not a prereq link. So such foundations are excluded from the fold below.
+    # is a topic, not a prereq link. Same for a CIRCULAR foundation whose title is just the goal subject in
+    # generic wrapping ("Combinatorial Principles" on a combinatorial-analysis path) — folding it would turn
+    # the path's own first units into a self-referencing prereq link (live failure: the path collapsed to
+    # Binomial+Applications with everything else "assumed"). Both stay taught.
     foundations = [t for t in topics_out
-                   if not _is_opener(t) and _role(t) == "foundation" and not _goal_names_topic(t, goal)]
+                   if not _is_opener(t) and _role(t) == "foundation" and not _goal_names_topic(t, goal)
+                   and not _is_circular_prereq(str(t.get("title") or t.get("subject_key") or ""), goal)]
     real_concepts = [t for t in topics_out if not _is_opener(t) and _role(t) != "foundation"]
     dropped_prereqs: list[str] = []
     if foundations and real_concepts:
@@ -402,7 +443,9 @@ def generate_decomposed_topics(
     # any foundation topics we folded above. No prose parsing — these names are canonical by construction.
     # Exclude any prereq the GOAL itself names (that concept is in-scope, taught, not an external prereq).
     llm_prereqs, prereq_glosses, prereq_requirements = _path_assumed_prereqs(path_plan)
-    llm_prereqs = [p for p in llm_prereqs if not _goal_names_topic({"title": p, "subject_key": p}, goal)]
+    llm_prereqs = [p for p in llm_prereqs
+                   if not _goal_names_topic({"title": p, "subject_key": p}, goal)
+                   and not _is_circular_prereq(p, goal)]
     # Deterministic backstop: concepts shared across ≥2 topics' in_scope but taught by none are prerequisites the
     # LLM tends to omit (e.g. 'conditional probability' on a Bayes path). Their gloss is harvested downstream from
     # the intro's key-terms card if it defines them (and the term is then removed from key-terms — see §overlap).

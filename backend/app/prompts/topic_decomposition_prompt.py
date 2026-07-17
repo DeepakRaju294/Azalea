@@ -105,9 +105,14 @@ RULES:
   already knows and does NOT teach (the external prerequisites). THE TEST: a prerequisite is a concept that
   would be taught in the FEW lectures/units of a college course leading up to this material — e.g. "BSTs
   and their operations" before a BST-traversal path, "derivatives" before integration-by-parts. It must pass
-  BOTH filters: (a) NOT trivial background (multiplication is not a prerequisite for Bayes' theorem — never
-  list arithmetic, "basic math", or skills far below the path's level), and (b) NOT taught by any topic in
-  this path and not the goal concept itself. Each is {{"name": <the bare concept name, a 1-3 word noun
+  ALL THREE filters: (a) NOT trivial background (multiplication is not a prerequisite for Bayes' theorem —
+  never list arithmetic, "basic math", or skills far below the path's level), (b) NOT taught by any topic in
+  this path and not the goal concept itself, and (c) NOT part of the SUBJECT the goal asks to learn: a
+  prerequisite comes from a DIFFERENT, earlier subject. When the goal names an AREA (e.g. "combinatorial
+  analysis"), that area's own early units (counting principles, permutations, combinations) are the path's
+  FIRST TOPICS — never prerequisites. Listing "<goal-subject> principles/basics/fundamentals" as a
+  prerequisite is always WRONG (it is circular: the learner would be sent to a path teaching the very thing
+  they asked to learn). Each is {{"name": <the bare concept name, a 1-3 word noun
   phrase, lowercase unless a proper noun — e.g. "conditional probability", "binary search trees">,
   "gloss": <one line: WHAT IT IS, a plain-language refresher>, "required_knowledge": <one line: what the
   learner MUST be able to do/know about it to follow THIS path — specific, e.g. "be able to compute P(A|B)
