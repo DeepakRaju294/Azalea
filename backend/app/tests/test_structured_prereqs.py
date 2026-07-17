@@ -9,7 +9,7 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.topic_decomposition_pipeline import (
-    _cross_topic_foundations, _is_circular_prereq, _path_assumed_prereqs, _prereq_is_taught_in_path,
+    _cross_topic_foundations, _is_circular_prereq, _path_assumed_prereqs, _topic_teaches_prereq, _fold_prereq_topics,
     generate_decomposed_topics,
 )
 from app.services.lean_lesson_generator import (
@@ -167,15 +167,27 @@ _CA_GOAL = "Want to learn about combinatorial analysis"
 
 
 class TaughtPrereqGuard(unittest.TestCase):
-    def test_prereq_taught_by_a_topic_is_dropped(self):
-        # Live failure (Dijkstra path): 'Graph Representation' was BOTH a prereq AND the taught topic
-        # 'Implementing Graph Representation' -> its link was suppressed, leaving a dead prereq.
-        teaching = [{"title": "Dijkstra's Algorithm Walkthrough", "subject_key": "dijkstra_walk"},
-                    {"title": "Implementing Graph Representation", "subject_key": "graph_representation"}]
-        self.assertTrue(_prereq_is_taught_in_path("Graph Representation", teaching))
-        self.assertFalse(_prereq_is_taught_in_path("graph theory", teaching))     # external -> stays
+    def test_topic_teaching_a_declared_prereq_is_detected(self):
+        # Live failure (Dijkstra path): 'Graph Representation' was BOTH a declared prereq AND the taught topic
+        # 'Implementing Graph Representation'. A concept is EITHER a prereq OR a topic — keep the prereq, fold
+        # the topic. _topic_teaches_prereq flags the topic that duplicates a declared prereq.
+        prereqs = ["graph theory", "Graph Representation"]
+        graph_rep = {"title": "Implementing Graph Representation", "subject_key": "graph_representation"}
+        dijkstra = {"title": "Dijkstra's Algorithm Walkthrough", "subject_key": "dijkstra_walk"}
+        self.assertTrue(_topic_teaches_prereq(graph_rep, prereqs))
+        self.assertFalse(_topic_teaches_prereq(dijkstra, prereqs))    # not a declared prereq -> stays
 
-    def test_end_to_end_taught_prereq_removed_external_kept(self):
+    def test_fold_removes_prereq_topic_but_keeps_last_teaching_topic(self):
+        topics = [{"topic_type": "study_path_introduction", "title": "Intro"},
+                  {"title": "Implementing Graph Representation", "subject_key": "graph_representation"},
+                  {"title": "Implementing Dijkstra's Algorithm", "subject_key": "dijkstra"}]
+        removed = _fold_prereq_topics(topics, ["Graph Representation"], "learn dijkstra's algorithm")
+        self.assertEqual(removed, ["Implementing Graph Representation"])
+        titles = [t.get("title") for t in topics]
+        self.assertNotIn("Implementing Graph Representation", titles)   # folded -> becomes a prereq link
+        self.assertIn("Implementing Dijkstra's Algorithm", titles)     # the real subject stays
+
+    def test_end_to_end_prereq_kept_topic_folded(self):
         resp = {
             "path_plan": {"end_capability": "x", "end_capability_actions": ["implement"],
                           "assumed_prerequisites": [
@@ -202,9 +214,10 @@ class TaughtPrereqGuard(unittest.TestCase):
         intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
         ap = [a.lower() for a in (intro.get("assumed_prerequisites") or [])]
         self.assertIn("graph theory", ap)                    # external prereq kept (gets a link)
-        self.assertNotIn("graph representation", ap)          # taught by topic 1 -> dropped from prereqs
+        self.assertIn("graph representation", ap)             # declared prereq kept (gets a link)
         titles = [t["title"] for t in topics]
-        self.assertIn("Implementing Graph Representation", titles)   # the topic stays
+        self.assertNotIn("Implementing Graph Representation", titles)   # redundant topic folded away
+        self.assertIn("Implementing Dijkstra's Algorithm", titles)     # the real subject stays
 
 
 class CircularPrereqGuard(unittest.TestCase):

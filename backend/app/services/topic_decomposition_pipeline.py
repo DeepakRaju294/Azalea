@@ -200,20 +200,41 @@ def _disambiguate_topic_titles(ordered: list[dict[str, Any]], goal: str | None) 
         teaching_seen += 1
 
 
-def _prereq_is_taught_in_path(name: str, teaching_topics: list[dict[str, Any]]) -> bool:
-    """True when a proposed prerequisite is actually TAUGHT by a topic in this path — so it is not 'assumed'
-    external knowledge and must not be a prereq (its open_study_path link would be suppressed anyway, leaving a
-    dead prereq). Match = the prereq's significant words are all contained in a topic's title/subject, so 'Graph
-    Representation' is caught by the 'Implementing Graph Representation' topic."""
-    words = {w for w in _norm_title(name).split() if len(w) >= 3}
-    if not words:
-        return False
-    for t in teaching_topics:
-        for field in ("title", "subject_key"):
-            tw = set(_norm_title(t.get(field)).split())
-            if tw and words <= tw:
-                return True
+def _topic_teaches_prereq(topic: dict[str, Any], prereq_names: list[str]) -> bool:
+    """True when a topic teaches a concept the path also declared an external PREREQUISITE — i.e. the topic's
+    title/subject fully contains a declared prereq's significant words ('Implementing Graph Representation'
+    teaches the declared 'Graph Representation' prereq)."""
+    tw: set[str] = set()
+    for field in ("title", "subject_key"):
+        tw |= set(_norm_title(topic.get(field)).split())
+    for name in prereq_names:
+        pw = {w for w in _norm_title(name).split() if len(w) >= 3}
+        if pw and pw <= tw:
+            return True
     return False
+
+
+def _fold_prereq_topics(topics_out: list[dict[str, Any]], prereq_names: list[str], goal: str | None) -> list[str]:
+    """A concept is EITHER an external prerequisite OR a taught topic — never both. When the LLM declares a
+    concept as a prerequisite AND also emits a standalone topic for it ('Graph Representation' prereq + the
+    'Implementing Graph Representation' topic on a Dijkstra path), the learner is assumed to have it, so keep the
+    PREREQUISITE (external, linked) and REMOVE the redundant topic. Never removes a goal-named topic (in scope)
+    nor the last teaching topic. Mutates topics_out in place; returns the removed titles."""
+    if not prereq_names:
+        return []
+    teaching = [t for t in topics_out if not _is_opener(t)]
+    remove_ids, removed = set(), []
+    for t in teaching:
+        if _goal_names_topic(t, goal):
+            continue                                    # the goal names it → it stays a taught topic
+        if _topic_teaches_prereq(t, prereq_names):
+            remove_ids.add(id(t))
+            removed.append(str(t.get("title") or ""))
+    if remove_ids and len(remove_ids) < len(teaching):  # never fold away every teaching topic
+        topics_out[:] = [t for t in topics_out if id(t) not in remove_ids]
+        _log.info("topic_decomposition: folded %d prereq-duplicate topic(s) into prereqs: %s", len(removed), removed)
+        return removed
+    return []
 
 
 def _repair_topic_title(title: str, subject_key: str) -> str:
@@ -506,16 +527,19 @@ def generate_decomposed_topics(
     # prereq links: the LLM's explicit path_plan.assumed_prerequisites (clean concept names + glosses) plus
     # any foundation topics we folded above. No prose parsing — these names are canonical by construction.
     # Exclude any prereq the GOAL itself names (that concept is in-scope, taught, not an external prereq).
-    teaching = [t for t in topics_out if not _is_opener(t)]
     llm_prereqs, prereq_glosses, prereq_requirements = _path_assumed_prereqs(path_plan)
-    # A concept is EITHER an external prerequisite OR a topic this path teaches — never both. Drop a declared
-    # prereq the goal names, one that is circular, OR one a topic in this path TEACHES (live failure: 'Graph
-    # Representation' was a prereq AND the 'Implementing Graph Representation' topic — so its link was suppressed,
-    # leaving a linkless prereq). The topic keeps it; it is no longer "assumed".
+    # Drop a declared prereq the goal names (in scope, taught) or one that is circular (goal subject in generic
+    # wrapping) — those must stay taught topics, never external links.
     llm_prereqs = [p for p in llm_prereqs
                    if not _goal_names_topic({"title": p, "subject_key": p}, goal)
-                   and not _is_circular_prereq(p, goal)
-                   and not _prereq_is_taught_in_path(p, teaching)]
+                   and not _is_circular_prereq(p, goal)]
+    # A concept is EITHER an external prerequisite OR a topic this path teaches — never both. When the LLM
+    # declares a concept as a prereq AND also emits a standalone topic for it (live failure: 'Graph
+    # Representation' prereq + the 'Implementing Graph Representation' topic on a Dijkstra path), the learner is
+    # ASSUMED to have it — so keep the PREREQUISITE (external, linked) and fold away the redundant topic, rather
+    # than padding a Dijkstra path with a full graph-representation lesson. Recompute `teaching` afterward.
+    _fold_prereq_topics(topics_out, llm_prereqs, goal)
+    teaching = [t for t in topics_out if not _is_opener(t)]
     # Deterministic backstop: concepts shared across ≥2 topics' in_scope but taught by none are prerequisites the
     # LLM tends to omit (e.g. 'conditional probability' on a Bayes path). Their gloss is harvested downstream from
     # the intro's key-terms card if it defines them (and the term is then removed from key-terms — see §overlap).
