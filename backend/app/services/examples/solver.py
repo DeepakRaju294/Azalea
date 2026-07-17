@@ -953,6 +953,17 @@ def _coerce_points(value: Any) -> list[str]:
     return [str(p).rstrip() for p in value if str(p).strip()]
 
 
+def _demote_code_comment(line: str) -> str:
+    """Turn a code-style trailing `//` comment into a plain-prose annotation for a NON-coding worked example
+    ('6! // calc' -> '6! — calc'); drop a bare '//'. A math/proof topic has no legitimate code comments."""
+    s = str(line)
+    if "//" not in s:
+        return s
+    lead, _, note = s.partition("//")
+    note = note.strip()
+    return f"{lead.rstrip()} — {note}" if note and lead.strip() else (lead.rstrip() or note)
+
+
 def _coerce_lines(value: Any) -> list[str]:
     """A field that should be a list of short lines — accept a single (possibly multi-line) string too.
     NEVER iterate a bare string as if it were a list (that yields one CHARACTER per line — the live bug
@@ -1238,6 +1249,8 @@ def _build_solution_cards(
         goal = str(card.get("goal") or "").strip()
         reasoning = str(card.get("reasoning") or "").strip()
         work = _coerce_lines(card.get("work"))   # a bare string must never be char-iterated (live bug)
+        if not code:                             # NON-coding worked example: `//` is code-leakage, not a comment
+            work = [_demote_code_comment(w) for w in work]   # "6! // note" -> "6! — note"
         result = str(card.get("result") or "").strip()
         card_title = _step_card_title(card.get("title"), goal, result, n)
         # Prose (goal/reasoning/result/title): match FUNCTION names to code casing only — leave other

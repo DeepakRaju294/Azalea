@@ -193,13 +193,21 @@ class TestStringWorkNeverCharIterated(unittest.TestCase):
                 "result": "n = 6, r = 3", "visual": "",
             }],
         }
-        cards = _build_solution_cards(sol, {"id": "t1"})
+        cards = _build_solution_cards(sol, {"id": "t1"})   # non-coding (code=None) → // demoted to prose
         step = cards[1]
-        self.assertEqual(step["work"], ["Let n = 6 // six fruits available", "Let r = 3"])
+        self.assertEqual(step["work"], ["Let n = 6 — six fruits available", "Let r = 3"])
         work_bullets = [p for p in step["points"] if p.startswith("  - ")]
         self.assertEqual(work_bullets,
-                         ["  - Let n = 6 // six fruits available", "  - Let r = 3"])
+                         ["  - Let n = 6 — six fruits available", "  - Let r = 3"])
         self.assertFalse(any(len(p.strip().lstrip("- ").strip()) <= 1 for p in work_bullets))
+
+    def test_coding_worked_example_keeps_comments(self):
+        sol = {"problem": "Sort it.", "expected_final_answer": "[1,2]", "final_answer": "[1,2]",
+               "cards": [{"title": "Loop", "goal": "g", "reasoning": "r",
+                          "work": ["i = 0 // start index"], "result": "sorted"}]}
+        cards = _build_solution_cards(sol, {"id": "t1"}, code="def sort(a):\n    i = 0\n    return a")
+        step = cards[1]
+        self.assertEqual(step["work"], ["i = 0 // start index"])   # coding path: // is a real comment, kept
 
 
 class TestCoding(unittest.TestCase):
