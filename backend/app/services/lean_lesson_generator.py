@@ -3991,7 +3991,9 @@ def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic, brief_fn=None
         points.append(n)
         gloss = glosses.get(n.lower())
         if gloss:
-            points.append(f"  - {gloss}")
+            # Labeled like its sibling line — an unlabeled fragment ("Techniques to count...") reads as
+            # ambiguous; "What it is:" makes the refresher self-explanatory.
+            points.append(f"  - What it is: {gloss}")
         req = requirements.get(n.lower())
         if req:
             points.append(f"  - What to learn: {req}")

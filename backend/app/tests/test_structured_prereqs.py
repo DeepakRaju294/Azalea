@@ -117,8 +117,8 @@ class GroundPrereqCard(unittest.TestCase):
         out = _ground_prereq_card(cards, intro)
         pts = out[0]["points"]
         # main bullet = bare topic name (the link anchor); the gloss is its sub-bullet
-        self.assertEqual(pts, ["conditional probability", "  - prob. of A given B",
-                               "sample space", "  - all outcomes"])
+        self.assertEqual(pts, ["conditional probability", "  - What it is: prob. of A given B",
+                               "sample space", "  - What it is: all outcomes"])
 
     def test_mints_prereq_card_when_none_present(self):
         intro = _Topic("i", "Intro", 0, prereqs=["vectors"], ctype="study_path_introduction")
@@ -310,7 +310,7 @@ class GroundHarvestsGlossFromKeyTerms(unittest.TestCase):
         out = _ground_prereq_card(cards, intro)
         prereq = next(c for c in out if (c.get("blueprint_key") or c.get("card_type")) in ("prerequisites",))
         self.assertEqual(prereq["points"], ["conditional probability",
-                                            "  - probability of A given B has occurred"])
+                                            "  - What it is: probability of A given B has occurred"])
         kt = next(c for c in out if c["card_type"] == "definition")["points"]
         self.assertNotIn("Conditional Probability", kt)                 # relocated out of key terms
 
@@ -332,7 +332,7 @@ class PrereqBriefBackstop(unittest.TestCase):
         out = _ground_prereq_card(cards, intro, brief_fn=_briefs)
         self.assertEqual(out[0]["points"], [
             "Counting Principles",
-            "  - rules for counting outcomes of combined choices",
+            "  - What it is: rules for counting outcomes of combined choices",
             "  - What to learn: apply the addition and multiplication rules to count outcomes"])
 
     def test_backstop_not_called_when_briefs_present(self):
@@ -380,7 +380,7 @@ class ProsePathGrounding(unittest.TestCase):
         pts = out[0]["points"]
         self.assertIn("factorials", pts)                                   # goal phrase stripped → bare name
         self.assertIn("basic algebra principles", pts)
-        self.assertIn("  - what factorials is", pts)                       # refresher sub-bullet
+        self.assertIn("  - What it is: what factorials is", pts)                       # refresher sub-bullet
         self.assertIn("  - What to learn: use factorials fluently", pts)   # what-to-learn sub-bullet
         self.assertNotIn("  - Total arrangements of items", pts)           # model fragment replaced
 
@@ -420,7 +420,7 @@ class PrereqIdeaGroupBullets(unittest.TestCase):
         out = _ground_prereq_card(cards, intro)
         self.assertEqual(out[0]["points"], [
             "conditional probability",
-            "  - the probability of one event given another",
+            "  - What it is: the probability of one event given another",
             "  - What to learn: compute P(A|B) for concrete events"])
 
     def test_no_gloss_or_requirement_stays_bare_name(self):
@@ -429,7 +429,7 @@ class PrereqIdeaGroupBullets(unittest.TestCase):
         cards = [{"card_type": "prerequisites", "blueprint_key": "prerequisites",
                   "title": "Prerequisites", "points": ["prose"]}]
         out = _ground_prereq_card(cards, intro)
-        self.assertEqual(out[0]["points"], ["vectors", "  - arrows"])
+        self.assertEqual(out[0]["points"], ["vectors", "  - What it is: arrows"])
 
 
 class PrereqCardRecognition(unittest.TestCase):
