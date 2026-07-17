@@ -362,6 +362,51 @@ class PrereqBriefBackstop(unittest.TestCase):
         self.assertEqual(out[0]["points"], ["Counting Principles"])   # graceful: bare name, never broken
 
 
+class ProsePathGrounding(unittest.TestCase):
+    def test_prose_prereq_card_rebuilt_to_idea_group_contract(self):
+        # Live failure: decomposition emitted NO structured prereqs → the model's prose card stood, with
+        # fragment sub-bullets ("Total arrangements of items") instead of the refresher/what-to-learn
+        # contract. The prose path must now extract the names and rebuild via the brief backstop.
+        intro = _Topic("i", "Intro", 0, ctype="study_path_introduction")   # assumed_prerequisites EMPTY
+        cards = [{"card_type": "purpose_context", "title": "Prerequisites for Combinatorial Analysis",
+                  "points": ["Basic understanding of factorials", "  - Total arrangements of items",
+                             "Knowledge of basic algebra principles", "  - Manipulation of equations"]}]
+
+        def _briefs(names, goal):
+            return [{"name": n, "gloss": f"what {n} is", "required_knowledge": f"use {n} fluently"}
+                    for n in names]
+
+        out = _ground_prereq_card(cards, intro, brief_fn=_briefs)
+        pts = out[0]["points"]
+        self.assertIn("factorials", pts)                                   # goal phrase stripped → bare name
+        self.assertIn("basic algebra principles", pts)
+        self.assertIn("  - what factorials is", pts)                       # refresher sub-bullet
+        self.assertIn("  - What to learn: use factorials fluently", pts)   # what-to-learn sub-bullet
+        self.assertNotIn("  - Total arrangements of items", pts)           # model fragment replaced
+
+    def test_no_prereq_card_no_prose_grounding(self):
+        intro = _Topic("i", "Intro", 0, ctype="study_path_introduction")
+        cards = [{"card_type": "background", "points": ["overview"]}]
+        self.assertEqual(_ground_prereq_card(cards, intro, brief_fn=lambda n, g: []), cards)
+
+
+class RelocatePluralMatch(unittest.TestCase):
+    def test_plural_prereq_matches_singular_key_term(self):
+        # Live contradiction: 'factorials' was a prereq link while 'Factorial' was ALSO defined as an intro
+        # key term. Relocation must match across plural/singular and remove the key term.
+        cards = [
+            {"card_type": "prerequisites", "title": "Prerequisites", "points": ["x"]},
+            {"card_type": "definition", "title": "Key Terms", "points": [
+                "Factorial", "  - multiplies a number by every number below it",
+                "Permutation", "  - an ordered arrangement"]},
+        ]
+        harvested = _relocate_prereq_defs_from_key_terms(cards, ["factorials"])
+        self.assertEqual(harvested["factorials"], "multiplies a number by every number below it")
+        kt = cards[1]["points"]
+        self.assertNotIn("Factorial", kt)              # removed from key terms
+        self.assertIn("Permutation", kt)               # unrelated term stays
+
+
 class PrereqIdeaGroupBullets(unittest.TestCase):
     def test_name_is_main_bullet_gloss_and_requirement_are_sub_bullets(self):
         # User spec: main bullet = the bare prereq/topic name (the link anchor); sub-bullets = the

@@ -60,9 +60,13 @@ def _llm_card(topic: dict[str, Any]) -> Optional[dict[str, Any]]:
         out = _llm_call(payload, "guided_explanation", json_mode=True)
         if not isinstance(out, dict):
             return None
+        raw_work = out.get("work")
+        if isinstance(raw_work, str):                # a bare string must never be char-iterated
+            raw_work = [raw_work]
         return {"title": "Key process", "card_type": "worked_example", "blueprint_key": "worked_example",
                 "goal": str(out.get("goal", "")), "reasoning": str(out.get("reasoning", "")),
-                "work": [str(x) for x in (out.get("work") or [])], "result": str(out.get("result", "")),
+                "work": [str(x) for x in (raw_work or []) if str(x).strip()],
+                "result": str(out.get("result", "")),
                 "metadata": {"example": {"role": "guided"}, "verification_level": "none"}}
     except Exception as exc:  # noqa: BLE001
         _log.debug("guided LLM card failed: %s", exc)

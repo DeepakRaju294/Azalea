@@ -105,6 +105,13 @@ def normalize_card(card: dict[str, Any], paths: list[str], schema=None, index: i
         sr = "none"
     card["state_relevance"] = sr
 
+    # A bare (possibly multi-line) STRING work field becomes a list of lines HERE, at the entry point, so no
+    # downstream consumer can char-iterate it (the live bug that shredded a worked example into one character
+    # per bullet). Split on newlines; drop blank fragments.
+    work = card.get("work")
+    if isinstance(work, str):
+        card["work"] = [ln.rstrip() for ln in work.split("\n") if ln.strip()]
+
     # cap work lines deterministically: merge any overflow into the last kept line (§5.2)
     work = card.get("work")
     if isinstance(work, list) and len(work) > MAX_WORK_LINES_PER_CARD:

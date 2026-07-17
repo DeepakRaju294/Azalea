@@ -77,6 +77,15 @@ class TestAdapter(unittest.TestCase):
         self.assertEqual(legacy["reasoning"], "decisive")
         self.assertIsNone(legacy["code_lines"])
 
+    def test_string_work_never_char_iterated(self):
+        # Live bug (round 12): a bare-string work field was char-iterated into one bullet per character
+        # ('- T', '- h', '- e', …), shredding the Binomial worked example. Must wrap + split lines instead.
+        legacy = card_to_legacy({"title": "t", "goal": "g", "reasoning": "r",
+                                 "work": "The expression (x + 2)^5 has a = x, b = 2, n = 5.\nApply the theorem.",
+                                 "result": "set up"})
+        self.assertEqual(legacy["work"],
+                         ["The expression (x + 2)^5 has a = x, b = 2, n = 5.", "Apply the theorem."])
+
     def test_artifact_to_legacy_shape(self):
         legacy = artifact_to_legacy(simple_artifact_with_problem(4))
         self.assertEqual(legacy["problem"], "sort [3,1,2]")

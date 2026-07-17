@@ -3456,8 +3456,10 @@ _KEY_TERM_CARD_KEYS = frozenset({"definition", "components_terms", "key_terms"})
 def _relocate_prereq_defs_from_key_terms(cards: list[dict[str, Any]], names: list[str]) -> dict[str, str]:
     """A prerequisite belongs on the prerequisites card, NOT duplicated as an intro key term. For each named
     prereq that the intro's key-terms card also DEFINES, harvest that definition (to use as the prereq's gloss)
-    and REMOVE the term from the key-terms card. Returns {lowercased name: gloss}. Best-effort; mutates cards."""
-    wanted = {n.strip().lower() for n in names if n and n.strip()}
+    and REMOVE the term from the key-terms card. Returns {lowercased name: gloss}. Matching is via
+    _norm_gloss_key so plural/singular unify ('factorials' prereq matches the 'Factorial' key term — a live
+    contradiction where the same concept was a prereq link AND an intro key term). Best-effort; mutates cards."""
+    wanted = {_norm_gloss_key(n): n.strip().lower() for n in names if n and n.strip()}
     if not wanted:
         return {}
     harvested: dict[str, str] = {}
@@ -3480,8 +3482,9 @@ def _relocate_prereq_defs_from_key_terms(cards: list[dict[str, Any]], names: lis
             while j < len(pts) and (str(pts[j])[:1].isspace() or str(pts[j]).lstrip().startswith("-")):
                 j += 1
             term = p.split(":", 1)[0].strip().rstrip(":").strip()
-            key = term.lower()
-            if key in wanted and key not in harvested:
+            norm = _norm_gloss_key(term)
+            key = wanted.get(norm, "")                   # the PREREQ's own lowercased name, not the term's
+            if key and key not in harvested:
                 inline = p.split(":", 1)[1].strip() if ":" in p else ""
                 defs = [_re.sub(r"^\s*[-•]\s*", "", str(pts[k]).strip()) for k in range(i + 1, j)]
                 gloss = " ".join(s for s in ([inline, *defs]) if s).strip().rstrip(".")
@@ -3931,6 +3934,27 @@ def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic, brief_fn=None
         if name and name.lower() not in seen:
             seen.add(name.lower())
             names.append(name)
+    if not names:
+        # PROSE PATH: decomposition emitted no structured prereqs (common model variance), so the model's own
+        # prose prereq card stands — with sub-bullets that are fragments, not the refresher/what-to-learn
+        # contract. Recover the prereq NAMES from the card's main bullets with the same precision-first
+        # extraction the link fallback uses, then rebuild the card to the same idea-group shape (the brief
+        # backstop below fills both sub-bullets). Unifies the structured and prose paths on one contract.
+        pidx = next((i for i, c in enumerate(cards)
+                     if _lean_card_key(c) == "prerequisites" or _is_prereq_card(c)), -1)
+        if pidx < 0:
+            return cards
+        for point in (cards[pidx].get("points") or cards[pidx].get("bullets") or []):
+            s = str(point).strip()
+            if not s or str(point)[:1].isspace() or s.startswith("-"):
+                continue                                     # sub-bullet / indented line, not a prereq header
+            for concept in _concepts_from_prereq_line(s):
+                concept = concept.strip().rstrip(".,;:").strip()
+                if concept and _acceptable_concept(concept) and concept.lower() not in seen:
+                    seen.add(concept.lower())
+                    names.append(concept)
+            if len(names) >= 4:
+                break
     if not names:
         return cards
     glosses = dict(_assumed_prereq_glosses(topic))

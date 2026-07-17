@@ -43,6 +43,22 @@ def _flat_refs_to_ranges(refs: Any) -> Optional[list[list[int]]]:
     return ranges
 
 
+def _work_lines(value: Any) -> list[str]:
+    """`work` as a list of whole lines. A bare (possibly multi-line) STRING from the model must be wrapped,
+    never iterated — iterating a string yields one CHARACTER per line (the live bug that shredded the
+    Binomial worked example into '- T', '- h', '- e', …)."""
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for w in value:
+        for part in str(w).split("\n"):
+            if part.strip():
+                out.append(part.rstrip())
+    return out
+
+
 def card_to_legacy(card: dict[str, Any]) -> dict[str, Any]:
     """Map one gen_foundation card onto the legacy Goal/Reasoning/Work/Result card."""
     coding = is_coding_card(card)
@@ -52,7 +68,7 @@ def card_to_legacy(card: dict[str, Any]) -> dict[str, Any]:
         "title": str(card.get("title") or "").strip(),
         "goal": str(card.get("goal") or "").strip(),
         "reasoning": str(reasoning).strip(),
-        "work": [str(w) for w in (card.get("work") or [])],
+        "work": _work_lines(card.get("work")),
         "result": str(card.get("result") or "").strip(),
         "teaching_note": card.get("teaching_note"),
         "cases_covered": [str(c) for c in (card.get("cases_covered") or [])],
