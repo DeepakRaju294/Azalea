@@ -3948,11 +3948,17 @@ def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic, brief_fn=None
             s = str(point).strip()
             if not s or str(point)[:1].isspace() or s.startswith("-"):
                 continue                                     # sub-bullet / indented line, not a prereq header
-            for concept in _concepts_from_prereq_line(s):
-                concept = concept.strip().rstrip(".,;:").strip()
+            # The model commonly writes "Name — description. You will use it for …" (one main bullet, no
+            # sub-bullets). The NAME is the header before the separator; take it directly, then fall back to
+            # sentence-form extraction ("Understanding X …") for prose that has no leading name.
+            candidates = [_key_term_header(s)]
+            candidates.extend(_concepts_from_prereq_line(s))
+            for concept in candidates:
+                concept = _strip_prereq_goal_phrase(str(concept)).strip().rstrip(".,;:").strip()
                 if concept and _acceptable_concept(concept) and concept.lower() not in seen:
                     seen.add(concept.lower())
                     names.append(concept)
+                    break                                    # one prereq per bullet
             if len(names) >= 4:
                 break
     if not names:

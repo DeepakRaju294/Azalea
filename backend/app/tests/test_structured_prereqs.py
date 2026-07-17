@@ -389,6 +389,25 @@ class ProsePathGrounding(unittest.TestCase):
         cards = [{"card_type": "background", "points": ["overview"]}]
         self.assertEqual(_ground_prereq_card(cards, intro, brief_fn=lambda n, g: []), cards)
 
+    def test_name_dash_description_format_extracted(self):
+        # Live regression: the model wrote "Name — description. You will use it for …" as ONE main bullet
+        # (no sub-bullets, no link). _concepts_from_prereq_line returns [] on that shape; the header extractor
+        # must recover the name so the card is rebuilt to the idea-group contract.
+        intro = _Topic("i", "Intro", 0, ctype="study_path_introduction")   # assumed_prerequisites EMPTY
+        cards = [{"card_type": "purpose_context", "title": "Prerequisites for Combinatorial Analysis",
+                  "points": [
+                      "Basic Algebra — manipulation of algebraic expressions. You will use it for deriving formulas.",
+                      "Basic Probability — understanding likelihoods. Essential for applying combinatorial methods."]}]
+
+        def _briefs(names, goal):
+            return [{"name": n, "gloss": f"{n} refresher", "required_knowledge": f"apply {n}"} for n in names]
+
+        out = _ground_prereq_card(cards, intro, brief_fn=_briefs)
+        self.assertEqual(out[0]["points"], [
+            "Basic Algebra", "  - What it is: Basic Algebra refresher", "  - What to learn: apply Basic Algebra",
+            "Basic Probability", "  - What it is: Basic Probability refresher",
+            "  - What to learn: apply Basic Probability"])
+
 
 class RelocatePluralMatch(unittest.TestCase):
     def test_plural_prereq_matches_singular_key_term(self):
