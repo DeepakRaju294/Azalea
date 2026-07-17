@@ -687,6 +687,51 @@ def _tree_value_directive(topic: "Topic", families: list[str]) -> str | None:
     )
 
 
+_NOTATION_TOPIC_TYPES = ("math_formula_method", "formula_application", "proof_reasoning",
+                         "problem_solving_application")
+
+
+def _path_notation_directive(topic: Topic, topic_type: str) -> str | None:
+    """Path-level notation consistency. A formula/proof/application topic WITHOUT its own adapter (e.g. the
+    Binomial Theorem or a synthesis topic) should still use the notation ESTABLISHED by adapter-backed sibling
+    topics — so the same symbol doesn't change letters across the path (C(n, r) in Combinations but C(n, k) in
+    Binomial reads to a first-timer as two different things). Returns None when the current topic has its own
+    contract (already pinned) or no sibling establishes any notation. Best-effort."""
+    if topic_type not in _NOTATION_TOPIC_TYPES:
+        return None
+    try:
+        from app.services.examples.trace_pipeline import route_adapter
+
+        # If THIS topic has its own adapter, `_formula_notation_contract` already pins its notation exactly.
+        own = route_adapter({"title": getattr(topic, "title", "") or "", "course_type": topic_type})
+        if getattr(own, "_formula_spec", None) is not None:
+            return None
+        study_path = getattr(topic, "study_path", None)
+        sibs = getattr(study_path, "topics", None) or []
+        eqs: list[str] = []
+        seen: set[str] = set()
+        for s in sibs:
+            if s is topic:
+                continue
+            s_type = str(getattr(s, "topic_type", None) or getattr(s, "course_type", None) or "")
+            ad = route_adapter({"title": getattr(s, "title", "") or "", "course_type": s_type})
+            spec = getattr(ad, "_formula_spec", None) if ad is not None else None
+            latex = getattr(spec, "canonical_latex", None) if spec is not None else None
+            if latex and latex not in seen:
+                seen.add(latex)
+                eqs.append(str(latex))
+        if not eqs:
+            return None
+        return "\n".join([
+            "PATH NOTATION (keep notation consistent with the rest of this study path):",
+            *(f"- {e}" for e in eqs[:4]),
+            "- Use the SAME variable letters as these for any shared symbol — e.g. if a related topic writes "
+            "C(n, r), you MUST write C(n, r), never C(n, k). Do not switch conventions between topics.",
+        ])
+    except Exception:  # noqa: BLE001 — prompt enrichment is additive; never block generation
+        return None
+
+
 def _formula_notation_contract(topic: Topic, topic_type: str) -> str | None:
     """For an adapter-backed formula topic, build a NOTATION CONTRACT from the adapter's canonical equation +
     symbol legend, so the LLM writes EVERY card (purpose, definition, method) in the SAME variable letters the
@@ -908,6 +953,12 @@ def build_lean_user_prompt(
     if notation_contract:
         parts.append("")
         parts.append(notation_contract)
+    else:
+        # No own-adapter contract — steer a non-adapter formula/proof/synthesis topic to the path's notation.
+        path_notation = _path_notation_directive(topic, topic_type)
+        if path_notation:
+            parts.append("")
+            parts.append(path_notation)
 
     parts.append("")
     parts.append("SELECTED TOPIC-TYPE CARD PLAN:")

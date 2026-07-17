@@ -6,13 +6,21 @@ import unittest
 
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
-from app.prompts.lean_lesson_prompt import _formula_notation_contract
+from app.prompts.lean_lesson_prompt import _formula_notation_contract, _path_notation_directive
 
 
 class _Topic:
     def __init__(self, title, ctype="math_formula_method"):
         self.title = title
         self.course_type = self.topic_type = ctype
+        self.study_path = None
+
+
+class _Path:
+    def __init__(self, topics):
+        self.topics = topics
+        for t in topics:
+            t.study_path = self
 
 
 class NotationContract(unittest.TestCase):
@@ -41,6 +49,29 @@ class NotationContract(unittest.TestCase):
     def test_none_when_no_adapter_matches(self):
         self.assertIsNone(_formula_notation_contract(_Topic("Some Bespoke Topic With No Formula"),
                                                      "math_formula_method"))
+
+
+class PathNotationDirective(unittest.TestCase):
+    def test_non_adapter_topic_borrows_sibling_notation(self):
+        # Binomial Theorem has no formula adapter; it should be steered to the C(n, r) its sibling
+        # Combinations establishes — so it doesn't drift to C(n, k).
+        binom = _Topic("Binomial Theorem")
+        _Path([_Topic("Permutations"), _Topic("Combinations"), binom])
+        d = _path_notation_directive(binom, "math_formula_method")
+        self.assertIsNotNone(d)
+        self.assertIn("C(n,r)", d)
+        self.assertIn("never C(n, k)", d)
+
+    def test_adapter_topic_gets_no_path_directive(self):
+        # Combinations pins its own notation via _formula_notation_contract, so no path directive.
+        combos = _Topic("Combinations")
+        _Path([_Topic("Permutations"), combos, _Topic("Binomial Theorem")])
+        self.assertIsNone(_path_notation_directive(combos, "math_formula_method"))
+
+    def test_none_when_no_sibling_establishes_notation(self):
+        solo = _Topic("Binomial Theorem")
+        _Path([_Topic("Some Bespoke Topic"), solo])
+        self.assertIsNone(_path_notation_directive(solo, "math_formula_method"))
 
 
 if __name__ == "__main__":
