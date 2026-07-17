@@ -47,11 +47,13 @@ class CodeCommentsInMathWork(unittest.TestCase):
         _run(c)
         self.assertEqual(c[0]["points"][1], "  - Total letters = 6 — the word BANANA has 6 letters")
 
-    def test_coding_card_keeps_comments(self):
+    def test_math_topic_strips_comments_even_with_code_lines(self):
+        # gen_foundation spuriously sets code_lines on a MATH worked example — the topic type governs, so // is
+        # still stripped (it's code-leakage, not real code).
         c = [{"card_type": "worked_example", "code_lines": [[1, 3]],
-              "points": ["  - x = 0 // initialize"]}]
-        _run(c)
-        self.assertEqual(c[0]["points"][0], "  - x = 0 // initialize")
+              "points": ["  - factorial_n = 6! = 720 // calculating factorial of n"]}]
+        _run(c, topic=_Topic("problem_solving_application"))
+        self.assertEqual(c[0]["points"][0], "  - factorial_n = 6! = 720 — calculating factorial of n")
 
     def test_coding_topic_keeps_comments(self):
         c = [{"card_type": "worked_example", "points": ["  - x = 0 // initialize"]}]

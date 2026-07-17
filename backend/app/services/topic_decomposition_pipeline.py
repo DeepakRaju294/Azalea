@@ -152,6 +152,54 @@ def _is_circular_prereq(name: str, goal: str | None) -> bool:
     return all(_in_goal(w) for w in words)
 
 
+def _norm_title(t: str) -> str:
+    """Lowercase alnum words of a title, minus glue, for equality/containment checks."""
+    return " ".join(w for w in re.findall(r"[a-z0-9]+", str(t or "").lower())
+                    if w not in _GOAL_MATCH_GLUE)
+
+
+# Role verbs for renaming a topic whose bare title collides with the path/goal or another topic. An
+# application/synthesis topic BECOMES "Applying <X>"; a review/practice one "Practicing <X>".
+_SYNTHESIS_ROLES = {"application": "Applying", "problem_solving_application": "Applying",
+                    "synthesis": "Applying", "review": "Reviewing", "practice": "Practicing"}
+
+
+def _disambiguate_topic_titles(ordered: list[dict[str, Any]], goal: str | None) -> None:
+    """Deterministic decomposition validation (naming): a TEACHING topic must not carry the same title as the
+    whole path/goal ('Combinatorial Analysis' topic on a Combinatorial-Analysis path) nor duplicate an earlier
+    topic's title — both read as 'why is this here?' to a learner. Rename the offender by its ROLE ('Applying
+    Combinatorial Analysis' for an application/synthesis topic), else prefix a clarifier. Mutates in place."""
+    goal_words = set(_norm_title(goal).split())
+    seen: dict[str, int] = {}
+    teaching_seen = 0
+    for t in ordered:
+        if _is_opener(t):
+            continue
+        title = str(t.get("title") or "").strip()
+        words = set(_norm_title(title).split())
+        if not words:
+            teaching_seen += 1
+            continue
+        role = str(t.get("content_role") or "").lower()
+        ttype = str(t.get("topic_type") or "").lower()
+        verb = _SYNTHESIS_ROLES.get(role) or _SYNTHESIS_ROLES.get(ttype)
+        # Title IS the whole path subject (all its words in the goal, a substantial >=2-word subject) AND it is a
+        # LATE synthesis/application topic — real teaching topics already precede it, so a topic re-titled the
+        # whole subject is a redundant synthesis, not the primary lesson. (A single-concept path whose one topic
+        # legitimately IS the subject — 'Bayes Theorem' — is left alone: teaching_seen is 0 there.)
+        collides_goal = bool(verb) and len(words) >= 2 and words <= goal_words and teaching_seen >= 2
+        collides_prev = " ".join(sorted(words)) in seen
+        if collides_goal or collides_prev:
+            if verb and not title.lower().startswith(verb.lower()):
+                t["title"] = f"{verb} {title}"
+            elif collides_prev and not title.lower().startswith(("more on", "further")):
+                t["title"] = f"More on {title}"
+            _log.info("topic_decomposition: disambiguated colliding title %r -> %r "
+                      "(goal=%s prev=%s)", title, t.get("title"), collides_goal, collides_prev)
+        seen[" ".join(sorted(_norm_title(str(t.get("title") or "")).split()))] = 1
+        teaching_seen += 1
+
+
 def _repair_topic_title(title: str, subject_key: str) -> str:
     """Repair a title that begins with a dangling preposition/conjunction (an LLM decomposition artifact) by
     stripping the leading run; if that empties it, fall back to the subject phrase. A clean title is unchanged."""
@@ -473,6 +521,7 @@ def generate_decomposed_topics(
                 break
 
     ordered = sorted(topics_out, key=lambda t: int(t.get("order_index") or 0))
+    _disambiguate_topic_titles(ordered, goal)
     title_by_id = {str(t.get("topic_id")): str(t.get("title") or "") for t in ordered if t.get("title")}
     # synthesized follow-ups have no title yet — give title_by_id their adapted title too
     for i, t in enumerate(ordered, start=1):

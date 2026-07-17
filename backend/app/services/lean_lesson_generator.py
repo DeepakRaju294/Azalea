@@ -8556,7 +8556,6 @@ def _polish_card_cosmetics(cards: list[dict[str, Any]], topic: Topic, *, grounde
                 continue
 
             new_pts: list[Any] = []
-            is_coding_card = coding_topic or bool(card.get("code_lines") or card.get("code_snippet"))
             for p in pts:
                 if not isinstance(p, str):
                     new_pts.append(p); continue
@@ -8567,9 +8566,10 @@ def _polish_card_cosmetics(cards: list[dict[str, Any]], topic: Topic, *, grounde
                         and not _HAS_MATH_RE.search(s)):
                     continue
 
-                # (5) code-style `//` comments do not belong in a NON-coding worked example — turn the trailing
-                # comment into a plain-prose annotation ("6 // total" -> "6 — total"); drop a bare "//".
-                if not is_coding_card and "//" in s:
+                # (5) code-style `//` comments do not belong in a NON-CODING topic — a math/proof topic has no
+                # legitimate code (gen_foundation spuriously flags math cards with code_lines, so the topic TYPE
+                # is the reliable signal). Turn the trailing comment into prose ("6 // total" -> "6 — total").
+                if not coding_topic and "//" in s:
                     lead, _, note = s.partition("//")
                     note = note.strip()
                     s = (f"{lead.rstrip()} — {note}" if note and lead.strip() else lead.rstrip() or note)
