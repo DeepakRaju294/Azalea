@@ -40,6 +40,21 @@ class SanitizeMath(unittest.TestCase):
         s = "Ohm's law is written as V = IR, a product of current and resistance."
         self.assertEqual(_sanitize_math_in_text(s), s)
 
+    def test_function_call_lhs_wraps_whole_equation(self):
+        # Regression (3 consecutive live paths): the LHS class couldn't match the comma in "C(n, r)", so the
+        # wrap started MID-CALL and produced the malformed "C(n, \(r) = ...\)".
+        out = _sanitize_math_in_text(r"C(n, r) = \frac{n!}{r!(n-r)!} handles the calculation")
+        self.assertEqual(out, r"\(C(n, r) = \frac{n!}{r!(n-r)!}\) handles the calculation")
+
+    def test_malformed_nested_inline_is_healed(self):
+        # Already-malformed text (stored lessons / model-authored) is stripped and re-wrapped cleanly.
+        out = _sanitize_math_in_text(r"C(n, \(r) = \frac{n!}{r!(n-r)!}\) handles the calculation")
+        self.assertEqual(out, r"\(C(n, r) = \frac{n!}{r!(n-r)!}\) handles the calculation")
+
+    def test_conditional_probability_lhs_still_wraps(self):
+        out = _sanitize_math_in_text(r"P(A|B) = \frac{P(B|A)P(A)}{P(B)}")
+        self.assertEqual(out, r"\(P(A|B) = \frac{P(B|A)P(A)}{P(B)}\)")
+
     def test_applies_across_card_points(self):
         cards = [{"points": [r"\text{I} = \frac{\text{V}}{\text{R}}", "plain bullet", r"$$x = y$$"]}]
         _sanitize_card_math(cards)

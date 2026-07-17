@@ -8469,7 +8469,14 @@ _GREEK_ATOM = (r"\\(?:mu|sigma|rho|pi|theta|lambda|alpha|beta|gamma|delta|Delta|
                r"\b(?:_\{[^{}]+\}|\^\{[^{}]+\}|_[A-Za-z0-9]|\^[A-Za-z0-9])?")
 _BARE_LATEX = re.compile(r"\\(?:frac|sqrt|sum|prod|int)\b|" + _GREEK_ATOM)
 # LHS (e.g. "I", "P(A|B)", "V_2") = a \frac{a}{b} or \sqrt{x} (single-level braces — deep nesting is rare in prose).
-_FRAC_SQRT_EQN = re.compile(r"(?:[A-Za-z][\w()|^]*\s*=\s*)?\\(?:frac\{[^{}]+\}\{[^{}]+\}|sqrt\{[^{}]+\})")
+# LHS prefix allows a function-call argument list ("C(n, r) =", "P(A|B) ="). The old class ([\w()|^]*) could
+# not match the comma/space inside "C(n, r)", so the wrap STARTED MID-CALL at "r) = ..." and produced the
+# malformed "C(n, \(r) = ...\)" seen on three consecutive live paths.
+_FRAC_SQRT_EQN = re.compile(
+    r"(?:[A-Za-z][\w|^]*(?:\([^()]*\))?\s*=\s*)?\\(?:frac\{[^{}]+\}\{[^{}]+\}|sqrt\{[^{}]+\})")
+# A `\(` opening INSIDE a function-call argument list ("C(n, \(r)") — the malformed-nesting signature this
+# sanitizer itself used to produce; heal by stripping all inline delimiters and re-wrapping cleanly.
+_MALFORMED_INLINE = re.compile(r"\w\(\s*[^()]*,\s*\\\(")
 
 
 def _sanitize_math_in_text(text: str) -> str:
@@ -8477,7 +8484,11 @@ def _sanitize_math_in_text(text: str) -> str:
     optional 'LHS =' prefix) and standalone greek in inline `\\(...\\)`. Leaves bullets that are already
     delimited (grounded `$$`/`\\(` content) untouched."""
     s = str(text)
-    if "$$" in s or "\\(" in s or "\\[" in s:
+    if _MALFORMED_INLINE.search(s):
+        # Malformed nesting ("C(n, \(r) = ...\)") — strip the misplaced inline delimiters and fall through
+        # so the whole equation is re-wrapped cleanly below.
+        s = s.replace("\\(", "").replace("\\)", "")
+    elif "$$" in s or "\\(" in s or "\\[" in s:
         return s
     s = re.sub(r"\\text\s*\{([^{}]*)\}", r"\1", s)          # \text{V} -> V (drop the unsupported command)
     if not _BARE_LATEX.search(s):
