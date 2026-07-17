@@ -4147,6 +4147,7 @@ def _attach_undefined_term_glosses(cards: list[dict[str, Any]], topic: Topic, mo
                 glossed.add(key)
                 break
     except Exception:  # noqa: BLE001 — glossary enrichment must never break generation
+        logger.warning("term-gloss enrichment swallowed an exception", exc_info=True)
         return cards
     return cards
 
@@ -4280,6 +4281,7 @@ def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) ->
             _attach_link_anchors(card, links)                 # {field, index} — precise placement, not string search
             card["interactive_links"] = links
     except Exception:  # noqa: BLE001 — link enrichment must never break generation (§6.6 Tier 1)
+        logger.warning("interactive-link emission swallowed an exception", exc_info=True)
         return cards
     return cards
 
@@ -8613,6 +8615,7 @@ def _polish_card_cosmetics(cards: list[dict[str, Any]], topic: Topic, *, grounde
             if grounded_edge and kind == "edge_case" and card.get("learning_goal"):
                 card.pop("learning_goal", None)
     except Exception:  # noqa: BLE001 — cosmetics must never break generation
+        logger.warning("card cosmetics pass swallowed an exception", exc_info=True)
         return
 
 
