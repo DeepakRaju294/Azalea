@@ -6095,6 +6095,12 @@ function splitCodeExplanation(text: string): { code: string; explanation: string
 // must never render code chips in its work, even if a stray code line leaks into a bullet.
 const CodeWorkContext = createContext(false);
 
+// Lets a deeply-nested inline anchor (the prereq NAME in the prerequisites card) trigger the
+// open-study-path flow without threading the handler through every text renderer.
+const OpenStudyPathContext = createContext<
+  ((link: LessonInteractiveLink) => void) | null
+>(null);
+
 function LinkedMathText({
   text,
   links,
@@ -6159,12 +6165,40 @@ function InteractiveLinkPopup({
   matchedText: string;
   onAskAboutText: (text: string) => void;
 }) {
+  const openStudyPath = useContext(OpenStudyPathContext);
   const actionLabel = getInteractiveLinkActionLabel(link);
   const askText = `${link.text}: ${link.explanation}${
     link.why_it_matters_here
       ? `\n\nWhy it matters here: ${link.why_it_matters_here}`
       : ""
   }`;
+
+  // open_study_path: clicking the prereq NAME opens a small "Want to learn more?" popup whose button
+  // starts the create-and-navigate flow (via context). No explanation body — the two sub-bullets on the
+  // prerequisites card already carry the refresher and the what-to-learn line.
+  if (link.action === "open_study_path" && openStudyPath) {
+    return (
+      <span className="relative inline-block align-baseline">
+        <details className="group/link inline-block">
+          <summary className="inline cursor-pointer list-none rounded-md px-1 font-semibold text-primary underline decoration-primary/60 decoration-dotted underline-offset-4 transition hover:bg-accent">
+            {matchedText}
+          </summary>
+          <span className="absolute left-0 top-full z-30 mt-2 w-72 rounded-2xl border border-border bg-background p-4 text-left text-sm leading-6 text-foreground shadow-xl">
+            <span className="block text-sm font-bold text-foreground">
+              Want to learn more?
+            </span>
+            <button
+              type="button"
+              onClick={() => openStudyPath(link)}
+              className="mt-3 rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90"
+            >
+              Open {link.text}
+            </button>
+          </span>
+        </details>
+      </span>
+    );
+  }
 
   return (
     <span className="relative inline-block align-baseline">
@@ -6237,11 +6271,11 @@ function normalizeInteractiveLinks(value?: LessonInteractiveLink[]) {
     .slice(0, 6);
 }
 
-// Double-render policy (v1): each link renders in exactly ONE place. INLINE anchors carry the content
-// affordances (popup_only / ask_question glosses — their details-popup shows the explanation). PILLS carry
-// the navigation actions (open_study_path / review_earlier_topic — real click handlers live only there),
-// plus any gloss whose text never appears in the card (fallback, so it isn't silently lost).
-const INLINE_ANCHOR_ACTIONS = new Set(["popup_only", "ask_question"]);
+// Double-render policy (v2): each link renders in exactly ONE place. INLINE anchors carry the content
+// affordances (popup_only / ask_question glosses) AND open_study_path (the prereq NAME itself opens a
+// "Want to learn more?" popup via OpenStudyPathContext). PILLS carry review_earlier_topic plus any link
+// whose text never appears in the card (fallback, so it isn't silently lost).
+const INLINE_ANCHOR_ACTIONS = new Set(["popup_only", "ask_question", "open_study_path"]);
 
 function splitTextByInteractiveLinks(
   text: string,
@@ -7013,6 +7047,9 @@ function LearningCard({
 
   return (
     <CodeWorkContext.Provider value={Boolean(card?.code_snippet)}>
+    <OpenStudyPathContext.Provider
+      value={onOpenStudyPath ? (link) => onOpenStudyPath(link) : null}
+    >
     <div className={effectiveCompact ? "w-full text-left" : "mx-auto w-full max-w-4xl text-left"}>
       <div className={effectiveCompact ? "" : "overflow-hidden rounded-3xl border border-[#E5DFEE] bg-white shadow-sm shadow-purple-100/40"}>
 
@@ -7289,6 +7326,7 @@ function LearningCard({
         </div>
       </div>
     </div>
+    </OpenStudyPathContext.Provider>
     </CodeWorkContext.Provider>
   );
 }

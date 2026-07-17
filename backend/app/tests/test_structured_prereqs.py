@@ -315,6 +315,53 @@ class GroundHarvestsGlossFromKeyTerms(unittest.TestCase):
         self.assertNotIn("Conditional Probability", kt)                 # relocated out of key terms
 
 
+class PrereqBriefBackstop(unittest.TestCase):
+    def test_missing_briefs_filled_by_llm_backstop(self):
+        # Live failure: a fold-derived prereq ('Counting Principles') reached the intro with NO gloss and NO
+        # required_knowledge → the card showed just the bare name. The backstop must fill both sub-bullets.
+        intro = _Topic("i", "Intro", 0, prereqs=["Counting Principles"], ctype="study_path_introduction")
+        cards = [{"card_type": "prerequisites", "blueprint_key": "prerequisites",
+                  "title": "Prerequisites", "points": ["prose"]}]
+
+        def _briefs(names, goal):
+            self.assertEqual(names, ["Counting Principles"])
+            return [{"name": "Counting Principles",
+                     "gloss": "rules for counting outcomes of combined choices",
+                     "required_knowledge": "apply the addition and multiplication rules to count outcomes"}]
+
+        out = _ground_prereq_card(cards, intro, brief_fn=_briefs)
+        self.assertEqual(out[0]["points"], [
+            "Counting Principles",
+            "  - rules for counting outcomes of combined choices",
+            "  - What to learn: apply the addition and multiplication rules to count outcomes"])
+
+    def test_backstop_not_called_when_briefs_present(self):
+        intro = _Topic("i", "Intro", 0, prereqs=["vectors"],
+                       glosses={"vectors": "arrows"}, requirements={"vectors": "add them"},
+                       ctype="study_path_introduction")
+        cards = [{"card_type": "prerequisites", "blueprint_key": "prerequisites",
+                  "title": "Prerequisites", "points": ["prose"]}]
+        called = {"n": 0}
+
+        def _briefs(names, goal):
+            called["n"] += 1
+            return []
+
+        _ground_prereq_card(cards, intro, brief_fn=_briefs)
+        self.assertEqual(called["n"], 0)
+
+    def test_backstop_failure_still_renders_names(self):
+        intro = _Topic("i", "Intro", 0, prereqs=["Counting Principles"], ctype="study_path_introduction")
+        cards = [{"card_type": "prerequisites", "blueprint_key": "prerequisites",
+                  "title": "Prerequisites", "points": ["prose"]}]
+
+        def _boom(names, goal):
+            raise RuntimeError("llm down")
+
+        out = _ground_prereq_card(cards, intro, brief_fn=_boom)
+        self.assertEqual(out[0]["points"], ["Counting Principles"])   # graceful: bare name, never broken
+
+
 class PrereqIdeaGroupBullets(unittest.TestCase):
     def test_name_is_main_bullet_gloss_and_requirement_are_sub_bullets(self):
         # User spec: main bullet = the bare prereq/topic name (the link anchor); sub-bullets = the

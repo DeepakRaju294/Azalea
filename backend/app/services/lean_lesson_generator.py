@@ -3911,7 +3911,12 @@ def _dedupe_intro_key_terms_against_scope(cards: list[dict[str, Any]], topic: To
     return result
 
 
-def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
+def _default_prereq_brief_fn(prereqs: list[str], goal: str) -> list[dict[str, str]]:
+    from app.services.llm_client import generate_prereq_briefs
+    return generate_prereq_briefs(prereqs, goal)
+
+
+def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic, brief_fn=None) -> list[dict[str, Any]]:
     """For the intro, REBUILD the prerequisites card's bullets from the STRUCTURED assumed_prerequisites that
     decomposition emitted (clean concept name + optional gloss). This makes the bullets clean AND — critically —
     guarantees each prereq name appears VERBATIM, so the scanner turns it into a reliable open_study_path link
@@ -3929,13 +3934,31 @@ def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic) -> list[dict[
     if not names:
         return cards
     glosses = dict(_assumed_prereq_glosses(topic))
-    requirements = _assumed_prereq_requirements(topic)
+    requirements = dict(_assumed_prereq_requirements(topic))
     # For prereqs decomposition gave no gloss (e.g. auto-detected cross-topic foundations like "conditional
     # probability"), harvest a definition from the intro's key-terms card AND remove it there — a prerequisite
     # belongs on the prerequisites card, not duplicated as a key term.
     missing = [n for n in names if not glosses.get(n.lower())]
     for key, gloss in _relocate_prereq_defs_from_key_terms(cards, missing).items():
         glosses.setdefault(key, gloss)
+    # LLM backstop: a prereq that arrived without its two briefs (fold-derived titles, gloss-less model
+    # output) still gets BOTH sub-bullets — the refresher and the what-to-learn line are part of the card's
+    # contract, not optional decoration. Best-effort; a failed call just renders what we have.
+    needs_brief = [n for n in names if not glosses.get(n.lower()) or not requirements.get(n.lower())]
+    if needs_brief:
+        goal = str(getattr(getattr(topic, "study_path", None), "goal", None)
+                   or getattr(topic, "title", "") or "")
+        try:
+            for b in (brief_fn or _default_prereq_brief_fn)(needs_brief, goal):
+                bname = str(b.get("name") or "").strip().lower()
+                if not bname:
+                    continue
+                if str(b.get("gloss") or "").strip():
+                    glosses.setdefault(bname, str(b["gloss"]).strip())
+                if str(b.get("required_knowledge") or "").strip():
+                    requirements.setdefault(bname, str(b["required_knowledge"]).strip())
+        except Exception:  # noqa: BLE001 — enrichment must never break generation
+            pass
     # One prereq = one idea group: the MAIN bullet is the bare topic name (also the interactive-link anchor —
     # the name of the study path the link opens), with the refresher ("what it is") and the actionable line
     # ("what to learn there before this path") as its indented sub-bullets.

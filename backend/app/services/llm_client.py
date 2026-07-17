@@ -2451,6 +2451,55 @@ CARD_SLOT_JSON_SCHEMA = {
 }
 
 
+_PREREQ_BRIEFS_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "briefs": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {"name": {"type": "string"}, "gloss": {"type": "string"},
+                               "required_knowledge": {"type": "string"}},
+                "required": ["name", "gloss", "required_knowledge"],
+            },
+        },
+    },
+    "required": ["briefs"],
+}
+
+
+def generate_prereq_briefs(prereqs: list[str], goal: str) -> list[dict[str, str]]:
+    """Backstop for a prerequisite that reached the intro WITHOUT its two briefs (e.g. via foundation-folding):
+    one line WHAT IT IS (refresher) + one line what the learner must be able to DO with it to follow this path.
+    Best-effort — returns [] on any error (generation must never break)."""
+    if not prereqs:
+        return []
+    system = (
+        "For each PREREQUISITE concept of a study path, write exactly two short lines. "
+        '"gloss": one plain-language line saying WHAT IT IS (a refresher, <= 18 words, no jargon). '
+        '"required_knowledge": one SPECIFIC line stating what the learner must be able to do/know about it '
+        'to follow this study path (e.g. "be able to apply the multiplication rule to count outcomes", '
+        'never vague like "understand it well"; <= 20 words). '
+        "Copy each name back EXACTLY as given. Return JSON "
+        '{"briefs":[{"name":...,"gloss":...,"required_knowledge":...}]}.'
+    )
+    user = f"Study path goal: {goal}\n\nPrerequisites: {', '.join(prereqs)}"
+    try:
+        response = _create_with_usage(
+            "prereq_briefs",
+            model=OPENAI_MODEL,
+            input=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            text={"format": {"type": "json_schema", "name": "azalea_prereq_briefs",
+                             "schema": _PREREQ_BRIEFS_JSON_SCHEMA, "strict": True}},
+        )
+        data = _loads_llm_json(response.output_text)
+        return [b for b in (data.get("briefs") or []) if isinstance(b, dict)]
+    except Exception:  # noqa: BLE001 — prereq enrichment must never break generation
+        return []
+
+
 _TERM_GLOSSES_JSON_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
