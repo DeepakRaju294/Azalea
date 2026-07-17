@@ -8508,6 +8508,84 @@ def _sanitize_card_math(cards: list[dict[str, Any]]) -> None:
             card["points"] = [_sanitize_math_in_text(p) if isinstance(p, str) else p for p in pts]
 
 
+# A body sentence that narrates a picture ("This node-link diagram illustrates …") — noise when no visual is
+# actually rendered on the card. Word list matches the visual families the model tends to reference.
+_PHANTOM_VISUAL_RE = re.compile(
+    r"\bthis\s+(?:\w+[\s-]){0,3}(?:diagram|figure|chart|graph|illustration|image|picture|visual|drawing|"
+    r"schematic|table)\b.*?(?:illustrat|show|depict|display|present|outlin|visualiz|represent|highlight)",
+    re.I)
+# "N. Label" / "N) Label" enumeration prefix on a main bullet (not a decimal like "3.14").
+_NUM_LIST_PREFIX = re.compile(r"^\s*\d{1,2}[.)]\s+(?=\D)")
+# A grammatically-BROKEN formula lead-in on a purpose card: starts with "the formula" AND has a spaced dash
+# ("The formula is — calculates …", the live artifact) — the dash after a copula is the broken signal; a clean
+# "The formula for X is:" lead-in has no dash and is left alone. Only stripped when the line carries no math.
+_DANGLING_FORMULA_RE = re.compile(r"^\s*the\s+formula\b.*\s[—–-]\s", re.I)
+_HAS_MATH_RE = re.compile(r"=|\$\$|\\\(|\\frac|\\sqrt|\\sum|[A-Za-z]\s*\([^)]*\)\s*[=^]")
+
+
+def _card_has_visual(card: dict[str, Any]) -> bool:
+    return bool(card.get("visual_plan") or card.get("visual") or card.get("visual_type")
+               or str(card.get("visual_description") or "").strip())
+
+
+def _polish_card_cosmetics(cards: list[dict[str, Any]], topic: Topic, *, grounded_edge: bool) -> None:
+    """Deterministic surface cleanups on the final card list. Best-effort; never raises."""
+    try:
+        coding_topic = "coding" in _topic_type_key(topic)
+        for card in cards:
+            kind = _card_kind(card)
+
+            # (2) Phantom visual reference in a body with no rendered visual.
+            body = card.get("body")
+            if body and not _card_has_visual(card):
+                if isinstance(body, list):
+                    kept = [b for b in body if not (isinstance(b, str) and _PHANTOM_VISUAL_RE.search(b))]
+                    card["body"] = kept or None
+                elif isinstance(body, str) and _PHANTOM_VISUAL_RE.search(body):
+                    card.pop("body", None)
+
+            pts = card.get("points")
+            if not isinstance(pts, list):
+                # (5) also on any string body that survived
+                continue
+
+            new_pts: list[Any] = []
+            is_coding_card = coding_topic or bool(card.get("code_lines") or card.get("code_snippet"))
+            for p in pts:
+                if not isinstance(p, str):
+                    new_pts.append(p); continue
+                s = p
+
+                # (1) Grammatically-broken "the formula is — …" lead-in on a purpose card with no math.
+                if (kind in _PURPOSE_CARD_KEYS and _DANGLING_FORMULA_RE.search(s)
+                        and not _HAS_MATH_RE.search(s)):
+                    continue
+
+                # (5) code-style `//` comments do not belong in a NON-coding worked example — turn the trailing
+                # comment into a plain-prose annotation ("6 // total" -> "6 — total"); drop a bare "//".
+                if not is_coding_card and "//" in s:
+                    lead, _, note = s.partition("//")
+                    note = note.strip()
+                    s = (f"{lead.rstrip()} — {note}" if note and lead.strip() else lead.rstrip() or note)
+
+                # (4) enumeration prefix "1. Permutations" -> "Permutations" on a SHORT label bullet only
+                # (<=4 words, so a genuine numbered step like "1. Substitute the values into ..." is untouched).
+                stripped = _NUM_LIST_PREFIX.sub("", s.lstrip())
+                if stripped != s.lstrip() and len(stripped.split()) <= 4:
+                    s = (s[: len(s) - len(s.lstrip())]) + stripped   # preserve any leading indent
+
+                if s.strip():
+                    new_pts.append(s)
+            card["points"] = new_pts
+
+            # (3) An adapter-grounded edge card carries the adapter's authored boundary facts — a leftover
+            # LLM learning_goal ("when r is zero") can contradict them. Drop it on grounded edge cards.
+            if grounded_edge and kind == "edge_case" and card.get("learning_goal"):
+                card.pop("learning_goal", None)
+    except Exception:  # noqa: BLE001 — cosmetics must never break generation
+        return
+
+
 def _card_kind(card: dict[str, Any]) -> str:
     return str(card.get("blueprint_key") or card.get("card_type") or "").lower()
 
@@ -8713,6 +8791,10 @@ def _convert_lean_to_legacy(
     _inject_grounded_cards(legacy_cards, topic, have_formula=_grounded_formula, have_edge=_grounded_edge)
     # Make any LLM-authored math render: strip \text{}, delimit bare \frac/\sqrt/greek (grounded $$ untouched).
     _sanitize_card_math(legacy_cards)
+    # Final cosmetic sweep (deterministic, best-effort): phantom "this diagram" body refs when no visual,
+    # code-style // comments in non-coding worked-example work, numbered-list point prefixes, dangling
+    # "the formula is —" purpose lead-ins, and a stale learning_goal left on an adapter-grounded edge card.
+    _polish_card_cosmetics(legacy_cards, topic, grounded_edge=_grounded_edge)
 
     empty_report = {"is_valid": True, "requires_regeneration": False, "issues": []}
 
