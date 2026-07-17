@@ -1344,6 +1344,21 @@ def _build_solution_cards(
     return cards
 
 
+def _strip_worked_example_cards(cards: list[Any]) -> int:
+    """Remove every worked-example card (setup + step cards) from a lesson-cards list, in place. Returns how
+    many were removed. Used to suppress a fabricated worked example on a concept-domain topic with no adapter."""
+    def _is_we(c: Any) -> bool:
+        return isinstance(c, dict) and (
+            str(c.get("blueprint_key") or c.get("card_type") or "").lower() == "worked_example"
+            or bool((c.get("metadata") or {}).get("worked_example_setup"))
+            or bool((c.get("metadata") or {}).get("worked_example_solver")))
+    keep = [c for c in cards if not _is_we(c)]
+    removed = len(cards) - len(keep)
+    if removed:
+        cards[:] = keep
+    return removed
+
+
 def _replace_worked_example_cards(lesson_json: dict[str, Any], step_cards: list[dict[str, Any]]) -> None:
     """Swap the lesson's worked-example cards for the solved ones, in place."""
     cards = list(lesson_json.get("lesson_cards") or [])
@@ -1675,6 +1690,26 @@ def apply_llm_solved_worked_example(
         # If the topic SHOULD have a worked example but the generation produced none, we still
         # solve and INSERT one (the LLM frequently drops it on coding topics). The replace step
         # below splices the solved cards in when there's nothing to replace.
+
+        # Concept-domain suppression: on a QUALITATIVE path (domain=concept — e.g. networking, systems,
+        # theory) a topic that no computational adapter verifies has no genuine quantity to work — so a
+        # from-scratch worked example is fabricated and drifts OFF-TOPIC (observed: a TCP congestion-control
+        # topic got a graph shortest-path "round-trip time" problem). Strip it and stop; the concept is carried
+        # by its process/components cards + visual, matching the concept_intuition blueprint decision. Adapter-
+        # backed concept topics are exempt (route_adapter fires -> verified content), as are math/coding/science.
+        if str(topic.get("path_domain") or "").lower() == "concept":
+            try:
+                from app.services.examples.trace_pipeline import route_adapter
+                _has_adapter = route_adapter(topic) is not None
+            except Exception:  # noqa: BLE001
+                _has_adapter = False
+            if not _has_adapter:
+                removed = _strip_worked_example_cards(cards)
+                if removed:
+                    _log.info("worked-example: suppressed fabricated example on concept-domain topic %s "
+                              "(no verifying adapter)", topic.get("id"))
+                    _gr.error("concept-domain topic with no adapter: suppressed fabricated worked example")
+                return False
 
         is_coding = str(topic.get("topic_type") or "").lower() == "coding_implementation"
         code = _validated_lesson_code(cards, topic) if is_coding else None

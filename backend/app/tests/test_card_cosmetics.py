@@ -6,6 +6,39 @@ import unittest
 
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
+from app.services.lean_lesson_generator import (
+    _polish_card_cosmetics, _repair_latex_delimiters, _wrap_bare_latex)
+
+
+class LatexDelimiterRepair(unittest.TestCase):
+    def test_dollar_wrapped_inline_math_collapsed(self):
+        # Live bug: "the mean ($\(\mu\)$)" — $ wrapping \(…\) renders as literal dollar signs + broken math.
+        self.assertEqual(_repair_latex_delimiters("the mean ($\\(\\mu\\)$)"), "the mean (\\(\\mu\\))")
+        self.assertEqual(_repair_latex_delimiters("std dev ($\\(\\sigma\\)$)"), "std dev (\\(\\sigma\\))")
+
+    def test_plain_dollar_math_untouched(self):
+        self.assertEqual(_repair_latex_delimiters("the value $x$ here"), "the value $x$ here")
+
+    def test_legit_inline_math_untouched(self):
+        self.assertEqual(_repair_latex_delimiters("above (\\(z>0\\)) or below"), "above (\\(z>0\\)) or below")
+
+
+class BareLatexWrapping(unittest.TestCase):
+    def test_bare_frac_gets_wrapped(self):
+        # Live bug: "z = \frac{x - mean}{\text{std dev}} — valid…" rendered as literal LaTeX source.
+        out = _wrap_bare_latex("z = \\frac{x - mean}{\\text{std dev}} — valid")
+        self.assertEqual(out, "z = \\(\\frac{x - mean}{\\text{std dev}}\\) — valid")
+
+    def test_already_delimited_frac_untouched(self):
+        s = "$$z = \\frac{x - \\mu}{\\sigma}$$"
+        self.assertEqual(_wrap_bare_latex(s), s)
+        s2 = "here \\(\\frac{a}{b}\\) done"
+        self.assertEqual(_wrap_bare_latex(s2), s2)
+
+    def test_no_latex_command_is_noop(self):
+        self.assertEqual(_wrap_bare_latex("just some prose with a \\ stray"), "just some prose with a \\ stray")
+
+
 from app.services.lean_lesson_generator import _polish_card_cosmetics
 
 

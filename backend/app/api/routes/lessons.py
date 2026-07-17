@@ -313,6 +313,9 @@ def apply_deferred_worked_example(topic: Topic, lesson_json: dict) -> bool:
             "topic_type": str(getattr(topic, "course_type", None) or getattr(topic, "topic_type", "") or ""),
             "language": str(getattr(getattr(topic, "study_path", None), "language", None) or "python").lower(),
             "modifiers": list(getattr(topic, "modifiers", None) or []),
+            # the study path's subject domain — lets the solver suppress a fabricated worked example on a
+            # qualitative (concept-domain) topic that has no verifying adapter.
+            "path_domain": str(getattr(getattr(topic, "study_path", None), "domain", None) or "").lower(),
         }
         applied = apply_llm_solved_worked_example(lesson_json, v2_topic)
         _finalize_lesson_cards(lesson_json, v2_topic)
@@ -365,6 +368,8 @@ def enrich_legacy_lesson_with_v2_visuals(
             "language": str(getattr(getattr(topic, "study_path", None), "language", None) or "python").lower(),
             # follow-up marker (implementation_follow_up) so downstream drops/doesn't-require the background card
             "modifiers": list(getattr(topic, "modifiers", None) or []),
+            # study path's subject domain — gates the concept-domain fabricated-worked-example suppression
+            "path_domain": str(getattr(getattr(topic, "study_path", None), "domain", None) or "").lower(),
         }
         # Missing-adapter demand: if this is a computational topic with NO adapter, record it (best-effort) so
         # the most-requested unsupported concepts surface as the priority queue for which adapter to build next.

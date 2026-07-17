@@ -20,6 +20,7 @@ from app.services.examples.solver import (
     _gate_outline,
     _is_coarse_action,
     _split_action,
+    _strip_worked_example_cards,
     apply_llm_solved_worked_example,
     solve_worked_example,
 )
@@ -137,6 +138,44 @@ def _lesson():
         ],
         "metadata": {},
     }
+
+
+class TestConceptDomainSuppression(unittest.TestCase):
+    def test_strip_removes_all_worked_example_cards(self):
+        cards = [
+            {"blueprint_key": "background"},
+            {"blueprint_key": "worked_example", "title": "setup", "metadata": {"worked_example_setup": True}},
+            {"blueprint_key": "worked_example", "title": "step 1", "metadata": {"worked_example_solver": True}},
+            {"blueprint_key": "practice"},
+        ]
+        removed = _strip_worked_example_cards(cards)
+        self.assertEqual(removed, 2)
+        self.assertEqual([c["blueprint_key"] for c in cards], ["background", "practice"])
+
+    def test_concept_domain_no_adapter_suppresses_fabricated_example(self):
+        # Live bug: a TCP congestion-control topic (domain=concept, no adapter) got a graph shortest-path
+        # "round-trip time" worked example. The gate strips it and never calls the solver.
+        lesson = _lesson()
+        called = {"n": 0}
+        def _tripwire(_payload):  # must never be reached
+            called["n"] += 1
+            return {}
+        topic = {"id": "tcp1", "title": "TCP Congestion Control Mechanisms",
+                 "topic_type": "process_walkthrough", "path_domain": "concept"}
+        applied = apply_llm_solved_worked_example(lesson, topic, solver=_tripwire)
+        self.assertFalse(applied)
+        self.assertEqual(called["n"], 0)
+        self.assertNotIn("worked_example",
+                         [str(c.get("blueprint_key")) for c in lesson["lesson_cards"]])
+
+    def test_math_domain_example_not_suppressed(self):
+        # A math-domain topic keeps its worked example (the gate is concept-only).
+        lesson = _lesson()
+        topic = {"id": "m1", "title": "Calculating Z-Scores",
+                 "topic_type": "math_formula_method", "path_domain": "math"}
+        apply_llm_solved_worked_example(lesson, topic, solver=_stub)
+        self.assertIn("worked_example",
+                      [str(c.get("blueprint_key")) for c in lesson["lesson_cards"]])
 
 
 class TestSolve(unittest.TestCase):

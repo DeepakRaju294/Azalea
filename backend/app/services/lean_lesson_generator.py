@@ -492,10 +492,70 @@ def _repair_latex_delimiters(text: str) -> str:
     if not text or "\\" not in text:
         return text
     prefix, body = re.match(r"^(\s*(?:-\s+)?)(.*)$", text, re.S).groups()
+    # Nested/mixed delimiters: the model sometimes wraps an inline-math group in BOTH $…$ and \(…\)
+    # ("$\(\mu\)$" or "$\[…\]$"). The outer $ then renders as literal dollar signs around broken math. Collapse
+    # to the single \(…\) form.
+    body = body.replace("$\\(", "\\(").replace("\\)$", "\\)")
+    body = body.replace("$\\[", "\\[").replace("\\]$", "\\]")
     body = _DOUBLED_MATH_DELIM_RE.sub(r"\\\1", body)     # "\\)" -> "\)"
     body = _ORPHAN_BACKSLASH_RE.sub("", body)            # " \ " -> " "
     body = re.sub(r"[ \t]{2,}", " ", body).strip()
     return prefix + body
+
+
+# LaTeX commands that MUST sit inside a math delimiter to render; the model sometimes emits them bare in a bullet
+# ("z = \\frac{x - mean}{\\text{std dev}}"), so KaTeX never runs and the raw source shows. We wrap the offending
+# command + its balanced braces in \(…\).
+_MATH_SPAN_RE = re.compile(r"\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^$\n]*?\$")
+_BARE_LATEX_CMD_RE = re.compile(r"\\(?:frac|sqrt|sum|prod|int|binom|begin|overline|vec|hat|bar)\b")
+
+
+def _latex_expr_extent(s: str, start: int) -> int:
+    """End index of a LaTeX command expression beginning at `start` (a backslash): the command name plus any
+    immediately-following balanced {…} groups (so \\frac{a}{\\text{b}} is consumed whole). `start` unchanged when
+    nothing follows."""
+    m = re.match(r"\\[a-zA-Z]+", s[start:])
+    if not m:
+        return start
+    i = start + m.end()
+    while i < len(s):
+        j = i
+        while j < len(s) and s[j] in " \t":
+            j += 1
+        if j < len(s) and s[j] == "{":
+            depth, k = 0, j
+            while k < len(s):
+                if s[k] == "{":
+                    depth += 1
+                elif s[k] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        k += 1
+                        break
+                k += 1
+            i = k
+        else:
+            break
+    return i
+
+
+def _wrap_bare_latex(text: str) -> str:
+    """Wrap a LaTeX command that sits OUTSIDE any math delimiter in \\(…\\) so it renders as math, not literal
+    source. Balanced-brace aware; already-delimited math is left untouched. No-op without a bare command."""
+    if not text or "\\" not in text or not _BARE_LATEX_CMD_RE.search(text):
+        return text
+    for _ in range(6):                                   # bounded: usually one bare command per bullet
+        protected = [(m.start(), m.end()) for m in _MATH_SPAN_RE.finditer(text)]
+        hit = None
+        for m in _BARE_LATEX_CMD_RE.finditer(text):
+            if not any(a <= m.start() < b for a, b in protected):
+                hit = m
+                break
+        if hit is None:
+            return text
+        end = _latex_expr_extent(text, hit.start())
+        text = text[:hit.start()] + "\\(" + text[hit.start():end] + "\\)" + text[end:]
+    return text
 
 
 _INSTRUCTOR_VOICE_RE = re.compile(
@@ -567,7 +627,7 @@ def _lean_card_to_legacy(
     points = _merge_bullet_fragments(points)
     points = _rewrite_call_stack_syntax(points)
     points = _sentence_case_bullet_starts(points)
-    points = [_repair_latex_delimiters(p) for p in points]
+    points = [_wrap_bare_latex(_repair_latex_delimiters(p)) for p in points]
     if blueprint_key == "edge_case":                    # correct false "the method fails here" framing (§6.4)
         points = [_correct_edge_case_failure_framing(p) for p in points]
 
