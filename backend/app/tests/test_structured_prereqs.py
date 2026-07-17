@@ -9,7 +9,8 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.topic_decomposition_pipeline import (
-    _cross_topic_foundations, _is_circular_prereq, _path_assumed_prereqs, generate_decomposed_topics,
+    _cross_topic_foundations, _is_circular_prereq, _path_assumed_prereqs, _prereq_is_taught_in_path,
+    generate_decomposed_topics,
 )
 from app.services.lean_lesson_generator import (
     _assumed_prereq_glosses, _emit_prereq_interactive_links, _ground_prereq_card,
@@ -163,6 +164,47 @@ class GroundPrereqCard(unittest.TestCase):
 
 
 _CA_GOAL = "Want to learn about combinatorial analysis"
+
+
+class TaughtPrereqGuard(unittest.TestCase):
+    def test_prereq_taught_by_a_topic_is_dropped(self):
+        # Live failure (Dijkstra path): 'Graph Representation' was BOTH a prereq AND the taught topic
+        # 'Implementing Graph Representation' -> its link was suppressed, leaving a dead prereq.
+        teaching = [{"title": "Dijkstra's Algorithm Walkthrough", "subject_key": "dijkstra_walk"},
+                    {"title": "Implementing Graph Representation", "subject_key": "graph_representation"}]
+        self.assertTrue(_prereq_is_taught_in_path("Graph Representation", teaching))
+        self.assertFalse(_prereq_is_taught_in_path("graph theory", teaching))     # external -> stays
+
+    def test_end_to_end_taught_prereq_removed_external_kept(self):
+        resp = {
+            "path_plan": {"end_capability": "x", "end_capability_actions": ["implement"],
+                          "assumed_prerequisites": [
+                              {"name": "graph theory", "gloss": "study of graphs", "required_knowledge": "read a graph"},
+                              {"name": "Graph Representation", "gloss": "adjacency lists", "required_knowledge": "build one"}],
+                          "required_capabilities": [
+                              {"capability_id": "c1", "description": "d", "prerequisite_capability_ids": [],
+                               "satisfies_end_actions": ["implement"], "ownership_mode": "standalone",
+                               "owner_topic_id": None, "basis": "goal"}]},
+            "topics": [
+                {"topic_id": "t1", "capability_id": "c1", "subject_key": "graph_representation",
+                 "primary_action": "implement", "content_role": "coding", "topic_type": "coding_implementation",
+                 "title": "Implementing Graph Representation", "purpose": "p", "in_scope": ["adjacency"],
+                 "practice_target": "x", "practice_format": "code", "practice_evidence_type": "code",
+                 "expected_output": "graph", "basis": "goal"},
+                {"topic_id": "t2", "capability_id": "c1", "subject_key": "dijkstra",
+                 "primary_action": "implement", "content_role": "coding", "topic_type": "coding_implementation",
+                 "title": "Implementing Dijkstra's Algorithm", "purpose": "p", "in_scope": ["shortest path"],
+                 "practice_target": "x", "practice_format": "code", "practice_evidence_type": "code",
+                 "expected_output": "paths", "basis": "goal"},
+            ],
+        }
+        topics = generate_decomposed_topics("learn dijkstra's algorithm", "src", model_fn=lambda p: resp)
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        ap = [a.lower() for a in (intro.get("assumed_prerequisites") or [])]
+        self.assertIn("graph theory", ap)                    # external prereq kept (gets a link)
+        self.assertNotIn("graph representation", ap)          # taught by topic 1 -> dropped from prereqs
+        titles = [t["title"] for t in topics]
+        self.assertIn("Implementing Graph Representation", titles)   # the topic stays
 
 
 class CircularPrereqGuard(unittest.TestCase):
