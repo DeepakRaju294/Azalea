@@ -38,6 +38,37 @@ class DeterministicNarrationGate(unittest.TestCase):
                         self.assertFalse(t.rstrip().endswith(("[", "(", ",")), t)  # not a truncated fragment
 
 
+class FormulaStepSlotting(unittest.TestCase):
+    """A formula step's `reason` is the worked computation and `decision` is the answer, so the generic
+    reason->reasoning / decision->work mapping mis-slots them (computation in Reasoning, only the answer in
+    Work). Formula adapters must slot: reasoning=verbal, WORK=the computation, result=the answer."""
+
+    def _compute_cards(self, slug):
+        a = ADAPTERS[slug]
+        tr = tp.select_instance(a, seed=7)
+        # skip the givens-listing and completion steps; keep the compute steps
+        return [(s, c) for s, c in zip(tr.steps, tp._deterministic_narration(tr, a))
+                if str(getattr(s, "operation", "")) not in ("identify_knowns", "completion")]
+
+    def test_combinations_work_holds_the_solved_formula_not_the_answer(self):
+        pairs = self._compute_cards("combinations")
+        self.assertTrue(pairs)
+        _, card = pairs[0]
+        joined_work = " ".join(card["work"])
+        self.assertIn("C(n,r)", joined_work)                     # the formula is SOLVED OUT in Work
+        self.assertIn("=", joined_work)
+        self.assertNotIn("=", card["reasoning"])                 # Reasoning is verbal, not an equation
+        self.assertTrue(card["reasoning"].lower().startswith("substitute"))
+        self.assertNotIn("n!/", card["result"])                  # Result is the answer, not the formula
+
+    def test_multi_step_formula_each_step_slotted(self):
+        pairs = self._compute_cards("bayes_theorem")
+        self.assertGreaterEqual(len(pairs), 2)
+        for _, card in pairs:
+            self.assertIn("=", " ".join(card["work"]))           # every step's work carries its computation
+            self.assertNotIn("=", card["reasoning"])
+
+
 class ShipsWithoutLLM(unittest.TestCase):
     def test_sort_walkthrough_ships_deterministically_without_calling_the_formatter(self):
         def boom(*a, **k):

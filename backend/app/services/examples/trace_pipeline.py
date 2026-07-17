@@ -539,18 +539,33 @@ def _deterministic_narration(trace: ContractTrace, adapter: Any = None) -> list[
     discard the verified trace to a from-scratch fallback, so we ship a terse-but-correct narration of the
     SAME trace. Each card's truth-bearing fields are the step's own (prior/after state, decision, result)."""
     terminal = str(getattr(getattr(adapter, "example_spec", None), "terminal", "") or "")
+    # For a FORMULA adapter the step's `reason` IS the worked computation ("C(n,r) = 6!/(3!·3!) = 20") and its
+    # `decision` is the bare answer ("C = 20"). The generic mapping below (reason→reasoning, decision→work)
+    # therefore puts the computation in Reasoning and only the answer in Work — the opposite of the teaching
+    # contract. So for formula steps we slot: reasoning = verbal intent, WORK = the computation solved out,
+    # result = the answer.
+    is_formula = getattr(adapter, "_formula_spec", None) is not None
     out: list[dict[str, Any]] = []
     for i, step in enumerate(trace.steps):
         evr = str(getattr(step, "expected_visible_result", "") or "").strip()
         decision = str(getattr(step, "decision", "") or "").strip()
         reason = str(getattr(step, "reason", "") or "").strip()
-        work_line = re.sub(r"_+", " ", decision).strip()   # humanize internal tokens ("go_right" -> "go right")
+        op = str(getattr(step, "operation", "") or "")
+        if is_formula and reason and op not in ("identify_knowns", "completion"):
+            reasoning = "Substitute the known values into the formula and simplify."
+            work = [reason]                                # the equation solved out, step by step
+            result = decision or evr or "computed"         # just the answer (± variable values)
+        else:
+            work_line = re.sub(r"_+", " ", decision).strip()   # humanize internal tokens ("go_right" -> "go right")
+            reasoning = reason
+            work = [work_line] if work_line else ([evr] if evr else ["state update"])
+            result = evr or decision or "state updated"
         out.append({
             "title": _det_step_title(step, i),
             "goal": "",
-            "reasoning": reason,
-            "work": [work_line] if work_line else ([evr] if evr else ["state update"]),
-            "result": evr or decision or "state updated",
+            "reasoning": reasoning,
+            "work": work,
+            "result": result,
             "trace_step_ids": [step.id],
             "prior_state": step.prior_state,
             "result_state": step.state_after,
