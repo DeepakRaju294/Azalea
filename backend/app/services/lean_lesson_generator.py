@@ -4151,6 +4151,29 @@ def _attach_undefined_term_glosses(cards: list[dict[str, Any]], topic: Topic, mo
     return cards
 
 
+def _attach_link_anchors(card: dict[str, Any], links: list[dict[str, Any]]) -> None:
+    """Anchor contract: tag each link with {field, index} — the field ('points'/'bullets'/'body') and 0-based
+    item that contains its text verbatim (case-insensitive, first occurrence). The frontend renders a link
+    inline ONLY on its anchored item, ending fragile whole-card first-occurrence string search. A link whose
+    text isn't found on any single item gets no anchor (frontend falls back to string search). Mutates links."""
+    fields: list[tuple[str, list]] = []
+    for f in ("points", "bullets", "body"):
+        v = card.get(f)
+        if isinstance(v, list):
+            fields.append((f, v))
+        elif isinstance(v, str) and f == "body" and v.strip():
+            fields.append((f, [v]))
+    for link in links:
+        text = str(link.get("text") or "").lower()
+        if not text:
+            continue
+        for fname, items in fields:
+            idx = next((i for i, it in enumerate(items) if text in str(it).lower()), -1)
+            if idx >= 0:
+                link["anchor"] = {"field": fname, "index": idx}
+                break
+
+
 def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
     """§6.2: replace the hardcoded `interactive_links: []` with links from the DETERMINISTIC scanner (PR2) —
     review_earlier_topic for a concept taught by an earlier topic in this path, open_study_path for an external
@@ -4254,6 +4277,7 @@ def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) ->
                 if str(p["text"]).lower() in nav_texts:
                     continue
                 links.append(p)
+            _attach_link_anchors(card, links)                 # {field, index} — precise placement, not string search
             card["interactive_links"] = links
     except Exception:  # noqa: BLE001 — link enrichment must never break generation (§6.6 Tier 1)
         return cards

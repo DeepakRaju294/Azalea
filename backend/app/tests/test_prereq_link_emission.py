@@ -7,8 +7,8 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.lean_lesson_generator import (
-    _concepts_from_prereq_line, _emit_prereq_interactive_links, _lean_card_to_legacy, _model_popup_links,
-    _strip_prereq_goal_phrase, _topic_title_aliases,
+    _attach_link_anchors, _concepts_from_prereq_line, _emit_prereq_interactive_links, _lean_card_to_legacy,
+    _model_popup_links, _strip_prereq_goal_phrase, _topic_title_aliases,
 )
 
 _FLAG = "AZALEA_PREREQ_LINKS"
@@ -221,6 +221,32 @@ class PrereqLinkEmission(unittest.TestCase):
         self.assertEqual(out[0]["interactive_links"], [])                       # overview card: no scattered link
         self.assertEqual(len(out[1]["interactive_links"]), 1)                   # prereq card: the link
         self.assertEqual(out[1]["interactive_links"][0]["action"], "open_study_path")
+
+
+class LinkAnchors(unittest.TestCase):
+    def test_anchor_tags_the_containing_item(self):
+        card = {"points": ["Intro line.", "Uses Counting Principles for outcomes.", "Order matters."]}
+        links = [{"text": "Counting Principles", "action": "open_study_path"}]
+        _attach_link_anchors(card, links)
+        self.assertEqual(links[0]["anchor"], {"field": "points", "index": 1})
+
+    def test_body_and_bullets_fields_supported(self):
+        card = {"bullets": ["a partition splits the space"]}
+        links = [{"text": "partition", "action": "popup_only"}]
+        _attach_link_anchors(card, links)
+        self.assertEqual(links[0]["anchor"], {"field": "bullets", "index": 0})
+
+    def test_no_anchor_when_text_absent(self):
+        card = {"points": ["nothing relevant here"]}
+        links = [{"text": "entropy", "action": "popup_only"}]
+        _attach_link_anchors(card, links)
+        self.assertNotIn("anchor", links[0])
+
+    def test_anchor_survives_lean_to_legacy(self):
+        lean = {"card_type": "background", "points": ["p"], "interactive_links": [
+            {"text": "x", "action": "review_earlier_topic", "target": "t", "anchor": {"field": "points", "index": 0}}]}
+        legacy = _lean_card_to_legacy(lean, 0, [])
+        self.assertEqual(legacy["interactive_links"][0]["anchor"], {"field": "points", "index": 0})
 
 
 if __name__ == "__main__":

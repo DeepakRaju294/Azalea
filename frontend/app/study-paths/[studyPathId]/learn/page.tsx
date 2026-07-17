@@ -290,6 +290,9 @@ type LessonInteractiveLink = {
   action?: "popup_only" | "open_study_path" | "review_earlier_topic" | "ask_question" | string;
   target?: string;
   concept_id?: string | null;
+  // Anchor contract: which item ({field, index}) this link's text lives on. When present, the link renders
+  // inline ONLY on that item (no fragile whole-card first-occurrence search). Absent -> string-search fallback.
+  anchor?: { field: string; index: number } | null;
 };
 
 type LessonCardType =
@@ -6250,6 +6253,7 @@ function normalizeInteractiveLinks(value?: LessonInteractiveLink[]) {
       // Canonical concept identity MUST survive normalization — the open_study_path click sends it as
       // target_concept_id for backend dedup/lineage/cycle-suppression (dropping it made every click null).
       concept_id: link.concept_id ?? null,
+      anchor: link.anchor ?? null,          // {field,index} placement — see linksForItem
     }))
     .filter((link) => {
       if (!link.text) {
@@ -6269,6 +6273,19 @@ function normalizeInteractiveLinks(value?: LessonInteractiveLink[]) {
       return true;
     })
     .slice(0, 6);
+}
+
+// Anchor contract: a link tagged with {field, index} renders inline ONLY on that item; an untagged link
+// (or one tagged for a different field) falls back to the previous whole-text string search on every item.
+// This ends "link the first occurrence anywhere on the card" — a link now appears where its text actually is.
+function linksForItem(
+  links: LessonInteractiveLink[],
+  field: string,
+  index: number,
+): LessonInteractiveLink[] {
+  return links.filter(
+    (l) => !l.anchor || (l.anchor.field === field && l.anchor.index === index),
+  );
 }
 
 // Double-render policy (v2): each link renders in exactly ONE place. INLINE anchors carry the content
@@ -7379,7 +7396,7 @@ function LearningBulletNode({
               <span className="min-w-0 flex-1 font-black leading-7 text-foreground">
                 <LinkedMathText
                   text={displayText}
-                  links={links}
+                  links={linksForItem(links, "points", node.index)}
                   onAskAboutText={onAskAboutText}
                 />
               </span>
@@ -7418,7 +7435,7 @@ function LearningBulletNode({
             <span className="min-w-0 flex-1">
               <LinkedMathText
                 text={displayText}
-                links={links}
+                links={linksForItem(links, "points", node.index)}
                 onAskAboutText={onAskAboutText}
               />
             </span>
