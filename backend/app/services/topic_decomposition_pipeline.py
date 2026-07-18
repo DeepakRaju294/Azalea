@@ -301,6 +301,42 @@ def _collapse_near_duplicate_topics(topics_out: list[dict[str, Any]]) -> set:
     return remove_ids
 
 
+def _goal_significant_words(goal: str | None) -> set[str]:
+    """The goal's distinctive subject words (>=3 chars, minus goal preamble + generic glue)."""
+    return {w for w in _norm_title(goal).split()
+            if len(w) >= 3 and w not in _GENERIC_PREREQ_WORDS and w not in _INTRO_FILLER}
+
+
+def _demote_parent_of_goal_topics(topics_out: list[dict[str, Any]], goal: str | None) -> list[str]:
+    """Demote a teaching topic that teaches a STRICT PARENT of the goal to a prerequisite. Signal: the topic's
+    significant title words are a proper subset of the goal's, AND the goal adds >=2 substantive (non-generic)
+    words beyond it — i.e. the topic covers the broad parent concept ('TCP Overview' -> {tcp}) while the goal is
+    a specific aspect of it ('tcp congestion control' -> {tcp, congestion, control}). The '>=2 substantive'
+    guard protects a goal that merely appends a generic qualifier ('gradient descent' under 'gradient descent
+    optimization' is NOT demoted). Removes the topic, returns its concept name (generic filler stripped) for the
+    intro's prereq list. Never demotes a goal-matching topic nor the last teaching topic. Mutates topics_out."""
+    gw = _goal_significant_words(goal)
+    if len(gw) < 3:                                          # short/vague goal -> no reliable parent signal
+        return []
+    teaching = [t for t in topics_out if not _is_opener(t)]
+    demoted, remove_ids = [], set()
+    for t in teaching:
+        tw = _significant_title_words(t)
+        if not tw or not (tw < gw):                         # proper subset only (a broader parent of the goal)
+            continue
+        if len({w for w in (gw - tw) if w not in _GENERIC_TOPIC_FILLER}) < 2:
+            continue                                        # goal must be meaningfully MORE specific
+        name = " ".join(w for w in str(t.get("title") or "").split()
+                        if _norm_title(w) not in _GENERIC_TOPIC_FILLER).strip()
+        demoted.append(name or str(t.get("title") or "").strip())
+        remove_ids.add(id(t))
+    if remove_ids and len(remove_ids) < len(teaching):       # never demote every teaching topic
+        topics_out[:] = [t for t in topics_out if id(t) not in remove_ids]
+        _log.info("topic_decomposition: demoted parent-of-goal topic(s) to prerequisites: %s", demoted)
+        return demoted
+    return []
+
+
 def _topic_teaches_prereq(topic: dict[str, Any], prereq_names: list[str]) -> bool:
     """True when a topic teaches a concept the path also declared an external PREREQUISITE — i.e. the topic's
     title/subject fully contains a declared prereq's significant words ('Implementing Graph Representation'
@@ -645,12 +681,16 @@ def generate_decomposed_topics(
     # ASSUMED to have it — so keep the PREREQUISITE (external, linked) and fold away the redundant topic, rather
     # than padding a Dijkstra path with a full graph-representation lesson. Recompute `teaching` afterward.
     _fold_prereq_topics(topics_out, llm_prereqs, goal)
+    # A teaching topic whose subject is a STRICT PARENT of the goal ('TCP Overview' on a 'TCP congestion control'
+    # path) teaches FOUNDATION material, not the goal — demote it to a prerequisite so the path isn't front-loaded
+    # with the very basics the learner is assumed to have (and the goal topic isn't buried under them).
+    demoted_prereqs = _demote_parent_of_goal_topics(topics_out, goal)
     teaching = [t for t in topics_out if not _is_opener(t)]
     # Deterministic backstop: concepts shared across ≥2 topics' in_scope but taught by none are prerequisites the
     # LLM tends to omit (e.g. 'conditional probability' on a Bayes path). Their gloss is harvested downstream from
     # the intro's key-terms card if it defines them (and the term is then removed from key-terms — see §overlap).
     auto_prereqs = _cross_topic_foundations(teaching, goal)
-    structured_prereqs = [*llm_prereqs, *auto_prereqs, *dropped_prereqs]
+    structured_prereqs = [*llm_prereqs, *auto_prereqs, *dropped_prereqs, *demoted_prereqs]
     if structured_prereqs:
         for t in topics_out:
             if _is_opener(t):

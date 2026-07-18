@@ -10,8 +10,40 @@ os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.topic_decomposition_pipeline import (
     _cross_topic_foundations, _is_circular_prereq, _path_assumed_prereqs, _topic_teaches_prereq, _fold_prereq_topics,
-    _drop_umbrella_prereqs, _collapse_near_duplicate_topics, generate_decomposed_topics,
+    _drop_umbrella_prereqs, _collapse_near_duplicate_topics, _demote_parent_of_goal_topics,
+    generate_decomposed_topics,
 )
+
+
+class ParentOfGoalDemotion(unittest.TestCase):
+    @staticmethod
+    def _t(title, ttype="science_mechanism"):
+        return {"title": title, "topic_type": ttype, "course_type": ttype}
+
+    def test_parent_topic_demoted_goal_topic_kept(self):
+        # Live failure: 'TCP Overview' (subject = TCP, the parent) taught as a full topic on a
+        # 'tcp congestion control' path, while the goal topic was the shallow one.
+        topics = [self._t("TCP Overview"), self._t("TCP Congestion Control Mechanisms", "concept_intuition")]
+        demoted = _demote_parent_of_goal_topics(topics, "Want to learn about tcp congestion control")
+        self.assertEqual(demoted, ["TCP"])                       # filler 'overview' stripped from the prereq name
+        self.assertEqual([t["title"] for t in topics], ["TCP Congestion Control Mechanisms"])
+
+    def test_single_generic_qualifier_not_demoted(self):
+        # 'gradient descent' IS the goal (the goal only appends a generic qualifier) -> never demoted.
+        topics = [self._t("Gradient Descent"), self._t("Gradient Descent Convergence")]
+        demoted = _demote_parent_of_goal_topics(topics, "learn gradient descent optimization")
+        self.assertEqual(demoted, [])
+        self.assertEqual(len(topics), 2)
+
+    def test_never_demotes_the_last_teaching_topic(self):
+        topics = [self._t("TCP")]
+        self.assertEqual(_demote_parent_of_goal_topics(topics, "tcp congestion control"), [])
+        self.assertEqual(len(topics), 1)
+
+    def test_sibling_topics_not_parents_kept(self):
+        topics = [self._t("Slow Start"), self._t("Fast Retransmit")]
+        self.assertEqual(_demote_parent_of_goal_topics(topics, "tcp congestion control"), [])
+        self.assertEqual(len(topics), 2)
 
 
 class NearDuplicateTopicCollapse(unittest.TestCase):
