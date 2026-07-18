@@ -140,6 +140,21 @@ def _lesson():
     }
 
 
+class TestTerminalResultCardRendering(unittest.TestCase):
+    def test_degenerate_result_card_collapses_to_result_only(self):
+        # Live TCP paths: the synthesized terminal card repeated one sentence as Goal-boilerplate + Work + Result.
+        from app.services.examples.solver import _step_points
+        answer = "TCP congestion control adjusts the window based on acknowledgments."
+        pts = _step_points("State the final result of the computation.", "", [answer], answer, None)
+        self.assertEqual(pts, [f"Result: {answer}"])                 # one line, not three copies
+
+    def test_real_work_and_result_unchanged(self):
+        from app.services.examples.solver import _step_points
+        pts = _step_points("Find z.", "Substitute.", ["z = (97-95)/18 = 0.11"], "z = 0.11", None)
+        self.assertEqual(pts, ["Goal: Find z.", "Reasoning: Substitute.", "Work:",
+                               "  - z = (97-95)/18 = 0.11", "Result: z = 0.11"])
+
+
 class TestConceptDomainSuppression(unittest.TestCase):
     def test_strip_removes_all_worked_example_cards(self):
         cards = [

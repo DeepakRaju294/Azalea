@@ -1087,6 +1087,15 @@ def _step_points(
     """A bullet-list view of a step, for any consumer that still reads `points` (streaming
     preview, generic renderers, the completeness audit). The structured Goal/Reasoning/Work/
     Result fields on the card are authoritative; the new renderer reads those directly."""
+    # Degenerate terminal card (the synthesized 'Result' step): its Work IS its Result and its Goal is the
+    # 'State the final result' boilerplate — rendering all three repeats one sentence three times (live TCP
+    # paths). Collapse the display to just the Result; the structured fields stay intact for the contract.
+    if work and result:
+        work_text = " ".join(w.strip() for w in work).strip().lower()
+        if work_text == result.strip().lower():
+            work = []
+            if goal.strip().lower().startswith("state the final result"):
+                goal = ""
     pts: list[str] = []
     if goal:
         pts.append(f"Goal: {goal}")
