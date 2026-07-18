@@ -39,6 +39,16 @@ def _make_system(rng: random.Random, n: int) -> tuple:
     return A, b, x
 
 
+# Correct boundary facts shared by the linear-system specs (the LLM's edge card on a live path presented a
+# DEPENDENT system, 4x+6y=10 = 2*(2x+3y=5), as a "no solutions" example — that system has infinitely many).
+_LINEAR_SYSTEM_EDGE_CASES = [
+    "NO solution: elimination produces a row \\(0 = c\\) with \\(c \\neq 0\\) — the equations are inconsistent "
+    "(e.g. \\(2x + 3y = 5\\) and \\(4x + 6y = 11\\): same left side scaled, different constants).",
+    "INFINITELY many solutions: elimination produces an all-zero row \\(0 = 0\\) — one equation is a multiple "
+    "of another (e.g. \\(2x + 3y = 5\\) and \\(4x + 6y = 10\\) are the SAME line, not a contradiction).",
+    "A zero pivot is handled by SWAPPING rows, never by dividing by zero.",
+]
+
 SOLVE_2X2 = RowReduceSpec(
     slug="solve_linear_system_2x2",
     title="solving a 2×2 linear system by elimination",
@@ -49,6 +59,7 @@ SOLVE_2X2 = RowReduceSpec(
              "solve system of equations", "linear system"],
     not_aliases=["differential", "inequality"],
     priority=55,
+    edge_cases=_LINEAR_SYSTEM_EDGE_CASES,
 )
 
 GAUSSIAN_ELIMINATION = RowReduceSpec(
@@ -58,9 +69,13 @@ GAUSSIAN_ELIMINATION = RowReduceSpec(
     n=3,
     setup=_make_system,
     aliases=["gaussian elimination", "gauss jordan", "gauss-jordan", "row reduction", "reduced row echelon",
-             "rref", "row echelon form", "elimination method 3x3"],
+             "rref", "row echelon form", "elimination method 3x3",
+             # a 'Row Operations' topic is taught BY row-reducing a system — route it to the verified trace
+             # (live failure: an LLM-authored RREF worked example shipped with wrong arithmetic).
+             "row operations", "elementary row operations", "basic row operations", "row operation"],
     not_aliases=["differential", "inequality"],
     priority=55,
+    edge_cases=_LINEAR_SYSTEM_EDGE_CASES,
 )
 
 SOLVE_3X3 = RowReduceSpec(
@@ -73,6 +88,7 @@ SOLVE_3X3 = RowReduceSpec(
              "system of three equations"],
     not_aliases=["differential", "inequality"],
     priority=52,
+    edge_cases=_LINEAR_SYSTEM_EDGE_CASES,
 )
 
 

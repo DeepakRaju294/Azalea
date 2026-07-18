@@ -126,6 +126,9 @@ class RowReduceSpec:
     register: bool = True
     n_candidates: int = 60
     label_convention: str = "ints"
+    # Authored, CORRECT boundary facts — the lean generator's edge-case grounding replaces the LLM's edge card
+    # with these (the LLM shipped a dependent system as a "no solutions" example on a live path).
+    edge_cases: list = field(default_factory=list)
 
     def oracle(self, state: dict) -> dict:
         A, b = state["A"], state["b"]

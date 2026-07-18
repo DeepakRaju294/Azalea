@@ -8559,7 +8559,9 @@ def _ground_edge_case_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
         from app.services.examples.trace_pipeline import route_adapter
         adapter = route_adapter({"title": getattr(topic, "title", "") or "",
                                  "course_type": _topic_type_key(topic)})
-        spec = getattr(adapter, "_formula_spec", None) if adapter is not None else None
+        spec = None
+        if adapter is not None:                            # any declarative engine that authors edge_cases
+            spec = getattr(adapter, "_formula_spec", None) or getattr(adapter, "_rowreduce_spec", None)
         edges = list(getattr(spec, "edge_cases", None) or []) if spec is not None else []
         if not edges:
             return False
