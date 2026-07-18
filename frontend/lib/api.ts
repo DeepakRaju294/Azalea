@@ -22,7 +22,15 @@ export type ClassUpdatePayload = {
 };
 
 // Phase-1 onboarding preference vocabulary (ONBOARDING_AND_PREFERENCE_CAPTURE_SPEC §2–§4).
-export type OverrideDomain = "coding" | "math" | "science" | "concept";
+export type OverrideDomain =
+  | "coding"
+  | "cs"
+  | "math"
+  | "data_science"
+  | "science"
+  | "ee"
+  | "quant"
+  | "concept";
 export type DepthLevel = "intuition" | "working" | "deep";
 
 // The effective preferences the active generation ran under (snapshot, surfaced on StudyPath). Loosely typed —

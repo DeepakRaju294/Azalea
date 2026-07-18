@@ -40,12 +40,17 @@ class DomainClassifierFixtures(unittest.TestCase):
     def test_gate_family_mapping(self):
         self.assertEqual(classify_domain("Teach me Newton's second law.").gate_family, "science")
         self.assertEqual(classify_domain("Teach me photosynthesis.").gate_family, "science")
-        self.assertEqual(classify_domain("What is inflation?").gate_family, "expository")
+        self.assertEqual(classify_domain("What is inflation?").gate_family, "quant")           # economics -> quant
         self.assertEqual(classify_domain("Teach me about black holes.").gate_family, "science")
         self.assertEqual(classify_domain("Teach me Spanish grammar.").gate_family, "expository")
         self.assertEqual(classify_domain("Teach me completing the square.").gate_family, "math")
         self.assertEqual(classify_domain("Teach me propositional logic.").gate_family, "math")
         self.assertEqual(classify_domain("Teach me DFS in Python.").gate_family, "coding")
+        # new families (taxonomy expansion): CS systems, statistics, EE, quantitative finance
+        self.assertEqual(classify_domain("How does TCP congestion control work?").gate_family, "cs")
+        self.assertEqual(classify_domain("Teach me z-scores and standardization.").gate_family, "data_science")
+        self.assertEqual(classify_domain("Teach me Ohm's law and circuits.").gate_family, "ee")
+        self.assertEqual(classify_domain("Teach me compound interest and NPV.").gate_family, "quant")
 
     def test_expanded_vocabulary_classifies_confidently(self):
         # Regression for the C.1 keyword-coverage + plural fix: these were UNKNOWN/ambiguous before (the wizard

@@ -25,8 +25,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 const DOMAIN_OPTIONS: { value: OverrideDomain; label: string; blurb: string }[] = [
   { value: "coding", label: "Coding", blurb: "Programming, algorithms, data structures" },
+  { value: "cs", label: "Computer Science", blurb: "Networking, OS, systems, architecture" },
   { value: "math", label: "Math", blurb: "Formulas, proofs, step-by-step solving" },
+  { value: "data_science", label: "Data Science", blurb: "Statistics, probability, data analysis" },
   { value: "science", label: "Science", blurb: "Mechanisms, laws, natural phenomena" },
+  { value: "ee", label: "Electrical Eng.", blurb: "Circuits, signals, voltage & current" },
+  { value: "quant", label: "Finance / Econ", blurb: "Interest, valuation, markets, economics" },
   { value: "concept", label: "Concept", blurb: "Ideas, definitions, explanations" },
 ];
 
@@ -49,12 +53,17 @@ const LANGUAGE_OPTIONS: { value: CodeLanguage; label: string; blurb: string }[] 
 function toCoarseDomain(domain?: string | null): OverrideDomain | null {
   if (!domain) return null;
   if (domain === "concept") return "concept";
-  if (domain === "coding" || domain === "math" || domain === "science") return domain;
+  const families: OverrideDomain[] = ["coding", "cs", "math", "data_science", "science", "ee", "quant"];
+  if (families.includes(domain as OverrideDomain)) return domain as OverrideDomain;
   const groups: Record<OverrideDomain, string[]> = {
     coding: ["coding", "machine_learning"],
-    math: ["math", "logic", "statistics"],
-    science: ["physics", "chemistry", "biology", "electrical_engineering", "astronomy", "earth_science", "medicine"],
-    concept: ["finance", "economics", "humanities", "language_learning", "expository"],
+    cs: ["computer_science"],
+    math: ["math", "logic"],
+    data_science: ["statistics"],
+    science: ["physics", "chemistry", "biology", "astronomy", "earth_science", "medicine"],
+    ee: ["electrical_engineering"],
+    quant: ["finance", "economics"],
+    concept: ["humanities", "language_learning", "expository"],
   };
   for (const key of Object.keys(groups) as OverrideDomain[]) {
     if (groups[key].includes(domain)) return key;
@@ -136,8 +145,8 @@ export default function OnboardingWizardPage() {
       // Only send a domain override when the learner actually changed it — an unchanged domain stays inferred
       // (preserves the classifier-quality signal, §8).
       if (domain !== inferredDomain) payload.domain = domain;
-      // Language applies only to coding paths.
-      if (domain === "coding") payload.language = language;
+      // Language applies to coding paths and to CS paths (which can produce optional code implementations).
+      if (domain === "coding" || domain === "cs") payload.language = language;
       await updateStudyPathPreferences(studyPathId, payload);
       goToPath();
     } catch (err) {
@@ -156,7 +165,7 @@ export default function OnboardingWizardPage() {
   if (isCheckingAuth || loading) return <WizardSkeleton />;
 
   const domainLabel = DOMAIN_OPTIONS.find((d) => d.value === domain)?.label ?? "Concept";
-  const isCoding = domain === "coding"; // the language step only applies to coding paths
+  const isCoding = domain === "coding" || domain === "cs"; // language step: coding + CS (optional code)
 
   return (
     <main className="min-h-screen bg-[#F7F4FB] text-[#17151F]">

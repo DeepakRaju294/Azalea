@@ -11,7 +11,9 @@ CodeLanguage = Literal["python", "cpp", "java"]
 DepthLevel = Literal["intuition", "working", "deep"]
 
 # Coarse domain labels a learner may pick as a per-path override (the wizard's Content-Type step, §2).
-OverrideDomain = Literal["coding", "math", "science", "concept"]
+OverrideDomain = Literal[
+    "coding", "cs", "math", "data_science", "science", "ee", "quant", "concept",
+]
 
 
 class StudyPathCreate(BaseModel):

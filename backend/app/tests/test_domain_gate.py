@@ -105,10 +105,19 @@ class Gate(unittest.TestCase):
         self.assertEqual(_types(g2), ["science_mechanism"])
 
     def test_expository_domain_forbids_stem_types(self):
-        # economics (expository family): a stray math_formula_method topic remaps to concept_intuition
-        path = [{"title": "Supply and Demand", "course_type": "math_formula_method"}]
-        gated, _ = gate_topic_types_by_domain([dict(t) for t in path], "economics")
+        # humanities (expository family): a stray math_formula_method topic remaps to concept_intuition
+        path = [{"title": "Themes in Hamlet", "course_type": "math_formula_method"}]
+        gated, _ = gate_topic_types_by_domain([dict(t) for t in path], "humanities")
         self.assertEqual(_types(gated), ["concept_intuition"])
+
+    def test_new_families_keep_their_native_types(self):
+        # taxonomy expansion: quant (economics/finance) KEEPS quantitative formula topics; CS keeps a mechanism.
+        econ = [{"title": "Elasticity of demand", "course_type": "math_formula_method"}]
+        g_q, _ = gate_topic_types_by_domain([dict(t) for t in econ], "economics")
+        self.assertEqual(_types(g_q), ["math_formula_method"])
+        tcp = [{"title": "TCP congestion control", "course_type": "science_mechanism"}]
+        g_cs, _ = gate_topic_types_by_domain([dict(t) for t in tcp], "computer_science")
+        self.assertEqual(_types(g_cs), ["science_mechanism"])
 
     def test_coarse_override_domains_route_like_their_family(self):
         # a user override may name a family directly ("science") or the wizard alias ("concept") — the gate must

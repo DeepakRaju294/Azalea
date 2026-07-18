@@ -23,8 +23,10 @@ _FLAG = "AZALEA_DOMAIN_LLM_FALLBACK"
 
 # The coarse gate families the LLM may choose (the classifier's gate_family vocabulary). `concept` is the
 # user-facing alias for `expository`.
-_GATE_FAMILIES = ("coding", "math", "science", "expository")
-_FAMILY_TO_FINE = {"coding": "coding", "math": "math", "science": "science", "expository": "concept"}
+_GATE_FAMILIES = ("coding", "math", "science", "expository", "cs", "data_science", "ee", "quant")
+_FAMILY_TO_FINE = {"coding": "coding", "math": "math", "science": "science", "expository": "concept",
+                   "cs": "computer_science", "data_science": "statistics", "ee": "electrical_engineering",
+                   "quant": "finance"}
 
 # goal -> one of _GATE_FAMILIES, or None to abstain.
 LlmClassify = Callable[[str], Optional[str]]
@@ -78,11 +80,16 @@ def _default_llm_classify(goal: str) -> Optional[str]:
 
     system = (
         "Classify a learning goal into exactly one content type. Reply ONLY with JSON "
-        '{"domain": "<coding|math|science|concept|unknown>"}. '
-        "coding = programming, algorithms, data structures, software; "
+        '{"domain": "<coding|cs|math|data_science|science|ee|quant|concept|unknown>"}. '
+        "coding = writing programs, algorithms, data structures, software implementation; "
+        "cs = computer-science SYSTEMS that are NOT about writing one algorithm — networking/TCP/protocols, "
+        "operating systems, distributed systems, computer architecture, databases; "
         "math = formulas, proofs, algebra, calculus, step-by-step solving, linear algebra; "
-        "science = physics, chemistry, biology, electrical engineering, natural phenomena; "
-        "concept = ideas, history, finance, economics, humanities, definitions, everything else. "
+        "data_science = statistics, probability, data analysis, machine learning, z-scores, distributions; "
+        "science = physics, chemistry, biology, natural phenomena; "
+        "ee = electrical engineering, circuits, voltage/current, signals, electronics; "
+        "quant = finance, economics, investing, interest, markets, valuation; "
+        "concept = history, humanities, definitions, other non-quantitative ideas. "
         "Use \"unknown\" only if it is genuinely impossible to tell."
     )
     resp = _create_with_usage(

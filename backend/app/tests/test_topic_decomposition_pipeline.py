@@ -59,9 +59,13 @@ class PipelineTests(unittest.TestCase):
 
     def test_no_duplicate_and_ordered(self):
         topics = self._run()
-        # graph foundation, BFS trace, then the appended coding follow-up
+        # 'Representing Graphs' is a FOUNDATION -> folded into a synthesized intro as an assumed prerequisite;
+        # the taught topics are the BFS trace + its appended coding follow-up, in order.
         self.assertEqual([t["title"] for t in topics],
-                         ["Representing Graphs", "Tracing BFS", "Implementing Breadth First Search"])
+                         ["Introduction to Bfs", "Tracing BFS", "Implementing Breadth First Search"])
+        intro = topics[0]
+        self.assertEqual(intro["course_type"], "study_path_introduction")
+        self.assertIn("Representing Graphs", intro.get("assumed_prerequisites") or [])
 
     def test_persists_audit_blob(self):
         impl = next(t for t in self._run() if t["title"] == "Implementing Breadth First Search")
@@ -109,7 +113,8 @@ class PipelineTests(unittest.TestCase):
                             "practice_format": "trace", "practice_evidence_type": "trace_state",
                             "expected_output": "x", "practice_target": "y"}]}
         topics = generate_decomposed_topics("g", "s", model_fn=lambda p: resp)
-        self.assertEqual(topics[0]["subject_key"], "prim")  # trailing 'algorithm' stripped
+        prim = next(t for t in topics if t["title"] == "Prim's")   # topics[0] is now the synthesized intro
+        self.assertEqual(prim["subject_key"], "prim")              # trailing 'algorithm' stripped
 
 
 if __name__ == "__main__":

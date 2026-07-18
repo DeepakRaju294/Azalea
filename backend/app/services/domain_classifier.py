@@ -26,21 +26,34 @@ _MIXED_FLOOR = 3                 # both top-2 gate FAMILIES must reach this to b
 _MIXED_MARGIN = 1                # ...and be within this of each other
 
 # Fine domain -> coarse gate family (the allow-list key). mixed/unknown map to "" (non-gating).
+# Families split subject areas that were previously over-collapsed: `cs` = non-coding CS/systems (networking,
+# OS, architecture — TCP lands here, NOT science); `data_science` = statistics/data analysis; `ee` = electrical
+# engineering (was folded into science); `quant` = finance/economics (was expository).
 FAMILY_OF: dict[str, str] = {
     "coding": "coding", "machine_learning": "coding",
-    "math": "math", "logic": "math", "statistics": "math",
-    "physics": "science", "chemistry": "science", "biology": "science", "electrical_engineering": "science",
+    "computer_science": "cs",
+    "math": "math", "logic": "math",
+    "statistics": "data_science",
+    "physics": "science", "chemistry": "science", "biology": "science",
     "astronomy": "science", "earth_science": "science", "medicine": "science",
-    "finance": "expository", "economics": "expository", "humanities": "expository",
+    "electrical_engineering": "ee",
+    "finance": "quant", "economics": "quant",
+    "humanities": "expository",
     "language_learning": "expository",   # skill-acquisition shape, no verified adapters — expository gate for v1
 }
 _SCORED = tuple(FAMILY_OF.keys())
 
-# The four coarse gate families themselves (an override may name a family directly, not a fine domain).
-GATE_FAMILIES = frozenset({"coding", "math", "science", "expository"})
-# Coarse labels a USER override may use (the wizard offers "coding · math · science · concept", §2). "concept"
-# is the learner-facing name for the expository family.
-_DOMAIN_ALIASES: dict[str, str] = {"concept": "expository"}
+# The coarse gate families themselves (an override may name a family directly, not a fine domain).
+GATE_FAMILIES = frozenset({"coding", "math", "science", "expository", "cs", "data_science", "ee", "quant"})
+# Coarse labels a USER override may use (the wizard offers these). "concept" is the learner-facing name for the
+# expository family; the rest let a user select a family directly and route exactly like an inferred fine domain.
+_DOMAIN_ALIASES: dict[str, str] = {
+    "concept": "expository",
+    "computer science": "cs", "cs": "cs", "systems": "cs", "networking": "cs",
+    "data science": "data_science", "statistics": "data_science", "stats": "data_science",
+    "electrical engineering": "ee", "ee": "ee",
+    "quant": "quant", "quantitative finance": "quant", "finance": "quant", "economics": "quant", "econ": "quant",
+}
 
 
 def gate_family_of(domain: str | None) -> str:
@@ -95,6 +108,19 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
         "statistics", "statistical", "probability", "distribution", "regression", "hypothesis test", "p-value",
         "variance", "standard deviation", "correlation", "confidence interval", "bayesian", "median", "sample",
         "normal distribution", "chi-square", "sampling",
+        # data-science vocabulary (this fine domain now maps to the data_science family)
+        "data science", "data analysis", "data analytics", "exploratory data analysis", "clustering",
+        "dimensionality reduction", "principal component", "z-score", "z-scores", "standardization",
+    ),
+    "computer_science": (
+        # NON-coding CS / systems: networking, OS, architecture, distributed systems. Deliberately avoids bare
+        # "network" (collides with "neural network") and pure-algorithm words (those stay in the coding domain).
+        "tcp", "udp", "packet", "protocol", "networking", "network protocol", "congestion control", "congestion",
+        "routing", "router", "subnet", "ip address", "dns", "http", "https", "socket", "handshake",
+        "operating system", "kernel", "scheduler", "process scheduling", "deadlock", "semaphore", "mutex",
+        "virtual memory", "paging", "file system", "distributed system", "distributed systems", "rpc",
+        "load balancing", "load balancer", "computer architecture", "instruction set", "cpu pipeline",
+        "cache coherence", "throughput", "bandwidth", "latency", "packet loss", "firewall", "tls",
     ),
     "physics": (
         "physics", "force", "velocity", "acceleration", "momentum", "energy", "gravity", "motion", "newton's",

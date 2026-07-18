@@ -49,11 +49,15 @@ CARD_CONTRACT_MATRIX: dict[str, dict[str, str]] = {
 
 def narration_domain_of(domain: str | None) -> str | None:
     """Coarse narration domain (coding · math · science · concept) for a fine/family/alias `domain`. Reuses the
-    Phase-0 family resolver; the expository family surfaces as the learner-facing `concept`. Returns None for a
-    non-gating domain (mixed/unknown) — narration then has no domain contract to enforce."""
+    Phase-0 family resolver, then COARSENS the newer gate families to one of the four narration lenses along
+    content shape (preserving prior behavior: EE was science, statistics was math, finance/econ were concept).
+    Returns None for a non-gating domain (mixed/unknown) — narration then has no domain contract to enforce."""
     family = gate_family_of(domain)
-    if family == "expository":
-        return "concept"
+    # Coarsen the expanded taxonomy onto the 4 narration lenses.
+    _COARSEN = {"expository": "concept", "quant": "concept",   # finance/econ -> qualitative lens
+                "data_science": "math",                        # statistics -> formula lens
+                "cs": "science", "ee": "science"}              # systems/circuits -> mechanism lens
+    family = _COARSEN.get(family, family)
     return family or None
 
 
