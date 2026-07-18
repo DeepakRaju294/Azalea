@@ -1,9 +1,9 @@
-# Study-Path Scope Plan — implementation sketch (rev 7)
+# Study-Path Scope Plan — implementation sketch (rev 8)
 
 > A pragmatic, failure-grounded sketch for the up-front path plan. The full typed design is
 > `STUDY_PATH_SCOPE_SPEC.md` (Draft v3.2, frozen); this sketch is the "why + minimal build", written against the
 > concrete failures observed in the July 2026 TCP-congestion-control review rounds.
-> Status: **Phase 0 APPROVED TO IMPLEMENT after five review rounds; no further architectural review needed before
+> Status: **Phase 0 APPROVED TO IMPLEMENT after iterative review; no further architectural review needed before
 > starting it.** The §12/§13 items gate Phase 1/2. Remaining work is contract tightening, not system redesign.
 >
 > **Changelog** (details in git history): rev 2 — delta-based uniqueness, ownership model, compound goals,
@@ -18,6 +18,9 @@
 > from a source that lacked the data); `PathPlan.concepts` canonical-identity registry; distinctness thresholds
 > follow the §9 evidence process (removed from PR choices); derived-index consistency invariant (#7); only
 > `planned|repaired` plans are generation-eligible.
+> rev 8 — Phase 0 runs invariants #1–#7; `union(Section.teaches) == teaches_concept_keys` (subset left planned
+> content unassigned with no Phase-1 audit to catch it); `definition_owners` covers in-scope taught concepts
+> ONLY (external prereqs excluded — a prereq gloss is not a definition; prereq ∩ taught = ∅).
 
 ## 1. The problem, stated as observed failures
 
@@ -73,7 +76,10 @@ PathPlan                                          # IMMUTABLE planning result (r
   prerequisites:     [Prereq]
   intro:             IntroPlan                    # DERIVED — never a PlannedTopic
   topics:            [PlannedTopic]               # ordered by dependency, not list position
-  definition_owners: { concept_key -> topic_id | "intro" }
+  definition_owners: { concept_key -> topic_id | "intro" }   # IN-SCOPE taught concepts ONLY. External
+                                                  #   prerequisites are explicitly excluded — a prereq is linked,
+                                                  #   never defined here (its gloss is not a definition), so every
+                                                  #   entry identifies an actual definition within THIS path.
   teaching_owners:   { delta_id -> topic_id }     # AUTHORITATIVE ownership: the delta identity, never an ad-hoc tuple
   concept_treatments: { (concept_key, delta_id) -> topic_id }   # DERIVED index (from teaching_owners + deltas) for
                                                   #   validation/queries — never independently authored. Authority:
@@ -104,9 +110,12 @@ LearningDelta                                     # the unit of UNIQUENESS (inva
   learner_action
   expected_evidence
   teaches_concept_keys                            # the AUTHORITATIVE taught-concept set for this delta.
-                                                  #   union(Section.teaches) ⊆ teaches_concept_keys (a concept may
-                                                  #   be taught without its own section; the difference must be
-                                                  #   covered by some section's content, checked in Phase 2);
+                                                  #   union(Section.teaches) == teaches_concept_keys — EQUALITY:
+                                                  #   a concept needs no dedicated section (sections teach several),
+                                                  #   but every planned concept must be ASSIGNED to some section,
+                                                  #   else the section plan drives generation with planned content
+                                                  #   unassigned and Phase 1 has no claims audit to catch the
+                                                  #   omission. An unassigned concept = INVALID plan, pre-generation.
                                                   #   PlannedTopic.teaches == owner's teaches_concept_keys;
                                                   #   concept_treatments = teaches_concept_keys × delta_id × owner.
                                                   #   Invariant-#2 `teaches`-overlap reads THIS set — one stable source.
@@ -177,7 +186,9 @@ A bounded planning call (LLM proposes, deterministic layer certifies) emits the 
    review↔duplicate-teaching. Facet-label inequality alone NEVER justifies two topics.
 3. **Prereq/topic boundary:** a parent-of-goal concept outside the goal boundary is a `Prereq`; a parent
    explicitly requested or required by an introductory goal may be a topic.
-4. **Ownership uniqueness (keyed on `delta_id`):** one `definition_owner` per concept; every `delta_id` has
+4. **Ownership uniqueness (keyed on `delta_id`):** one `definition_owner` per IN-SCOPE definable concept —
+   external prerequisites are excluded (no internal definition owner; a prereq gloss never counts as a
+   definition; a concept is never simultaneously an external prereq AND internally taught). Every `delta_id` has
    exactly one teaching owner; every `(concept_key, delta_id)` treatment has at most one topic owner unless an
    explicit spiral policy authorizes another. Referential checks: every planned delta has an owner; every
    teaching owner references an existing delta + topic; every concept treatment references the topic that owns
@@ -261,7 +272,8 @@ Every guard built this session becomes a plan invariant or a retiring backstop:
 - **Phase 0 (shadow, `AZALEA_STUDY_PATH_SCOPE`):** produce the `PathPlan` skeleton = identity + delta +
   dependencies + roles + ownership maps **+ skeletal `section_plan`** (section_id, pedagogical_function,
   required_evidence, teaches/uses — no cards, no claims). Without the section plan, planned-vs-shipped **depth
-  cannot be compared and F3 is unmeasurable**. Run invariants #1–#6. Two logged comparisons, zero user impact:
+  cannot be compared and F3 is unmeasurable**. Run invariants #1–#7 (derived-index consistency is especially
+  live during shadow construction + deterministic repair — not deferred). Two logged comparisons, zero user impact:
   - `PathPlan ↔ shipped topic structure` — F1/F2/F3 + prereq/ordering disagreement.
   - `PathPlan ↔ generated lesson claims` — only once lessons emit claims; F4/F5.
   **Depth is compared via a deterministic feature projection**, not planned-`depth` vs legacy type labels
