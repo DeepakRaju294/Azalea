@@ -1568,6 +1568,17 @@ def _enforce_worked_example_schema_cap(
         _gr.we(we_card_count=len(cards), we_card_cap=cap)
         if len(cards) <= cap:
             return sol, False
+        # A trace-VERIFIED worked example is authoritative and already bounded by the adapter's natural trace
+        # length — NEVER re-solve or withhold it for length. A correct 10-card Gauss-Jordan trace beats a wrong
+        # 6-card LLM re-derivation (live bug: the cap re-solve discarded a verified x=-1,y=0,z=-4 trace and
+        # replaced it with a hallucinated "no solution"). The projection cap targets the legacy line-by-line
+        # trace, which never originates from the trace pipeline.
+        if sol.get("trace_first") or sol.get("generated_by") == "trace_pipeline":
+            _gr.we(we_over_cap=True, we_over_cap_exempt="trace_verified")
+            _log.info("worked-example: %d-card trace-verified example on %s exceeds cap %d — KEPT (verified "
+                      "content is authoritative; the cap targets legacy line-traces)",
+                      len(cards), topic.get("id"), cap)
+            return sol, False
         _gr.we(we_over_cap=True)
         _gr.error(f"worked example has {len(cards)} cards over the {cap}-card projection cap (line-trace)")
 

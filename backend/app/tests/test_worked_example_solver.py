@@ -433,6 +433,19 @@ class TestSchemaCapEnforcement(unittest.TestCase):
         out, bounded = _enforce_worked_example_schema_cap({"cards": None}, topic, None)
         self.assertFalse(bounded)
 
+    def test_trace_verified_over_cap_is_kept_not_resolved(self):
+        # Live bug: a 10-card VERIFIED Gauss-Jordan trace exceeded the 7-card cap, so the cap re-solve
+        # replaced it with a wrong 6-card LLM re-derivation ("no solution"). A trace-verified example is
+        # authoritative and must be KEPT over-cap, never re-solved/withheld for length.
+        sol = {"cards": [{"title": f"s{i}"} for i in range(10)], "final_answer": "x = -1, y = 0, z = -4",
+               "trace_first": True, "generated_by": "trace_pipeline"}
+        topic = {"id": "g3", "title": "Gaussian Elimination Algorithm", "topic_type": "math_formula_method"}
+        out, bounded = _enforce_worked_example_schema_cap(sol, topic, None)
+        self.assertFalse(bounded)
+        self.assertIs(out, sol)                      # unchanged — verified cards kept
+        self.assertEqual(len(out["cards"]), 10)      # not re-solved down to a wrong shorter version
+        self.assertNotIn("_schema", out)
+
 
 class TestCodingStructural(unittest.TestCase):
     """The coding-implementation structural path: slug ranges, the hard outline gate, code-anchored
