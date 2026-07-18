@@ -71,6 +71,34 @@ def _rref_ops(A: list[list[int]], b: list[int]):
                 yield ("eliminate", [row[:] for row in M], factor, p, i)
 
 
+def _ref_ops(A: list[list[int]], b: list[int]):
+    """FORWARD elimination only (stop at ROW ECHELON FORM): normalize each pivot, eliminate strictly BELOW it,
+    never above — the trace for a spec whose subject is the echelon form itself, not the full solve. Same
+    (operation, snapshot, factor, pivot_row, target_row) shape as `_rref_ops`."""
+    n = len(A)
+    M = _aug(A, b)
+    yield ("initialize", [row[:] for row in M], None, None, None)
+    for p in range(n):
+        piv = M[p][p]
+        if piv != 1:
+            M[p] = [v / piv for v in M[p]]
+            yield ("normalize", [row[:] for row in M], piv, p, p)
+        for i in range(p + 1, n):                          # BELOW the pivot only — this is what makes it REF
+            factor = M[i][p]
+            if factor != 0:
+                M[i] = [a - factor * c for a, c in zip(M[i], M[p])]
+                yield ("eliminate", [row[:] for row in M], factor, p, i)
+
+
+def back_substitute(ref: list[list[Fraction]], n: int) -> list[Fraction]:
+    """Solve an upper-triangular (leading-1) augmented matrix by back-substitution — how a learner finishes
+    from REF, and the engine's own check that the REF endpoint still carries the solution."""
+    x = [Fraction(0)] * n
+    for i in range(n - 1, -1, -1):
+        x[i] = ref[i][n] - sum(ref[i][j] * x[j] for j in range(i + 1, n))
+    return x
+
+
 def rref_snapshots(A: list[list[int]], b: list[int]) -> list[list[list[Fraction]]]:
     """Every intermediate augmented matrix (for the gate's solution-preservation check)."""
     return [snap for _, snap, _, _, _ in _rref_ops(A, b)]
@@ -129,6 +157,10 @@ class RowReduceSpec:
     # Authored, CORRECT boundary facts — the lean generator's edge-case grounding replaces the LLM's edge card
     # with these (the LLM shipped a dependent system as a "no solutions" example on a live path).
     edge_cases: list = field(default_factory=list)
+    # "rref" (full Gauss-Jordan solve) or "ref" (STOP at row echelon form — forward elimination only; the final
+    # card reads the solution via back-substitution, which is what REF is FOR). A live Gaussian path taught a
+    # 'Row Echelon Form' topic whose example over-shot its own subject by solving all the way to RREF.
+    stop_at: str = "rref"
 
     def oracle(self, state: dict) -> dict:
         A, b = state["A"], state["b"]
@@ -166,8 +198,9 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
 
     # Only two operations (initialize, eliminate) — a normalize is a row op tagged `eliminate`; `completion` is a
     # CASE mapped to the last eliminate step (mirrors the construct engine), never its own operation.
-    ops = list(_rref_ops(A, b))
-    solution = rref_solution(A, b)
+    ref_only = spec.stop_at == "ref"
+    ops = list(_ref_ops(A, b) if ref_only else _rref_ops(A, b))
+    solution = rref_solution(A, b)                      # same solution either way; REF reads it by back-subst.
     ans = {var_names[i]: _fs(solution[i]) for i in range(n)}
     sol_str = ", ".join(f"{var_names[i]} = {_fs(solution[i])}" for i in range(n))
 
@@ -196,8 +229,15 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
                 evis = f"Eliminate: {rendered}."
             evidence["eliminate"].append(step_id)
         state_after = {"output": rendered}
-        if is_last:   # the last row op reaches RREF — read the solution off it (completion case)
-            evis = f"Reduced form {rendered} — read off the solution: {sol_str}."
+        if is_last:   # the last row op reaches the terminal form — completion case
+            if ref_only:
+                evis = (f"Row echelon form reached: {rendered} — every pivot is 1 with zeros below it. "
+                        f"Back-substitution from here gives {sol_str}.")
+                # the solution is part of the final STATE (read via back-substitution), so the
+                # final-answer-entails check can see it — the REF matrix string alone does not carry x/y.
+                state_after = {"output": rendered, "solution": sol_str}
+            else:
+                evis = f"Reduced form {rendered} — read off the solution: {sol_str}."
             evidence["completion"].append(step_id)
         prior = {"problem": spec.title} if op == "initialize" else {"output": prev_render}
         steps.append(Step(
@@ -209,9 +249,12 @@ def _reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
                    "required_facts": [fact(operation, rendered)], "forbidden_claims": []}))
         prev_render = rendered
 
+    method = ("forward elimination to ROW ECHELON FORM, then back-substitution; each row operation preserves "
+              "the solution set") if ref_only else \
+             "Gauss-Jordan elimination; each row operation preserves the solution set"
     return ContractTrace(
         problem=spec.problem_template.format(system=_equations(A, b, var_names)),
-        conventions={"method": "Gauss-Jordan elimination; each row operation preserves the solution set"},
+        conventions={"method": method},
         initial_state={"problem": spec.title}, final_answer=dict(ans), steps=steps,
         invariants=[{"id": f"{spec.slug}_solution_preserved", "scope": "every_step",
                      "statement": "the solution set is preserved after every row operation"}],
@@ -225,7 +268,8 @@ def _states_equivalent(self, a, b):
 
 
 def _final_answer_entails(self, state, answer):
-    out = str((state or {}).get("output", ""))
+    # REF traces carry the back-substitution reading in state["solution"] (the matrix alone lacks x/y).
+    out = str((state or {}).get("output", "")) + " " + str((state or {}).get("solution", ""))
     return all(str(v) in out for v in (answer or {}).values())
 
 
@@ -262,11 +306,13 @@ def build_example_spec(spec: RowReduceSpec) -> ExampleSpec:
                                teaching_focus="one pivot/row operation; the solution set is preserved",
                                contains={"eliminate": "required"},
                                state_effects=["one column is reduced toward the identity"])}
+    terminal = ("the matrix is in row echelon form (solution read by back-substitution)"
+                if spec.stop_at == "ref" else "the matrix is in reduced row-echelon form")
     return ExampleSpec(
         input=InstanceShape("sequence", count=(1, 1), structure=[spec.slug]),
         stages=stages, structure="initialize eliminate",
         must_exercise=["initialize", "eliminate", "completion"], must_cover=[], must_avoid=[],
-        terminal="the matrix is in reduced row-echelon form", output_shape="the solution vector")
+        terminal=terminal, output_shape="the solution vector")
 
 
 def manifest_entry(spec: RowReduceSpec) -> dict[str, Any]:

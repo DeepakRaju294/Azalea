@@ -69,12 +69,29 @@ GAUSSIAN_ELIMINATION = RowReduceSpec(
     n=3,
     setup=_make_system,
     aliases=["gaussian elimination", "gauss jordan", "gauss-jordan", "row reduction", "reduced row echelon",
-             "rref", "row echelon form", "elimination method 3x3",
+             "rref", "elimination method 3x3",
              # a 'Row Operations' topic is taught BY row-reducing a system — route it to the verified trace
              # (live failure: an LLM-authored RREF worked example shipped with wrong arithmetic).
              "row operations", "elementary row operations", "basic row operations", "row operation"],
     not_aliases=["differential", "inequality"],
     priority=55,
+    edge_cases=_LINEAR_SYSTEM_EDGE_CASES,
+)
+
+# A 'Row Echelon Form' topic's example must STOP at REF (forward elimination; solution via back-substitution)
+# rather than solving to RREF — a live Gaussian path's REF topic over-shot its own subject with a full solve.
+# not_aliases 'reduced' keeps 'reduced row echelon form' routing to the full gaussian_elimination solve.
+ROW_ECHELON_FORM = RowReduceSpec(
+    slug="row_echelon_form",
+    title="reducing a system to row echelon form",
+    problem_template="Reduce the system's augmented matrix to ROW ECHELON FORM (forward elimination): {system}.",
+    n=3,
+    setup=_make_system,
+    stop_at="ref",
+    aliases=["row echelon form", "row-echelon form", "echelon form", "forming row echelon",
+             "forward elimination"],
+    not_aliases=["reduced", "rref", "differential", "inequality"],
+    priority=60,
     edge_cases=_LINEAR_SYSTEM_EDGE_CASES,
 )
 
@@ -92,4 +109,4 @@ SOLVE_3X3 = RowReduceSpec(
 )
 
 
-ALL_SPECS = [SOLVE_2X2, GAUSSIAN_ELIMINATION, SOLVE_3X3]
+ALL_SPECS = [SOLVE_2X2, GAUSSIAN_ELIMINATION, SOLVE_3X3, ROW_ECHELON_FORM]

@@ -70,6 +70,32 @@ class RowReduceEngineGate(unittest.TestCase):
                             self.assertEqual(lhs, row[len(x)],
                                              f"{spec.slug}: row op did not preserve the solution")
 
+    def test_ref_spec_stops_at_row_echelon_form(self):
+        # The REF variant must do FORWARD elimination only: every eliminate targets a row strictly BELOW its
+        # pivot, the terminal card reads the solution via back-substitution, and back-substitution from the
+        # engine's own REF matrix equals the independent Cramer oracle.
+        import re
+        from fractions import Fraction
+
+        specs = [s for s in registered_specs() if s.stop_at == "ref"]
+        self.assertTrue(specs, "no REF-stop spec registered")
+        for spec in specs:
+            a = self._adapter(spec)
+            with self.subTest(slug=spec.slug):
+                for seed in range(12):
+                    tr = tp.select_instance(a, seed=seed)
+                    for s in tr.steps[1:]:
+                        m = re.match(r"eliminate column (\d+) from row (\d+)", s.decision)
+                        if m:
+                            self.assertGreater(int(m.group(2)), int(m.group(1)),
+                                               f"{spec.slug}: above-pivot elimination {s.decision!r}")
+                    self.assertIn("Back-substitution", tr.steps[-1].expected_visible_result)
+                    s0 = dict(tr.steps[0].inputs)
+                    ref = [snap for _, snap, _, _, _ in rr._ref_ops(s0["A"], s0["b"])][-1]
+                    back = rr.back_substitute(ref, spec.n)
+                    self.assertEqual(back, rr.cramer_solve(s0["A"], s0["b"]),
+                                     f"{spec.slug}: back-substitution from REF != Cramer")
+
 
 if __name__ == "__main__":
     unittest.main()
