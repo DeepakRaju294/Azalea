@@ -199,6 +199,10 @@ def _expand_math_point(point: str) -> list[str] | None:
         return None
 
     equation = match.group(1).strip()
+    # Only a genuine EQUATION belongs on its own subpoint — never a bare inline symbol like \(\mu\) or \(x\)
+    # (extracting those leaves stranded prose such as "Mean ( ):"). An equation has a relation or structure.
+    if not re.search(r"[=<>≤≥≈]|\\frac|\\sum|\\int|\\prod|\\sqrt|\\cdot|[+\-*/^]", equation) and len(equation) < 14:
+        return None
     before = text[:match.start()].strip(" ,;:")
     after = text[match.end():].strip(" ,;:.")
     prose = " ".join(part for part in (before, after) if part).strip()
@@ -619,7 +623,9 @@ def _lean_card_to_legacy(
     )
 
     raw_points = [
-        str(p).rstrip()
+        # Repair mixed delimiters ($\(…\)$ -> \(…\)) BEFORE _normalize_bullet_shape splits display math onto its
+        # own bullet — otherwise the split extracts the inner \(…\) and leaves an orphaned "$ $" behind.
+        _repair_latex_delimiters(str(p).rstrip())
         for p in (lean_card.get("points") or [])
         if str(p).strip()
     ]

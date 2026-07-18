@@ -6,12 +6,33 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.lean_lesson_generator import (
-    _dedupe_intro_key_terms_against_scope, _formula_variable_letters, _is_inline_formula_point,
-    _is_prose_symbol_breakdown, _key_term_header, _merge_duplicate_edge_cases,
+    _dedupe_intro_key_terms_against_scope, _expand_math_point, _formula_variable_letters, _is_inline_formula_point,
+    _is_prose_symbol_breakdown, _key_term_header, _lean_card_to_legacy, _merge_duplicate_edge_cases,
     _reconcile_formula_notation_conflict, _split_embedded_newline_points, _strip_formula_breakdown_from_purpose,
     _strip_generic_intro_key_terms, _strip_prerequisite_key_terms, _strip_sibling_topic_key_terms,
     _strip_taught_topics_from_prereq_card,
 )
+
+
+class MixedDelimiterAndInlineSymbol(unittest.TestCase):
+    def test_dollar_wrapped_equation_repaired_before_split_no_orphan_dollars(self):
+        # Live bug: "$\(z = \frac{x-\mu}{\sigma}$)" was split into its own bullet BEFORE the delimiter repair,
+        # leaving an orphaned "$ $". Repair must run first so the equation extracts cleanly.
+        card = {"card_type": "purpose_context", "blueprint_key": "purpose_context", "title": "Z",
+                "points": [r"Uses the formula $\(z = \frac{x - \mu}{\sigma}\)$:"]}
+        out = _lean_card_to_legacy(card, 0, [], topic_hint="z-score")
+        joined = " ".join(out.get("points") or [])
+        self.assertNotIn("$", joined)                       # no orphaned dollar signs
+        self.assertIn(r"\(z = \frac{x - \mu}{\sigma}\)", joined)
+
+    def test_bare_inline_symbol_stays_inline(self):
+        # A single inline symbol \(\mu\) is NOT an equation — moving it to a subpoint strands "Mean ( )".
+        self.assertIsNone(_expand_math_point(r"Mean (\(\mu\)) is the average of the values"))
+
+    def test_real_equation_still_splits(self):
+        out = _expand_math_point(r"The z-score uses \(z = \frac{x-\mu}{\sigma}\) to standardize")
+        self.assertIsNotNone(out)
+        self.assertTrue(out[1].strip().startswith("-"))     # equation moved to a subpoint
 
 
 class _Topic:
