@@ -32,9 +32,11 @@ _FAMILY_ALLOWED: dict[str, frozenset[str]] = {
     "science": frozenset({"science_mechanism", "math_formula_method"}),  # math_formula_method only if quantitative
     "expository": frozenset({"process_walkthrough"}),                     # humanities · language learning
     # CS (non-coding systems: networking, OS, architecture) — MECHANISM-shaped, like science but labeled CS.
-    # No coding/implementation types: "learn about TCP congestion control" is an understanding goal, not a
-    # from-scratch coding exercise (a genuinely implementable CS topic belongs in the coding family).
-    "cs": frozenset({"science_mechanism", "process_walkthrough", "math_formula_method"}),
+    # No coding/implementation AND no math_formula_method: CS subjects are qualitative, so a topic mis-typed as
+    # a formula method fabricates an OFF-TOPIC formula example (live failure: 'Understanding Network Protocols'
+    # got a triangle-area worked example). Any quantitative CS (throughput math) rides science_mechanism, which
+    # already handles numeric worked examples (e.g. congestion-window evolution).
+    "cs": frozenset({"science_mechanism", "process_walkthrough"}),
     "data_science": frozenset({"math_formula_method", "science_mechanism", "process_walkthrough"}),
     "ee": frozenset({"math_formula_method", "science_mechanism", "process_walkthrough"}),
     "quant": frozenset({"math_formula_method", "process_walkthrough"}),   # finance · economics (formula + process)
@@ -46,7 +48,7 @@ _FAMILY_TEACHING_TYPES: dict[str, frozenset[str]] = {
     "math": frozenset({"math_formula_method", "proof_reasoning"}),
     "science": frozenset({"science_mechanism", "math_formula_method"}),
     "expository": frozenset({"concept_intuition", "compare_distinguish", "process_walkthrough"}),
-    "cs": frozenset({"science_mechanism", "process_walkthrough", "math_formula_method"}),
+    "cs": frozenset({"science_mechanism", "process_walkthrough"}),
     "data_science": frozenset({"math_formula_method", "science_mechanism", "process_walkthrough"}),
     "ee": frozenset({"science_mechanism", "math_formula_method", "process_walkthrough"}),
     "quant": frozenset({"math_formula_method", "process_walkthrough", "concept_intuition"}),
@@ -72,7 +74,8 @@ _REMAP: dict[str, dict[str, str]] = {
                                  "data_science": "math_formula_method", "ee": "science_mechanism",
                                  "quant": "math_formula_method"},
     "process_walkthrough": {"math": "math_formula_method", "science": "science_mechanism"},
-    "math_formula_method": {"coding": "algorithm_walkthrough", "expository": "concept_intuition"},
+    "math_formula_method": {"coding": "algorithm_walkthrough", "expository": "concept_intuition",
+                            "cs": "science_mechanism"},
     "proof_reasoning": {"coding": "concept_intuition", "science": "science_mechanism",
                         "expository": "concept_intuition", "cs": "science_mechanism",
                         "data_science": "math_formula_method", "ee": "science_mechanism",

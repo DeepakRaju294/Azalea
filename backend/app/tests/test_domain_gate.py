@@ -131,6 +131,14 @@ class Gate(unittest.TestCase):
         self.assertEqual(_types(gated), ["science_mechanism"])           # walkthrough kept, impl dropped
         self.assertNotIn("coding_implementation", _types(gated))
 
+    def test_cs_math_formula_topic_remaps_to_mechanism(self):
+        # A CS topic mis-typed as a formula method (live failure: 'Understanding Network Protocols' ->
+        # math_formula_method -> a fabricated TRIANGLE-AREA worked example) remaps to science_mechanism.
+        path = [{"title": "Understanding Network Protocols", "course_type": "math_formula_method",
+                 "subject_key": "network_protocols"}]
+        gated, _ = gate_topic_types_by_domain([dict(t) for t in path], "computer_science")
+        self.assertEqual(_types(gated), ["science_mechanism"])
+
     def test_coarse_override_domains_route_like_their_family(self):
         # a user override may name a family directly ("science") or the wizard alias ("concept") — the gate must
         # route it exactly like an inferred fine domain of that family.
