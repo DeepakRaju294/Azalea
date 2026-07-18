@@ -34,9 +34,30 @@ class NearDuplicateTopicCollapse(unittest.TestCase):
         _collapse_near_duplicate_topics(topics)
         self.assertEqual(len(topics), 2)
 
-    def test_different_types_never_collapse(self):
-        topics = [self._t("Binary Search", "algorithm_walkthrough"),
-                  self._t("Binary Search", "data_structure_operation")]
+    def test_synonym_split_across_types_collapses_keeping_substantive(self):
+        # Live failure (TCP path): the model split ONE concept into a concept_intuition 'Introduction to X', a
+        # science_mechanism 'X Algorithms', and a process_walkthrough 'X Mechanisms' — all synonyms. Collapse to
+        # ONE, keeping the substantive (non-intro) topic with the merged scope.
+        topics = [self._t("Introduction to TCP Congestion Control", "concept_intuition", ["TCP"]),
+                  self._t("TCP Congestion Control Algorithms", "science_mechanism", ["AIMD", "Reno"]),
+                  self._t("TCP Congestion Control Mechanisms", "process_walkthrough", ["slow start"])]
+        _collapse_near_duplicate_topics(topics)
+        self.assertEqual([t["title"] for t in topics], ["TCP Congestion Control Algorithms"])
+        self.assertIn("AIMD", topics[0]["in_scope"])
+        self.assertIn("slow start", topics[0]["in_scope"])
+
+    def test_meaningful_facet_words_not_collapsed(self):
+        # 'intuition' / 'formula' are real facet words (not generic synonyms) -> a legit intuition->formula
+        # progression stays two topics even though the subject matches.
+        topics = [self._t("Bayes Theorem Intuition", "concept_intuition"),
+                  self._t("Bayes Theorem Formula", "math_formula_method")]
+        _collapse_near_duplicate_topics(topics)
+        self.assertEqual(len(topics), 2)
+
+    def test_teach_then_code_pair_preserved(self):
+        # X + Implementing X is a genuine complementary pair, never collapsed.
+        topics = [self._t("Dijkstra Walkthrough", "algorithm_walkthrough"),
+                  self._t("Implementing Dijkstra Walkthrough", "coding_implementation")]
         _collapse_near_duplicate_topics(topics)
         self.assertEqual(len(topics), 2)
 

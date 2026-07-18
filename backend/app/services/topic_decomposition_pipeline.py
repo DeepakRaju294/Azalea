@@ -227,9 +227,17 @@ def _disambiguate_topic_titles(ordered: list[dict[str, Any]], goal: str | None) 
 _GENERIC_TOPIC_FILLER = frozenset({
     "mechanisms", "mechanism", "overview", "fundamentals", "fundamental", "basics", "basic", "concepts",
     "concept", "process", "processes", "explained", "introduction", "intro", "techniques", "technique",
-    "methods", "essentials", "principles", "principle", "walkthrough", "guide", "review", "understanding",
-    "working", "details", "detail", "deep", "dive", "explainer", "primer", "explanation", "insights",
+    "methods", "method", "essentials", "principles", "principle", "walkthrough", "guide", "review",
+    "understanding", "working", "details", "detail", "deep", "dive", "explainer", "primer", "explanation",
+    "insights", "insight",
+    # synonyms for "the thing itself" that the model uses to split ONE concept into look-alike topics
+    "algorithms", "algorithm", "strategies", "strategy", "approaches", "approach", "models", "model",
+    "systems", "operations", "operation", "steps", "phases", "phase",
 })
+
+# Titles that merely re-orient to the goal ("Introduction to X", "Overview of X") — when collapsing a pair, the
+# NON-intro topic is the substantive keeper.
+_INTRO_TITLE_WORDS = frozenset({"introduction", "intro", "overview", "understanding"})
 
 
 def _significant_title_words(topic: dict[str, Any]) -> set[str]:
@@ -238,42 +246,56 @@ def _significant_title_words(topic: dict[str, Any]) -> set[str]:
             if len(w) >= 3 and w not in _GENERIC_PREREQ_WORDS}
 
 
+def _merge_topic_scope(keep: dict[str, Any], drop: dict[str, Any]) -> None:
+    """Fold drop's in_scope into keep (dedup, order-preserving) so a collapse loses no content."""
+    scope = list(keep.get("in_scope") or [])
+    seen = {str(s).lower() for s in scope}
+    for s in (drop.get("in_scope") or []):
+        if str(s).lower() not in seen:
+            scope.append(s)
+            seen.add(str(s).lower())
+    keep["in_scope"] = scope
+
+
+def _keeper_score(topic: dict[str, Any]) -> tuple[int, int]:
+    """Higher = better keeper when collapsing a duplicate pair: a SUBSTANTIVE topic beats an 'Introduction to X'
+    re-orientation, and richer scope beats thin scope. Uses the RAW title (the intro words are stripped from the
+    'significant' set, so they must be read off the full title here)."""
+    raw = set(_norm_title(topic.get("title")).split())
+    not_intro = 0 if (raw & _INTRO_TITLE_WORDS) else 1
+    return (not_intro, len(topic.get("in_scope") or []))
+
+
 def _collapse_near_duplicate_topics(topics_out: list[dict[str, Any]]) -> set:
-    """Two TEACHING topics of the SAME type whose titles differ only by a GENERIC filler word ('TCP Congestion
-    Control' vs 'TCP Congestion Control Mechanisms') are the same lesson — the learner would read it twice (live
-    failure: a TCP path shipped both). Keep the earlier topic, merge the later's in_scope into it, drop the later.
-    Requires a substantial (>=2 significant) shared subject AND the extra words to be pure filler, so 'Binary
-    Search' vs 'Binary Search Trees' (a real distinguishing concept) stays two topics. Mutates topics_out."""
+    """Two TEACHING topics whose titles share a substantial core and differ ONLY by GENERIC words ('TCP
+    Congestion Control Algorithms' vs '… Mechanisms', or '… ' vs '… Overview') are the same lesson split by
+    synonyms — the learner reads it two/three times. Collapse them: keep the more substantive one (§_keeper_score),
+    merge the other's in_scope, drop it. Matches ACROSS topic types (the model splits one concept into a
+    concept_intuition + a science_mechanism + a process_walkthrough), EXCEPT a genuine teach-then-code pair (X +
+    Implementing X) — that stays two. A real distinguishing word ('Binary Search' vs 'Binary Search Trees') keeps
+    them separate, since 'trees' is not generic. Mutates topics_out."""
     teaching = [t for t in topics_out if not _is_opener(t)]
     remove_ids: set = set()
     for i, a in enumerate(teaching):
         if id(a) in remove_ids:
             continue
-        aw = _significant_title_words(a)
         for b in teaching[i + 1:]:
-            if id(b) in remove_ids or str(a.get("topic_type")) != str(b.get("topic_type")):
+            if id(b) in remove_ids or id(a) in remove_ids:
                 continue
-            bw = _significant_title_words(b)
+            types = {str(a.get("topic_type")), str(b.get("topic_type"))}
+            if "coding_implementation" in types:
+                continue                                    # teach-then-code is a legit complementary pair
+            aw, bw = _significant_title_words(a), _significant_title_words(b)
             if not aw or not bw:
                 continue
-            if aw <= bw:
-                small, large = aw, bw
-            elif bw <= aw:
-                small, large = bw, aw
-            else:
-                continue                                    # neither subsets the other -> distinct subjects
-            if len(small) < 2 or not (large - small) <= _GENERIC_TOPIC_FILLER:
-                continue
-            a_scope = list(a.get("in_scope") or [])          # merge b's scope so no content is lost
-            seen = {str(s).lower() for s in a_scope}
-            for s in (b.get("in_scope") or []):
-                if str(s).lower() not in seen:
-                    a_scope.append(s)
-                    seen.add(str(s).lower())
-            a["in_scope"] = a_scope
-            remove_ids.add(id(b))
-            _log.info("topic_decomposition: collapsed near-duplicate topic %r into %r (filler-only title diff)",
-                      b.get("title"), a.get("title"))
+            shared, diff = aw & bw, aw ^ bw                 # symmetric difference: the words that differ
+            if len(shared) < 2 or not diff <= _GENERIC_TOPIC_FILLER:
+                continue                                    # need a real shared subject; all differences generic
+            keep, drop = (a, b) if _keeper_score(a) >= _keeper_score(b) else (b, a)
+            _merge_topic_scope(keep, drop)
+            remove_ids.add(id(drop))
+            _log.info("topic_decomposition: collapsed near-duplicate %r into %r (synonym-only title diff)",
+                      drop.get("title"), keep.get("title"))
     if remove_ids:
         topics_out[:] = [t for t in topics_out if id(t) not in remove_ids]
     return remove_ids
