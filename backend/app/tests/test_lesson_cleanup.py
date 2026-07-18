@@ -14,6 +14,38 @@ from app.services.lean_lesson_generator import (
 )
 
 
+class GroundedEdgeCardCrossTopicDedup(unittest.TestCase):
+    def test_same_adapter_siblings_keep_one_grounded_edge_card(self):
+        # Live: 3 topics on one Gaussian path all routed to gaussian_elimination -> 3 identical grounded
+        # Edge Cases cards. The FIRST keeps the grounded card; later same-adapter topics drop theirs.
+        from app.services.lean_lesson_generator import _ground_edge_case_card
+
+        class _SP:  # noqa: N801 — minimal duck-typed path
+            pass
+
+        class _T2:  # noqa: N801
+            def __init__(self, title, order):
+                self.title, self.order_index = title, order
+                self.course_type, self.topic_type, self.study_path = "math_formula_method", None, None
+
+        sp = _SP()
+        first, later = _T2("Row Echelon Form", 2), _T2("Gaussian Elimination", 4)
+        sp.topics = [first, later]
+        first.study_path = later.study_path = sp
+
+        def edge_cards():
+            return [{"blueprint_key": "edge_case", "card_type": "edge_case",
+                     "title": "Edge Case: X", "points": ["wrong llm claim"]}]
+
+        c1 = edge_cards()
+        self.assertTrue(_ground_edge_case_card(c1, first))
+        self.assertEqual(len(c1), 1)                       # grounded card kept, 3 correct facts
+        self.assertEqual(len(c1[0]["points"]), 3)
+        c2 = edge_cards()
+        self.assertTrue(_ground_edge_case_card(c2, later))
+        self.assertEqual(c2, [])                           # duplicate grounded card dropped entirely
+
+
 class MixedDelimiterAndInlineSymbol(unittest.TestCase):
     def test_dollar_wrapped_equation_repaired_before_split_no_orphan_dollars(self):
         # Live bug: "$\(z = \frac{x-\mu}{\sigma}$)" was split into its own bullet BEFORE the delimiter repair,

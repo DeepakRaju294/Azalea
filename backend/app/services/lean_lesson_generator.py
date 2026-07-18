@@ -8565,6 +8565,29 @@ def _ground_edge_case_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
         edges = list(getattr(spec, "edge_cases", None) or []) if spec is not None else []
         if not edges:
             return False
+        # Cross-topic dedup: when an EARLIER topic in this path routes to the SAME adapter, its edge card
+        # already carries these exact grounded facts — repeating them verbatim on every later topic reads as
+        # copy-paste (live: 3 identical Edge Cases cards on one Gaussian path). Drop the later card entirely
+        # (its LLM content is untrusted — that is why grounding replaces it — so it must not survive either).
+        try:
+            slug = getattr(adapter, "slug", None)
+            my_order = getattr(topic, "order_index", 0) or 0
+            siblings = list(getattr(getattr(topic, "study_path", None), "topics", None) or [])
+            for sib in siblings:
+                if (getattr(sib, "order_index", 0) or 0) >= my_order:
+                    continue
+                sib_ad = route_adapter({"title": getattr(sib, "title", "") or "",
+                                        "course_type": _topic_type_key(sib)})
+                if sib_ad is not None and getattr(sib_ad, "slug", None) == slug:
+                    cards[:] = [c for c in cards
+                                if str(c.get("blueprint_key") or c.get("card_type") or "").lower()
+                                not in ("edge_case", "edge_cases")]
+                    logger.info("edge-case grounding: dropped duplicate grounded edge card on %r "
+                                "(same adapter %s as earlier sibling %r)",
+                                getattr(topic, "title", ""), slug, getattr(sib, "title", ""))
+                    return True
+        except Exception:  # noqa: BLE001 — sibling dedup is best-effort
+            pass
         for card in cards:
             key = str(card.get("blueprint_key") or card.get("card_type") or "").lower()
             if key in ("edge_case", "edge_cases"):
