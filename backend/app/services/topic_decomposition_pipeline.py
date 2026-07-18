@@ -152,6 +152,27 @@ def _is_circular_prereq(name: str, goal: str | None) -> bool:
     return all(_in_goal(w) for w in words)
 
 
+# Broad whole-DISCIPLINE names that make poor prerequisites: they restate an entire field rather than the
+# specific concept the goal actually needs, and their sub-concepts usually appear as their OWN, tighter prereqs
+# (live failure: a z-score path listed BOTH 'Statistics' and 'mean and median', where Statistics' own
+# "what to learn" was mean/median/mode — pure redundancy). Dropped only when a more specific prereq remains.
+_UMBRELLA_FIELDS = frozenset({
+    "statistics", "mathematics", "math", "maths", "programming", "coding", "computer science",
+    "computing", "data science", "science", "engineering", "arithmetic",
+})
+
+
+def _drop_umbrella_prereqs(prereqs: list[str]) -> list[str]:
+    """Remove a broad umbrella-discipline prerequisite ('Statistics', 'Mathematics') when at least one more
+    specific prerequisite remains — the specific one is what the learner actually needs, and the umbrella just
+    duplicates it vaguely. If EVERY prereq is an umbrella (nothing more specific), keep them untouched."""
+    specific = [p for p in prereqs if _norm_title(p) not in _UMBRELLA_FIELDS]
+    if specific and len(specific) < len(prereqs):
+        dropped = [p for p in prereqs if _norm_title(p) in _UMBRELLA_FIELDS]
+        _log.info("topic_decomposition: dropped umbrella-field prereq(s) %s (kept specific: %s)", dropped, specific)
+    return specific if specific else prereqs
+
+
 def _norm_title(t: str) -> str:
     """Lowercase alnum words of a title, minus glue, for equality/containment checks."""
     return " ".join(w for w in re.findall(r"[a-z0-9]+", str(t or "").lower())
@@ -533,6 +554,9 @@ def generate_decomposed_topics(
     llm_prereqs = [p for p in llm_prereqs
                    if not _goal_names_topic({"title": p, "subject_key": p}, goal)
                    and not _is_circular_prereq(p, goal)]
+    # Drop a broad umbrella-discipline prereq ('Statistics') when a more specific one remains ('mean and
+    # median') — the umbrella just vaguely restates the specific concept, which is the redundancy learners notice.
+    llm_prereqs = _drop_umbrella_prereqs(llm_prereqs)
     # A concept is EITHER an external prerequisite OR a topic this path teaches — never both. When the LLM
     # declares a concept as a prereq AND also emits a standalone topic for it (live failure: 'Graph
     # Representation' prereq + the 'Implementing Graph Representation' topic on a Dijkstra path), the learner is

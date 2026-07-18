@@ -10,8 +10,23 @@ os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.topic_decomposition_pipeline import (
     _cross_topic_foundations, _is_circular_prereq, _path_assumed_prereqs, _topic_teaches_prereq, _fold_prereq_topics,
-    generate_decomposed_topics,
+    _drop_umbrella_prereqs, generate_decomposed_topics,
 )
+
+
+class UmbrellaPrereqGuard(unittest.TestCase):
+    def test_broad_field_dropped_when_specific_remains(self):
+        # Live failure (z-score path): both 'Statistics' AND 'mean and median' — the umbrella just restates
+        # the specific concept, which reads as redundant.
+        self.assertEqual(_drop_umbrella_prereqs(["Statistics", "mean and median"]), ["mean and median"])
+        self.assertEqual(_drop_umbrella_prereqs(["Mathematics", "linear equations"]), ["linear equations"])
+
+    def test_umbrella_kept_when_it_is_the_only_prereq(self):
+        self.assertEqual(_drop_umbrella_prereqs(["Statistics"]), ["Statistics"])
+
+    def test_specific_prereqs_untouched(self):
+        self.assertEqual(_drop_umbrella_prereqs(["graph theory", "priority queues"]),
+                         ["graph theory", "priority queues"])
 from app.services.lean_lesson_generator import (
     _assumed_prereq_glosses, _emit_prereq_interactive_links, _ground_prereq_card,
     _relocate_prereq_defs_from_key_terms,
