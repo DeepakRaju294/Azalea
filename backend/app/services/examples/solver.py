@@ -1174,19 +1174,13 @@ def _step_summary(goal: str, result: str) -> str:
     return summary
 
 
-def _step_card_title(raw_title: Any, goal: str, result: str, n: int) -> str:
-    """Worked-example step titles use ONE consistent system: ``Step N: <few-word summary>`` (the
-    algorithm-walkthrough style). The model's title (minus any 'Step N:' it already added) is the summary;
-    if absent, derive it from goal/result; only when there is truly nothing to say is it a bare ``Step N``."""
-    # strip any leading "Step N" the model added — WITH or WITHOUT a separator, so a bare "Step 10"
-    # title doesn't get re-prefixed into "Step 10: Step 10".
-    raw = re.sub(r"^\s*step\s+\d+\b\s*[:.\-]?\s*", "", str(raw_title or "").strip(), flags=re.IGNORECASE).strip()
-    if re.fullmatch(r"[a-z]+(?:_[a-z]+)*", raw):   # a raw stage/operation id ('select_edge') -> not a summary
-        raw = ""                                   # (drops the repeated 'Step N: Select_edge' titles)
-    summary = raw or _step_summary(goal, result)
-    if summary:
-        summary = summary[:1].upper() + summary[1:]
-        return f"Step {n + 1}: {summary}"
+def _step_card_title(raw_title: Any, goal: str, result: str, n: int, total: int = 0) -> str:
+    """Worked-example step titles are the BARE ordinal only — ``Step N`` — never a descriptive tail (product
+    decision: the tails were noisy and sometimes overflowed, e.g. 'Step 8: Reduced form [1 0 0 | 4] …'; the
+    step's content already says what it does). A SINGLE-step example gets ``Solution`` instead — a lone
+    'Step 1' reads as a stub."""
+    if total == 1:
+        return "Solution"
     return f"Step {n + 1}"
 
 
@@ -1261,7 +1255,7 @@ def _build_solution_cards(
         if not code:                             # NON-coding worked example: `//` is code-leakage, not a comment
             work = [_demote_code_comment(w) for w in work]   # "6! // note" -> "6! — note"
         result = str(card.get("result") or "").strip()
-        card_title = _step_card_title(card.get("title"), goal, result, n)
+        card_title = _step_card_title(card.get("title"), goal, result, n, total=len(norm))
         # Prose (goal/reasoning/result/title): match FUNCTION names to code casing only — leave other
         # words alone. Work lines are CODE: match every identifier so a leading `Mst` becomes `mst`.
         if fn_names:

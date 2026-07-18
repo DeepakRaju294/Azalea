@@ -252,7 +252,8 @@ def _build_step_cards(
             "id": f"v2-ex-{model_id}-{n + 1}",
             "blueprint_key": "worked_example",
             "card_type": "worked_example",
-            "title": f"{_app_title(fixture.application)}: Step {n + 1}",
+            # bare-ordinal titles (product decision): "Step N", or "Solution" for a single-step example
+            "title": "Solution" if len(milestones) == 1 else f"Step {n + 1}",
             "points": points,
             "body": [],
             "main_concept": fixture.learner_goal or f"Step {n + 1} of the worked example.",
@@ -310,8 +311,9 @@ def _ensure_setup_card(cards: list[dict[str, Any]], model: dict[str, Any], fixtu
         # The first slot already narrates the setup state (frame 0) — promote it.
         cards[0]["title"] = "Worked Example Setup"
         cards[0].setdefault("metadata", {})["worked_example_setup"] = True
-        for n, card in enumerate(cards[1:], start=1):
-            card["title"] = f"{_app_title(fixture.application)}: Step {n}"
+        steps = cards[1:]
+        for n, card in enumerate(steps, start=1):
+            card["title"] = "Solution" if len(steps) == 1 else f"Step {n}"
         return
     setup = {
         "id": f"v2-ex-{model['id']}-setup",
