@@ -1,25 +1,19 @@
-# Study-Path Scope Plan — implementation sketch (rev 5)
+# Study-Path Scope Plan — implementation sketch (rev 6)
 
 > A pragmatic, failure-grounded sketch for the up-front path plan. The full typed design is
 > `STUDY_PATH_SCOPE_SPEC.md` (Draft v3.2, frozen); this sketch is the "why + minimal build", written against the
 > concrete failures observed in the July 2026 TCP-congestion-control review rounds.
-> Status: **direction approved through three review rounds; Phase 0 approved to build** (with the rev-4 payload
-> clarifications); the §12 decisions + §13 contract items gate Phase 1.
+> Status: **Phase 0 APPROVED TO IMPLEMENT after five review rounds; no further architectural review needed before
+> starting it.** The §12/§13 items gate Phase 1/2. Remaining work is contract tightening, not system redesign.
 >
-> **rev 2** corrected the first review (delta-based uniqueness, teaching ownership, compound goals, boundary-aware
-> parent demotion, derived depth, repair split, content-claims, versioning). **rev 3** folded in the second review
-> (per-ACTION goal ownership; semantic delta-distinctness; definition ⟂ teaching ownership; within-topic `uses`;
-> audited claims; structural anchors; derived `IntroPlan`; §12 gate decisions). **rev 4** folds in the third:
-> canonical identity gets provenance/confidence + first-class Phase-0 metrics; Phase-0 payload includes skeletal
-> `section_plan` (else F3 is unmeasurable); distinctness thresholds come from HUMAN-LABELED fixtures; `scope_out`
-> = must-not-TEACH; immutable plan ⟂ per-run `GenerationRevision`; input fingerprint; intro definition budget;
-> operational independence for the claim audit; DAG-scoped partial-failure behavior. **rev 5** (fourth review —
-> Phase 0 approved; final contract fixes): every delta gets a stable `delta_id` and **teaching ownership keys on
-> it exactly**; **claims carry `delta_id` + `treatment_level`** so facet-level ownership and review-vs-duplicate
-> are enforceable, not interpretive; fingerprint split into `planning_input_fingerprint` ⟂ `plan_build_provenance`
-> (resolves the planner-upgrade contradiction); depth comparison via a defined feature projection; Phase-1 vs
-> Phase-2 additions separated; spec-precedence rule (§13). rev 5 adds no new scope — it makes the chain
-> internally consistent.
+> **Changelog** (details in git history): rev 2 — delta-based uniqueness, ownership model, compound goals,
+> repair split. rev 3 — per-action goal ownership, semantic distinctness, definition ⟂ teaching ownership,
+> audited claims, derived IntroPlan. rev 4 — identity provenance/confidence + canonicalization metrics, skeletal
+> section_plan in Phase 0, labeled-fixture thresholds, scope_out = must-not-teach, plan ⟂ run, fingerprint,
+> intro budget, DAG-scoped failure. rev 5 — stable `delta_id` keys ownership + claims; `treatment_level`;
+> fingerprint split (input ⟂ build provenance); depth feature projection; phase boundaries; spec precedence.
+> rev 6 — fixed stale invariant-4 key + phase-boundary contradiction; lesson-level definition-ownership rule;
+> `AuditedClaim` shape; `concept_treatments` marked derived; Phase-0-evidenced promotion thresholds.
 
 ## 1. The problem, stated as observed failures
 
@@ -70,8 +64,11 @@ PathPlan                                          # IMMUTABLE planning result (r
   intro:             IntroPlan                    # DERIVED — never a PlannedTopic
   topics:            [PlannedTopic]               # ordered by dependency, not list position
   definition_owners: { concept_key -> topic_id | "intro" }
-  teaching_owners:   { delta_id -> topic_id }     # EXACT key: the delta identity, never an ad-hoc facet/action tuple
-  concept_treatments: { (concept_key, delta_id) -> topic_id }   # concepts nested within a delta
+  teaching_owners:   { delta_id -> topic_id }     # AUTHORITATIVE ownership: the delta identity, never an ad-hoc tuple
+  concept_treatments: { (concept_key, delta_id) -> topic_id }   # DERIVED index (from teaching_owners + deltas) for
+                                                  #   validation/queries — never independently authored. Authority:
+                                                  #   teaching_owners + LearningDelta authoritative; PlannedTopic.teaches
+                                                  #   and concept_treatments derived (three hand-kept copies would drift)
   validation_status: planned | repaired | ambiguous
   repair_log:        [RepairAction]
 
@@ -163,8 +160,12 @@ A bounded planning call (LLM proposes, deterministic layer certifies) emits the 
    review↔duplicate-teaching. Facet-label inequality alone NEVER justifies two topics.
 3. **Prereq/topic boundary:** a parent-of-goal concept outside the goal boundary is a `Prereq`; a parent
    explicitly requested or required by an introductory goal may be a topic.
-4. **Ownership uniqueness:** one `definition_owner` per concept; ≤1 `teaching_owner` per (concept, facet/action);
-   `uses`/`reviews` unrestricted; >1 treatment of the same (concept, facet) requires an explicit spiral policy.
+4. **Ownership uniqueness (keyed on `delta_id`):** one `definition_owner` per concept; every `delta_id` has
+   exactly one teaching owner; every `(concept_key, delta_id)` treatment has at most one topic owner unless an
+   explicit spiral policy authorizes another. Referential checks: every planned delta has an owner; every
+   teaching owner references an existing delta + topic; every concept treatment references the topic that owns
+   its delta; a topic's `teaches` entries are all represented in `concept_treatments`. `uses`/`reviews`
+   unrestricted.
 5. **Dependency soundness:** `prerequisite_topic_ids` form a DAG; every `uses` concept is an external prereq,
    taught earlier, intro-owned, or taught by an **earlier section of the same topic**.
 6. **Prereq budget (POLICY, not validity):** >3 prereqs → group under a canonical parent or narrow the goal;
@@ -189,8 +190,13 @@ parent calls, low-confidence identity equivalence). Conflating these recreates t
                        treatment_level: mention | use | brief_review | substantive_instruction,
                        anchor: {card_id, section_id, field, item_index}, content_hash } ]
   ```
-  An audited claim may carry `delta_id = null` when the auditor cannot confidently bind it — it still proposes
-  facet/action values with a confidence; unbound substantive claims route to review rather than silently passing.
+  The audited counterpart is NOT forced to bind uncertain content to an existing delta — an unbound substantive
+  claim is precisely how the system detects that generation invented an UNPLANNED learning delta:
+  ```
+  AuditedClaim: { concept_key, proposed_delta_id: str|null, proposed_facet, proposed_action,
+                  relation, treatment_level, anchor, confidence }
+  ```
+  Unbound (`proposed_delta_id = null`) substantive claims route to review rather than silently passing.
 - **Claims are audited, and independence is operational, not nominal.** The audit pass: (a) never receives the
   authored claim labels as suggestions, (b) reads the FINAL post-transformation content, (c) produces its own
   relations + anchors, (d) is evaluated separately against labeled spans, (e) reports both omissions (false
@@ -204,6 +210,10 @@ parent calls, low-confidence identity equivalence). Conflating these recreates t
   - `brief_review` → allowed only when the concept is in `reviews` (else repairable drift → regenerate section).
   - `substantive_instruction` → requires this topic to be the matching `teaching_owner` (via `delta_id`);
     otherwise **blocking** — the lesson is not marked ready.
+  - **`relation = defines` is checked against `definition_owners` separately from delta ownership:** it requires
+    the current topic (or intro) to equal `definition_owners[concept_key]`. A topic may own a mechanism delta
+    involving `cwnd` without owning `cwnd`'s definition — a second definition is **blocking at the lesson level**
+    even when the topic legitimately owns a different facet of that concept (not deferred to the whole-path audit).
 - **Path-level consequence of a blocked topic follows the DAG:** a failed topic blocks its dependent
   *descendants* (`blocked_by_dependency`), not independent or already-valid topics. Completed earlier topics
   remain usable; the failed topic shows as regenerating/repairing. (This is a practical payoff of explicit
@@ -264,6 +274,12 @@ Measured on the labeled golden set + production shadow (counts/distances):
 - (Phase-2 gates) scope-violation rate; claim-disagreement rate; scope-auditor false-positive rate; human
   acceptance on the golden set.
 
+**Exit criteria are recorded from Phase-0 evidence, then approved — never chosen inside an implementation PR.**
+Phase 0 exists partly to establish baselines; before promotion, explicit thresholds are set for at least:
+invalid/ambiguous-plan rate, same-goal delta stability, human disagreement with canonical merges, false-merge and
+false-split rates on the labeled fixtures, unresolved-identity rate, parent/prereq classification agreement, and
+depth-projection agreement (or human preference).
+
 ## 10. Explicit non-goals
 
 - Not adapters, not study-materials, not the practice system (out of scope by direction).
@@ -275,8 +291,8 @@ Measured on the labeled golden set + production shadow (counts/distances):
 We have been fixing "the model picked a bad structure" one symptom at a time. The scope plan fixes it once:
 **decide the path — goal actions, prereqs, per-delta topics with unique definition + teaching ownership,
 dependency order, a derived intro, and section plans — authoritatively before generation, and make generation
-fill it instead of re-inventing it.** The rev-2/3/4 corrections are what keep the planner from becoming a
-fancier subject-key heuristic.
+fill it instead of re-inventing it.** The five review rounds' corrections are what keep the planner from
+becoming a fancier subject-key heuristic.
 
 ## 12. Phase-1 gate: five decisions (second review — resolved)
 
@@ -313,6 +329,9 @@ distinctness thresholds (from the labeled fixtures).
 > **Implementation note:** Phase-1A plumbing already exists dark in `backend/app/core/study_path_scope/`
 > (schema/identity with canonical keys + aliases, mappings, construction incl. `LessonSectionPlan`, planning
 > validation, shadow telemetry, builder; 76 core + 7 shadow-bridge tests). Sketch vocabulary maps onto the frozen
-> spec's (`LearningDelta` ≈ ConceptIdentity(key, facet) + action; `teaches/uses` ≈ mappings). The genuinely NEW
-> items to fold in during Phase 1: `teaching_owners` map, the audited-claims contract, identity
-> provenance/confidence, the input fingerprint, and the plan⟂run status split.
+> spec's (`LearningDelta` ≈ ConceptIdentity(key, facet) + action; `teaches/uses` ≈ mappings). Genuinely NEW items,
+> by phase (matching §13 — the claims pipeline is NEVER a Phase-1 requirement):
+> **Phase 1:** `delta_id` + `teaching_owners`, identity provenance/confidence, the fingerprint split, the
+> plan⟂run status split, the depth feature projection.
+> **Phase 2:** the authored/audited claim contracts (`treatment_level`, `AuditedClaim`, `claim_disagreements`)
+> and definition-vs-delta enforcement. (The schema may reserve these fields during Phase 1.)
