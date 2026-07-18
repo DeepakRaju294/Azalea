@@ -35,6 +35,7 @@ from app.services.knowledge_level_service import self_report_to_knowledge_level
 from app.services.topic_generator import generate_topics_from_chunks
 from app.services.topic_qa import answer_topic_question
 from app.services.preference_service import write_generation_snapshot
+from app.services.scope_shadow import maybe_log_shadow
 from app.api.routes.study_paths import ensure_study_path_domain
 
 router = APIRouter()
@@ -732,6 +733,10 @@ def generate_topics_for_study_path(
             next_order_index += 1
 
         db.flush()
+        # StudyPathScope Phase-1A shadow (see study_paths.py create/regenerate): flag-gated, never-throwing,
+        # logged over the FULL resulting topic list (the shadow diff is whole-path).
+        maybe_log_shadow(study_path.goal or "", study_path.domain or "", existing_topics,
+                         source_revision=study_path.active_generation_id or "")
         recalculate_study_path_progress(db, study_path_id)
         db.commit()
 
@@ -789,6 +794,9 @@ def generate_topics_for_study_path(
         created_topics.append(topic)
 
     db.flush()
+    # StudyPathScope Phase-1A shadow: flag-gated, never-throwing (see study_paths.py create/regenerate).
+    maybe_log_shadow(study_path.goal or "", study_path.domain or "", created_topics,
+                     source_revision=study_path.active_generation_id or "")
     recalculate_study_path_progress(db, study_path_id)
 
     db.commit()
