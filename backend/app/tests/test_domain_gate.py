@@ -119,6 +119,18 @@ class Gate(unittest.TestCase):
         g_cs, _ = gate_topic_types_by_domain([dict(t) for t in tcp], "computer_science")
         self.assertEqual(_types(g_cs), ["science_mechanism"])
 
+    def test_cs_is_mechanism_only_no_code(self):
+        # CS is mechanism-shaped (like science): an algorithm_walkthrough remaps to science_mechanism and an
+        # appended coding_implementation is dropped — 'learn about TCP congestion control' must not sprout an
+        # 'Implementing TCP' coding topic.
+        path = [{"title": "TCP Congestion Control Mechanisms", "course_type": "algorithm_walkthrough",
+                 "subject_key": "tcp"},
+                {"title": "Implementing TCP Congestion Control", "course_type": "coding_implementation",
+                 "subject_key": "tcp_impl"}]
+        gated, _ = gate_topic_types_by_domain([dict(t) for t in path], "computer_science")
+        self.assertEqual(_types(gated), ["science_mechanism"])           # walkthrough kept, impl dropped
+        self.assertNotIn("coding_implementation", _types(gated))
+
     def test_coarse_override_domains_route_like_their_family(self):
         # a user override may name a family directly ("science") or the wizard alias ("concept") — the gate must
         # route it exactly like an inferred fine domain of that family.

@@ -145,8 +145,8 @@ export default function OnboardingWizardPage() {
       // Only send a domain override when the learner actually changed it — an unchanged domain stays inferred
       // (preserves the classifier-quality signal, §8).
       if (domain !== inferredDomain) payload.domain = domain;
-      // Language applies to coding paths and to CS paths (which can produce optional code implementations).
-      if (domain === "coding" || domain === "cs") payload.language = language;
+      // Language applies only to coding paths (CS/math/science/etc. produce no programming code).
+      if (domain === "coding") payload.language = language;
       await updateStudyPathPreferences(studyPathId, payload);
       goToPath();
     } catch (err) {
@@ -165,7 +165,7 @@ export default function OnboardingWizardPage() {
   if (isCheckingAuth || loading) return <WizardSkeleton />;
 
   const domainLabel = DOMAIN_OPTIONS.find((d) => d.value === domain)?.label ?? "Concept";
-  const isCoding = domain === "coding" || domain === "cs"; // language step: coding + CS (optional code)
+  const isCoding = domain === "coding"; // the language step only applies to coding paths
 
   return (
     <main className="min-h-screen bg-[#F7F4FB] text-[#17151F]">

@@ -530,9 +530,11 @@ def generate_decomposed_topics(
     *,
     model_fn: Optional[ModelFn] = None,
     resolve_overlap: Optional[OverlapResolver] = None,
+    coding_follow_ups: bool = True,
 ) -> list[dict[str, Any]]:
     """Single-call decompose -> append coding follow-ups -> validate -> adapt to legacy topics.
-    Returns [] when the model produced nothing usable (caller falls back to the legacy generator)."""
+    Returns [] when the model produced nothing usable (caller falls back to the legacy generator).
+    `coding_follow_ups=False` (non-coding domains) skips the 'Implementing X' follow-up append."""
     payload = {"system": SYSTEM_PROMPT,
                "user": build_decomposition_prompt(goal=goal, chunks_text=chunks_text, feedback=feedback)}
     parsed = _coerce((model_fn or _default_model_fn)(payload))
@@ -545,7 +547,7 @@ def generate_decomposed_topics(
     path_plan.setdefault("end_capability_actions", [])
 
     topics = [_normalize_topic(t) for t in raw_topics]
-    path_plan, topics = append_coding_follow_ups(path_plan, topics)
+    path_plan, topics = append_coding_follow_ups(path_plan, topics, enabled=coding_follow_ups)
     resolver = resolve_overlap if resolve_overlap is not None else _default_resolver()
     result = validate_topic_decomposition(path_plan, topics, goal or "", resolve_overlap=resolver)
     if not result.ok:

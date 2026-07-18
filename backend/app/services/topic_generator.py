@@ -943,7 +943,12 @@ Chunk index: {chunk.chunk_index}
         try:
             from app.services.topic_decomposition_pipeline import generate_decomposed_topics
 
-            decomposed = generate_decomposed_topics(goal=goal, chunks_text=chunks_text, feedback=feedback)
+            # Coding follow-ups (append an "Implementing X" topic after each walkthrough) are for the CODING
+            # family ONLY — no other domain (CS, science, math, …) ever gets an implementation topic (live
+            # failure: a TCP congestion-control path grew an "Implementing TCP Congestion Control" coding topic).
+            decomposed = generate_decomposed_topics(
+                goal=goal, chunks_text=chunks_text, feedback=feedback,
+                coding_follow_ups=(gate_family_of(domain) == "coding"))
             if decomposed:
                 _log.info("topic_generator: used capability-graph decomposition (%d topics)", len(decomposed))
                 # Gate BEFORE marking follow-ups so the marking reflects the final (possibly remapped) types.

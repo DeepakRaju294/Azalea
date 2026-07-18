@@ -31,10 +31,10 @@ _FAMILY_ALLOWED: dict[str, frozenset[str]] = {
     "math": frozenset({"math_formula_method", "proof_reasoning"}),
     "science": frozenset({"science_mechanism", "math_formula_method"}),  # math_formula_method only if quantitative
     "expository": frozenset({"process_walkthrough"}),                     # humanities · language learning
-    # CS (non-coding systems: networking, OS, architecture) — mechanism-shaped + OPTIONAL code (per product
-    # decision), so it allows both science_mechanism AND the coding teaching types.
-    "cs": frozenset({"science_mechanism", "process_walkthrough", "algorithm_walkthrough",
-                     "data_structure_operation", "coding_implementation", "math_formula_method"}),
+    # CS (non-coding systems: networking, OS, architecture) — MECHANISM-shaped, like science but labeled CS.
+    # No coding/implementation types: "learn about TCP congestion control" is an understanding goal, not a
+    # from-scratch coding exercise (a genuinely implementable CS topic belongs in the coding family).
+    "cs": frozenset({"science_mechanism", "process_walkthrough", "math_formula_method"}),
     "data_science": frozenset({"math_formula_method", "science_mechanism", "process_walkthrough"}),
     "ee": frozenset({"math_formula_method", "science_mechanism", "process_walkthrough"}),
     "quant": frozenset({"math_formula_method", "process_walkthrough"}),   # finance · economics (formula + process)
@@ -46,8 +46,7 @@ _FAMILY_TEACHING_TYPES: dict[str, frozenset[str]] = {
     "math": frozenset({"math_formula_method", "proof_reasoning"}),
     "science": frozenset({"science_mechanism", "math_formula_method"}),
     "expository": frozenset({"concept_intuition", "compare_distinguish", "process_walkthrough"}),
-    "cs": frozenset({"science_mechanism", "process_walkthrough", "algorithm_walkthrough",
-                     "data_structure_operation", "coding_implementation"}),
+    "cs": frozenset({"science_mechanism", "process_walkthrough", "math_formula_method"}),
     "data_science": frozenset({"math_formula_method", "science_mechanism", "process_walkthrough"}),
     "ee": frozenset({"science_mechanism", "math_formula_method", "process_walkthrough"}),
     "quant": frozenset({"math_formula_method", "process_walkthrough", "concept_intuition"}),
@@ -61,14 +60,17 @@ _FAMILY_PRIMARY = {"coding": "algorithm_walkthrough", "math": "math_formula_meth
 # Remap table (§4.2): forbidden type -> per-FAMILY target. "drop_else_*" = coding_implementation special case.
 _REMAP: dict[str, dict[str, str]] = {
     "coding_implementation": {"math": "drop_else_primary", "science": "drop_else_primary",
-                              "expository": "drop_else_process", "data_science": "drop_else_primary",
-                              "ee": "drop_else_primary", "quant": "drop_else_primary"},  # cs ALLOWS code
+                              "expository": "drop_else_process", "cs": "drop_else_primary",
+                              "data_science": "drop_else_primary", "ee": "drop_else_primary",
+                              "quant": "drop_else_primary"},
     "algorithm_walkthrough": {"math": "math_formula_method", "science": "science_mechanism",
-                              "expository": "process_walkthrough", "data_science": "math_formula_method",
-                              "ee": "science_mechanism", "quant": "math_formula_method"},  # cs ALLOWS it
+                              "expository": "process_walkthrough", "cs": "science_mechanism",
+                              "data_science": "math_formula_method", "ee": "science_mechanism",
+                              "quant": "math_formula_method"},
     "data_structure_operation": {"math": "math_formula_method", "science": "science_mechanism",
-                                 "expository": "process_walkthrough", "data_science": "math_formula_method",
-                                 "ee": "science_mechanism", "quant": "math_formula_method"},  # cs ALLOWS it
+                                 "expository": "process_walkthrough", "cs": "science_mechanism",
+                                 "data_science": "math_formula_method", "ee": "science_mechanism",
+                                 "quant": "math_formula_method"},
     "process_walkthrough": {"math": "math_formula_method", "science": "science_mechanism"},
     "math_formula_method": {"coding": "algorithm_walkthrough", "expository": "concept_intuition"},
     "proof_reasoning": {"coding": "concept_intuition", "science": "science_mechanism",

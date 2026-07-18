@@ -57,6 +57,14 @@ class PipelineTests(unittest.TestCase):
         # prerequisite points at the walkthrough's TITLE (legacy string form)
         self.assertEqual(impl["prerequisite_topics"], "Tracing BFS")
 
+    def test_coding_follow_ups_disabled_skips_implementation_topic(self):
+        # Non-coding domains (coding_follow_ups=False): NO 'Implementing X' topic is appended.
+        topics = generate_decomposed_topics(
+            "learn BFS", "source", model_fn=lambda p: FAKE_RESPONSE, coding_follow_ups=False)
+        titles = [t["title"] for t in topics]
+        self.assertNotIn("Implementing Breadth First Search", titles)
+        self.assertFalse(any(t.get("course_type") == "coding_implementation" for t in topics))
+
     def test_no_duplicate_and_ordered(self):
         topics = self._run()
         # 'Representing Graphs' is a FOUNDATION -> folded into a synthesized intro as an assumed prerequisite;
