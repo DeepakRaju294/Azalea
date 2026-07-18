@@ -42,6 +42,16 @@ class AppenderTests(unittest.TestCase):
         self.assertEqual(new["satisfies_end_actions"], ["implement"])
         self.assertEqual(new["basis"], "required_by_policy")
 
+    def test_walkthrough_tagged_action_implement_still_gets_follow_up(self):
+        # Live bug: the LLM tags a Dijkstra WALKTHROUGH with primary_action='implement' (because the goal is
+        # 'implement Dijkstra'). A code-able walkthrough is still a TEACHING topic, so it must not be mistaken
+        # for its own implementation — the coding follow-up must still be appended.
+        wt = walkthrough("t1", "dj", "dijkstra")
+        wt["primary_action"] = "implement"
+        plan, topics = append_coding_follow_ups(self._plan(), [wt])
+        self.assertEqual([t["topic_id"] for t in topics], ["t1", "t1_implementation"])
+        self.assertEqual(topics[1]["topic_type"], "coding_implementation")
+
     def test_idempotent_when_impl_exists(self):
         wt = walkthrough("t1", "bfs_trace", "breadth_first_search")
         existing = {"topic_id": "t2", "capability_id": "bfs_impl", "subject_key": "breadth_first_search",

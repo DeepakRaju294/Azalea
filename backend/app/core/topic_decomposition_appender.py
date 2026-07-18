@@ -19,8 +19,17 @@ CODE_ABLE_TYPES = frozenset({"algorithm_walkthrough", "data_structure_operation"
 
 
 def _is_implementation_topic(topic: dict[str, Any]) -> bool:
-    return (str(topic.get("topic_type") or "") == "coding_implementation"
-            or canonical_action(topic.get("primary_action")) == "implement")
+    """True only for a topic that IS the code implementation. A code-able walkthrough
+    (algorithm_walkthrough / data_structure_operation) is a TEACHING topic even when the LLM tags it
+    primary_action='implement' (it does this whenever the goal is 'implement X') — it still needs a coding
+    follow-up appended, so it must NOT be mistaken for its own implementation (live bug: a Dijkstra walkthrough
+    with action=implement suppressed the 'Implementing Dijkstra' follow-up)."""
+    ttype = str(topic.get("topic_type") or "")
+    if ttype == "coding_implementation":
+        return True
+    if ttype in CODE_ABLE_TYPES:
+        return False
+    return canonical_action(topic.get("primary_action")) == "implement"
 
 
 def append_coding_follow_ups(
