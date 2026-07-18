@@ -4220,9 +4220,13 @@ def _attach_undefined_term_glosses(cards: list[dict[str, Any]], topic: Topic, mo
 
 def _attach_link_anchors(card: dict[str, Any], links: list[dict[str, Any]]) -> None:
     """Anchor contract: tag each link with {field, index} — the field ('points'/'bullets'/'body') and 0-based
-    item that contains its text verbatim (case-insensitive, first occurrence). The frontend renders a link
-    inline ONLY on its anchored item, ending fragile whole-card first-occurrence string search. A link whose
-    text isn't found on any single item gets no anchor (frontend falls back to string search). Mutates links."""
+    item that carries its text. The frontend renders a link inline ONLY on its anchored item, ending fragile
+    whole-card first-occurrence string search. Match preference per link (live bug: a 'TCP' prereq link anchored
+    to a SUB-bullet containing 'TCP/IP' instead of its own 'TCP' main bullet):
+      1. an item whose whole text IS the link text (the prereq-NAME main bullet),
+      2. a word-boundary match on a MAIN bullet (not a '  - ' subpoint),
+      3. first substring occurrence anywhere (legacy fallback).
+    A link whose text isn't found on any single item gets no anchor (frontend falls back). Mutates links."""
     fields: list[tuple[str, list]] = []
     for f in ("points", "bullets", "body"):
         v = card.get(f)
@@ -4230,15 +4234,32 @@ def _attach_link_anchors(card: dict[str, Any], links: list[dict[str, Any]]) -> N
             fields.append((f, v))
         elif isinstance(v, str) and f == "body" and v.strip():
             fields.append((f, [v]))
+
+    def _find(text: str) -> tuple[str, int] | None:
+        word_re = re.compile(rf"(?<![\w/]){re.escape(text)}(?![\w/])", re.IGNORECASE)  # 'TCP' ≠ 'TCP/IP'
+        exact = main = anywhere = None
+        for fname, items in fields:
+            for i, it in enumerate(items):
+                s = str(it)
+                low = s.lower()
+                if text not in low:
+                    continue
+                if exact is None and low.strip().strip(":").strip() == text:
+                    exact = (fname, i)
+                is_sub = s.startswith(("  ", "- ", "\t")) and s.lstrip().startswith("-")
+                if main is None and not is_sub and word_re.search(s):
+                    main = (fname, i)
+                if anywhere is None:
+                    anywhere = (fname, i)
+        return exact or main or anywhere
+
     for link in links:
         text = str(link.get("text") or "").lower()
         if not text:
             continue
-        for fname, items in fields:
-            idx = next((i for i, it in enumerate(items) if text in str(it).lower()), -1)
-            if idx >= 0:
-                link["anchor"] = {"field": fname, "index": idx}
-                break
+        hit = _find(text)
+        if hit is not None:
+            link["anchor"] = {"field": hit[0], "index": hit[1]}
 
 
 def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:

@@ -321,7 +321,9 @@ def _demote_parent_of_goal_topics(topics_out: list[dict[str, Any]], goal: str | 
     teaching = [t for t in topics_out if not _is_opener(t)]
     demoted, remove_ids = [], set()
     for t in teaching:
-        tw = _significant_title_words(t)
+        # Strip generic filler BEFORE the subset test — 'TCP Mechanisms' is still the parent 'TCP' (live
+        # evasion: the filler word 'mechanisms' broke the subset relation, so the parent topic survived).
+        tw = {w for w in _significant_title_words(t) if w not in _GENERIC_TOPIC_FILLER}
         if not tw or not (tw < gw):                         # proper subset only (a broader parent of the goal)
             continue
         if len({w for w in (gw - tw) if w not in _GENERIC_TOPIC_FILLER}) < 2:

@@ -242,6 +242,27 @@ class LinkAnchors(unittest.TestCase):
         _attach_link_anchors(card, links)
         self.assertNotIn("anchor", links[0])
 
+    def test_exact_main_bullet_beats_earlier_substring_in_sub_bullet(self):
+        # Live bug: the 'TCP' prereq link anchored to a SUB-bullet containing 'TCP/IP' (substring, earlier)
+        # instead of its own 'TCP' main bullet. Exact-item match wins; 'TCP' must not match inside 'TCP/IP'.
+        card = {"points": ["Network protocols",
+                           "  - What it is: rules and conventions",
+                           "  - What to learn: protocols such as TCP/IP",
+                           "TCP",
+                           "  - What it is: TCP is a protocol...",
+                           "  - What to learn: the three-way handshake"]}
+        links = [{"text": "network protocols", "action": "open_study_path"},
+                 {"text": "TCP", "action": "open_study_path"}]
+        _attach_link_anchors(card, links)
+        self.assertEqual(links[0]["anchor"], {"field": "points", "index": 0})
+        self.assertEqual(links[1]["anchor"], {"field": "points", "index": 3})   # the NAME main bullet
+
+    def test_word_boundary_main_bullet_preferred_over_sub_bullet(self):
+        card = {"points": ["  - uses graph theory a lot", "Graph Theory in practice"]}
+        links = [{"text": "graph theory", "action": "open_study_path"}]
+        _attach_link_anchors(card, links)
+        self.assertEqual(links[0]["anchor"], {"field": "points", "index": 1})   # main bullet beats sub-bullet
+
     def test_anchor_survives_lean_to_legacy(self):
         lean = {"card_type": "background", "points": ["p"], "interactive_links": [
             {"text": "x", "action": "review_earlier_topic", "target": "t", "anchor": {"field": "points", "index": 0}}]}
