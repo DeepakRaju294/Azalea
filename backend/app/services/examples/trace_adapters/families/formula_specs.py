@@ -446,6 +446,41 @@ Z_SCORE = FormulaSpec(
         "\\(z = 0\\) exactly when \\(x = \\mu\\); the sign of \\(z\\) shows which side of the mean \\(x\\) falls on.",
     ])
 
+# Standardizing a value USING a dataset (vs Z_SCORE, which is handed mean+sd). Teaches the full pipeline
+# end-to-end from raw data — mean, then population sd, then the z-score of a concrete value (its largest) —
+# so the "Applying Standardization" topic gets an oracle-VERIFIED worked example instead of an LLM guess. Every
+# output is a scalar the formula engine re-evaluates independently (mean -> sd -> z), so it is trace-verified.
+STANDARDIZE_DATASET = FormulaSpec(
+    slug="standardize_dataset",
+    title="standardizing a value using a dataset's mean and standard deviation", family="statistics",
+    aliases=["standardiz", "standardize", "standardization", "standard-score a value"],
+    not_aliases=["batch normalization", "database", "normalize a vector"], priority=90,
+    problem_template="For the dataset {xs}, standardize its largest value: find the z-score of that value — "
+                     "how many standard deviations it lies from the mean.",
+    givens=[], dataset=Dataset("xs", size_lo=5, size_hi=8, val_lo=1, val_hi=20),
+    instance_ok=lambda row: len(set(row["xs"])) > 1,          # need spread so sd > 0 (standardization defined)
+    outputs=[
+        Output("mean", "mean = (sum of the values) / n", "sum(xs)/n", "", "compute_mean", "mean",
+               show=[("sum of the values", "sum(xs)"), ("n", "n")]),
+        Output("sd", "sd = sqrt( (sum of squared deviations from the mean) / n )",
+               "sqrt(sum((x-mean)**2 for x in xs)/n)", "", "compute_std_dev", "standard deviation",
+               show=[("sum of squared deviations from the mean", "sum((x-mean)**2 for x in xs)"), ("n", "n")]),
+        Output("z", "z = (x - mean)/sd, with x = the largest value", "(max(xs) - mean)/sd", "",
+               "compute_z_score", "z-score of the largest value",
+               show=[("x = largest value", "max(xs)"), ("mean", "mean"), ("sd", "sd")])],
+    conventions={"model": "population standard deviation (divide by n, not n-1)"},
+    canonical_latex="z = \\frac{x - \\mu}{\\sigma}",
+    canonical_notes=[
+        "Standardizing rescales a value to how many standard deviations it sits from the mean.",
+        "First the mean \\(\\mu = \\frac{\\sum x_i}{n}\\), then \\(\\sigma = \\sqrt{\\frac{\\sum (x_i-\\mu)^2}{n}}\\), "
+        "then \\(z = \\frac{x - \\mu}{\\sigma}\\).",
+        "A positive \\(z\\) means the value is above the mean; its magnitude is the distance in standard deviations.",
+    ],
+    edge_cases=[
+        "Standardization needs \\(\\sigma > 0\\); if every value is identical there is no spread and \\(z\\) is undefined.",
+        "Standardizing EVERY value of a dataset produces a new dataset with mean \\(0\\) and standard deviation \\(1\\).",
+    ])
+
 # ======================================================================================================
 # PHYSICS — second wave — family "physics"
 # ======================================================================================================
@@ -1226,7 +1261,7 @@ ALL_SPECS = [
     # linear algebra
     DETERMINANT_2X2, VECTOR_MAGNITUDE, DOT_PRODUCT_3D,
     # statistics
-    DESCRIPTIVE_STATS, MEDIAN_RANGE, Z_SCORE, COEFF_OF_VARIATION, MEAN_ABS_DEVIATION,
+    DESCRIPTIVE_STATS, MEDIAN_RANGE, Z_SCORE, STANDARDIZE_DATASET, COEFF_OF_VARIATION, MEAN_ABS_DEVIATION,
     WEIGHTED_MEAN, COVARIANCE,
     # rates / sequences / conversions
     DISTANCE_RATE_TIME, AVERAGE_SPEED, CELSIUS_TO_FAHRENHEIT, ARITHMETIC_SEQUENCE_TERM, GEOMETRIC_SEQUENCE_TERM,
