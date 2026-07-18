@@ -1,4 +1,4 @@
-# Study-Path Scope Plan — implementation sketch (rev 6)
+# Study-Path Scope Plan — implementation sketch (rev 7)
 
 > A pragmatic, failure-grounded sketch for the up-front path plan. The full typed design is
 > `STUDY_PATH_SCOPE_SPEC.md` (Draft v3.2, frozen); this sketch is the "why + minimal build", written against the
@@ -14,6 +14,10 @@
 > fingerprint split (input ⟂ build provenance); depth feature projection; phase boundaries; spec precedence.
 > rev 6 — fixed stale invariant-4 key + phase-boundary contradiction; lesson-level definition-ownership rule;
 > `AuditedClaim` shape; `concept_treatments` marked derived; Phase-0-evidenced promotion thresholds.
+> rev 7 — `LearningDelta.teaches_concept_keys` = the authoritative taught-concept set (derivation was declared
+> from a source that lacked the data); `PathPlan.concepts` canonical-identity registry; distinctness thresholds
+> follow the §9 evidence process (removed from PR choices); derived-index consistency invariant (#7); only
+> `planned|repaired` plans are generation-eligible.
 
 ## 1. The problem, stated as observed failures
 
@@ -59,6 +63,12 @@ PathPlan                                          # IMMUTABLE planning result (r
   plan_build_provenance                           # HOW it was planned: planner_version, policy_version,
                                                   #   schema_version. A newer planner => "newer plan available"
                                                   #   marker on existing paths — NEVER an automatic replacement.
+  concepts:          { concept_key -> CanonicalConcept }   # the identity REGISTRY — every concept key anywhere in
+                                                  #   the plan (prereqs, definitions, deltas, sections, uses/reviews/
+                                                  #   scope_out, ownership indexes) must resolve through it, so
+                                                  #   provenance/confidence TRAVEL WITH the immutable plan. (If the
+                                                  #   frozen spec's identity records already store this, reference
+                                                  #   that registry — do not create a second copy.)
   goal_targets:      [GoalTarget]
   prerequisites:     [Prereq]
   intro:             IntroPlan                    # DERIVED — never a PlannedTopic
@@ -93,6 +103,13 @@ LearningDelta                                     # the unit of UNIQUENESS (inva
   facet            : intuition | mechanism | derivation | trace | comparison | implementation | application
   learner_action
   expected_evidence
+  teaches_concept_keys                            # the AUTHORITATIVE taught-concept set for this delta.
+                                                  #   union(Section.teaches) ⊆ teaches_concept_keys (a concept may
+                                                  #   be taught without its own section; the difference must be
+                                                  #   covered by some section's content, checked in Phase 2);
+                                                  #   PlannedTopic.teaches == owner's teaches_concept_keys;
+                                                  #   concept_treatments = teaches_concept_keys × delta_id × owner.
+                                                  #   Invariant-#2 `teaches`-overlap reads THIS set — one stable source.
 
 GoalTarget        { subject_identity, required_actions: [action], owners: {action -> topic_id} }
 
@@ -170,6 +187,13 @@ A bounded planning call (LLM proposes, deterministic layer certifies) emits the 
    taught earlier, intro-owned, or taught by an **earlier section of the same topic**.
 6. **Prereq budget (POLICY, not validity):** >3 prereqs → group under a canonical parent or narrow the goal;
    never silently omit a real dependency.
+7. **Derived-index consistency:** every derived ownership/topic/concept index must equal its recomputation from
+   the authoritative fields (`LearningDelta.teaches_concept_keys`, `teaching_owners`, `definition_owners`).
+   Derived indexes are REBUILT after every repair, never patched individually — this catches stale `teaches`,
+   missing treatments, indexes referencing removed topics, and delta-merges that skipped the rebuild.
+
+**Generation eligibility:** only `planned` and `repaired` plans may drive generation; an `ambiguous` plan is a
+valid immutable *planning result* retained for telemetry/replanning, but it is never consumable.
 
 **Repairs are split:** deterministic (exact-duplicate drop, identical-identity merge, alias normalization,
 dangling-reference fixes) vs **semantic → targeted replan** (facet distinctness, ownership splits, goal-boundary
@@ -315,8 +339,10 @@ Resolved rev 4→5: plan⟂run separation; fingerprint split; `scope_out` = must
 eligibility + budget; operational claim-audit independence; DAG-scoped partial failure; skeletal section plans
 in Phase 0; canonicalization metrics + ambiguity propagation; delta-bound claims + `treatment_level`;
 owned-concept wording. Remaining implementation choices (decide in the PR, not by another design pass): the
-concrete auditor (model/deterministic/hybrid); the Phase-1 fallback choice; the intro definition budget value;
-distinctness thresholds (from the labeled fixtures).
+concrete auditor (model/deterministic/hybrid); the Phase-1 fallback choice; the intro definition budget value
+(a product configuration). **Distinctness thresholds are NOT a PR choice** — the PR implements metric collection
++ configurable threshold machinery; Phase 0 produces the labeled evidence; thresholds are approved from that
+evidence and recorded as a configuration/promotion decision (§9).
 
 **Spec precedence (drift control — this sketch is NOT a second spec):**
 1. `STUDY_PATH_SCOPE_SPEC.md` (frozen, typed) governs persisted contracts.
