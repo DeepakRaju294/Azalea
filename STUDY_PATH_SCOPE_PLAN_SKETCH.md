@@ -1,4 +1,4 @@
-# Study-Path Scope Plan — implementation sketch (rev 4)
+# Study-Path Scope Plan — implementation sketch (rev 5)
 
 > A pragmatic, failure-grounded sketch for the up-front path plan. The full typed design is
 > `STUDY_PATH_SCOPE_SPEC.md` (Draft v3.2, frozen); this sketch is the "why + minimal build", written against the
@@ -13,7 +13,13 @@
 > canonical identity gets provenance/confidence + first-class Phase-0 metrics; Phase-0 payload includes skeletal
 > `section_plan` (else F3 is unmeasurable); distinctness thresholds come from HUMAN-LABELED fixtures; `scope_out`
 > = must-not-TEACH; immutable plan ⟂ per-run `GenerationRevision`; input fingerprint; intro definition budget;
-> operational independence for the claim audit; DAG-scoped partial-failure behavior.
+> operational independence for the claim audit; DAG-scoped partial-failure behavior. **rev 5** (fourth review —
+> Phase 0 approved; final contract fixes): every delta gets a stable `delta_id` and **teaching ownership keys on
+> it exactly**; **claims carry `delta_id` + `treatment_level`** so facet-level ownership and review-vs-duplicate
+> are enforceable, not interpretive; fingerprint split into `planning_input_fingerprint` ⟂ `plan_build_provenance`
+> (resolves the planner-upgrade contradiction); depth comparison via a defined feature projection; Phase-1 vs
+> Phase-2 additions separated; spec-precedence rule (§13). rev 5 adds no new scope — it makes the chain
+> internally consistent.
 
 ## 1. The problem, stated as observed failures
 
@@ -52,15 +58,20 @@ ownership**; and the **intro is derived, not a topic**. Underneath all of them s
 
 ```
 PathPlan                                          # IMMUTABLE planning result (runtime state lives on GenerationRevision)
-  plan_id, schema_version, planner_version
-  input_fingerprint                               # hash over: normalized goal, goal-scope pref, depth/level pref,
-                                                  #   domain classification, source revision, planner + policy versions
+  plan_id, schema_version
+  planning_input_fingerprint                      # WHAT was planned: normalized goal, goal-scope pref, depth/level
+                                                  #   pref, domain classification, source revision, policy-affecting
+                                                  #   user inputs. Governs plan REUSE (same fingerprint -> reuse).
+  plan_build_provenance                           # HOW it was planned: planner_version, policy_version,
+                                                  #   schema_version. A newer planner => "newer plan available"
+                                                  #   marker on existing paths — NEVER an automatic replacement.
   goal_targets:      [GoalTarget]
   prerequisites:     [Prereq]
   intro:             IntroPlan                    # DERIVED — never a PlannedTopic
   topics:            [PlannedTopic]               # ordered by dependency, not list position
   definition_owners: { concept_key -> topic_id | "intro" }
-  teaching_owners:   { (concept_key, facet_or_action) -> topic_id }
+  teaching_owners:   { delta_id -> topic_id }     # EXACT key: the delta identity, never an ad-hoc facet/action tuple
+  concept_treatments: { (concept_key, delta_id) -> topic_id }   # concepts nested within a delta
   validation_status: planned | repaired | ambiguous
   repair_log:        [RepairAction]
 
@@ -80,6 +91,7 @@ CanonicalConcept                                  # identity is EVIDENCED, not a
 SubjectIdentity   { canonical_concept_key, parent_concept_key, aliases }
 
 LearningDelta                                     # the unit of UNIQUENESS (invariant #2 is the real test)
+  delta_id                                        # STABLE identity — ownership maps and claims reference THIS
   subject_identity
   facet            : intuition | mechanism | derivation | trace | comparison | implementation | application
   learner_action
@@ -117,9 +129,10 @@ IntroPlan                                         # presentation/orientation inf
 Prereq   { subject_identity, gloss, required_knowledge, relation: parent | earlier_subject, within_goal_boundary: bool }
 ```
 
-**Ownership-role contract (unambiguous form):**
-- `uses` → may mention/apply. `reviews` → may briefly reinforce. `scope_out` → may not define/derive/fully
-  explain. Neither `uses` nor `reviews` → incidental mention only.
+**Ownership-role contract (unambiguous form) — for a concept the topic does NOT own in `teaches`:**
+`uses` → may mention/apply. `reviews` → may briefly reinforce. `scope_out` → may not define/derive/fully
+explain. Absent from all three → incidental mention only. (An owned concept is of course taught freely —
+the roles constrain non-owned concepts.)
 
 **Intro definition budget:** a term is intro-eligible only if it is (a) required to understand the roadmap or the
 prerequisite boundary, (b) used by multiple later topics, (c) briefly explainable without teaching a substantive
@@ -129,7 +142,10 @@ a central term (e.g. `cwnd`) may deliberately belong to the first substantive to
 **⚠ Canonicalization is the hardest remaining Phase-0 risk.** Every invariant below assumes concept identity is
 trustworthy; `congestion_window_growth` vs `cwnd_adjustment` evading ownership checks is the old `subject_key`
 failure at finer granularity. Hence identity carries provenance + confidence, low-confidence merges are never
-silent, and Phase 0 measures canonicalization explicitly (§9).
+silent, and Phase 0 measures canonicalization explicitly (§9). **Ambiguity propagates by impact:** a
+low-confidence identity that affects goal ownership, duplicate determination, parent/prereq classification, or
+dependency ordering makes the whole plan `ambiguous`; one affecting only an optional alias leaves the plan valid
+with an unresolved-alias warning.
 
 ## 4. How the plan is produced
 
@@ -162,23 +178,32 @@ parent calls, low-confidence identity equivalence). Conflating these recreates t
 
 - `section_plan` drives the card blueprint (no per-topic type re-guess). **Domain routing INFORMS planning** —
   section templates, allowed evidence types, validators, renderers — but never overrides the accepted plan.
-- Each lesson emits **authored content-claims** with **structural anchors** (same contract as interactive-link
+- Each lesson emits **authored content-claims**, bound to the plan at the DELTA level (a concept-level claim
+  cannot enforce facet-level ownership — two topics can both "explain tcp_congestion_control" while one teaches
+  the mechanism and the other Reno recovery), with **structural anchors** (same contract as interactive-link
   anchors; raw offsets break under transformation passes):
   ```
-  authored_claims: [ { concept_key, relation: defines|explains|derives|applies|mentions,
+  authored_claims: [ { delta_id,                   # binds the claim to the plan's ownership model
+                       concept_key,
+                       relation:        defines | explains | derives | applies | mentions,
+                       treatment_level: mention | use | brief_review | substantive_instruction,
                        anchor: {card_id, section_id, field, item_index}, content_hash } ]
   ```
+  An audited claim may carry `delta_id = null` when the auditor cannot confidently bind it — it still proposes
+  facet/action values with a confidence; unbound substantive claims route to review rather than silently passing.
 - **Claims are audited, and independence is operational, not nominal.** The audit pass: (a) never receives the
   authored claim labels as suggestions, (b) reads the FINAL post-transformation content, (c) produces its own
   relations + anchors, (d) is evaluated separately against labeled spans, (e) reports both omissions (false
   negatives) and relation misclassifications. `claim_disagreements` = authored ↔ audited delta, a measured
   quantity gating Phase-2 promotion. (Whether the auditor is a different model, a deterministic classifier, or
   a hybrid is an implementation choice — the five properties above are the contract.)
-- **Scope validator severity tiers** (against audited claims):
-  - `mentions`/`applies` on a `uses` concept → fine.
-  - incidental mention of a `scope_out` concept → non-blocking warning.
-  - repairable drift (short re-explanation of another topic's concept) → regenerate the offending section.
-  - **blocking:** defines/derives/fully-explains a concept owned by another topic → lesson not marked ready.
+- **Scope validator severity tiers** — keyed on `treatment_level` (operational, not inferred from `explains`):
+  - `mention` → normally harmless (a `scope_out` mention = non-blocking warning).
+  - `use` → requires the concept be a prereq, an earlier topic's `teaches`, intro-owned, or an earlier
+    same-topic section.
+  - `brief_review` → allowed only when the concept is in `reviews` (else repairable drift → regenerate section).
+  - `substantive_instruction` → requires this topic to be the matching `teaching_owner` (via `delta_id`);
+    otherwise **blocking** — the lesson is not marked ready.
 - **Path-level consequence of a blocked topic follows the DAG:** a failed topic blocks its dependent
   *descendants* (`blocked_by_dependency`), not independent or already-valid topics. Completed earlier topics
   remain usable; the failed topic shows as regenerating/repairing. (This is a practical payoff of explicit
@@ -205,6 +230,10 @@ Every guard built this session becomes a plan invariant or a retiring backstop:
   cannot be compared and F3 is unmeasurable**. Run invariants #1–#6. Two logged comparisons, zero user impact:
   - `PathPlan ↔ shipped topic structure` — F1/F2/F3 + prereq/ordering disagreement.
   - `PathPlan ↔ generated lesson claims` — only once lessons emit claims; F4/F5.
+  **Depth is compared via a deterministic feature projection**, not planned-`depth` vs legacy type labels
+  (incompatible representations): project both sides onto {substantive_section_count,
+  evidence_bearing_section_count, has_worked_trace, has_derivation, has_practice_setup} — planned from
+  `section_plan`, shipped inferred from final cards — and diff the vectors.
   Canonicalization metrics (§9) are first-class Phase-0 outputs. Labeled fixtures fix the invariant-#2 thresholds.
 - **Phase 1 (plan drives structure):** topic list + prereqs + intro + `section_plan`/`depth` come from the plan.
   Prevents F1/F2/F3. `fallback_legacy` = measured degradation with an explicit choice (legacy + degraded marker,
@@ -218,9 +247,10 @@ Every guard built this session becomes a plan invariant or a retiring backstop:
 - **Plan (immutable):** `validation_status: planned | repaired | ambiguous` — properties of the planning result.
 - **Run (mutable, on `GenerationRevision`):** `fallback_mode`, `execution_status`, per-topic
   `ready | regenerating | blocked_by_dependency | scope_failed` — outcomes of one attempt against the plan.
-- Regeneration reuses `plan_id` when the `input_fingerprint` matches; content-only feedback reuses the plan;
-  scope-changing feedback or a changed fingerprint explicitly creates a NEW plan; a planner upgrade alone never
-  silently reinterprets an existing path.
+- Regeneration reuses `plan_id` when the `planning_input_fingerprint` matches; content-only feedback reuses the
+  plan; scope-changing feedback (a changed input fingerprint) explicitly creates a NEW plan. A change in
+  `plan_build_provenance` alone (planner/policy upgrade) surfaces a "newer plan available" marker — the old plan
+  stays attached to its generation revisions until an explicit migration or replan.
 
 ## 9. Promotion gates (shadow → Phase 1)
 
@@ -256,14 +286,29 @@ fancier subject-key heuristic.
 4. **Independent claim verification** — ADOPTED; independence contract in §5.
 5. **Intro explicitly modeled** — ADOPTED (`IntroPlan`, derived, budgeted).
 
-## 13. Phase-1 contract items (third review — tracked)
+## 13. Phase boundaries, contract items, and spec precedence
 
-Resolved in rev 4: plan ⟂ run status separation; input fingerprint; `scope_out` = must-not-teach; intro
-definition eligibility + budget; operational claim-audit independence; DAG-scoped partial-failure behavior;
-Phase-0 payload includes skeletal section plans; canonicalization as a Phase-0 metric with evidenced identity.
-Remaining implementation choices (decide in the PR, not by another design pass): the concrete auditor
-implementation (model/deterministic/hybrid); the Phase-1 fallback choice; the intro definition budget value;
+**Phase-1 additions** (structure; promotion must NOT depend on the claims pipeline): canonical
+provenance/confidence; `planning_input_fingerprint` ⟂ `plan_build_provenance`; plan ⟂ run separation;
+`delta_id` + exact teaching-owner keys; section-plan-driven generation; the depth feature projection.
+**Phase-2 additions** (content): authored claims (delta-bound, treatment-leveled); audited claims +
+`claim_disagreements`; scope enforcement tiers; whole-path content audit. The schema MAY reserve Phase-2 fields
+early; Phase-1 promotion gates never reference them.
+
+Resolved rev 4→5: plan⟂run separation; fingerprint split; `scope_out` = must-not-teach; intro definition
+eligibility + budget; operational claim-audit independence; DAG-scoped partial failure; skeletal section plans
+in Phase 0; canonicalization metrics + ambiguity propagation; delta-bound claims + `treatment_level`;
+owned-concept wording. Remaining implementation choices (decide in the PR, not by another design pass): the
+concrete auditor (model/deterministic/hybrid); the Phase-1 fallback choice; the intro definition budget value;
 distinctness thresholds (from the labeled fixtures).
+
+**Spec precedence (drift control — this sketch is NOT a second spec):**
+1. `STUDY_PATH_SCOPE_SPEC.md` (frozen, typed) governs persisted contracts.
+2. This sketch governs motivation, rollout, and the newly-accepted deltas listed above.
+3. Any conflict requires an explicit spec amendment or a mapping record — never silent divergence. The rev-4/5
+   contracts (teaching_owners/delta_id, audited claims, identity confidence, fingerprint split, plan⟂run) are to
+   be incorporated into the typed spec at Phase-1 implementation, after which the sketch's data-model section
+   becomes non-normative.
 
 > **Implementation note:** Phase-1A plumbing already exists dark in `backend/app/core/study_path_scope/`
 > (schema/identity with canonical keys + aliases, mappings, construction incl. `LessonSectionPlan`, planning
