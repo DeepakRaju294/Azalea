@@ -10,8 +10,40 @@ os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.topic_decomposition_pipeline import (
     _cross_topic_foundations, _is_circular_prereq, _path_assumed_prereqs, _topic_teaches_prereq, _fold_prereq_topics,
-    _drop_umbrella_prereqs, generate_decomposed_topics,
+    _drop_umbrella_prereqs, _collapse_near_duplicate_topics, generate_decomposed_topics,
 )
+
+
+class NearDuplicateTopicCollapse(unittest.TestCase):
+    @staticmethod
+    def _t(title, ttype="science_mechanism", scope=None):
+        return {"title": title, "topic_type": ttype, "course_type": ttype, "in_scope": scope or []}
+
+    def test_filler_only_title_difference_collapses_and_merges_scope(self):
+        # Live failure (TCP path): 'TCP Congestion Control' + 'TCP Congestion Control Mechanisms' — same lesson.
+        topics = [self._t("TCP Congestion Control Mechanisms", scope=["slow start", "fast recovery"]),
+                  self._t("TCP Congestion Control", scope=["window size", "RTT"])]
+        _collapse_near_duplicate_topics(topics)
+        self.assertEqual([t["title"] for t in topics], ["TCP Congestion Control Mechanisms"])
+        self.assertEqual(topics[0]["in_scope"], ["slow start", "fast recovery", "window size", "RTT"])
+
+    def test_real_distinguishing_word_is_not_collapsed(self):
+        # 'Trees' is a real concept, not filler — these stay two topics even at the same type.
+        topics = [self._t("Binary Search", "algorithm_walkthrough"),
+                  self._t("Binary Search Trees", "algorithm_walkthrough")]
+        _collapse_near_duplicate_topics(topics)
+        self.assertEqual(len(topics), 2)
+
+    def test_different_types_never_collapse(self):
+        topics = [self._t("Binary Search", "algorithm_walkthrough"),
+                  self._t("Binary Search", "data_structure_operation")]
+        _collapse_near_duplicate_topics(topics)
+        self.assertEqual(len(topics), 2)
+
+    def test_distinct_subjects_untouched(self):
+        topics = [self._t("Slow Start"), self._t("Fast Retransmit")]
+        _collapse_near_duplicate_topics(topics)
+        self.assertEqual(len(topics), 2)
 
 
 class UmbrellaPrereqGuard(unittest.TestCase):

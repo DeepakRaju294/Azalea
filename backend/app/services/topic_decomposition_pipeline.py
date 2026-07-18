@@ -221,6 +221,64 @@ def _disambiguate_topic_titles(ordered: list[dict[str, Any]], goal: str | None) 
         teaching_seen += 1
 
 
+# Generic words that, appended to a topic title, do NOT change its subject — so 'X' and 'X Mechanisms' are the
+# same lesson. A REAL distinguishing word (e.g. 'Trees' in 'Binary Search Trees') is deliberately NOT here, so
+# only filler-only title differences collapse.
+_GENERIC_TOPIC_FILLER = frozenset({
+    "mechanisms", "mechanism", "overview", "fundamentals", "fundamental", "basics", "basic", "concepts",
+    "concept", "process", "processes", "explained", "introduction", "intro", "techniques", "technique",
+    "methods", "essentials", "principles", "principle", "walkthrough", "guide", "review", "understanding",
+    "working", "details", "detail", "deep", "dive", "explainer", "primer", "explanation", "insights",
+})
+
+
+def _significant_title_words(topic: dict[str, Any]) -> set[str]:
+    """Distinctive title words (>=3 chars, minus generic prereq glue) for near-duplicate detection."""
+    return {w for w in _norm_title(topic.get("title")).split()
+            if len(w) >= 3 and w not in _GENERIC_PREREQ_WORDS}
+
+
+def _collapse_near_duplicate_topics(topics_out: list[dict[str, Any]]) -> set:
+    """Two TEACHING topics of the SAME type whose titles differ only by a GENERIC filler word ('TCP Congestion
+    Control' vs 'TCP Congestion Control Mechanisms') are the same lesson — the learner would read it twice (live
+    failure: a TCP path shipped both). Keep the earlier topic, merge the later's in_scope into it, drop the later.
+    Requires a substantial (>=2 significant) shared subject AND the extra words to be pure filler, so 'Binary
+    Search' vs 'Binary Search Trees' (a real distinguishing concept) stays two topics. Mutates topics_out."""
+    teaching = [t for t in topics_out if not _is_opener(t)]
+    remove_ids: set = set()
+    for i, a in enumerate(teaching):
+        if id(a) in remove_ids:
+            continue
+        aw = _significant_title_words(a)
+        for b in teaching[i + 1:]:
+            if id(b) in remove_ids or str(a.get("topic_type")) != str(b.get("topic_type")):
+                continue
+            bw = _significant_title_words(b)
+            if not aw or not bw:
+                continue
+            if aw <= bw:
+                small, large = aw, bw
+            elif bw <= aw:
+                small, large = bw, aw
+            else:
+                continue                                    # neither subsets the other -> distinct subjects
+            if len(small) < 2 or not (large - small) <= _GENERIC_TOPIC_FILLER:
+                continue
+            a_scope = list(a.get("in_scope") or [])          # merge b's scope so no content is lost
+            seen = {str(s).lower() for s in a_scope}
+            for s in (b.get("in_scope") or []):
+                if str(s).lower() not in seen:
+                    a_scope.append(s)
+                    seen.add(str(s).lower())
+            a["in_scope"] = a_scope
+            remove_ids.add(id(b))
+            _log.info("topic_decomposition: collapsed near-duplicate topic %r into %r (filler-only title diff)",
+                      b.get("title"), a.get("title"))
+    if remove_ids:
+        topics_out[:] = [t for t in topics_out if id(t) not in remove_ids]
+    return remove_ids
+
+
 def _topic_teaches_prereq(topic: dict[str, Any], prereq_names: list[str]) -> bool:
     """True when a topic teaches a concept the path also declared an external PREREQUISITE — i.e. the topic's
     title/subject fully contains a declared prereq's significant words ('Implementing Graph Representation'
@@ -589,6 +647,9 @@ def generate_decomposed_topics(
                             **(meta.get("assumed_prerequisite_requirements") or {}), **prereq_requirements}
                 break
 
+    # Collapse near-duplicate teaching topics (filler-only title difference) BEFORE renaming/ordering, so the
+    # learner never gets the same lesson twice; the order_index renumber below closes any gap.
+    _collapse_near_duplicate_topics(topics_out)
     ordered = sorted(topics_out, key=lambda t: int(t.get("order_index") or 0))
     _disambiguate_topic_titles(ordered, goal)
     title_by_id = {str(t.get("topic_id")): str(t.get("title") or "") for t in ordered if t.get("title")}
