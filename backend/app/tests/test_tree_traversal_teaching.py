@@ -473,6 +473,18 @@ class SameAdapterDuplicateTopics(unittest.TestCase):
                   self._t("Post-Order Traversal", "algorithm_walkthrough")])
         self.assertEqual(len(out), 2)
 
+    def test_non_we_centric_topic_never_claims_the_adapter_slug(self):
+        # Live regression: 'Turbulence and Its Definitions' (concept_intuition — NO worked-example slot)
+        # routed via the broad 'turbulence' alias, claimed reynolds_number FIRST, and shadowed the
+        # mechanism/formula topics -> the path shipped with NO worked example at all. Non-WE-centric types
+        # pass through; the first WE-centric topic keeps the verified example.
+        from app.services.topic_generator import _drop_same_adapter_duplicate_topics as dd
+        out = dd([self._t("Turbulence and Its Definitions", "concept_intuition"),
+                  self._t("Mechanism of Turbulent Flow", "science_mechanism"),
+                  self._t("Reynolds Number and Flow Regimes", "math_formula_method")])
+        self.assertEqual([x["title"] for x in out],
+                         ["Turbulence and Its Definitions", "Mechanism of Turbulent Flow"])
+
 
 class OrientationOpenerRetype(unittest.TestCase):
     """Live (depreciation path): the model emitted a GENUINE orientation opener typed concept_intuition —

@@ -735,13 +735,24 @@ def _fix_intro_prefixed_units(topics: list[dict[str, Any]]) -> list[dict[str, An
     return topics
 
 
+# Types whose lesson is BUILT AROUND a worked example — only these can be "the identical exercise twice".
+# concept_intuition/terminology/compare topics have NO worked-example slot in their blueprints: they must never
+# claim an adapter slug here (live regression: 'Turbulence and Its Definitions' (concept_intuition) routed via
+# the broad 'turbulence' alias, claimed reynolds_number FIRST, and shadowed the mechanism/formula topics — the
+# path shipped with NO worked example at all).
+_WE_CENTRIC_TYPES = frozenset({
+    "math_formula_method", "process_walkthrough", "problem_solving_application",
+    "algorithm_walkthrough", "data_structure_operation", "science_mechanism", "proof_reasoning",
+})
+
+
 def _drop_same_adapter_duplicate_topics(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Two NON-coding teaching topics that route to the SAME adapter generate the same KIND of verified worked
-    example — the learner does the identical exercise twice with different numbers (live: a depreciation path's
-    'Straight-Line Depreciation Formula' AND 'Applying Straight-Line Depreciation' both routed to
-    depreciation_schedule and both built a book-value schedule). Keep the FIRST (the introducing topic), drop
-    the repeats. A walkthrough + its coding_implementation legitimately share an adapter (teach-then-code) —
-    coding topics are exempt. Openers/compare topics never route, so they are unaffected."""
+    """Two WORKED-EXAMPLE-CENTRIC, non-coding topics that route to the SAME adapter generate the same KIND of
+    verified worked example — the learner does the identical exercise twice with different numbers (live: a
+    depreciation path's 'Straight-Line Depreciation Formula' AND 'Applying Straight-Line Depreciation' both
+    routed to depreciation_schedule and both built a book-value schedule). Keep the FIRST, drop the repeats.
+    Exempt: coding topics (teach-then-code pairs share an adapter legitimately) and every non-WE-centric type
+    (no worked-example slot -> can neither duplicate an exercise nor claim the slug)."""
     try:
         from app.services.examples.trace_pipeline import route_adapter
     except Exception:  # noqa: BLE001 — never break topic generation
@@ -754,7 +765,7 @@ def _drop_same_adapter_duplicate_topics(topics: list[dict[str, Any]]) -> list[di
     kept: list[dict[str, Any]] = []
     for t in topics:
         ttype = _ttype(t)
-        if ttype in ("coding_implementation", "study_path_introduction"):
+        if ttype not in _WE_CENTRIC_TYPES or ttype == "coding_implementation":
             kept.append(t)
             continue
         a = route_adapter({"title": str(t.get("title") or ""), "topic_type": ttype, "course_type": ttype})
