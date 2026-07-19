@@ -57,7 +57,9 @@ design detail below (rev 7) stands. Flag: `AZALEA_RECALL_POPUPS` (requires `AZAL
 > scope-plan `uses`/`definition_owners`**, where candidate volume and canonical definition ownership become
 > structural. **Content-type decision to settle at v2 (see §4 note): lean toward the broader typed "recall
 > statement" contract** — a strict definition is safe but a concise functional reminder ("TCP congestion control
-> regulates the flow of data over a network") is often exactly what lets a learner resume reading.
+> regulates the flow of data over a network") is often exactly what lets a learner resume reading. Upstream
+> content-quality work that chips at the volume/ownership constraints is tracked in **§14** (first item — the
+> prereq study-worthiness filter — already shipped).
 
 
 The whole feature can be "correct" and still worthless if almost nothing harvests. Owner-topic identities today are
@@ -485,3 +487,38 @@ executed by this spec. When approved:
 - Do NOT reuse `popup_only` for `RecallPopupV1` — recall remains an additive enrichment of `review_earlier_topic`.
 - Rationale: the active instruction wastes output tokens, encourages unwanted `interactive_links`, adds noise to
   structured generation, and preserves the exact lexical-vs-recall ambiguity this spec exists to end.
+
+## 14. Upstream content-quality work (2026-07-19 path review) — moves the `defer_to_v2` re-entry
+
+The §0 audit deferred this feature because upstream coverage is thin: **low candidate volume + inconsistent
+definition ownership**. A review of a live path ("Want to learn about bst traversal") produced concrete upstream
+fixes; the first DIRECTLY improves the link infrastructure this spec is built on, so it is tracked here as work
+that moves the re-entry bar. The rest are same-review content-quality findings recorded for continuity (they raise
+overall content trust that recall popups sit on top of, but are NOT recall-popup candidate inputs).
+
+**Directly relevant to recall popups:**
+- **Prerequisite study-worthiness filter — SHIPPED (commit 5f694c3).** *Issue it solves:* the intro prereq card
+  emitted `open_study_path` links for atomic structural sub-parts ("Left and right children", "Visited nodes")
+  that no learner would study standalone — junk links with no real owner topic. `_ground_prereq_card` now drops a
+  prereq whose head noun is an unambiguous structural part (`node/child/parent/leaf/sibling/subtree/vertex/edge`)
+  or whose gloss opens "a node…/the nodes…/part of…"; it runs before link emission, so a dropped bullet gets no
+  link. *Why it matters here:* `open_study_path` prereq links are one of the two deterministic link types this
+  spec is anchored on, and v2 body-topic **prerequisite recall** draws candidates from prereqs. Removing
+  non-study-worthy prereqs raises candidate PRECISION and improves **definition ownership** (a real owner concept
+  instead of a structural fragment) — exactly the two constraints the audit named. Net effect on v1: the
+  earlier-topic recall pool is unchanged (v1 excludes prereqs), but the corpus these popups will eventually draw
+  from is cleaner.
+
+**Same-review content-quality findings (recorded; not recall-popup inputs) — OPEN:**
+- **Worked-example setup card has no answerable question.** The setup states "Perform an inorder traversal of the
+  BST built by inserting [2,37,32,21,4,38]" then jumps to "visit 2, visit 4…" but never shows the tree — a
+  first-time learner cannot attempt it. *Fix direction:* render the tree and/or pose a real predict-the-output
+  question before the steps.
+- **Templated per-step reasoning is inaccurate.** One template is applied blindly: the root is called "the
+  leftmost node"; leaf nodes get "X's left subtree is fully visited" though they have no left subtree. Outputs are
+  adapter-correct; explanations are wrong for leaf/root nodes. *Fix direction:* per-step reasoning must reflect the
+  actual node structure (leaf vs has-left-subtree vs empty-left root).
+- **Cross-topic code inconsistency.** The same `TreeNode` is written three ways across sibling coding topics
+  (in-order `node.val` with no class defined; post-order `self.value`; pre-order `self.val`), and topic 5 is
+  mistitled "Implementing Order Traversal". *Fix direction:* one canonical `TreeNode` across sibling coding
+  topics; every code topic defines the class; fix the title.
