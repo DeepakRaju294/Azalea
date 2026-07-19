@@ -141,6 +141,23 @@ class AcronymParentDemotion(unittest.TestCase):
         # goal IS the acronym subject (no substantive word beyond it) -> the expansion topic stays
         self.assertEqual(_demote_parent_of_goal_topics(topics, "learn about bst"), [])
 
+    def test_umbrella_discipline_topic_demoted_on_specific_goal(self):
+        # Live: 'Fluid Dynamics Fundamentals' taught on a 'fluid turbulence' path while the prereq card
+        # independently named the discipline — prereq/topic overlap. The umbrella-discipline topic demotes
+        # to the prereq (textbook model: the parent discipline is refreshed via link, never re-taught).
+        from app.services.topic_decomposition_pipeline import _demote_parent_of_goal_topics
+        topics = [self._t("Fluid Dynamics Fundamentals", "science_mechanism"),
+                  self._t("Turbulence Models", "science_mechanism")]
+        self.assertEqual(_demote_parent_of_goal_topics(topics, "Want to learn about fluid turbulence"),
+                         ["Fluid Dynamics"])
+        self.assertEqual([t["title"] for t in topics], ["Turbulence Models"])
+
+    def test_umbrella_discipline_stays_when_goal_is_the_discipline(self):
+        from app.services.topic_decomposition_pipeline import _demote_parent_of_goal_topics
+        topics = [self._t("Fluid Dynamics Fundamentals", "science_mechanism"),
+                  self._t("Bernoulli Equation", "science_mechanism")]
+        self.assertEqual(_demote_parent_of_goal_topics(topics, "learn fluid dynamics"), [])
+
 
 class CodingTopicTitleAndRouting(unittest.TestCase):
     """'In-Order Traversal' must keep its 'In-' when titling the coding topic, and both hyphen and space

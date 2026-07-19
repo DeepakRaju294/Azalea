@@ -3903,6 +3903,8 @@ def _strip_taught_topics_from_prereq_card(cards: list[dict[str, Any]], topic: To
         return cards
     study_path = getattr(topic, "study_path", None)
     taught: list[str] = []
+    _tail_generics = frozenset({"fundamentals", "fundamental", "basics", "basic", "essentials",
+                                "introduction", "intro", "overview", "principles", "concepts"})
     for s in (getattr(study_path, "topics", None) or []):
         if _topic_type_key(s) == "study_path_introduction":
             continue
@@ -3911,6 +3913,12 @@ def _strip_taught_topics_from_prereq_card(cards: list[dict[str, Any]], topic: To
             nk = _norm_gloss_key(name)
             if nk:
                 taught.append(nk)
+                # generic-tail-stripped variant too: a prose prereq 'fluid dynamics' must match the taught
+                # sibling 'Fluid Dynamics Fundamentals' (the head==taught/startswith checks miss it because
+                # the taught title is LONGER).
+                stripped = " ".join(w for w in nk.split() if w not in _tail_generics)
+                if stripped and stripped != nk:
+                    taught.append(stripped)
     if not taught:
         return cards
 

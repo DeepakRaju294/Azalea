@@ -463,7 +463,19 @@ def _demote_parent_of_goal_topics(topics_out: list[dict[str, Any]], goal: str | 
                     initialism in _norm_title(str(o.get("title") or "")).split()
                     or _title_initialism(str(o.get("title") or ""))[0] == initialism
                     for o in teaching if id(o) != id(t))
+        # 3. UMBRELLA DISCIPLINE (live: a 'Fluid Dynamics Fundamentals' topic taught on a 'fluid turbulence'
+        #    path, while the prereq card independently named the same discipline — prereq/topic overlap from
+        #    the learner's view): a topic whose filler-stripped title IS a whole-discipline umbrella, on a
+        #    goal that is a more specific aspect of it, is foundation material → prereq, never a lesson.
+        umbrella_parent = False
         if not (subset_parent or acronym_parent):
+            stripped = [w for w in _norm_title(str(t.get("title") or "")).split()
+                        if w not in _GENERIC_TOPIC_FILLER]
+            phrase = " ".join(stripped)
+            if phrase in _UMBRELLA_FIELDS:
+                umbrella_parent = bool({w for w in gw
+                                        if w not in set(stripped) and w not in _GENERIC_TOPIC_FILLER})
+        if not (subset_parent or acronym_parent or umbrella_parent):
             continue
         name = " ".join(w for w in str(t.get("title") or "").split()
                         if _norm_title(w) not in _GENERIC_TOPIC_FILLER).strip()
