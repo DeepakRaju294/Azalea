@@ -445,6 +445,57 @@ class PrereqChainRedundancy(unittest.TestCase):
         self.assertNotIn("binary trees\n", pts + "\n")       # chain-redundant parent of BST
 
 
+class FamilyComparisonTopic(unittest.TestCase):
+    """User-endorsed comparison topic ('Comparing MST Algorithms') appeared only when the model chose to emit
+    one (the prompt has no comparison guidance). Now DETERMINISTIC: a family survey teaching >=2 distinct
+    members always ends with a compare_distinguish topic; never duplicated, never on single-method paths."""
+
+    @staticmethod
+    def _wt(t):
+        return {"title": t, "course_type": "algorithm_walkthrough",
+                "topic_type": "algorithm_walkthrough", "unit_title": t}
+
+    def test_mst_survey_gets_comparison_last(self):
+        from app.services.topic_generator import _ensure_family_comparison_topic
+        topics = [self._wt("Kruskal's Algorithm"), self._wt("Prim's Algorithm")]
+        out = _ensure_family_comparison_topic(topics, "Want to learn about mst algorithms")
+        self.assertEqual(out[-1]["title"], "Comparing MST Algorithms")
+        self.assertEqual(out[-1]["course_type"], "compare_distinguish")
+
+    def test_traversal_survey_gets_comparison_too(self):
+        from app.services.topic_generator import _ensure_family_comparison_topic
+        topics = [self._wt("In-Order Traversal"), self._wt("Pre-Order Traversal")]
+        out = _ensure_family_comparison_topic(topics, "Want to learn about bst traversal")
+        self.assertEqual(out[-1]["title"], "Comparing Tree Traversal Orders")
+
+    def test_never_duplicates_a_model_emitted_comparison(self):
+        from app.services.topic_generator import _ensure_family_comparison_topic
+        topics = [self._wt("Kruskal's Algorithm"), self._wt("Prim's Algorithm"),
+                  {"title": "Comparing MST Algorithms", "course_type": "compare_distinguish",
+                   "topic_type": "compare_distinguish"}]
+        self.assertEqual(len(_ensure_family_comparison_topic(topics, "learn mst algorithms")), 3)
+
+    def test_single_member_and_unrelated_goal_get_none(self):
+        from app.services.topic_generator import _ensure_family_comparison_topic
+        self.assertEqual(len(_ensure_family_comparison_topic(
+            [self._wt("Kruskal's Algorithm")], "learn mst algorithms")), 1)
+        self.assertEqual(len(_ensure_family_comparison_topic(
+            [self._wt("Binary Search")], "learn binary search")), 1)
+
+    def test_mst_family_consolidates_pairing_and_titles(self):
+        # The live scramble: impls trailing, inconsistent titles -> paired canonical order.
+        from app.services.topic_generator import _order_canonical_family
+        def cd(t):
+            return {"title": t, "course_type": "coding_implementation",
+                    "topic_type": "coding_implementation", "unit_title": t}
+        topics = [self._wt("Kruskal's Algorithm"), self._wt("Prim's Algorithm"),
+                  cd("Implementing Kruskal"), cd("Implementing Prim")]
+        out = _order_canonical_family(topics, "Want to learn about mst algorithms")
+        self.assertEqual([t["title"] for t in out],
+                         ["Kruskal's Algorithm", "Implementing Kruskal's Algorithm",
+                          "Prim's Algorithm", "Implementing Prim's Algorithm"])
+
+
 class InjectedMemberUnitGrouping(unittest.TestCase):
     """The injected Level-Order cloned the In-Order template's unit_title, so the UI (which groups by unit)
     rendered it 'grouped in with inorder'. Injected members get their OWN unit; consolidation makes each

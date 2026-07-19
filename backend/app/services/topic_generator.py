@@ -244,6 +244,127 @@ def _subject_tokens(title: str, extra_framing: frozenset[str] = frozenset()) -> 
     return frozenset(tokens), "".join(sorted(tokens))
 
 
+# One identity vocabulary used by decomposition certification, prerequisites, deduplication, and coding
+# follow-ups. Acronyms must resolve to the same global concept as their expanded names; otherwise a goal such
+# as "MST algorithms" can incorrectly retain "Minimum Spanning Tree" as its own prerequisite/topic.
+_CONCEPT_ALIASES: dict[str, tuple[str, ...]] = {
+    "minimum_spanning_tree": ("mst", "minimum spanning tree", "minimum spanning trees"),
+    "binary_search_tree": ("bst", "binary search tree", "binary search trees"),
+    "breadth_first_search": ("bfs", "breadth first search"),
+    "depth_first_search": ("dfs", "depth first search"),
+}
+
+
+def _canonical_concept_key(value: Any, topic_type: str = "") -> str:
+    """Return the shared semantic identity for a goal, prerequisite, or topic.
+
+    Adapter slugs are the strongest available catalog identity. The alias vocabulary handles concepts that
+    are not adapter-routed (and acronym/expanded-name equivalence); the final token key is deterministic.
+    Possessives are normalized before tokenization so ``Kruskal's`` and ``Kruskal`` cannot become two topics.
+    """
+    raw = _re.sub(r"(?i)\b([a-z0-9]+)['’]s\b", r"\1", str(value or "")).strip()
+    lowered = _re.sub(r"[^a-z0-9]+", " ", raw.lower()).strip()
+    try:
+        from app.services.examples.trace_pipeline import route_adapter
+        adapter = route_adapter({"title": raw, "topic_type": topic_type})
+        if adapter:
+            return adapter.slug
+    except Exception:  # noqa: BLE001 - identity fallback must never break generation
+        pass
+    for key, aliases in _CONCEPT_ALIASES.items():
+        if any(_re.search(rf"\b{_re.escape(alias)}\b", lowered) for alias in aliases):
+            return key
+    # Remove intent/role wording after possessive normalization. Keep a stable underscore key for metadata.
+    tokens, _ = _subject_tokens(raw)
+    return "_".join(sorted(tokens)) or _re.sub(r"\s+", "_", lowered)
+
+
+def _topic_facet(topic: dict[str, Any]) -> str:
+    ttype = str(topic.get("course_type") or topic.get("topic_type") or "").strip().lower()
+    return "implementation" if ttype == "coding_implementation" else "core"
+
+
+def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[dict[str, Any]]:
+    """Make a single live scope plan authoritative over all topic-list transforms.
+
+    The current lesson architecture represents a concept's walkthrough and implementation as two topic rows,
+    so identity is ``canonical_concept_key + facet``. Certification drops duplicate rows with that identity,
+    removes every prerequisite that overlaps the goal or a taught concept, and persists the decision into
+    decomposition metadata for downstream generation/auditing.
+    """
+    if not topics:
+        return topics
+    goal_key = _canonical_concept_key(goal)
+    seen: set[tuple[str, str]] = set()
+    certified: list[dict[str, Any]] = []
+    taught_keys: set[str] = set()
+    identities: list[dict[str, str]] = []
+    for topic in topics:
+        ttype = str(topic.get("course_type") or topic.get("topic_type") or "").strip().lower()
+        if ttype == "study_path_introduction":
+            certified.append(topic)
+            continue
+        key = _canonical_concept_key(topic.get("subject_key") or topic.get("title"), ttype)
+        facet = _topic_facet(topic)
+        identity = (key, facet)
+        if key and identity in seen:
+            _log.info("scope certification: dropped duplicate identity %s/%s (%r)", key, facet,
+                      topic.get("title"))
+            continue
+        if key:
+            seen.add(identity)
+            taught_keys.add(key)
+        meta = dict(topic.get("decomposition_metadata") or {})
+        meta["canonical_concept_key"] = key
+        meta["concept_facet"] = facet
+        is_deep_teaching = ttype in (_METHOD_LESSON_TYPES | {"coding_implementation"})
+        meta["scope_plan"] = {
+            "scope_in": list(topic.get("in_scope") or []),
+            "scope_out": list(topic.get("out_of_scope") or []),
+            "role": (
+                "goal_core" if key == goal_key
+                else ("application" if facet == "implementation" else "supporting")
+            ),
+            "depth": "deep" if key == goal_key or is_deep_teaching else "overview",
+        }
+        topic["decomposition_metadata"] = meta
+        identities.append({"canonical_concept_key": key, "facet": facet,
+                           "title": str(topic.get("title") or "")})
+        certified.append(topic)
+
+    blocked_prereq_keys = taught_keys | ({goal_key} if goal_key else set())
+    for topic in certified:
+        ttype = str(topic.get("course_type") or topic.get("topic_type") or "").strip().lower()
+        prereqs: list[Any] = []
+        seen_prereq_keys: set[str] = set()
+        for prereq in topic.get("assumed_prerequisites") or []:
+            prereq_key = _canonical_concept_key(prereq)
+            if not prereq_key or prereq_key in blocked_prereq_keys or prereq_key in seen_prereq_keys:
+                continue
+            prereqs.append(prereq)
+            seen_prereq_keys.add(prereq_key)
+        topic["assumed_prerequisites"] = prereqs
+        if ttype != "study_path_introduction":
+            continue
+        meta = dict(topic.get("decomposition_metadata") or {})
+        meta["brief_refresh_prerequisites"] = [
+            p for p in (meta.get("brief_refresh_prerequisites") or [])
+            if _canonical_concept_key(p) not in blocked_prereq_keys
+        ]
+        meta["path_scope_plan"] = {
+            "goal_canonical_concept_key": goal_key,
+            "concept_identities": identities,
+            "prerequisite_keys": [
+                _canonical_concept_key(p) for p in topic.get("assumed_prerequisites", [])
+            ],
+        }
+        topic["decomposition_metadata"] = meta
+
+    for i, topic in enumerate(certified, 1):
+        topic["order_index"] = i
+    return certified
+
+
 def _path_domain_tokens(topics: list[dict[str, Any]]) -> frozenset[str]:
     """The path's DOMAIN words — qualifiers that don't distinguish one algorithm from another, so the
     SAME algorithm normalizes to ONE subject whether or not a given title includes the domain word
@@ -437,10 +558,12 @@ _CANONICAL_FAMILIES: dict[str, dict[str, Any]] = {
         "members": [("Bubble Sort", "bubble_sort"), ("Selection Sort", "selection_sort"),
                     ("Insertion Sort", "insertion_sort"), ("Merge Sort", "merge_sort"),
                     ("Quicksort", "quick_sort")],
+        "display": "Sorting Algorithms",
     },
     "graph_traversal": {
         "goal_markers": ("graph traversal", "graph traversals", "traverse a graph", "traversing a graph"),
         "members": [("Breadth-First Search", "bfs"), ("Depth-First Search", "dfs_iter")],
+        "display": "Graph Traversals",
     },
     # Live failure: a "bst traversal" path shipped only in/post/pre-order — the model under-generates and
     # nothing backfilled Level-Order. Every member routes to a verified tree adapter with canonical code.
@@ -449,6 +572,15 @@ _CANONICAL_FAMILIES: dict[str, dict[str, Any]] = {
                          "binary tree traversal", "traversing a tree", "traversing a bst", "traverse a bst"),
         "members": [("In-Order Traversal", "tree_inorder"), ("Pre-Order Traversal", "tree_preorder"),
                     ("Post-Order Traversal", "tree_postorder"), ("Level-Order Traversal", "tree_levelorder")],
+        "display": "Tree Traversal Orders",
+    },
+    # Live gap: an "mst algorithms" path had no registered family, so no WT→impl pairing/consolidation ran
+    # (Implementing Kruskal at [4], Comparing wedged at [5], Implementing Prim at [6]).
+    "mst": {
+        "goal_markers": ("mst algorithm", "mst algorithms", "minimum spanning tree", "minimum spanning trees",
+                         "spanning tree algorithm", "spanning tree algorithms"),
+        "members": [("Kruskal's Algorithm", "kruskal"), ("Prim's Algorithm", "prim")],
+        "display": "MST Algorithms",
     },
 }
 
@@ -584,6 +716,53 @@ def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> l
     return result
 
 
+def _ensure_family_comparison_topic(topics: list[dict[str, Any]], goal: str | None) -> list[dict[str, Any]]:
+    """Deterministic COMPARISON topic for a family survey (user-endorsed: 'Comparing MST Algorithms' — but it
+    only appeared when the decomposition model chose to emit one; the prompt has no comparison guidance, so
+    sibling surveys like bst-traversal never got theirs). When the goal surveys a registered family AND the
+    path teaches >=2 distinct members AND no compare_distinguish topic exists, append one LAST — a comparison
+    is only teachable after every alternative has been taught. `compare_distinguish` is a UNIVERSAL type
+    (allowed on every domain), so this never fights the domain gate."""
+    if os.getenv("AZALEA_CANONICAL_FAMILY_EXPANSION", "1") == "0":
+        return topics
+    g = (goal or "").lower()
+    fam = next((f for f in _CANONICAL_FAMILIES.values() if any(m in g for m in f["goal_markers"])), None)
+    if not fam:
+        return topics
+
+    def _ttype(t: dict[str, Any]) -> str:
+        return str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
+
+    if any(_ttype(t) == "compare_distinguish" for t in topics):
+        return topics                                       # the model already emitted one — never duplicate
+    try:
+        from app.services.examples.trace_pipeline import route_adapter
+    except Exception:  # noqa: BLE001 — never break topic generation
+        return topics
+    member_slugs = {slug for _, slug in fam["members"]}
+    taught = {getattr(route_adapter({"title": str(t.get("title") or ""), "topic_type": _ttype(t)}), "slug", None)
+              for t in topics if _ttype(t) in _MEMBER_TEACHING_TYPES}
+    taught &= member_slugs
+    if len(taught) < 2:
+        return topics                                       # one alternative — nothing to compare
+    display = str(fam.get("display") or "the alternatives")
+    names = [name for name, slug in fam["members"] if slug in taught]
+    title = f"Comparing {display}"
+    comparison = {
+        "title": title,
+        "course_type": "compare_distinguish", "topic_type": "compare_distinguish",
+        "unit_title": title,
+        "description": f"When to choose each of: {', '.join(names)}.",
+        "purpose": f"Choose the right approach: compare {', '.join(names)} on how they work, cost, and fit.",
+        "learner_outcome": f"The learner can pick between {display.lower()} for a given situation and say why.",
+        "in_scope": [f"{a} vs {b}" for a, b in zip(names, names[1:])] or names,
+        "out_of_scope": [], "prerequisite_topics": [], "source_refs": [],
+        "order_index": max((int(t.get("order_index") or 0) for t in topics), default=0) + 1,
+    }
+    _log.info("topic_generator: injected deterministic family comparison topic %r", title)
+    return [*topics, comparison]
+
+
 def _fix_noncoding_coding_topics(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """A coding_implementation topic whose SUBJECT routes to a NON-coding adapter (a math/derivation/formula/
     stateful concept — manifest `coding: False`) is a decomposition slip: the model applied the generic
@@ -709,9 +888,8 @@ def _append_missing_coding_topics(topics: list[dict[str, Any]], goal: str) -> li
 
     # Domain-normalized subjects so a coding topic is recognized as covering an algorithm even when the
     # titles differ only by a domain qualifier ('Implementing Prim's MST' vs '...Prim's Algorithm in Code').
-    domain = _path_domain_tokens(topics)
     have_coding = {
-        _subject_tokens(t.get("title"), domain)[1]
+        _canonical_concept_key(t.get("subject_key") or t.get("title"), _ttype(t))
         for t in topics if _ttype(t) == "coding_implementation"
     }
     # Put any synthesized coding topic in the coding section, not the walkthrough's unit it was derived
@@ -725,7 +903,7 @@ def _append_missing_coding_topics(topics: list[dict[str, Any]], goal: str) -> li
     for t in topics:
         result.append(t)
         if _ttype(t) in _CODE_ABLE_TYPES:
-            _, subject = _subject_tokens(t.get("title"), domain)
+            subject = _canonical_concept_key(t.get("subject_key") or t.get("title"), _ttype(t))
             if subject and subject not in have_coding:
                 have_coding.add(subject)
                 phrase = _subject_phrase(t.get("title"))
@@ -926,8 +1104,11 @@ def _mark_coding_follow_ups(topics: list[dict[str, Any]]) -> None:
         cur, prev = topics[i], topics[i - 1]
         cur_type = str(cur.get("topic_type") or cur.get("course_type") or "").lower()
         prev_type = str(prev.get("topic_type") or prev.get("course_type") or "").lower()
-        if (cur_type == "coding_implementation" and prev_type in _WALKTHROUGH_TYPES
-                and (_followup_subject_tokens(cur.get("title")) & _followup_subject_tokens(prev.get("title")))):
+        same_concept = (
+            _canonical_concept_key(cur.get("subject_key") or cur.get("title"), cur_type)
+            == _canonical_concept_key(prev.get("subject_key") or prev.get("title"), prev_type)
+        )
+        if cur_type == "coding_implementation" and prev_type in _WALKTHROUGH_TYPES and same_concept:
             mods = cur.setdefault("modifiers", [])
             if isinstance(mods, list) and IMPLEMENTATION_FOLLOW_UP not in mods:
                 mods.append(IMPLEMENTATION_FOLLOW_UP)
@@ -984,6 +1165,9 @@ Chunk index: {chunk.chunk_index}
                 _log.info("topic_generator: used capability-graph decomposition (%d topics)", len(decomposed))
                 # Gate BEFORE marking follow-ups so the marking reflects the final (possibly remapped) types.
                 decomposed = _apply_domain_gate(decomposed, domain)
+                # One authoritative identity/scope decision BEFORE additive policy. This prevents the coding
+                # backfill from manufacturing a second implementation for a spelling/possessive variant.
+                decomposed = _certify_path_scope(decomposed, goal)
                 # FAMILY-SURVEY backfill for the decomposed path too (was legacy-only — live gap: a "bst
                 # traversal" path shipped without Level-Order). Injected walkthroughs then get their coding
                 # follow-ups from the same backfill, and the family is consolidated into canonical order
@@ -993,6 +1177,10 @@ Chunk index: {chunk.chunk_index}
                     decomposed = _expand_canonical_family(decomposed, goal)
                     decomposed = _append_missing_coding_topics(decomposed, goal)
                     decomposed = _order_canonical_family(decomposed, goal)
+                    decomposed = _ensure_family_comparison_topic(decomposed, goal)
+                # Certify again because family/coding policy may have added rows. The second pass records their
+                # identities and guarantees policy cannot reintroduce an overlap or duplicate.
+                decomposed = _certify_path_scope(decomposed, goal)
                 _mark_coding_follow_ups(decomposed)
                 return _ensure_intro_topic(decomposed, goal)
             _log.warning("topic_generator: decomposition produced nothing — falling back to legacy")
@@ -1112,6 +1300,7 @@ Chunk index: {chunk.chunk_index}
     # problem_solving_application of "completing the square") — both regenerate the same steps + worked example,
     # so keep the teaching walkthrough and drop the duplicate application.
     cleaned_topics = _collapse_same_subject_method_topics(cleaned_topics)
+    cleaned_topics = _certify_path_scope(cleaned_topics, goal)
     # Deterministically fill in a FAMILY SURVEY's canonical members (e.g. sorting -> all five sorts) that the
     # decomposition LLM under-generated. The pipeline is otherwise subtractive, so this is the only place the
     # canonical set is guaranteed. Runs BEFORE the coding backfill so injected walkthroughs get coding topics.
@@ -1129,6 +1318,8 @@ Chunk index: {chunk.chunk_index}
     # (runs AFTER the coding backfill so both halves of each member are present to group).
     if _coding_transforms_enabled(domain):
         cleaned_topics = _order_canonical_family(cleaned_topics, goal)
+        cleaned_topics = _ensure_family_comparison_topic(cleaned_topics, goal)
+    cleaned_topics = _certify_path_scope(cleaned_topics, goal)
 
     if not cleaned_topics:
         cleaned_topics.append(
