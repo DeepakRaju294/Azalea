@@ -146,7 +146,8 @@ def merge_sort(arr):
     # ---- inorder traversal of a binary tree (recursion: left, node, right) ----
     # ---- tree traversals (ITERATIVE stack/queue forms — a step-by-step trace maps to the pop/visit/push loop,
     #      and the base case is visible, unlike a one-line recursion that repeats confusingly per visit) ----
-    "tree_inorder": """def inorder(root):
+    "tree_inorder": """# Each tree node has .val (its value), .left and .right (child nodes, or None).
+def inorder(root):
     result = []
     stack = []
     node = root
@@ -159,7 +160,8 @@ def merge_sort(arr):
         node = node.right
     return result
 """,
-    "tree_preorder": """def preorder(root):
+    "tree_preorder": """# Each tree node has .val (its value), .left and .right (child nodes, or None).
+def preorder(root):
     result = []
     stack = [root]
     while stack:
@@ -171,7 +173,8 @@ def merge_sort(arr):
         stack.append(node.left)
     return result
 """,
-    "tree_postorder": """def postorder(root):
+    "tree_postorder": """# Each tree node has .val (its value), .left and .right (child nodes, or None).
+def postorder(root):
     result = []
     stack = [root]
     while stack:
@@ -185,6 +188,7 @@ def merge_sort(arr):
 """,
     "tree_levelorder": """from collections import deque
 
+# Each tree node has .val (its value), .left and .right (child nodes, or None).
 def level_order(root):
     if root is None:
         return []

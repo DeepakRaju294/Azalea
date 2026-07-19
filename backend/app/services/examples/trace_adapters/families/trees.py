@@ -61,6 +61,45 @@ def _subtree_size(tree: dict[int, dict[str, Any]], node: int | None) -> int:
     return 1 + _subtree_size(tree, tree[node]["left"]) + _subtree_size(tree, tree[node]["right"])
 
 
+def _inorder_reason(tree: dict[int, dict[str, Any]], root: int | None, node: int, idx: int) -> str:
+    """A structure-TRUE reason for visiting `node` at inorder position `idx`. The old single template
+    ("X's left subtree is fully visited") was applied blindly — false for leaves (no left subtree at all)
+    and odd for a root with no left child ("the leftmost node"). Branch on the node's real shape."""
+    has_left = tree[node]["left"] is not None
+    if idx == 1:
+        if node == root:
+            return f"the root {node} has no left child, so inorder visits it first"
+        return (f"{node} is the leftmost node — inorder walks left from the root as far as it can "
+                f"and starts there")
+    if has_left:
+        return f"{node}'s left subtree is fully visited, so {node} is next in inorder"
+    return f"{node} has no left child, so it is output as soon as it is reached"
+
+
+def _tree_setup_display(tree: dict[int, dict[str, Any]], root: int | None, order_word: str) -> list[str]:
+    """Setup-card lines that make the worked example a REAL, attemptable question: the problem statement alone
+    ("…the BST built by inserting [2, 37, …]") forces a first-time learner to replay the inserts in their head
+    before they can even start. Show the tree's actual shape (parent → children, parents before children) and
+    pose the prediction task explicitly. Bullet-shaped to match the setup card ("Header:" + "  - " subpoints)."""
+    lines: list[str] = ["The tree (parent → children):"]
+    q: deque[int | None] = deque([root])
+    while q:
+        n = q.popleft()
+        if n is None:
+            continue
+        left, right = tree[n]["left"], tree[n]["right"]
+        parts = ([f"left: {left}"] if left is not None else []) + ([f"right: {right}"] if right is not None else [])
+        if parts:
+            lines.append(f"  - {n} → {', '.join(parts)}")
+        q.append(left)
+        q.append(right)
+    if len(lines) == 1:                                    # single node — no parent lines to show
+        lines.append(f"  - only the root {root} (no children)")
+    lines.append("Your task:")
+    lines.append(f"  - Predict the order {order_word} traversal visits the nodes, then check each step.")
+    return lines
+
+
 class InorderTraversalAdapter(FamilyAdapterBase):
     slug = "tree_inorder"
     label_convention = "ints"                  # §2.3 — BST node values are integers
@@ -113,8 +152,7 @@ class InorderTraversalAdapter(FamilyAdapterBase):
                 id=sid, operation="visit", prior_state=prior, state_after=after,
                 inputs={"node": node, "position": idx, "output_after": list(output)},
                 decision=f"visit {node}",
-                reason=(f"{node}'s left subtree is fully visited, so {node} is next in inorder"
-                        if idx > 1 else f"{node} is the leftmost node, so it is visited first"),
+                reason=_inorder_reason(tree, root, node, idx),
                 visual_state={"kind": "tree", "visited": list(output), "current": node},
                 visual_delta={"emitted": node},
                 expected_visible_result=f"Visit {node}; output so far {output}.",
@@ -129,6 +167,7 @@ class InorderTraversalAdapter(FamilyAdapterBase):
             conventions=dict(_CONV), initial_state={"output": [], "current": None},
             final_answer={"visit_order": order}, steps=steps,
             invariants=[dict(x) for x in _INV], required_cases=list(_REQUIRED), case_evidence=evidence,
+            setup_display=_tree_setup_display(tree, root, "an inorder"),
             provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
                                         attempt=attempt))
 
@@ -287,6 +326,7 @@ class _TreeTraversalBase(FamilyAdapterBase):
             conventions=dict(self._conv), initial_state={"output": [], "current": None},
             final_answer={"visit_order": order}, steps=steps,
             invariants=[dict(x) for x in _TRAV_INV], required_cases=list(self._required), case_evidence=evidence,
+            setup_display=_tree_setup_display(tree, root, f"a {self._order_word}"),
             provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
                                         attempt=attempt))
 

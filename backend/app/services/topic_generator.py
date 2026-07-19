@@ -408,9 +408,17 @@ def _classify_prerequisite(title: str) -> str:
 
 def _subject_phrase(title: str) -> str:
     """A readable subject from a title (framing words removed) — e.g. 'Trace Quick Sort Algorithm
-    Step by Step' -> 'Quick Sort'. Used to title the synthesized coding topic."""
-    words = [w for w in _re.findall(r"[A-Za-z0-9']+", str(title or ""))
-             if w.lower() not in _SUBJECT_FRAMING_WORDS]
+    Step by Step' -> 'Quick Sort'. Used to title the synthesized coding topic.
+
+    Hyphenated compounds are ONE token: splitting "In-Order Traversal" made the leading "In" hit the
+    framing stopword "in", titling the coding topic "Implementing Order Traversal" (live bug — which
+    then also failed adapter routing, so the topic shipped unverified LLM code). A hyphenated token is
+    dropped only when EVERY part is a framing word ("Step-by-Step" goes; "In-Order" stays)."""
+    words = []
+    for w in _re.findall(r"[A-Za-z0-9']+(?:-[A-Za-z0-9']+)*", str(title or "")):
+        if all(part in _SUBJECT_FRAMING_WORDS for part in w.lower().split("-")):
+            continue
+        words.append(w)
     return " ".join(words).strip() or str(title or "").strip()
 
 

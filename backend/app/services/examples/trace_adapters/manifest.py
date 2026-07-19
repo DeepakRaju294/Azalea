@@ -399,9 +399,12 @@ def failure_policy(slug: str) -> dict[str, str]:
 _IS_TREE = ["tree", "bst", "inorder", "preorder", "postorder", "level order", "level-order", "subtree", "leaf"]
 
 ROUTING_RULES: dict[str, dict[str, Any]] = {
-    "tree_inorder": {"any": ["inorder", "in-order"], "priority": 290},
-    "tree_preorder": {"any": ["preorder", "pre-order"], "priority": 280},
-    "tree_postorder": {"any": ["postorder", "post-order"], "priority": 270},
+    # Space forms are FULL PHRASES ("in order traversal", never bare "in order") — decomposition emits
+    # un-hyphenated titles ("Implementing Post Order Traversal"), and without these the coding topics failed
+    # to route, so canonical verified code was never stamped and inconsistent LLM code shipped (live bug).
+    "tree_inorder": {"any": ["inorder", "in-order", "in order traversal"], "priority": 290},
+    "tree_preorder": {"any": ["preorder", "pre-order", "pre order traversal"], "priority": 280},
+    "tree_postorder": {"any": ["postorder", "post-order", "post order traversal"], "priority": 270},
     "tree_levelorder": {"any": ["level order", "level-order", "levelorder"], "priority": 260},
     # a BST *search* is a tree probe, not array binary search: needs a 'search' OPERATION that survives
     # stripping the structure name "binary search tree" (so the bare structure doesn't self-trigger).

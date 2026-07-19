@@ -49,6 +49,11 @@ class ContractTrace:
     case_evidence: dict[str, list[str]] = field(default_factory=dict)
     provenance: dict[str, Any] = field(default_factory=dict)
     solution_text: str = ""
+    # Optional adapter-authored SETUP lines for the worked-example setup card (bullet-shaped: "Header:" +
+    # "  - " subpoints). Lets the setup show the actual problem STRUCTURE (e.g. the tree's parent→child shape)
+    # and pose the prediction task — instead of a bare one-line problem the learner cannot attempt. Purely
+    # presentational: never read by verification/fidelity.
+    setup_display: list[str] = field(default_factory=list)
 
     def by_id(self, sid: str) -> Optional[Step]:
         return next((s for s in self.steps if s.id == sid), None)

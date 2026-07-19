@@ -1228,6 +1228,13 @@ def _build_solution_cards(
     givens = str(sol.get("setup_givens") or "").strip()
     if givens:
         setup_points.append(f"Given: {givens}")
+    # Adapter-authored setup display (trace pipeline): the problem's actual STRUCTURE (e.g. the tree's
+    # parent→children shape) + the prediction task — so the setup is a real, attemptable question rather
+    # than a one-line statement the learner would first have to reconstruct mentally.
+    for line in (sol.get("setup_display") or []):
+        s = str(line).rstrip()
+        if s:
+            setup_points.append(s)
     cards: list[dict[str, Any]] = [{
         "id": f"we-solve-{tid}-setup",
         "blueprint_key": "worked_example",

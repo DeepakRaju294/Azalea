@@ -511,6 +511,8 @@ def _to_solve_result(trace: ContractTrace, cards: list[dict[str, Any]]) -> dict[
         "expected_final_answer": _final_answer_text(trace),
         "generated_by": "trace_pipeline",
         "trace_first": True,
+        # Adapter-authored setup lines (problem structure + prediction task) — rendered on the setup card.
+        "setup_display": list(getattr(trace, "setup_display", None) or []),
         "metadata": {"worked_example_source": "trace_pipeline", "provenance": trace.provenance},
     }
 
