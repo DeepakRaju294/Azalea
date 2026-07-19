@@ -1326,5 +1326,89 @@ class WorkedExampleInterpretation(unittest.TestCase):
         self.assertIsNone((cards[-1].get("teaching_note") or {}).get("type"))
 
 
+class AdapterIdentityGuard(unittest.TestCase):
+    """Same canonical key ≠ same concept: broad routing aliases give unrelated siblings one adapter
+    (the turbulence trio all route reynolds_number), and collapsing on the key alone silently deleted
+    planned topics — the 23:07 path shipped ONE teaching topic. Distinct topics survive; the shared
+    adapter's verified exercise goes to the topic whose subject IS the adapter's concept; the rest
+    withhold instead of repeating the identical calculation."""
+
+    @staticmethod
+    def _t(title, tt="science_mechanism"):
+        return {"title": title, "course_type": tt, "topic_type": tt, "in_scope": ["x"], "out_of_scope": []}
+
+    def _plan(self, topic):
+        return (topic.get("decomposition_metadata") or {}).get("scope_plan") or {}
+
+    def test_turbulence_trio_survives_and_reynolds_topic_claims_the_example(self):
+        from app.services.topic_generator import _certify_path_scope
+        out = _certify_path_scope([
+            self._t("Defining Fluid Turbulence"),
+            self._t("Laminar vs Turbulent Flow"),
+            self._t("Reynolds Number"),
+        ], "want to learn about fluid turbulence")
+        self.assertEqual(len(out), 3)                        # nothing silently deleted
+        by = {t["title"]: self._plan(t) for t in out}
+        self.assertEqual(by["Reynolds Number"]["verified_example"], "reynolds_number")
+        self.assertEqual(by["Reynolds Number"]["we_policy"], "verified")
+        for other in ("Defining Fluid Turbulence", "Laminar vs Turbulent Flow"):
+            self.assertIsNone(by[other]["verified_example"], other)
+            self.assertEqual(by[other]["we_policy"], "withhold_fabricated", other)
+            self.assertTrue(by[other].get("we_deduped_shared_adapter"), other)
+
+    def test_true_duplicates_still_collapse(self):
+        from app.services.topic_generator import _certify_path_scope
+        out = _certify_path_scope([self._t("Physics of Turbulence"), self._t("Turbulence Physics")],
+                                  "learn fluid turbulence")
+        self.assertEqual(len(out), 1)                        # shared token -> same concept -> dropped
+
+    def test_acronym_duplicates_still_collapse(self):
+        from app.services.topic_generator import _certify_path_scope
+        out = _certify_path_scope([self._t("Breadth-First Search", "algorithm_walkthrough"),
+                                   self._t("BFS", "algorithm_walkthrough")], "learn graph traversal")
+        self.assertEqual(len(out), 1)
+
+    def test_same_adapter_drop_pass_keeps_distinct_concepts(self):
+        from app.services.topic_generator import _drop_same_adapter_duplicate_topics
+        trio = [self._t("Defining Fluid Turbulence"), self._t("Laminar vs Turbulent Flow"),
+                self._t("Reynolds Number")]
+        self.assertEqual(len(_drop_same_adapter_duplicate_topics(trio)), 3)
+        # the original live case (same concept, action-variant titles) still collapses
+        dupes = [self._t("Straight-Line Depreciation Formula", "math_formula_method"),
+                 self._t("Applying Straight-Line Depreciation", "math_formula_method")]
+        self.assertEqual(len(_drop_same_adapter_duplicate_topics(dupes)), 1)
+
+
+class BlueprintGateKeepsGroundedCards(unittest.TestCase):
+    """validate_and_order_cards must never drop deterministic spec-grounded cards: the science_mechanism
+    blueprint doesn't name formula_breakdown, so every injected grounded formula card was silently
+    deleted at finalize from 2026-07-11 on — the worked example ran on a formula the lesson never showed."""
+
+    def test_grounded_formula_card_kept_and_ordered_before_process(self):
+        from app.services.examples.handoff import validate_and_order_cards
+        lesson = {"lesson_cards": [
+            {"blueprint_key": "background", "card_type": "purpose_context"},
+            {"blueprint_key": "process", "card_type": "method_process"},
+            {"blueprint_key": "formula_breakdown", "card_type": "formula", "_formula_grounded": True},
+            {"blueprint_key": "worked_example", "card_type": "worked_example"},
+            {"blueprint_key": "practice", "card_type": "quick_practice"},
+        ]}
+        validate_and_order_cards(lesson, {"topic_type": "science_mechanism"})
+        keys = [c["blueprint_key"] for c in lesson["lesson_cards"]]
+        self.assertIn("formula_breakdown", keys)             # kept despite not being in the blueprint
+        self.assertLess(keys.index("formula_breakdown"), keys.index("process"))  # shown before applied
+
+    def test_ungrounded_offblueprint_card_still_dropped(self):
+        from app.services.examples.handoff import validate_and_order_cards
+        lesson = {"lesson_cards": [
+            {"blueprint_key": "background", "card_type": "purpose_context"},
+            {"blueprint_key": "formula_breakdown", "card_type": "formula"},   # LLM-authored, no stamp
+            {"blueprint_key": "practice", "card_type": "quick_practice"},
+        ]}
+        validate_and_order_cards(lesson, {"topic_type": "science_mechanism"})
+        keys = [c["blueprint_key"] for c in lesson["lesson_cards"]]
+        self.assertNotIn("formula_breakdown", keys)          # the gate still filters untrusted cards
+
+
 if __name__ == "__main__":
     unittest.main()

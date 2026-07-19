@@ -560,11 +560,24 @@ def validate_and_order_cards(lesson_json: dict[str, Any], topic: dict[str, Any])
         def _key(card: dict[str, Any]) -> str:
             return str(card.get("blueprint_key") or card.get("card_type") or "").lower()
 
-        kept = [c for c in cards if _key(c) in allowed]
+        def _grounded(card: dict[str, Any]) -> bool:
+            # Deterministic spec-grounded cards (injected canonical formula / authored edge facts) are
+            # validator-approved by construction — this gate must never drop them even when the topic
+            # type's blueprint doesn't name their key. (Live: every injected formula card on a
+            # science_mechanism topic was silently dropped here from 2026-07-11 on, so the Reynolds
+            # worked example ran on a formula the lesson never showed.)
+            return bool(card.get("_formula_grounded") or card.get("_edge_case_grounded"))
+
+        kept = [c for c in cards if _key(c) in allowed or _grounded(c)]
         if not kept:
             return  # never empty the lesson
-        order = {key: i for i, key in enumerate(sequence)}
-        fallback_rank = len(sequence)
+        order: dict[str, float] = {key: float(i) for i, key in enumerate(sequence)}
+        fallback_rank = float(len(sequence))
+        # A grounded formula card outside the sequence slots in just before the concept is APPLIED
+        # (process/worked_example) — the formula must be shown before the example substitutes into it.
+        if "formula_breakdown" not in order:
+            order["formula_breakdown"] = min(order.get("process", fallback_rank),
+                                             order.get("worked_example", fallback_rank)) - 0.5
         reordered = sorted(kept, key=lambda c: order.get(_key(c), fallback_rank))  # stable
         if reordered != cards:
             dropped = len(cards) - len(kept)

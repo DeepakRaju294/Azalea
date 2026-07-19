@@ -289,6 +289,27 @@ def _topic_facet(topic: dict[str, Any]) -> str:
     return "implementation" if ttype == "coding_implementation" else "core"
 
 
+def _same_concept_evidence(a: str, b: str) -> bool:
+    """Token-level evidence that two subjects sharing a canonical KEY are actually the same concept.
+
+    Adapter-derived keys make this necessary: broad routing aliases give UNRELATED siblings the same key
+    ('Defining Fluid Turbulence' / 'Laminar vs Turbulent Flow' / 'Reynolds Number' all route
+    reynolds_number), and collapsing on the key alone silently deleted planned topics. Evidence = a shared
+    content token (physics of turbulence / turbulence physics), identical despaced token strings
+    (quick sort / quicksort), or acronym equivalence (BFS / breadth-first search)."""
+    ta, da = _subject_tokens(a)
+    tb, db = _subject_tokens(b)
+    if ta & tb:
+        return True
+    if da and da == db:
+        return True
+    ca = _re.sub(r"[^a-z0-9]", "", str(a).lower())
+    cb = _re.sub(r"[^a-z0-9]", "", str(b).lower())
+    ia = "".join(w[0] for w in _re.findall(r"[a-z0-9]+", str(a).lower()))
+    ib = "".join(w[0] for w in _re.findall(r"[a-z0-9]+", str(b).lower()))
+    return (len(ca) >= 2 and ca == ib) or (len(cb) >= 2 and cb == ia)
+
+
 # Overview-shaped topic types: fine as supporting topics, but the GOAL's own concept carried only by one of
 # these means the path never teaches the goal in depth (depth guard, shadow-stamped in _certify_path_scope).
 _OVERVIEW_TOPIC_TYPES = {"concept_intuition", "terminology_components", "compare_distinguish"}
@@ -365,11 +386,36 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
     if not topics:
         return topics
     goal_key = _canonical_concept_key(goal)
-    seen: set[tuple[str, str]] = set()
+    seen: dict[tuple[str, str], list[str]] = {}   # identity -> subject strings kept under it
+    # ONE verified exercise per adapter per path: distinct siblings may share an adapter via broad aliases
+    # (turbulence trio → reynolds_number), but the learner must not do the identical verified calculation
+    # in every lesson. The claim PREFERS the topic whose own subject IS the adapter's concept ('Reynolds
+    # Number' beats an alias-matched 'Defining Fluid Turbulence'), else the first routed topic.
+    we_claims: dict[str, int] = {}
+    we_claim_exact: dict[str, bool] = {}
+    we_routed: dict[int, str] = {}
+    for i, t in enumerate(topics):
+        tt = str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
+        if tt not in _WE_CENTRIC_TYPES or tt == "coding_implementation":
+            continue
+        try:
+            from app.services.examples.trace_pipeline import route_adapter
+            slug = getattr(route_adapter({"title": str(t.get("title") or ""), "topic_type": tt,
+                                          "course_type": tt}), "slug", None)
+        except Exception:  # noqa: BLE001 — certification must never break generation
+            slug = None
+        if not slug:
+            continue
+        we_routed[i] = slug
+        exact = _same_concept_evidence(str(t.get("subject_key") or t.get("title") or ""),
+                                       slug.replace("_", " "))
+        if slug not in we_claims or (exact and not we_claim_exact[slug]):
+            we_claims[slug] = i
+            we_claim_exact[slug] = exact
     certified: list[dict[str, Any]] = []
     taught_keys: set[str] = set()
     identities: list[dict[str, str]] = []
-    for topic in topics:
+    for topic_idx, topic in enumerate(topics):
         ttype = str(topic.get("course_type") or topic.get("topic_type") or "").strip().lower()
         if ttype == "study_path_introduction":
             certified.append(topic)
@@ -377,12 +423,22 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
         key = _canonical_concept_key(topic.get("subject_key") or topic.get("title"), ttype)
         facet = _topic_facet(topic)
         identity = (key, facet)
+        subject_str = str(topic.get("subject_key") or topic.get("title") or "")
         if key and identity in seen:
-            _log.info("scope certification: dropped duplicate identity %s/%s (%r)", key, facet,
-                      topic.get("title"))
-            continue
+            # Same canonical key ≠ same concept: adapter-derived keys collide across UNRELATED siblings via
+            # broad routing aliases. Drop only with token-level evidence; otherwise both topics stand (the
+            # shared adapter's worked example is deduplicated separately below).
+            if any(_same_concept_evidence(subject_str, prev) for prev in seen[identity]):
+                _log.info("scope certification: dropped duplicate identity %s/%s (%r)", key, facet,
+                          topic.get("title"))
+                continue
+            _log.info("scope certification: KEPT %r — shares key %s/%s with %r but no token evidence of "
+                      "the same concept (adapter-as-identity guard)", topic.get("title"), key, facet,
+                      seen[identity][0])
+            seen[identity].append(subject_str)
+        elif key:
+            seen[identity] = [subject_str]
         if key:
-            seen.add(identity)
             taught_keys.add(key)
         meta = dict(topic.get("decomposition_metadata") or {})
         meta["canonical_concept_key"] = key
@@ -395,7 +451,9 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
         # example' = an essay chopped into steps; Navier-Stokes = unverified PDE prose as Step cards).
         we_centric = ttype in _WE_CENTRIC_TYPES or ttype == "coding_implementation"
         verified_example = None
-        if we_centric:
+        we_deduped_shared_adapter = False
+        if ttype == "coding_implementation":
+            # coding pairs share their adapter with the walkthrough legitimately — no claim contest
             try:
                 from app.services.examples.trace_pipeline import route_adapter
                 _a = route_adapter({"title": str(topic.get("title") or ""),
@@ -403,6 +461,15 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
                 verified_example = getattr(_a, "slug", None)
             except Exception:  # noqa: BLE001 — certification must never break generation
                 verified_example = None
+        elif we_centric:
+            slug = we_routed.get(topic_idx)
+            if slug and we_claims.get(slug) == topic_idx:
+                verified_example = slug
+            elif slug:
+                _log.info("scope certification: %r shares adapter %s with a sibling that claims it — "
+                          "worked example withheld (one verified exercise per adapter per path)",
+                          topic.get("title"), slug)
+                we_deduped_shared_adapter = True
         # SCOPE COMMITMENTS (scope-plan #2 enforcement): an empty scope_in on a teaching topic means the plan
         # carries NO content commitments — the generator can ship a few generic cards and still "satisfy" the
         # blueprint (live: every topic on a thin turbulence path had scope_in=[]). The decomposition prompt now
@@ -431,6 +498,8 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
             "we_policy": ("verified" if verified_example
                           else ("withhold_fabricated" if we_centric else "not_applicable")),
         }
+        if we_deduped_shared_adapter:
+            meta["scope_plan"]["we_deduped_shared_adapter"] = True
         shape = _science_shape(topic, ttype, verified_example)
         if shape:
             meta["scope_plan"]["science_shape"] = shape
@@ -908,12 +977,16 @@ def _drop_same_adapter_duplicate_topics(topics: list[dict[str, Any]]) -> list[di
             continue
         a = route_adapter({"title": str(t.get("title") or ""), "topic_type": ttype, "course_type": ttype})
         slug = getattr(a, "slug", None)
-        if slug and slug in seen:
+        title = str(t.get("title") or "")
+        # Drop only with token evidence the topics are the SAME concept — broad aliases give unrelated
+        # siblings one adapter (turbulence trio → reynolds_number), and those must all survive; the
+        # certifier separately withholds the repeated verified exercise on the later ones.
+        if slug and slug in seen and _same_concept_evidence(title, seen[slug]):
             _log.info("topic_generator: dropped %r — same adapter (%s) as %r, identical worked-example kind",
                       t.get("title"), slug, seen[slug])
             continue
-        if slug:
-            seen[slug] = str(t.get("title") or "")
+        if slug and slug not in seen:
+            seen[slug] = title
         kept.append(t)
     return kept
 
