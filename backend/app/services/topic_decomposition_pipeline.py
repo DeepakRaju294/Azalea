@@ -145,9 +145,25 @@ def _prereq_key(name: str) -> str:
     return " ".join(_prereq_word(w) for w in re.findall(r"[a-z0-9]+", str(name or "").lower()))
 
 
+# Trailing qualifiers that weaken a prereq name ("Graph theory basics" reads like a blog post; "Graph theory"
+# reads like the textbook chapter the card is pointing at). Stripped from DISPLAY only, repeatedly, never
+# below one word.
+_PREREQ_TAIL_QUALIFIERS = frozenset({
+    "basics", "basic", "fundamentals", "fundamental", "essentials", "foundations", "introduction", "intro",
+    "primer", "101", "overview", "concepts", "principles"})
+
+
+def _strip_generic_prereq_tail(name: str) -> str:
+    words = str(name or "").strip().split()
+    while len(words) > 1 and words[-1].lower().strip(".,") in _PREREQ_TAIL_QUALIFIERS:
+        words.pop()
+    return " ".join(words)
+
+
 def _prereq_display(name: str) -> str:
     s = str(name or "").strip()
-    return s.replace("_", " ").strip() if "_" in s else s
+    s = s.replace("_", " ").strip() if "_" in s else s
+    return _strip_generic_prereq_tail(s) or s
 
 
 def _drop_prereq_chain_redundancy(names: list[str]) -> list[str]:
@@ -843,12 +859,21 @@ def generate_decomposed_topics(
                 t["assumed_prerequisites"] = ap
                 if prereq_glosses or prereq_requirements:
                     meta = t.setdefault("decomposition_metadata", {})
+                    # Key the maps by the DISPLAY name too ("graph theory basics" → "graph theory"), so the
+                    # card grounding's name.lower() lookup still hits after the tail-qualifier strip.
+                    def _with_display_keys(m: dict) -> dict:
+                        out = dict(m)
+                        for k, v in m.items():
+                            dk = _prereq_display(k).lower()
+                            if dk and dk not in out:
+                                out[dk] = v
+                        return out
                     if prereq_glosses:
-                        meta["assumed_prerequisite_glosses"] = {
-                            **(meta.get("assumed_prerequisite_glosses") or {}), **prereq_glosses}
+                        meta["assumed_prerequisite_glosses"] = _with_display_keys({
+                            **(meta.get("assumed_prerequisite_glosses") or {}), **prereq_glosses})
                     if prereq_requirements:
-                        meta["assumed_prerequisite_requirements"] = {
-                            **(meta.get("assumed_prerequisite_requirements") or {}), **prereq_requirements}
+                        meta["assumed_prerequisite_requirements"] = _with_display_keys({
+                            **(meta.get("assumed_prerequisite_requirements") or {}), **prereq_requirements})
                 break
 
     # Collapse near-duplicate teaching topics (filler-only title difference) BEFORE renaming/ordering, so the

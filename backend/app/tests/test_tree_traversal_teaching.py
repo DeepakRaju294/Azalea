@@ -495,6 +495,32 @@ class FamilyComparisonTopic(unittest.TestCase):
                          ["Kruskal's Algorithm", "Implementing Kruskal's Algorithm",
                           "Prim's Algorithm", "Implementing Prim's Algorithm"])
 
+    def test_pair_unit_is_the_concept_name_not_implementing(self):
+        # Live: the model named the unit "Implementing Kruskal's Algorithm", filing the conceptual
+        # walkthrough under an "Implementing…" header. The pair unit is canonicalized to the concept name.
+        from app.services.topic_generator import _order_canonical_family
+        def wt(t, u):
+            return {"title": t, "course_type": "algorithm_walkthrough",
+                    "topic_type": "algorithm_walkthrough", "unit_title": u}
+        def cd(t, u):
+            return {"title": t, "course_type": "coding_implementation",
+                    "topic_type": "coding_implementation", "unit_title": u}
+        topics = [wt("Kruskal's Algorithm", "Implementing Kruskal's Algorithm"),
+                  cd("Implementing Kruskal's Algorithm", "Implementing Kruskal's Algorithm"),
+                  wt("Prim's Algorithm", "Implementing Prim's Algorithm"),
+                  cd("Implementing Prim's Algorithm", "Implementing Prim's Algorithm")]
+        out = _order_canonical_family(topics, "Want to learn about mst algorithms")
+        self.assertEqual([t["unit_title"] for t in out],
+                         ["Kruskal's Algorithm", "Kruskal's Algorithm",
+                          "Prim's Algorithm", "Prim's Algorithm"])
+
+    def test_prereq_display_strips_trailing_generic_qualifiers(self):
+        from app.services.topic_decomposition_pipeline import _prereq_display
+        self.assertEqual(_prereq_display("graph theory basics"), "graph theory")
+        self.assertEqual(_prereq_display("Graph Theory Fundamentals"), "Graph Theory")
+        self.assertEqual(_prereq_display("linear algebra"), "linear algebra")     # untouched
+        self.assertEqual(_prereq_display("basics"), "basics")                     # never emptied
+
 
 class InjectedMemberUnitGrouping(unittest.TestCase):
     """The injected Level-Order cloned the In-Order template's unit_title, so the UI (which groups by unit)

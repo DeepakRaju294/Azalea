@@ -692,6 +692,10 @@ def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> l
             continue
         if _ttype(t) == "algorithm_walkthrough":
             t["title"] = canon[s]
+            # The pair's UNIT is the CONCEPT name — the model sometimes names the unit after the follow-up
+            # ("Implementing Kruskal's Algorithm"), filing the conceptual walkthrough under an
+            # "Implementing…" header (live). The implementation inherits this below (pair coherence).
+            t["unit_title"] = canon[s]
         elif _ttype(t) == "coding_implementation":
             t["title"] = f"Implementing {canon[s]}"     # consistent — never "…in Code" on some, bare on others
     # UNIT coherence per pair: an implementation shares its WALKTHROUGH partner's unit (the coding backfill
