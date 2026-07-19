@@ -293,6 +293,41 @@ def _topic_facet(topic: dict[str, Any]) -> str:
 # these means the path never teaches the goal in depth (depth guard, shadow-stamped in _certify_path_scope).
 _OVERVIEW_TOPIC_TYPES = {"concept_intuition", "terminology_components", "compare_distinguish"}
 
+
+# --- science_shape (science-architecture plan, Phase 2) ---------------------------------------------------
+# A small internal planning field on science topics — NOT a new topic type. It selects which lesson grammar a
+# science_mechanism topic should get (mechanism: cause-effect chain; regime: classification across a boundary;
+# quantitative_relationship: formula + interpretation; model: resolved-vs-approximated tradeoffs). Stamped into
+# scope_plan at certification (shadow — consumed by prompt/grammar wiring in a later increment).
+_SCIENCE_SHAPE_MODEL_TOKENS = frozenset({
+    "model", "models", "modeling", "modelling", "simulation", "simulations", "rans", "les", "dns", "closure",
+})
+_SCIENCE_SHAPE_REGIME_TOKENS = frozenset({"regime", "regimes", "versus", "vs", "transition"})
+_SCIENCE_SHAPE_QUANT_TOKENS = frozenset({
+    "number", "equation", "equations", "formula", "formulas", "law", "laws", "coefficient", "ratio",
+    "calculate", "calculating", "calculation", "compute", "computing",
+})
+
+
+def _science_shape(topic: dict[str, Any], ttype: str, verified_example: str | None) -> str | None:
+    """Classify a science topic's lesson grammar. Deterministic, from the topic's own plan fields.
+
+    Order matters: model beats regime beats quantitative (a 'RANS vs LES' comparison is a MODEL lesson, not a
+    regime one; 'Reynolds number' carries a verified formula AND names a quantity → quantitative). A verified
+    adapter alone never forces quantitative — a broad mechanism topic may legitimately carry a supporting
+    calculation without BEING a formula lesson (Physics of Turbulence + Reynolds calc)."""
+    if ttype != "science_mechanism":
+        return None
+    text = " ".join([str(topic.get("title") or ""), *[str(s) for s in (topic.get("in_scope") or [])]]).lower()
+    tokens = set(_re.findall(r"[a-z0-9]+", text))
+    if tokens & _SCIENCE_SHAPE_MODEL_TOKENS:
+        return "model"
+    if (tokens & _SCIENCE_SHAPE_REGIME_TOKENS) or {"laminar", "turbulent"} <= tokens:
+        return "regime"
+    if verified_example and tokens & _SCIENCE_SHAPE_QUANT_TOKENS:
+        return "quantitative_relationship"
+    return "mechanism"
+
 # Planning-field phrases that carry no content commitment — never worth backfilling into scope_in.
 _GENERIC_SCOPE_PREFIXES = ("reach the capability", "general understanding")
 
@@ -396,6 +431,9 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
             "we_policy": ("verified" if verified_example
                           else ("withhold_fabricated" if we_centric else "not_applicable")),
         }
+        shape = _science_shape(topic, ttype, verified_example)
+        if shape:
+            meta["scope_plan"]["science_shape"] = shape
         # DEPTH GUARD (shadow): the goal's own concept taught only through an overview-shaped type means the
         # path never goes deep on the thing the learner asked for. Stamp + log; no behavior change yet.
         if role == "goal_core" and ttype in _OVERVIEW_TOPIC_TYPES:

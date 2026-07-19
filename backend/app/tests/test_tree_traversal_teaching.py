@@ -1040,6 +1040,50 @@ class ScopeCommitments(unittest.TestCase):
         self.assertNotIn("depth_flag", self._plan(out2[0]))
 
 
+class ScienceShapeStamp(unittest.TestCase):
+    """Science-architecture plan Phase 2: each science_mechanism topic gets a science_shape stamp in its
+    scope_plan selecting the lesson grammar (mechanism / regime / quantitative_relationship / model). Shadow —
+    a planning field, not a new topic type; grammar wiring consumes it in a later increment."""
+
+    @staticmethod
+    def _t(title, tt="science_mechanism", **extra):
+        return {"title": title, "course_type": tt, "topic_type": tt,
+                "in_scope": [], "out_of_scope": [], **extra}
+
+    def _shape(self, topic):
+        return ((topic.get("decomposition_metadata") or {}).get("scope_plan") or {}).get("science_shape")
+
+    def test_four_shapes_classify_deterministically(self):
+        # Certified one at a time: several of these titles route to the SAME adapter (reynolds_number), and
+        # the certifier's identity dedup would drop the later ones — the adapter-as-identity problem the
+        # applicability-contract work will fix. Shape classification itself is per-topic and independent.
+        from app.services.topic_generator import _certify_path_scope
+        expected = {
+            "Physics of Turbulence": "mechanism",            # verified adapter alone ≠ quantitative
+            "Laminar vs Turbulent Flow": "regime",
+            "Reynolds Number": "quantitative_relationship",
+            "RANS, LES and DNS Approaches": "model",
+        }
+        for title, shape in expected.items():
+            out = _certify_path_scope([self._t(title)], "learn fluid turbulence")
+            self.assertEqual(self._shape(out[0]), shape, title)
+
+    def test_model_beats_regime_and_non_science_unstamped(self):
+        from app.services.topic_generator import _certify_path_scope
+        out = _certify_path_scope([
+            self._t("Comparing RANS and LES Turbulence Models"),          # model words + comparison → model
+            self._t("Laminar vs Turbulent Flow", tt="compare_distinguish"),  # non-science type → no stamp
+        ], "learn turbulence modeling")
+        self.assertEqual(self._shape(out[0]), "model")
+        self.assertIsNone(self._shape(out[1]))
+
+    def test_scope_in_participates_in_classification(self):
+        from app.services.topic_generator import _certify_path_scope
+        t = self._t("Flow Behavior in Pipes", in_scope=["the laminar to turbulent transition"])
+        out = _certify_path_scope([t], "learn pipe flow")
+        self.assertEqual(self._shape(out[0]), "regime")
+
+
 class CoverageStubSynthesis(unittest.TestCase):
     """B.4.1 coverage repair must never surface a raw capability_id as a learner-facing title (live: a stub
     topic literally titled 'C1'), and the synthesized topic carries the capability description as its one
