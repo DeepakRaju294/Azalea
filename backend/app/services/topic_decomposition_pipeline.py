@@ -719,14 +719,25 @@ def generate_decomposed_topics(
     auto_prereqs = _cross_topic_foundations(teaching, goal)
     structured_prereqs = [*llm_prereqs, *auto_prereqs, *dropped_prereqs, *demoted_prereqs]
     if structured_prereqs:
+        # One concept = ONE prereq: names arrive in mixed shapes (the model sometimes emits the slug
+        # 'binary_search_tree' while a demotion contributes the display 'Binary Search Tree' — live duplicate),
+        # so dedup on a shape-blind key (alnum words) and render slugs as display phrases.
+        def _pkey(name: str) -> str:
+            return " ".join(re.findall(r"[a-z0-9]+", str(name or "").lower()))
+
+        def _pdisplay(name: str) -> str:
+            s = str(name or "").strip()
+            return s.replace("_", " ").strip() if "_" in s else s
+
         for t in topics_out:
             if _is_opener(t):
                 ap = list(t.get("assumed_prerequisites") or [])
-                have = {a.lower() for a in ap}
+                have = {_pkey(a) for a in ap}
                 for p in structured_prereqs:
-                    if p and p.lower() not in have:
-                        ap.append(p)
-                        have.add(p.lower())
+                    key = _pkey(p)
+                    if p and key and key not in have:
+                        ap.append(_pdisplay(p))
+                        have.add(key)
                 t["assumed_prerequisites"] = ap
                 if prereq_glosses or prereq_requirements:
                     meta = t.setdefault("decomposition_metadata", {})

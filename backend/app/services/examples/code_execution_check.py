@@ -343,9 +343,19 @@ def _list_keys(state: Optional[dict]) -> list:
     return [json.dumps(v, default=str) for v in (state or {}).values() if isinstance(v, list)]
 
 
+def _is_tree_trace(trace: Any) -> bool:
+    prov = getattr(trace, "provenance", None) or {}
+    return str(prov.get("adapter") or "").startswith("tree_")
+
+
 def reproduces_trace_applies(trace: Any, code: Optional[str]) -> bool:
-    """True when the executed-reference trace-reproduction gate can run (array-shaped topic + code present)."""
-    return bool(code) and find_entry_function(code or "") is not None and _input_array(trace) is not None
+    """True when the executed-reference trace-reproduction gate can run: code present + array-shaped topic OR
+    a tree traversal (instance recoverable via provenance). Trees were skipped ('never a false withhold') —
+    which shipped a reversed-preorder postorder canonical beside a true-postorder trace: right final answer,
+    every per-step annotation wrong. Other non-array families stay skipped until audited the same way."""
+    if not code or find_entry_function(code or "") is None:
+        return False
+    return _input_array(trace) is not None or _is_tree_trace(trace)
 
 
 _DECISION_CMP = re.compile(r"(<=|>=|==|<|>)")
@@ -438,16 +448,17 @@ def code_reproduces_trace(code: str, trace: Any) -> list:
     AND every trace step's state occurs among the code's real intermediate states (proving the code is the
     SAME variant as the walkthrough, not a lookalike whose per-line annotations would contradict it).
     Non-empty = variant drift or a broken solution; the code must not be shown beside this walkthrough. SKIPS
-    non-array shapes (returns [] — never a false positive)."""
-    arr = _input_array(trace)
-    if arr is None:
+    shapes the gate does not cover yet (returns [] — never a false positive): arrays and tree traversals are
+    covered; other families pending the same audit."""
+    if _input_array(trace) is None and not _is_tree_trace(trace):
         return []
     run = _execute_on_instance(code, trace)
     if run is None:                                          # cannot run either form -> unverifiable, skip
         return []
     steps, result, _ = run
     out: list = []
-    expected = (getattr(trace, "final_answer", None) or {}).get("sorted")
+    fa = getattr(trace, "final_answer", None) or {}
+    expected = fa.get("sorted") if fa.get("sorted") is not None else fa.get("visit_order")
     if expected is not None and result != expected:
         out.append(f"code result {result} != trace final answer {expected}")
     from collections import deque

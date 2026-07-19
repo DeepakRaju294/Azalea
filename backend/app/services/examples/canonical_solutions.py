@@ -14,6 +14,7 @@ each translation happens once and is reused everywhere. Design rules (ADAPTER_AN
 Keyed by adapter slug (the slug `route_adapter` returns)."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -173,18 +174,25 @@ def preorder(root):
         stack.append(node.left)
     return result
 """,
+    # TRUE-postorder variant (flagged stack), NOT the reversed-preorder trick: the adapter's trace visits in
+    # real postorder, and the executed-reference gate requires the code's intermediate `result` states to match
+    # the trace's step-by-step — result[::-1] only agrees at the END, so every per-step annotation contradicted
+    # the walkthrough (live bug on the BST-traversal path).
     "tree_postorder": """# Each tree node has .val (its value), .left and .right (child nodes, or None).
 def postorder(root):
     result = []
-    stack = [root]
+    stack = [(root, False)]
     while stack:
-        node = stack.pop()
+        node, children_done = stack.pop()
         if node is None:
             continue
-        result.append(node.val)
-        stack.append(node.left)
-        stack.append(node.right)
-    return result[::-1]
+        if children_done:
+            result.append(node.val)
+        else:
+            stack.append((node, True))
+            stack.append((node.right, False))
+            stack.append((node.left, False))
+    return result
 """,
     "tree_levelorder": """from collections import deque
 
@@ -542,7 +550,10 @@ def display_solution(slug: str, lang: str = "python") -> Optional[str]:
     if lang == "python":
         return _strip_imports(src, "python")
     _ensure_cache_loaded()
-    key = f"{slug}::{lang}"
+    # Key includes a hash of the PYTHON SOURCE: a bare slug::lang key kept serving the stale translation after
+    # the canonical changed (live hazard when tree_postorder switched variants). Old entries are orphaned.
+    src_h = hashlib.sha1(src.encode("utf-8")).hexdigest()[:8]
+    key = f"{slug}::{lang}::{src_h}"
     code = _cache.get(key)
     if not code:
         code = _translator(src, lang)

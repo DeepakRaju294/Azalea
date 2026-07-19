@@ -170,6 +170,132 @@ class CodingTopicTitleAndRouting(unittest.TestCase):
         self.assertIsNone(ad)
 
 
+class PostorderCanonicalReproducesTrace(unittest.TestCase):
+    """The old tree_postorder canonical was the reversed-preorder trick (result[::-1]): right FINAL answer but
+    ZERO of the trace's intermediate states occur during execution — so every per-step code annotation
+    contradicted the walkthrough (live bug), and the variant gate skipped all non-array shapes so nothing
+    caught it. The canonical is now a true-postorder flagged stack, and the gate covers trees."""
+
+    def test_gate_applies_to_tree_traces(self):
+        from app.services.examples.code_execution_check import reproduces_trace_applies
+        from app.services.examples.canonical_solutions import canonical_python
+        a = route_adapter({"title": "Post-Order Traversal", "topic_type": "data_structure_operation",
+                           "course_type": "data_structure_operation"})
+        tr = a.reference(next(iter(a.candidates(5))), seed=5)
+        self.assertTrue(reproduces_trace_applies(tr, canonical_python("tree_postorder")))
+
+    def test_all_traversal_canonicals_reproduce_their_traces(self):
+        from app.services.examples.code_execution_check import code_reproduces_trace
+        from app.services.examples.canonical_solutions import canonical_python
+        for slug, title in (("tree_inorder", "In-Order Traversal"), ("tree_preorder", "Pre-Order Traversal"),
+                            ("tree_postorder", "Post-Order Traversal"),
+                            ("tree_levelorder", "Level-Order Traversal")):
+            a = route_adapter({"title": title, "topic_type": "data_structure_operation",
+                               "course_type": "data_structure_operation"})
+            code = canonical_python(slug)
+            for seed in range(6):
+                tr = a.reference(next(iter(a.candidates(seed))), seed=seed)
+                self.assertEqual(code_reproduces_trace(code, tr), [], f"{slug} seed {seed}")
+
+    def test_reversed_preorder_variant_is_now_caught(self):
+        # The exact code that shipped: right final answer, wrong per-step states -> the gate must flag it.
+        from app.services.examples.code_execution_check import code_reproduces_trace
+        bad = ("def postorder(root):\n"
+               "    result = []\n"
+               "    stack = [root]\n"
+               "    while stack:\n"
+               "        node = stack.pop()\n"
+               "        if node is None:\n"
+               "            continue\n"
+               "        result.append(node.val)\n"
+               "        stack.append(node.left)\n"
+               "        stack.append(node.right)\n"
+               "    return result[::-1]\n")
+        a = route_adapter({"title": "Post-Order Traversal", "topic_type": "data_structure_operation",
+                           "course_type": "data_structure_operation"})
+        tr = a.reference(next(iter(a.candidates(5))), seed=5)
+        self.assertNotEqual(code_reproduces_trace(bad, tr), [])
+
+
+class SpaceFormInOrderSubjectKey(unittest.TestCase):
+    """The model also proposes the SPACE form ('in order traversal') — the framing word 'in' swallowed it
+    even after the hyphen fix (live: subject_key still order_traversal on the 16:53 path)."""
+
+    def test_space_form_fuses_to_compound(self):
+        from app.core.topic_decomposition import normalize_subject_key
+        self.assertEqual(normalize_subject_key("in order traversal"), "in_order_traversal")
+        self.assertEqual(normalize_subject_key("In Order Traversal"), "in_order_traversal")
+
+    def test_prepositional_in_order_to_is_not_fused(self):
+        from app.core.topic_decomposition import normalize_subject_key
+        self.assertNotIn("in_order", normalize_subject_key("sort numbers in order to find the median"))
+
+    def test_subject_phrase_space_form(self):
+        self.assertEqual(_subject_phrase("In Order Traversal"), "In-Order Traversal")
+
+
+class NoPrereqTopicOverlap(unittest.TestCase):
+    """Live duplicate: assumed_prerequisites = ['binary_search_tree' (model slug), 'Binary Search Tree'
+    (demotion display name)] — dedup must be shape-blind and render display form."""
+
+    _RESP = {
+        "path_plan": {
+            "end_capability": "Traverse a BST.",
+            "end_capability_actions": ["trace"],
+            "assumed_prerequisites": ["binary_search_tree"],
+            "required_capabilities": [
+                {"capability_id": "c_trav", "description": "Traverse.", "prerequisite_capability_ids": [],
+                 "satisfies_end_actions": ["trace"], "ownership_mode": "standalone", "owner_topic_id": None,
+                 "basis": "goal"},
+            ],
+        },
+        "topics": [
+            {"topic_id": "t_bst", "capability_id": "c_trav", "subject_key": "binary_search_tree",
+             "primary_action": "trace", "content_role": "mechanism", "topic_type": "data_structure_operation",
+             "title": "Binary Search Tree", "unit_title": "Core", "purpose": "p", "in_scope": ["bst"],
+             "practice_target": "t", "practice_format": "short_answer",
+             "practice_evidence_type": "trace_structure", "expected_output": "o", "basis": "goal"},
+            {"topic_id": "t_in", "capability_id": "c_trav", "subject_key": "in order traversal",
+             "primary_action": "trace", "content_role": "mechanism", "topic_type": "data_structure_operation",
+             "title": "In-Order Traversal", "unit_title": "Core", "purpose": "p", "in_scope": ["inorder"],
+             "practice_target": "t", "practice_format": "short_answer",
+             "practice_evidence_type": "trace_structure", "expected_output": "o", "basis": "goal"},
+            {"topic_id": "t_post", "capability_id": "c_trav", "subject_key": "post-order traversal",
+             "primary_action": "trace", "content_role": "mechanism", "topic_type": "data_structure_operation",
+             "title": "Post-Order Traversal", "unit_title": "Core", "purpose": "p", "in_scope": ["postorder"],
+             "practice_target": "t", "practice_format": "short_answer",
+             "practice_evidence_type": "trace_structure", "expected_output": "o", "basis": "goal"},
+        ],
+    }
+
+    def _run(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        return generate_decomposed_topics("Want to learn about BST traversal", "src",
+                                          model_fn=lambda p: self._RESP, coding_follow_ups=True)
+
+    def test_single_display_form_bst_prereq_and_no_bst_topic(self):
+        topics = self._run()
+        titles = [t["title"] for t in topics]
+        self.assertNotIn("Binary Search Tree", titles)       # demoted, not taught
+        intro = next(t for t in topics if t.get("course_type") == "study_path_introduction")
+        ap = intro.get("assumed_prerequisites") or []
+        bst = [a for a in ap if "".join(sorted(a.lower().replace("_", " ").split()))
+               == "".join(sorted("binary search tree".split()))]
+        self.assertEqual(len(bst), 1, f"exactly one BST prereq expected, got {ap}")
+        self.assertNotIn("_", bst[0])                        # display form, never the raw slug
+
+    def test_coding_follow_up_title_keeps_in_and_routes(self):
+        topics = self._run()
+        coding = [t for t in topics if t.get("course_type") == "coding_implementation"
+                  and "order" in t["title"].lower() and "post" not in t["title"].lower()]
+        self.assertTrue(coding, "in-order coding follow-up expected")
+        title = coding[0]["title"]
+        self.assertIn("In", title.split("Implementing ")[-1])   # never 'Implementing Order Traversal'
+        ad = route_adapter({"title": title, "topic_type": "coding_implementation",
+                            "course_type": "coding_implementation"})
+        self.assertEqual(getattr(ad, "slug", None), "tree_inorder", title)
+
+
 class CanonicalTreeCodeSelfContained(unittest.TestCase):
     """The displayed canonical must say what .val/.left/.right ARE (the live lessons referenced node.val on a
     class the panel never defined) and must still parse."""

@@ -679,7 +679,8 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
     # annotation silently contradicts it (the code still computes the right answer, so value/state checks
     # pass). Run the code once on the trace's own instance; on drift it is a backend/code defect a formatter
     # retry cannot fix — WITHHOLD rather than ship a self-contradicting pair (same policy as a fidelity fail).
-    # Array shapes only; graph/tree topics skip the gate (returns []), never a false withhold.
+    # Covers array shapes AND tree traversals (the tree skip shipped a reversed-preorder postorder canonical
+    # beside a true-postorder trace — live bug); other non-array families skip until audited the same way.
     if code:
         from .code_execution_check import code_reproduces_trace, reproduces_trace_applies
         if reproduces_trace_applies(trace, code):

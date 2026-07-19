@@ -413,9 +413,11 @@ def _subject_phrase(title: str) -> str:
     Hyphenated compounds are ONE token: splitting "In-Order Traversal" made the leading "In" hit the
     framing stopword "in", titling the coding topic "Implementing Order Traversal" (live bug — which
     then also failed adapter routing, so the topic shipped unverified LLM code). A hyphenated token is
-    dropped only when EVERY part is a framing word ("Step-by-Step" goes; "In-Order" stays)."""
+    dropped only when EVERY part is a framing word ("Step-by-Step" goes; "In-Order" stays). The space
+    form "In Order Traversal" fuses to the compound too (never prepositional "in order to")."""
+    fused = _re.sub(r"\b([Ii]n)[ _]([Oo]rder)\b(?!\s+[Tt]o\b)", r"\1-\2", str(title or ""))
     words = []
-    for w in _re.findall(r"[A-Za-z0-9']+(?:-[A-Za-z0-9']+)*", str(title or "")):
+    for w in _re.findall(r"[A-Za-z0-9']+(?:-[A-Za-z0-9']+)*", fused):
         if all(part in _SUBJECT_FRAMING_WORDS for part in w.lower().split("-")):
             continue
         words.append(w)

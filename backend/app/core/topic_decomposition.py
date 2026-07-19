@@ -156,8 +156,10 @@ def normalize_subject_key(proposed: Optional[str]) -> str:
     swallow "in-" → subject_key `order_traversal` → the policy-synthesized coding topic was titled
     "Implementing Order Traversal", which failed adapter routing, so the verified canonical code was
     never stamped (live bug). A compound is dropped only when EVERY part is framing/1-char
-    ("step-by-step" goes; "in-order" stays, slugged "in_order")."""
-    tokens = re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", str(proposed or "").lower())
+    ("step-by-step" goes; "in-order" stays, slugged "in_order"). The model also proposes the SPACE form
+    ("in order traversal") — fuse that bigram to the compound first (but never prepositional "in order to")."""
+    text = re.sub(r"\bin[ _]order\b(?!\s+to\b)", "in-order", str(proposed or "").lower())
+    tokens = re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", text)
     cleaned: list[str] = []
     for t in tokens:
         parts = t.split("-")
