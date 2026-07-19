@@ -100,8 +100,8 @@ class CanonicalFamilyOrdering(unittest.TestCase):
         titles = [t["title"] for t in out]
         self.assertEqual(titles[0], "Introduction to Sorting Algorithms")     # intro stays first
         # canonical order, WT immediately before its code — and titles NORMALIZED (no "…in Code" on some)
-        self.assertEqual(titles[1:5], ["Bubble Sort Algorithm Walkthrough", "Implementing Bubble Sort",
-                                       "Selection Sort Algorithm Walkthrough", "Implementing Selection Sort"])
+        self.assertEqual(titles[1:5], ["Bubble Sort", "Implementing Bubble Sort",
+                                       "Selection Sort", "Implementing Selection Sort"])  # bare canonical names
         self.assertEqual(titles[-1], "Implementing Quicksort")                # insertion code no longer stranded
         self.assertNotIn("Implementing Insertion Sort", titles[-2:])          # it's now next to insertion WT
 
@@ -120,7 +120,8 @@ class FamilyWalkthroughTitlesAreConsistent(unittest.TestCase):
         ]
         out = _order_canonical_family(topics, "sorting algorithms")
         wt = [t["title"] for t in out if t["topic_type"] == "algorithm_walkthrough"]
-        self.assertTrue(all(t.endswith(" Algorithm Walkthrough") for t in wt), wt)
+        self.assertEqual(sorted(wt), sorted(["Bubble Sort", "Selection Sort", "Insertion Sort",
+                                             "Merge Sort", "Quicksort"]), wt)  # bare canonical names
         self.assertNotIn("Analyzing Quick Sort", wt)
         self.assertNotIn("Understanding Bubble Sort", wt)
 

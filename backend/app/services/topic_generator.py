@@ -499,7 +499,9 @@ def _expand_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> 
         new.pop("topic_id", None)
         new.pop("id", None)
         new.update({
-            "title": f"{member_title} Algorithm Walkthrough",
+            # BARE canonical name — matches how model-emitted siblings are titled ("Inorder Traversal"); the
+            # old " Algorithm Walkthrough" suffix made injected members read inconsistently (live complaint).
+            "title": member_title,
             "course_type": "algorithm_walkthrough", "topic_type": "algorithm_walkthrough",
             "subject_key": slug, "secondary_course_types": [],
             "unit_title": (template or {}).get("unit_title") or "Algorithms",
@@ -546,16 +548,16 @@ def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> l
     fam_block = sorted((topics[i] for i in fam_positions),
                        key=lambda t: (order.get(_slug(t), 99), 0 if _ttype(t) != "coding_implementation" else 1))
     # Consistent titles across the family (deterministic backstop for the decomposition prompt): every
-    # walkthrough member reads the SAME way — "<Canonical> Algorithm Walkthrough" — so a study-verb the LLM
-    # sprinkled on one ("Analyzing Quick Sort" next to "Merge Sort Algorithm Walkthrough") never survives.
-    # Coding members are left as their auto-titled "Implementing <Canonical>".
+    # walkthrough member reads the SAME way — the BARE canonical name ("In-Order Traversal", "Merge Sort") —
+    # so a study-verb the LLM sprinkled on one ("Analyzing Quick Sort") or an injected suffix ("Level-Order
+    # Traversal Algorithm Walkthrough" beside "Inorder Traversal" — live inconsistency) never survives.
     canon = {slug: name for name, slug in fam["members"]}
     for t in fam_block:
         s = _slug(t)
         if s not in canon:
             continue
         if _ttype(t) == "algorithm_walkthrough":
-            t["title"] = f"{canon[s]} Algorithm Walkthrough"
+            t["title"] = canon[s]
         elif _ttype(t) == "coding_implementation":
             t["title"] = f"Implementing {canon[s]}"     # consistent — never "…in Code" on some, bare on others
     first, famset = fam_positions[0], set(fam_positions)

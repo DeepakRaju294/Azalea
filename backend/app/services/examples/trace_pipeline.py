@@ -503,7 +503,59 @@ def _prose_validation_field(prose: Any) -> dict[str, Any]:
         "soft_warnings": [_v(v) for v in items if id(v) not in hard_ids]}}
 
 
-def _to_solve_result(trace: ContractTrace, cards: list[dict[str, Any]]) -> dict[str, Any]:
+def _fmt_state_val(v: Any) -> str:
+    if v is None:
+        return "none"
+    if isinstance(v, (list, dict)):
+        return json.dumps(v)
+    return str(v)
+
+
+def _apply_step_field_contract(cards: list[dict[str, Any]], trace: ContractTrace, adapter: Any) -> None:
+    """Learner-facing STEP-FIELD CONTRACT for non-coding trace-backed cards (product decision, path review):
+    - Goal states what the step is doing (the stage's primary decision) — restored as a bullet now that step
+      TITLES are bare "Step N" and no longer carry it.
+    - Work shows HOW EACH STATE VARIABLE UPDATES and what it contains ("output: [7] → [7, 16]"), not a bare
+      action word — the variables ARE the work of a trace step.
+    - Result is JUST the result (the changed variables' new values; final card adds the final answer) — no
+      action prefix, no explanation tail ("Complete: every node visited…" belongs to reasoning, not result).
+    Deterministic, derived from the VERIFIED trace states — never invents. Coding cards are exempt (their
+    Work is code lines anchored to the panel; a separate contract). Mutates cards."""
+    by_id = {s.id: s for s in trace.steps}
+    stages = getattr(getattr(adapter, "example_spec", None), "stages", None) or {}
+    ans = _final_answer_text(trace)
+    for idx, card in enumerate(cards or []):
+        ids = [str(x) for x in (card.get("trace_step_ids") or [])]
+        step = by_id.get(ids[-1]) if ids else None
+        if step is None:
+            continue                                       # synthesized cards (completion) keep their fields
+        prior = step.prior_state if isinstance(step.prior_state, dict) else {}
+        after = step.state_after if isinstance(step.state_after, dict) else {}
+        if not after:
+            continue
+        changed = [k for k in after if prior.get(k) != after.get(k)]
+        work = [f"{k}: {_fmt_state_val(prior.get(k))} → {_fmt_state_val(after[k])}" for k in changed]
+        work += [f"{k} = {_fmt_state_val(after[k])}" for k in after if k not in changed]
+        if work:
+            card["work"] = work
+        shown = changed or list(after)
+        result = "; ".join(f"{k} = {_fmt_state_val(after[k])}" for k in shown)
+        if idx == len(cards) - 1 and ans:
+            result = f"{result}. Final answer: {ans}." if result else f"Final answer: {ans}."
+        card["result"] = result
+        if not str(card.get("goal") or "").strip():
+            st = stages.get(str(step.operation or ""))
+            goal = str(getattr(st, "primary_decision", "") or "").strip()
+            card["goal"] = goal or str(step.operation or "").replace("_", " ")
+
+
+def _to_solve_result(trace: ContractTrace, cards: list[dict[str, Any]],
+                     adapter: Any = None, code: Optional[str] = None) -> dict[str, Any]:
+    if not code:   # coding cards keep their code-anchored Work/Result contract
+        try:
+            _apply_step_field_contract(cards, trace, adapter)
+        except Exception:  # noqa: BLE001 — a formatting rewrite must never break a verified example
+            _log.warning("trace_pipeline: step-field contract rewrite failed", exc_info=True)
     return {
         "problem": trace.problem,
         "cards": cards,
@@ -644,7 +696,7 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
             _gr.we(**_coverage_fields(trace, det))
             _gr.we(**_checkpoint_coverage_fields(trace, det, checkpoints))
             _gr.we(**_prose_validation_field(prose))
-            return _to_solve_result(trace, det)
+            return _to_solve_result(trace, det, adapter=adapter, code=code)
         _log.warning("trace_pipeline: %s deterministic narration failed its own gate (fid.ok=%s, hard=%d) — "
                      "falling back to LLM formatting", getattr(adapter, "slug", "?"), fid.ok, len(hard))
     # CP10 — deterministic CODING generation (ACCURACY_SPEC §18.4). For a narration adapter whose execution
@@ -671,7 +723,7 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
                 _gr.we(**_coverage_fields(trace, gen))
                 _gr.we(**_checkpoint_coverage_fields(trace, gen, checkpoints))
                 _gr.we(**_prose_validation_field(prose))
-                return _to_solve_result(trace, gen)
+                return _to_solve_result(trace, gen, adapter=adapter, code=code)
             _log.warning("trace_pipeline: %s deterministic coding failed its own gate (fid.ok=%s, hard=%d) — "
                          "falling back to LLM formatting", getattr(adapter, "slug", "?"), fid.ok, len(hard))
     # Executed-reference gate (WORKED_EXAMPLE_ACCURACY_SPEC): a CODING topic shows canonical code beside a
@@ -757,7 +809,7 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
             _gr.we(**_coverage_fields(trace, cards))           # CP6 coverage/terminal instrumentation
             _gr.we(**_checkpoint_coverage_fields(trace, cards, checkpoints))   # CP6b checkpoint provenance
             _gr.we(**_prose_validation_field(prose))           # CP6b structured prose_validation
-            return _to_solve_result(trace, cards)
+            return _to_solve_result(trace, cards, adapter=adapter, code=code)
         reason = "prose_fail"                                      # a hard contradiction -> re-format
         detail = [f"{v.code} {v.detail} ({v.trace_step_id})" for v in hard][:6]
         feedback = _retry_feedback(reason, detail, n_steps)        # targeted: tell it exactly what to fix
@@ -775,7 +827,7 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
     _gr.we(**_coverage_fields(trace, det_cards))               # CP6 coverage/terminal instrumentation
     _gr.we(**_checkpoint_coverage_fields(trace, det_cards, checkpoints))   # CP6b checkpoint provenance
     _gr.we(**_prose_validation_field(det_prose))               # CP6b structured prose_validation
-    return _to_solve_result(trace, det_cards)
+    return _to_solve_result(trace, det_cards, adapter=adapter, code=code)
 
 
 def _solve_via_reason_extract(topic, fmt, reason_fn, extract_fn, critic_fn) -> Optional[dict[str, Any]]:

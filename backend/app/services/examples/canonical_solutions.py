@@ -145,45 +145,49 @@ def merge_sort(arr):
     return -1
 """,
     # ---- tree traversals (RECURSIVE forms — product decision: recursion IS the teaching-standard shape for
-    #      tree traversal, and each trace visit maps to one recursive call. The nested helper keeps ONE
-    #      top-level function so find_entry_function picks the wrapper. Recursion also appends in the TRUE
-    #      visit order, so the executed-reference gate's intermediate-state check holds for all three —
-    #      unlike the earlier reversed-preorder postorder trick, whose per-step annotations contradicted
-    #      the walkthrough (live bug). Level-order stays a queue: breadth-first is inherently iterative.) ----
+    #      tree traversal, and each trace visit maps to one recursive call. The helper is a SEPARATE top-level
+    #      function (product decision: no nested functions), placed FIRST so find_entry_function — which picks
+    #      the LAST top-level function — finds the wrapper. Recursion appends in the TRUE visit order, so the
+    #      executed-reference gate's intermediate-state check holds for all three — unlike the earlier
+    #      reversed-preorder postorder trick, whose per-step annotations contradicted the walkthrough (live
+    #      bug). Level-order stays a queue: breadth-first is inherently iterative.) ----
     "tree_inorder": """# Each tree node has .val (its value), .left and .right (child nodes, or None).
+def visit_inorder(node, result):
+    if node is None:
+        return
+    visit_inorder(node.left, result)
+    result.append(node.val)
+    visit_inorder(node.right, result)
+
 def inorder(root):
     result = []
-    def visit(node):
-        if node is None:
-            return
-        visit(node.left)
-        result.append(node.val)
-        visit(node.right)
-    visit(root)
+    visit_inorder(root, result)
     return result
 """,
     "tree_preorder": """# Each tree node has .val (its value), .left and .right (child nodes, or None).
+def visit_preorder(node, result):
+    if node is None:
+        return
+    result.append(node.val)
+    visit_preorder(node.left, result)
+    visit_preorder(node.right, result)
+
 def preorder(root):
     result = []
-    def visit(node):
-        if node is None:
-            return
-        result.append(node.val)
-        visit(node.left)
-        visit(node.right)
-    visit(root)
+    visit_preorder(root, result)
     return result
 """,
     "tree_postorder": """# Each tree node has .val (its value), .left and .right (child nodes, or None).
+def visit_postorder(node, result):
+    if node is None:
+        return
+    visit_postorder(node.left, result)
+    visit_postorder(node.right, result)
+    result.append(node.val)
+
 def postorder(root):
     result = []
-    def visit(node):
-        if node is None:
-            return
-        visit(node.left)
-        visit(node.right)
-        result.append(node.val)
-    visit(root)
+    visit_postorder(root, result)
     return result
 """,
     "tree_levelorder": """from collections import deque

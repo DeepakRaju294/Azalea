@@ -324,12 +324,61 @@ class CanonicalTreeCodeSelfContained(unittest.TestCase):
             self.assertIn("Each tree node has .val", code, slug)
             ast.parse(code)
 
-    def test_depth_traversal_canonicals_are_recursive(self):
-        for slug in ("tree_inorder", "tree_preorder", "tree_postorder"):
+    def test_depth_traversal_canonicals_are_recursive_with_top_level_helper(self):
+        # Product decisions: recursive (no iterative stack) AND the helper is a SEPARATE top-level function
+        # (no nested defs), placed before the wrapper so find_entry_function picks the wrapper (last fn).
+        from app.services.examples.code_execution_check import find_entry_function
+        for slug, entry in (("tree_inorder", "inorder"), ("tree_preorder", "preorder"),
+                            ("tree_postorder", "postorder")):
             code = display_solution(slug, "python")
-            self.assertIn("def visit(node):", code, slug)           # recursive helper
-            self.assertIn("visit(node.left)", code, slug)
-            self.assertNotIn("stack", code, slug)                    # no iterative stack form
+            tree = ast.parse(code)
+            top = [n.name for n in tree.body if isinstance(n, ast.FunctionDef)]
+            self.assertEqual(top, [f"visit_{entry}", entry], slug)   # helper first, wrapper last
+            nested = any(isinstance(m, ast.FunctionDef)
+                         for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) for m in n.body)
+            self.assertFalse(nested, f"{slug}: no nested functions")
+            self.assertEqual(find_entry_function(code), entry, slug)
+            self.assertIn(f"visit_{entry}(node.left, result)", code, slug)   # recursive
+            self.assertNotIn("stack", code, slug)                            # no iterative stack form
+
+
+class StepFieldContract(unittest.TestCase):
+    """Product decision (path review): on non-coding trace-backed step cards, Goal states what the step does
+    (restored as a bullet now that titles are bare 'Step N'), Work shows how each state variable updates with
+    its contents, and Result is JUST the result — no action prefix, no explanation tail."""
+
+    def _sol(self):
+        from app.services.examples.trace_pipeline import _deterministic_narration, _to_solve_result
+        a = route_adapter({"title": "In-Order Traversal", "topic_type": "algorithm_walkthrough",
+                           "course_type": "algorithm_walkthrough"})
+        tr = a.reference(next(iter(a.candidates(7))), seed=7)
+        return _to_solve_result(tr, _deterministic_narration(tr, a), adapter=a, code=None), tr
+
+    def test_goal_work_result_shape(self):
+        sol, tr = self._sol()
+        first = sol["cards"][0]
+        self.assertEqual(first["goal"], "visit the next node in inorder position")   # stage's primary decision
+        self.assertTrue(any("→" in w and "output" in w for w in first["work"]),      # variable update w/ contents
+                        first["work"])
+        self.assertTrue(first["result"].startswith("output = ["), first["result"])   # just the result
+        self.assertNotIn("Visit", first["result"])                                   # no action prefix
+        self.assertNotIn("Complete:", first["result"])                               # no explanation tail
+
+    def test_final_card_states_final_answer(self):
+        sol, tr = self._sol()
+        last = sol["cards"][-1]
+        self.assertIn("Final answer:", last["result"])
+        self.assertIn("visit order", last["result"])
+
+    def test_coding_cards_keep_code_anchored_work(self):
+        from app.services.examples.trace_pipeline import _to_solve_result
+        a = route_adapter({"title": "In-Order Traversal", "topic_type": "algorithm_walkthrough",
+                           "course_type": "algorithm_walkthrough"})
+        tr = a.reference(next(iter(a.candidates(7))), seed=7)
+        cards = [{"trace_step_ids": [tr.steps[0].id], "goal": "", "reasoning": "r",
+                  "work": ["result.append(node.val)  // append 4"], "result": "Visit 4"}]
+        sol = _to_solve_result(tr, cards, adapter=a, code="def inorder(root): ...")
+        self.assertEqual(sol["cards"][0]["work"], ["result.append(node.val)  // append 4"])  # untouched
 
 
 class TreeTraversalFamilyExpansion(unittest.TestCase):
