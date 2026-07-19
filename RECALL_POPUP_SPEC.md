@@ -1,11 +1,10 @@
 # Recall Popups — small spec (rev 7)
 
-Status: Draft rev 7 — **approved to run the feasibility audit; contract frozen otherwise.** rev 7 closes three
-localized items a seventh review found: a single `source_anchor` can't describe a header+bullet definition
-(→ bounded `source_span`), the cryptographic hash/serialization contract was unstated (→ SHA-256 + versioned
-length-delimited canonical JSON), and the **active lesson prompt still instructs the model to emit lexical
-`popup_only` glosses** (`lean_lesson_prompt.py:324`) — contradicting this spec's dead-gloss premise (→ a
-decommission task, §13). Flag: `AZALEA_RECALL_POPUPS` (requires `AZALEA_PREREQ_LINKS`).
+Status: **Interaction contract FROZEN; standalone v1 DEFERRED (`defer_to_v2`) after the §0 feasibility audit.
+Revisit with scope-plan v2 — do not build independently today.** The audit (2026-07-18, §0) found the design sound
+and the harvester precise, but the strict-valid cohort too thin (4 concepts / 5 recall lines / 5 paths corpus-wide)
+to justify a standalone UI. This document is the preserved interaction contract for that future v2 integration; the
+design detail below (rev 7) stands. Flag: `AZALEA_RECALL_POPUPS` (requires `AZALEA_PREREQ_LINKS`).
 
 > **The defining rule (unchanged, load-bearing):** *No trustworthy recall line means no popup. The ordinary
 > review link remains the fallback.* Every decision below is downstream of precision-first.
@@ -15,8 +14,9 @@ decommission task, §13). Flag: `AZALEA_RECALL_POPUPS` (requires `AZALEA_PREREQ_
 >    header+bullet harvesting is unambiguous (inline: `start==end`; header+bullet: `end==start+1`, no further
 >    siblings). The DISPLAYING anchor stays the single-item `ContentItemAnchor`.
 > 2. **Hash/serialization contract** (§5c) — text hash = SHA-256 over UTF-8 of normalized text, lowercase hex;
->    `popup_id` = SHA-256 over a versioned, length-delimited canonical JSON (stable key order, compact), never raw
->    concatenation. `popup_id` is reproducible from the stored link + payload + card context — NOT the payload alone.
+>    `popup_id` = SHA-256 over **canonical JSON** (UTF-8, keys sorted, compact separators — the quoting is the
+>    delimiter, no separate length-prefix framing), never raw concatenation. `popup_id` is reproducible from the
+>    stored link + payload + card context — NOT the payload alone.
 > 3. **Decommission active lexical-gloss prompt instructions** (§13) — independent of the audit outcome; keep
 >    `popup_only` only where other contracts still require it (cycle-suppressed prereq); never reuse `popup_only`
 >    for `RecallPopupV1`.
@@ -109,9 +109,13 @@ FeasibilityDecision
   # candidate PREVALENCE — precision on a rare feature isn't a viable feature:
   paths_with_review_links         topics_with_review_links
   review_links_per_100_topics     eligible_popups_per_100_topics
-  decision: strict_v1 | enable_4b | do_not_build
+  decision: strict_v1 | enable_4b | defer_to_v2 | do_not_build
   rationale
 ```
+`defer_to_v2` (the recorded 2026-07-18 outcome) = the interaction design is valid and the harvester is precise, but
+current upstream coverage (candidate volume + concept diversity + definition ownership) is too thin to justify a
+standalone UI; preserve the contract and revisit when v2 supplies `uses`/`definition_owners`. Distinct from
+`do_not_build` (feature not worth it at all).
 Enable §4b ONLY when it materially improves coverage AND a labeled sample shows acceptable precision AND the
 resulting rendered-popup count is large enough to evaluate. Usefulness depends on volume + quality, not a single
 universal threshold — hence the decision record over a bare number. If review links themselves are rare
@@ -450,17 +454,22 @@ click, focus restoration, and viewport collision especially are not free):
 
 ## 12. Staging
 
-- **v1 (now):** §0 feasibility audit → earlier-topic recall popovers, strict §4 harvest (+ §4b only if the audit
-  demands and fixtures prove it), `match_kind` gate, deterministic ranking, pill fallback, caps, staleness
-  suppression, the §5b persistence contract, the frontend routing change, telemetry. No LLM. No prereq recall.
-  No notation.
-- **v1.1:** notation popovers — BLOCKED on a typed symbol schema or deterministic parser (§9).
-- **v1.5:** `needed_here`, generation-time, batched, stored, omitted when uncertain.
-- **v2 (scope plan):** candidates from `PlannedTopic.uses`/`reviews` + `teaching_owners`/`definition_owners`
-  (canonical recall from the definition owner), anchors from content claims, "never the principal concept"
-  enforced from `teaches`. THIS is where body-topic prerequisite recall becomes possible — because scope
-  ownership makes local necessity explicit, and where a real "needed for this step" ranking replaces §6's
-  deterministic proxy.
+- **v1 standalone: DEFERRED (`defer_to_v2`) after the §0 feasibility audit.** The audit confirmed the design and a
+  precise harvester but too-thin upstream coverage (4 strict concepts / 5 lines / 5 paths corpus-wide). Do NOT
+  start a standalone build. The design that *would* ship — earlier-topic recall popovers, strict §4 harvest,
+  `match_kind` gate, deterministic ranking, pill fallback, caps, staleness suppression, the §5b persistence
+  contract, the frontend routing change, telemetry (no LLM, no prereq recall, no notation) — is preserved here as
+  the interaction contract for the v2 integration.
+- **v2 scope-plan integration: the NEXT eligible implementation point.** Candidates from
+  `PlannedTopic.uses`/`reviews` + `teaching_owners`/`definition_owners` (canonical recall from the definition
+  owner), anchors from content claims, "never the principal concept" enforced from `teaches`, and a real "needed
+  for this step" ranking replacing §6's deterministic proxy. This is where candidate volume + definition ownership
+  become structural — the missing ingredients the audit identified — and where body-topic prerequisite recall
+  becomes possible. Settle the §4 content-type contract (recommended: typed recall statement) FIRST. The frozen v1
+  interaction contract above carries into this integration unchanged.
+- **v1.1 (within the v2 integration):** notation popovers — BLOCKED on a typed symbol schema or deterministic
+  parser (§9).
+- **v1.5 (within the v2 integration):** `needed_here`, generation-time, batched, stored, omitted when uncertain.
 
 ## 13. Decommission the active lexical-gloss prompt (independent of the audit)
 

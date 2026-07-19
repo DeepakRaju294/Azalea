@@ -14,6 +14,7 @@ import io
 import json
 import os
 import re
+import hashlib
 import sys
 from collections import Counter, defaultdict
 
@@ -203,19 +204,31 @@ _LABELS_PATH = os.path.join(os.path.dirname(__file__), "recall_popup_hand_labels
 
 
 def case_key(concept, owner_title, harvest):
-    """Stable identity of an owner-resolved case: concept + owner + (reject | normalized harvested-line prefix).
-    Duplicate displaying lessons that resolve to the same owner + same line share one key (correct)."""
+    """v1 key (used by labels key_version 1): concept + owner title + (reject | normalized harvested-line prefix).
+    Human-readable but can collide when different paths teach the same concept with the same opening text."""
     h = "reject" if harvest.startswith("[REJECT") else _norm(harvest)[:60]
     return f"{_norm(concept)} || {_norm(owner_title)} || {h}"
 
 
+def case_key_v2(path_id, disp_topic, owner_topic, concept_id_or_text, candidate_source):
+    """v2 key (collision-resistant; for future audit cohorts): bind the case to its actual identities + a FULL
+    source hash, so two paths teaching the same concept — or two sources sharing an opening — never collide."""
+    src_hash = hashlib.sha256(_norm(candidate_source).encode("utf-8")).hexdigest()
+    parts = [str(path_id or ""), str(disp_topic or ""), str(owner_topic or ""),
+             _norm(concept_id_or_text), src_hash]
+    return "v2:" + hashlib.sha256("||".join(parts).encode("utf-8")).hexdigest()[:24]
+
+
 def load_labels():
+    """Return (by_key, meta, key_version). Joins on the v1 or v2 key field per the file's key_version."""
     if not os.path.exists(_LABELS_PATH):
-        return {}, {}
+        return {}, {}, 1
     with open(_LABELS_PATH, encoding="utf-8") as f:
         doc = json.load(f)
+    key_version = int(doc.get("key_version", 1))
     by_key = {c["case_key"]: c["verdict"] for c in doc.get("cases", [])}
-    return by_key, {k: doc.get(k) for k in ("labeling_version", "labeled_on", "reviewer")}
+    meta = {k: doc.get(k) for k in ("labeling_version", "key_version", "labeled_on", "reviewer", "review_method")}
+    return by_key, meta, key_version
 
 
 def prose_fallback(owner_lesson, want):
@@ -277,7 +290,7 @@ def main():
                     help="print distinct owner-resolved cases (case_key + source) to author the label file")
     args = ap.parse_args()
 
-    labels_by_key, labels_meta = load_labels()
+    labels_by_key, labels_meta, key_version = load_labels()
     db = SessionLocal()
 
     # Preload: topic_id -> lesson_json / title / study_path, and normalized title -> [topic_id].
@@ -363,16 +376,21 @@ def main():
                 # Stage 3: strict §4 harvest (+ §4b projection when strict fails).
                 recall, reason = harvest_recall(text, owner_lesson)
                 harvest_str = recall or f"[REJECT:{reason}]"
+                cand_src = (recall or relaxed_source(text, owner_lesson) or "[none]")[:160]
                 ckey = case_key(text, topic_title.get(owner, ""), harvest_str)
+                ckey2 = case_key_v2(topic_path.get(disp_topic), disp_topic, owner,
+                                    lk.get("concept_id") or text, cand_src)
+                join_key = ckey if key_version == 1 else ckey2
                 owner_resolved_rows.append({
                     "case_key": ckey,
+                    "case_key_v2": ckey2,
                     "concept": text, "owner": topic_title.get(owner, "")[:40],
                     "harvest": harvest_str,
                     "harvested": recall is not None,
                     "recall_line": recall,
                     "path": topic_path.get(disp_topic),
-                    "candidate_source": (recall or relaxed_source(text, owner_lesson) or "[none]")[:160],
-                    "label": labels_by_key.get(ckey, "unlabeled"),
+                    "candidate_source": cand_src,
+                    "label": labels_by_key.get(join_key, "unlabeled"),
                 })
                 if recall is None:
                     drops[reason] += 1
@@ -415,9 +433,12 @@ def main():
             seen.setdefault(c["case_key"], c)
         template = {
             "labeling_version": "TEMPLATE — fill verdict + rationale, then set metadata",
-            "labeled_on": "YYYY-MM-DD", "reviewer": "",
-            "cases": [{"case_key": c["case_key"], "concept": c["concept"], "owner": c["owner"],
-                       "candidate_source": c["candidate_source"], "verdict": "", "rationale": ""}
+            "key_version": 2, "labeled_on": "YYYY-MM-DD", "reviewer": "", "review_method": "",
+            "_note": "Set key_version=2 and use case_key_v2 as the joined `case_key` for new cohorts (collision-"
+                     "resistant). key_version=1 files join on the human-readable v1 case_key.",
+            "cases": [{"case_key": c["case_key_v2"], "case_key_v1": c["case_key"], "concept": c["concept"],
+                       "owner": c["owner"], "candidate_source": c["candidate_source"],
+                       "verdict": "", "rationale": ""}
                       for c in seen.values()],
         }
         print(json.dumps(template, ensure_ascii=False, indent=1))

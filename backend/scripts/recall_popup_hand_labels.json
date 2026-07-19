@@ -1,8 +1,10 @@
 {
  "labeling_version": "1",
+ "key_version": 1,
  "labeled_on": "2026-07-18",
- "reviewer": "analyst (Azalea recall-popup feasibility)",
- "note": "Immutable manual verdicts on each DISTINCT owner-resolved case, keyed by case_key and joined by scripts/recall_popup_feasibility_audit.py. The audit never manufactures these; unmatched cases are reported 'unlabeled'. verdict in {strict_valid, borderline_function, invalid}. strict_valid = a trustworthy self-contained DEFINITION (what the concept IS). borderline_function = self-contained + usable recall but a function/behaviour/theorem statement or notation-laden (not a definition). invalid = owner has no definition-quality material.",
+ "reviewer": "RECALL_POPUP_SPEC §0 feasibility labeling (manual, AI-assisted in Claude Code session)",
+ "review_method": "For each distinct owner-resolved case, the owner lesson's definition-owning material (components entries + definition/core_idea/purpose_context cards) was inspected and judged on whether a trustworthy, self-contained recall line is harvestable under §4. Verdicts are content judgments made INDEPENDENTLY of the deterministic harvester's accept/reject, which is why some rejects are labeled strict_valid (harvester false-negatives) and some accepts are labeled borderline_function.",
+ "note": "Immutable manual verdicts on each DISTINCT owner-resolved case, keyed by case_key (key_version 1 = human-readable v1 key) and joined by scripts/recall_popup_feasibility_audit.py. The audit never manufactures these; unmatched cases are reported 'unlabeled'. Future cohorts should use key_version 2 (case_key_v2, collision-resistant). verdict in {strict_valid, borderline_function, invalid}. strict_valid = a trustworthy self-contained DEFINITION (what the concept IS). borderline_function = self-contained + usable recall but a function/behaviour/theorem statement or notation-laden (not a definition). invalid = owner has no definition-quality material.",
  "cases": [
   {
    "case_key": "row echelon form || row echelon form || row echelon form ref is a matrix form that makes solving sys",
