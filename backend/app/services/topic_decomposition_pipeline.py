@@ -132,6 +132,39 @@ _STRUCTURAL_ANATOMY_WORDS = frozenset({
     "node", "nodes", "element", "elements", "item", "items", "tree", "trees", "vertex", "vertices"})
 
 
+def _prereq_word(w: str) -> str:
+    """Light singularization for prereq identity ('trees'≈'tree'; never 'class'→'clas')."""
+    if len(w) >= 4 and w.endswith("s") and not w.endswith("ss"):
+        return w[:-1]
+    return w
+
+
+def _prereq_key(name: str) -> str:
+    """Shape-blind prereq identity: slug/display/case/plural forms of one concept share a key
+    ('binary_search_tree' == 'Binary Search Trees')."""
+    return " ".join(_prereq_word(w) for w in re.findall(r"[a-z0-9]+", str(name or "").lower()))
+
+
+def _prereq_display(name: str) -> str:
+    s = str(name or "").strip()
+    return s.replace("_", " ").strip() if "_" in s else s
+
+
+def _drop_prereq_chain_redundancy(names: list[str]) -> list[str]:
+    """The prereq card offers earlier-textbook-unit refreshers. A prereq that is itself a prerequisite OF
+    another listed prereq is redundant — refreshing the advanced one covers it ('binary trees' beside 'binary
+    search trees'; 'probability' beside 'conditional probability'). Detected as a PROPER word-subset on the
+    singularized key words; the broader/simpler entry (the subset) is dropped, the advanced one kept."""
+    key_words = {n: frozenset(_prereq_key(n).split()) for n in names}
+    kept = []
+    for n in names:
+        kw = key_words[n]
+        if kw and any(kw < key_words[m] for m in names if m != n):
+            continue
+        kept.append(n)
+    return kept
+
+
 def _is_circular_prereq(name: str, goal: str | None) -> bool:
     """True when a proposed prerequisite is really THE GOAL SUBJECT wrapped in generic words — e.g. goal
     'learn combinatorial analysis' with prereq 'Combinatorial Principles'. Such a prereq is CIRCULAR (its
@@ -795,31 +828,18 @@ def generate_decomposed_topics(
     auto_prereqs = _cross_topic_foundations(teaching, goal)
     structured_prereqs = [*llm_prereqs, *auto_prereqs, *dropped_prereqs, *demoted_prereqs]
     if structured_prereqs:
-        # One concept = ONE prereq: names arrive in mixed shapes (the model sometimes emits the slug
-        # 'binary_search_tree' while a demotion contributes the display 'Binary Search Tree'; and singular vs
-        # plural — 'binary search trees' vs 'binary search tree' — were live duplicates), so dedup on a
-        # shape-blind key (alnum words, light singularization) and render slugs as display phrases.
-        def _pw(w: str) -> str:
-            if len(w) >= 4 and w.endswith("s") and not w.endswith("ss"):
-                return w[:-1]
-            return w
-
-        def _pkey(name: str) -> str:
-            return " ".join(_pw(w) for w in re.findall(r"[a-z0-9]+", str(name or "").lower()))
-
-        def _pdisplay(name: str) -> str:
-            s = str(name or "").strip()
-            return s.replace("_", " ").strip() if "_" in s else s
-
         for t in topics_out:
             if _is_opener(t):
                 ap = list(t.get("assumed_prerequisites") or [])
-                have = {_pkey(a) for a in ap}
+                have = {_prereq_key(a) for a in ap}
                 for p in structured_prereqs:
-                    key = _pkey(p)
+                    key = _prereq_key(p)
                     if p and key and key not in have:
-                        ap.append(_pdisplay(p))
+                        ap.append(_prereq_display(p))
                         have.add(key)
+                # A prereq that is itself a prerequisite OF another listed prereq is redundant — refreshing
+                # the advanced one's path covers it (textbook model: offer the immediately-prior unit).
+                ap = _drop_prereq_chain_redundancy(ap)
                 t["assumed_prerequisites"] = ap
                 if prereq_glosses or prereq_requirements:
                     meta = t.setdefault("decomposition_metadata", {})

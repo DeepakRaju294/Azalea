@@ -404,6 +404,81 @@ class CircularPrereqAnatomyStrip(unittest.TestCase):
         self.assertFalse(_is_circular_prereq("conditional probability", "learn bayes theorem"))
 
 
+class PrereqChainRedundancy(unittest.TestCase):
+    """Textbook model: the prereq card offers earlier-unit refreshers. A prereq that is itself a prerequisite
+    of another listed prereq is redundant — refreshing the advanced one covers it."""
+
+    def test_subset_prereq_dropped_advanced_kept(self):
+        from app.services.topic_decomposition_pipeline import _drop_prereq_chain_redundancy as chain
+        self.assertEqual(chain(["binary trees", "binary search trees"]), ["binary search trees"])
+        self.assertEqual(chain(["probability", "conditional probability"]), ["conditional probability"])
+        self.assertEqual(chain(["binary tree", "Binary Search Trees"]), ["Binary Search Trees"])  # plural/case
+
+    def test_unrelated_prereqs_all_kept(self):
+        from app.services.topic_decomposition_pipeline import _drop_prereq_chain_redundancy as chain
+        self.assertEqual(chain(["linked lists", "binary search trees"]),
+                         ["linked lists", "binary search trees"])
+        self.assertEqual(chain(["recursion"]), ["recursion"])
+
+    def test_ground_prereq_card_render_backstop(self):
+        # Prose-path names include the path's own subject in anatomy wrapping + a chain-redundant parent:
+        # the rendered card keeps ONLY the textbook-section prereq.
+        from app.services.lean_lesson_generator import _ground_prereq_card
+
+        class _SP:
+            goal = "Want to learn about bst traversal"
+
+        class _T:
+            id, title, order_index = "i", "Introduction to Bst Traversal", 0
+            course_type, topic_type = "study_path_introduction", None
+            assumed_prerequisites = ["node traversal", "binary trees", "binary search trees"]
+            decomposition_metadata = {}
+            study_path = _SP()
+
+        cards = [{"card_type": "purpose_context", "blueprint_key": "prerequisites",
+                  "title": "Prerequisites",
+                  "points": ["node traversal", "binary trees", "binary search trees"]}]
+        out = _ground_prereq_card(cards, _T(), brief_fn=lambda names, goal: [])
+        pts = " \n ".join(out[0]["points"]).lower()
+        self.assertIn("binary search trees", pts)
+        self.assertNotIn("node traversal", pts)              # anatomy-wrapped goal subject
+        self.assertNotIn("binary trees\n", pts + "\n")       # chain-redundant parent of BST
+
+
+class InjectedMemberUnitGrouping(unittest.TestCase):
+    """The injected Level-Order cloned the In-Order template's unit_title, so the UI (which groups by unit)
+    rendered it 'grouped in with inorder'. Injected members get their OWN unit; consolidation makes each
+    implementation share its walkthrough partner's unit."""
+
+    def test_injected_member_has_own_unit_and_pairs_are_unit_coherent(self):
+        from app.services.topic_generator import _expand_canonical_family, _order_canonical_family
+
+        def wt(t, u):
+            return {"title": t, "course_type": "algorithm_walkthrough",
+                    "topic_type": "algorithm_walkthrough", "unit_title": u}
+
+        def cd(t, u):
+            return {"title": t, "course_type": "coding_implementation",
+                    "topic_type": "coding_implementation", "unit_title": u}
+
+        topics = [wt("Inorder Traversal", "Inorder Traversal of BST"),
+                  cd("Implementing Inorder Traversal", "Inorder Traversal of BST"),
+                  wt("Preorder Traversal", "Preorder Traversal of BST"),
+                  cd("Implementing Preorder Traversal", "Preorder Traversal of BST")]
+        out = _expand_canonical_family(topics, "Want to learn about bst traversal")
+        lvl = next(t for t in out if "Level" in t["title"])
+        self.assertEqual(lvl["unit_title"], "Level-Order Traversal")        # own unit, not the template's
+        # a backfilled implementation misfiled under the Inorder unit gets re-filed with its partner
+        out.append(cd("Implementing Level-Order Traversal", "Inorder Traversal of BST"))
+        ordered = _order_canonical_family(out, "Want to learn about bst traversal")
+        impl = next(t for t in ordered if t["title"] == "Implementing Level-Order Traversal")
+        wt_lvl = next(t for t in ordered if t["title"] == "Level-Order Traversal")
+        self.assertEqual(impl["unit_title"], wt_lvl["unit_title"])
+        # canonical continuity order: in -> pre -> post(if present) -> level
+        titles = [t["title"] for t in ordered]
+        self.assertLess(titles.index("Pre-Order Traversal"), titles.index("Level-Order Traversal"))
+
+
 class CodingTopicsHaveNoKeyTerms(unittest.TestCase):
     """Structural consistency (path review): components_terms was OPTIONAL on coding_implementation, so the
     model added it to one sibling implementation and not the others — arbitrary structure across a family.

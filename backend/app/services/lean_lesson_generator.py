@@ -4086,6 +4086,23 @@ def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic, brief_fn=None
                     requirements.setdefault(bname, str(b["required_knowledge"]).strip())
         except Exception:  # noqa: BLE001 — enrichment must never break generation
             pass
+    # TEXTBOOK-SECTION prereqs only (product rule): the card offers earlier-unit refreshers a learner would
+    # read a real textbook section on — never the path's own subject in anatomy wrapping ("node traversal" on
+    # a traversal path), and never a prereq another listed prereq already implies ("binary trees" beside
+    # "binary search trees" — refreshing the advanced one covers it). Render-side backstop mirroring the
+    # decomposition-side guards, since the prose path can (re)introduce names past decomposition.
+    try:
+        from app.services.topic_decomposition_pipeline import (_drop_prereq_chain_redundancy,
+                                                               _is_circular_prereq)
+        goal = str(getattr(getattr(topic, "study_path", None), "goal", "") or "")
+        if goal:
+            non_circular = [n for n in names if not _is_circular_prereq(n, goal)]
+            if non_circular:                                 # never empty the card over this filter
+                names = non_circular
+        names = _drop_prereq_chain_redundancy(names) or names
+    except Exception:  # noqa: BLE001 — a filter must never break the prereq card
+        pass
+
     # Drop prereqs that aren't study-worthy topics (structural sub-parts like "left and right children" / "visited
     # nodes"): they must never become an open_study_path prereq. Runs BEFORE link emission (§_ground precedes
     # emission), so a dropped bullet gets no link either. Guard: if the filter would empty the card, keep the

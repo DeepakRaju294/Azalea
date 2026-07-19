@@ -503,8 +503,10 @@ def _expand_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> 
             # old " Algorithm Walkthrough" suffix made injected members read inconsistently (live complaint).
             "title": member_title,
             "course_type": "algorithm_walkthrough", "topic_type": "algorithm_walkthrough",
+            # OWN unit — cloning the template's unit filed the injected Level-Order under the In-Order unit,
+            # so the UI (which groups by unit) rendered it "grouped in with inorder" (live complaint).
             "subject_key": slug, "secondary_course_types": [],
-            "unit_title": (template or {}).get("unit_title") or "Algorithms",
+            "unit_title": member_title,
             "learner_outcome": f"The learner can trace {member_title} step by step on a concrete input.",
             "purpose": f"Trace {member_title} on a concrete input to see how the algorithm works.",
             "in_scope": [f"Tracing {member_title} on a concrete input"],
@@ -560,6 +562,15 @@ def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> l
             t["title"] = canon[s]
         elif _ttype(t) == "coding_implementation":
             t["title"] = f"Implementing {canon[s]}"     # consistent — never "…in Code" on some, bare on others
+    # UNIT coherence per pair: an implementation shares its WALKTHROUGH partner's unit (the coding backfill
+    # files synthesized topics under the first coding unit it finds, which put "Implementing Level-Order
+    # Traversal" inside the Inorder unit — the UI groups by unit, so the pair rendered under the wrong header).
+    last_wt_unit: str | None = None
+    for t in fam_block:
+        if _ttype(t) == "algorithm_walkthrough":
+            last_wt_unit = str(t.get("unit_title") or "").strip() or None
+        elif _ttype(t) == "coding_implementation" and last_wt_unit:
+            t["unit_title"] = last_wt_unit
     first, famset = fam_positions[0], set(fam_positions)
     result: list[dict[str, Any]] = []
     for i, t in enumerate(topics):
