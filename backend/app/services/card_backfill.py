@@ -94,7 +94,41 @@ def backfill_missing_required_cards(
                          reason="missing_required_card", action=action, detail=detail)
 
     present = {_card_key(c) for c in cards if isinstance(c, dict) and not _is_empty(c)}
-    return [k for k in required if k not in present]
+    still = [k for k in required if k not in present]
+    # DETERMINISTIC LAST RESORT for practice (product decision): the LLM backfill can fail, and a lesson then
+    # shipped `ready` with missing_required_cards=['practice'] recorded and ignored (live). A recall practice
+    # built from the lesson's own takeaways is never great but always present — and the stamp keeps it honest.
+    if "practice" in still:
+        card = _deterministic_practice_card(lesson_json, topic)
+        if card:
+            _insert_at_blueprint_position(cards, card, "practice", required)
+            log_card_failure(topic=topic, card_key="practice", stage="backfill",
+                             reason="missing_required_card", action="synthesized_deterministic", detail="")
+            present = {_card_key(c) for c in cards if isinstance(c, dict) and not _is_empty(c)}
+            still = [k for k in required if k not in present]
+    return still
+
+
+def _deterministic_practice_card(lesson_json: dict[str, Any], topic: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Last-resort practice card, no LLM: recall/apply prompts from the lesson's own key takeaways (or its
+    teaching-card titles when takeaways are absent). Stamped `synthesized: deterministic_backfill` so telemetry
+    can count how often the real generator failed."""
+    title = str(topic.get("title") or "this topic").strip() or "this topic"
+    takeaways = [str(t).strip() for t in (lesson_json.get("key_takeaways") or []) if str(t).strip()]
+    if takeaways:
+        points = ["In your own words, explain each of the following — and give one concrete example for each:"]
+        points += [f"  - {t}" for t in takeaways[:4]]
+    else:
+        titles = [str(c.get("title") or "").strip() for c in (lesson_json.get("lesson_cards") or [])
+                  if isinstance(c, dict) and _card_key(c) not in ("practice", "worked_example")
+                  and str(c.get("title") or "").strip()]
+        if not titles:
+            return None
+        points = [f"Explain the following ideas from {title}, with one example each:"]
+        points += [f"  - {t}" for t in titles[:4]]
+    return {"blueprint_key": "practice", "card_type": "quick_practice",
+            "title": f"Practice: {title}", "points": points,
+            "metadata": {"synthesized": "deterministic_backfill"}}
 
 
 def _default_worked_example(lesson_json: dict[str, Any], topic: dict[str, Any]) -> bool:

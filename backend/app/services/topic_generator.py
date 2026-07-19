@@ -334,7 +334,16 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
                 verified_example = getattr(_a, "slug", None)
             except Exception:  # noqa: BLE001 — certification must never break generation
                 verified_example = None
+        # SHADOW (scope-plan #2 evidence): an empty scope_in on a teaching topic means the plan carries NO
+        # content commitments — the generator can ship a few generic cards and still "satisfy" the blueprint
+        # (live: every topic on a thin turbulence path had scope_in=[]). Logged + stamped for telemetry;
+        # enforcement (reject/re-ask) comes once the shadow data sizes the problem.
+        scope_in_empty = not (topic.get("in_scope") or [])
+        if scope_in_empty:
+            _log.info("scope certification: EMPTY scope_in on teaching topic %r (%s) — no content commitments",
+                      topic.get("title"), ttype)
         meta["scope_plan"] = {
+            "scope_in_empty": scope_in_empty,
             "scope_in": list(topic.get("in_scope") or []),
             "scope_out": list(topic.get("out_of_scope") or []),
             "role": (

@@ -160,9 +160,17 @@ def _strip_generic_prereq_tail(name: str) -> str:
     return " ".join(words)
 
 
+_PREREQ_LEAD_GLUE = frozenset({"to", "of", "the", "a", "an", "and", "in", "on", "for", "with"})
+
+
 def _prereq_display(name: str) -> str:
     s = str(name or "").strip()
     s = s.replace("_", " ").strip() if "_" in s else s
+    # leading glue reads malformed on the card and in the link ("to Fluid Dynamics" — live defect)
+    words = s.split()
+    while len(words) > 1 and words[0].lower() in _PREREQ_LEAD_GLUE:
+        words.pop(0)
+    s = " ".join(words)
     return _strip_generic_prereq_tail(s) or s
 
 
@@ -477,8 +485,12 @@ def _demote_parent_of_goal_topics(topics_out: list[dict[str, Any]], goal: str | 
                                         if w not in set(stripped) and w not in _GENERIC_TOPIC_FILLER})
         if not (subset_parent or acronym_parent or umbrella_parent):
             continue
+        # Drop filler AND glue when building the prereq name: _norm_title("to") returns "" (glue-stripped),
+        # and "" is not in the filler set — so "Introduction to Fluid Dynamics" once demoted to the malformed
+        # prereq "to Fluid Dynamics" whose link read "Understand the basics of to Fluid Dynamics" (live).
+        # A word whose normalization is EMPTY is glue and must go too.
         name = " ".join(w for w in str(t.get("title") or "").split()
-                        if _norm_title(w) not in _GENERIC_TOPIC_FILLER).strip()
+                        if _norm_title(w) and _norm_title(w) not in _GENERIC_TOPIC_FILLER).strip()
         demoted.append(name or str(t.get("title") or "").strip())
         remove_ids.add(id(t))
         # A demoted subject takes its own coding follow-up with it — 'Binary Search Tree' becoming a prereq

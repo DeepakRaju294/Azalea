@@ -597,11 +597,15 @@ class ExampleRelevanceGuards(unittest.TestCase):
     and _canonical_concept_key (adapter-first) must no longer IDENTIFY them as reynolds_number."""
 
     def test_modeling_titles_do_not_route_to_reynolds(self):
-        for t in ("Turbulence Models", "Turbulence Modeling with k-epsilon", "Large Eddy Simulation",
-                  "RANS Closures"):
+        # Modeling topics must never get the Reynolds example (verified-but-irrelevant). They now route to
+        # the RELEVANT turbulent_kinetic_energy adapter; LES/DNS-specific titles stay unrouted (withhold).
+        for t in ("Turbulence Models", "Turbulence Modeling with k-epsilon", "RANS Closures"):
             a = route_adapter({"title": t, "topic_type": "science_mechanism",
                                "course_type": "science_mechanism"})
-            self.assertIsNone(a, t)
+            self.assertNotEqual(getattr(a, "slug", None), "reynolds_number", t)
+        les = route_adapter({"title": "Large Eddy Simulation", "topic_type": "science_mechanism",
+                             "course_type": "science_mechanism"})
+        self.assertIsNone(les)
 
     def test_plain_turbulence_titles_still_route(self):
         for t in ("Fluid Turbulence", "Classes of Turbulence", "Laminar vs Turbulent Flow"):
@@ -609,10 +613,50 @@ class ExampleRelevanceGuards(unittest.TestCase):
                                "course_type": "science_mechanism"})
             self.assertEqual(getattr(a, "slug", None), "reynolds_number", t)
 
-    def test_turbulence_models_identity_is_not_the_adapter(self):
+    def test_turbulence_models_identity_is_not_reynolds(self):
         from app.services.topic_generator import _canonical_concept_key
         self.assertNotEqual(_canonical_concept_key("Turbulence Models", "science_mechanism"),
                             "reynolds_number")
+
+    def test_modeling_topics_route_to_tke_the_relevant_adapter(self):
+        # k = ½(u'²+v'²+w'²) IS the k of k-epsilon — a relevant verified example for modeling topics,
+        # including the word-order variant 'Models of Turbulence' that dodged the first alias set.
+        for t in ("Mathematical Models of Turbulence", "Turbulence Models", "k-epsilon Model",
+                  "Turbulent Kinetic Energy"):
+            a = route_adapter({"title": t, "topic_type": "science_mechanism",
+                               "course_type": "science_mechanism"})
+            self.assertEqual(getattr(a, "slug", None), "turbulent_kinetic_energy", t)
+
+    def test_plain_kinetic_energy_keeps_the_mechanics_adapter(self):
+        a = route_adapter({"title": "Kinetic Energy", "topic_type": "math_formula_method",
+                           "course_type": "math_formula_method"})
+        self.assertEqual(getattr(a, "slug", None), "kinetic_energy")
+
+    def test_demoted_prereq_name_has_no_leading_glue(self):
+        # Live: 'Introduction to Fluid Dynamics' demoted to the malformed prereq 'to Fluid Dynamics'
+        # (link: 'Understand the basics of to Fluid Dynamics').
+        from app.services.topic_decomposition_pipeline import (_demote_parent_of_goal_topics,
+                                                               _prereq_display)
+        tops = [{"title": "Introduction to Fluid Dynamics", "topic_type": "science_mechanism",
+                 "course_type": "science_mechanism"},
+                {"title": "Turbulence Models", "topic_type": "science_mechanism",
+                 "course_type": "science_mechanism"}]
+        self.assertEqual(_demote_parent_of_goal_topics(tops, "want to learn about fluid turbulence"),
+                         ["Fluid Dynamics"])
+        self.assertEqual(_prereq_display("to Fluid Dynamics"), "Fluid Dynamics")
+
+    def test_deterministic_practice_backfill_when_llm_fails(self):
+        from app.services.card_backfill import backfill_missing_required_cards
+        lesson = {"lesson_cards": [
+            {"blueprint_key": "background", "card_type": "purpose_context", "title": "BG", "points": ["x"]}],
+            "key_takeaways": ["Turbulence is chaotic", "Re predicts the regime"]}
+        topic = {"id": "t", "title": "Turbulence Models", "topic_type": "science_mechanism"}
+        still = backfill_missing_required_cards(
+            lesson, topic, worked_example_fn=lambda l, t: False, single_card_fn=lambda k, l, t: None)
+        self.assertNotIn("practice", still)                  # deterministic card filled the gap
+        practice = [c for c in lesson["lesson_cards"] if c.get("blueprint_key") == "practice"]
+        self.assertEqual(len(practice), 1)
+        self.assertEqual(practice[0]["metadata"]["synthesized"], "deterministic_backfill")
 
 
 class CertifiedPathProseGuard(unittest.TestCase):

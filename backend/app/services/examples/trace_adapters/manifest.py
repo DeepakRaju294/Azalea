@@ -454,7 +454,10 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
     "dijkstra": {"any": ["dijkstra", "shortest path", "shortest-path"], "priority": 10},
     # T6 Formula Engine concepts (CP12b) — distinct alias phrases; compound_interest must win over
     # simple_interest when both "compound" and "interest" appear (higher priority + simple's `not` guard).
-    "kinetic_energy": {"any": ["kinetic energy"], "priority": 96},
+    # 'turbulent' guard: "Turbulent Kinetic Energy" is a different quantity (fluctuation energy, the k in
+    # k-epsilon) with its own adapter — a ½mv² example there would be verified-but-irrelevant. NOTE: this
+    # STATIC entry wins over the spec-derived rule (registration uses setdefault), so the guard must live here.
+    "kinetic_energy": {"any": ["kinetic energy"], "not": ["turbulent", "turbulence", "tke"], "priority": 96},
     "ohms_law": {"any": ["ohm's law", "ohms law", "ohm law"], "priority": 95},
     "compound_interest": {"any": ["compound interest"], "priority": 94},
     "simple_interest": {"any": ["simple interest"], "not": ["compound"], "priority": 93},

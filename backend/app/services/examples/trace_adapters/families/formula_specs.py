@@ -34,7 +34,9 @@ KINEMATICS = FormulaSpec(  # register=False: the hand-coded `kinematics` owns th
 
 KINETIC_ENERGY = FormulaSpec(
     slug="kinetic_energy", title="kinetic energy of a moving body", family="physics",
-    aliases=["kinetic energy"], priority=96,
+    # 'turbulent' guard: "Turbulent Kinetic Energy" is a DIFFERENT quantity (fluctuation energy, the k in
+    # k-epsilon) with its own adapter — a ½mv² example on a TKE topic would be verified-but-irrelevant.
+    aliases=["kinetic energy"], not_aliases=["turbulent", "turbulence", "tke"], priority=96,
     problem_template="A body of mass m = {m} kg moves at v = {v} m/s. Find its kinetic energy.",
     givens=[Given("m", "kg", 1, 20), Given("v", "m/s", 1, 15)],
     outputs=[Output("KE", "KE = (m*v^2)/2", "(m*v**2)/2", "J", "compute_kinetic_energy", "kinetic energy")],
@@ -130,6 +132,7 @@ REYNOLDS_NUMBER = FormulaSpec(
     # identity: _canonical_concept_key consults routing first, so these topics were being IDENTIFIED as
     # reynolds_number.)
     not_aliases=["turbulence model", "turbulence models", "turbulence modeling", "turbulence modelling",
+                 "models of turbulence", "modeling of turbulence", "modelling of turbulence",
                  "k-epsilon", "k epsilon", "large eddy", "les", "rans", "reynolds stress", "closure"],
     priority=95,
     problem_template=("Oil of density {rho} kg/m^3 and viscosity {mu} Pa*s flows at {v} m/s through a pipe "
@@ -201,6 +204,45 @@ LAMINAR_PRESSURE_DROP = FormulaSpec(
         "linearly with speed.",
     ],
     instance_ok=lambda g: g["D"] >= 0.2 and g["mu"] >= 0.2,
+)
+
+# Turbulence-MODELING topics (k-epsilon, RANS) get a RELEVANT verified example: turbulent kinetic energy
+# k = ½(u'² + v'² + w'²) is literally the "k" the k-epsilon model transports, computed from the velocity
+# fluctuations — the exact fluctuations→energy connection an external review flagged as missing. (These
+# topics are not_aliased away from reynolds_number, whose calculation was verified-but-irrelevant for them;
+# LES/DNS-specific topics stay unrouted → withhold, since a TKE calc doesn't demonstrate filtering/resolution.)
+TURBULENT_KINETIC_ENERGY = FormulaSpec(
+    slug="turbulent_kinetic_energy", title="Turbulent kinetic energy (the k in k-epsilon)", family="physics",
+    aliases=["turbulent kinetic energy", "tke", "turbulence model", "turbulence models",
+             "turbulence modeling", "turbulence modelling", "k-epsilon", "k epsilon",
+             "turbulence energy", "models of turbulence", "modeling of turbulence",
+             "modelling of turbulence"],
+    priority=96,
+    problem_template=("At a point in a turbulent flow, the measured velocity FLUCTUATIONS about the mean are "
+                      "u' = {up} m/s, v' = {vp} m/s and w' = {wp} m/s. Compute the turbulent kinetic energy "
+                      "per unit mass."),
+    givens=[Given("up", "m/s", 0, 3, integer=False),
+            Given("vp", "m/s", 0, 3, integer=False),
+            Given("wp", "m/s", 0, 3, integer=False)],
+    outputs=[Output("k", "k = (up^2 + vp^2 + wp^2)/2", "(up*up + vp*vp + wp*wp)/2", "m^2/s^2",
+                    "compute_turbulent_kinetic_energy", "turbulent kinetic energy")],
+    conventions={"formula": "k = (u'^2 + v'^2 + w'^2)/2",
+                 "units": "SI (m/s for fluctuations; k in m^2/s^2 = J/kg)",
+                 "meaning": "k measures the energy carried by the velocity fluctuations about the mean flow"},
+    canonical_latex="k = \\tfrac{1}{2}\\left(\\overline{u'^2} + \\overline{v'^2} + \\overline{w'^2}\\right)",
+    canonical_notes=[
+        "\\(u', v', w'\\): velocity FLUCTUATIONS about the mean flow (Reynolds decomposition: instantaneous "
+        "velocity = mean + fluctuation).  \\(k\\): turbulent kinetic energy per unit mass (J/kg).",
+        "This \\(k\\) is one of the two variables the \\(k\\)-\\(\\epsilon\\) model transports — the model "
+        "solves equations for \\(k\\) (how much fluctuation energy exists) and \\(\\epsilon\\) (how fast it "
+        "dissipates to heat).",
+    ],
+    edge_cases=[
+        "In laminar flow the fluctuations vanish, so \\(k = 0\\) — turbulence models have nothing to model.",
+        "\\(k\\) weighs each direction's fluctuation by its SQUARE: one strong fluctuating component "
+        "dominates two weak ones.",
+    ],
+    instance_ok=lambda g: (g["up"] + g["vp"] + g["wp"]) >= 1.0 and len({g["up"], g["vp"], g["wp"]}) >= 2,
 )
 
 OHMS_LAW = FormulaSpec(
@@ -1337,7 +1379,7 @@ ALL_SPECS = [
     # physics / EE
     KINEMATICS, KINETIC_ENERGY, NEWTONS_SECOND_LAW, WEIGHT_FORCE, MOMENTUM, WORK_DONE, GRAVITATIONAL_PE, OHMS_LAW,
     PROJECTILE_RANGE, CENTRIPETAL_ACCEL, WAVE_SPEED, PRESSURE, MECHANICAL_POWER, SPRING_PE, REYNOLDS_NUMBER,
-    LAMINAR_PRESSURE_DROP,
+    LAMINAR_PRESSURE_DROP, TURBULENT_KINETIC_ENERGY,
     # finance
     SIMPLE_INTEREST, COMPOUND_INTEREST, PRESENT_VALUE, PERCENT_CHANGE, FUTURE_VALUE, BREAK_EVEN, PROFIT_MARGIN,
     # geometry
