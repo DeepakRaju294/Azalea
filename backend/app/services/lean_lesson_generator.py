@@ -8633,11 +8633,23 @@ def _ground_edge_case_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
     """For an adapter-backed formula topic, replace the edge-case card's CONTENT with the adapter spec's
     authored, correct boundary facts. The lean LLM often states a wrong edge case (e.g. "P(A)=0 gives
     indeterminate results" — actually the posterior is 0; the undefined case is P(B)=0). The true behavior is
-    known to the spec author, so use it. No-op for non-adapter topics or specs without authored edge_cases."""
+    known to the spec author, so use it. No-op for non-adapter topics or specs without authored edge_cases.
+
+    PLAN-AUTHORITATIVE GUARD: when the topic carries a certified scope plan, the plan's verified_example is
+    the ONLY adapter this pass may ground from. Routing independently here re-opened the verified-but-
+    irrelevant hole at card level (live: 'Understanding Fluid Turbulence', certified verified_example=null,
+    matched the broad 'turbulence' alias → Reynolds spec edge cases + the practice backfill then asked a
+    beginner to explain Re=ρvD/μ, a formula NO card ever taught)."""
     try:
         from app.services.examples.trace_pipeline import route_adapter
+        scope_plan = ((getattr(topic, "decomposition_metadata", None) or {}).get("scope_plan") or {})
+        planned_slug = scope_plan.get("verified_example")
+        if scope_plan and not planned_slug:
+            return False                                   # certified: NO adapter backs this topic
         adapter = route_adapter({"title": getattr(topic, "title", "") or "",
                                  "course_type": _topic_type_key(topic)})
+        if planned_slug and adapter is not None and getattr(adapter, "slug", None) != planned_slug:
+            return False                                   # certified to a DIFFERENT adapter than routing found
         spec = None
         if adapter is not None:                            # any declarative engine that authors edge_cases
             spec = getattr(adapter, "_formula_spec", None) or getattr(adapter, "_rowreduce_spec", None)

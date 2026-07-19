@@ -761,6 +761,46 @@ def _synthesize_intro_topic(goal: str | None) -> dict[str, Any]:
     }
 
 
+def _retry_thin_plan(parsed: dict[str, Any], raw_topics: list[dict[str, Any]], goal: str | None,
+                     chunks_text: str, feedback: str | None, fn: ModelFn) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """One bounded re-ask when the model returned a SINGLE teaching topic that itself claims several distinct
+    content commitments — the signature of an undecomposed area goal (live: 'fluid turbulence' came back as one
+    concept_intuition topic whose in_scope listed characteristics + causes + laminar-vs-turbulent; regens of the
+    same goal shrank 3 → 2 → 1 topics). A single-topic plan whose topic carries 0-1 commitments is a legitimate
+    narrow-technique goal and is NEVER retried. The retry is accepted only when it comes back strictly richer;
+    otherwise the original plan stands. Costs at most one extra decomposition call, only on thin plans."""
+    teaching = [t for t in raw_topics
+                if str(t.get("topic_type") or "") != "study_path_introduction"]
+    if len(teaching) != 1 or len(list(teaching[0].get("in_scope") or [])) < 2:
+        return parsed, raw_topics
+    t = teaching[0]
+    commitments = "; ".join(str(s) for s in (t.get("in_scope") or []))
+    thin_note = (
+        "YOUR PREVIOUS PLAN WAS TOO THIN: it had a single teaching topic "
+        f"({str(t.get('title') or t.get('subject_key') or 'the topic')!r}) that itself claims several distinct "
+        f"content commitments ({commitments}). A goal naming an AREA or PHENOMENON must be DECOMPOSED: each "
+        "commitment a course would teach as its own unit — a mechanism, a governing quantity or criterion, a "
+        "regime comparison, a model or method — becomes its OWN topic with its own in_scope. Return a single "
+        "teaching topic ONLY if the goal is genuinely one narrow technique with one deliverable. Regenerate "
+        "the complete plan now."
+    )
+    combined = f"{feedback.strip()}\n\n{thin_note}" if feedback and feedback.strip() else thin_note
+    try:
+        payload = {"system": SYSTEM_PROMPT,
+                   "user": build_decomposition_prompt(goal=goal, chunks_text=chunks_text, feedback=combined)}
+        parsed2 = _coerce(fn(payload))
+        raw2 = [x for x in (parsed2.get("topics") or []) if isinstance(x, dict)]
+        teaching2 = [x for x in raw2 if str(x.get("topic_type") or "") != "study_path_introduction"]
+        if len(teaching2) > 1:
+            _log.info("thin-plan retry: expanded %d -> %d teaching topics for goal %r",
+                      len(teaching), len(teaching2), goal)
+            return parsed2, raw2
+        _log.info("thin-plan retry: model kept a single teaching topic for goal %r — accepting original", goal)
+    except Exception:  # noqa: BLE001 — the retry is best-effort; the original plan is always usable
+        _log.info("thin-plan retry failed for goal %r — accepting original plan", goal)
+    return parsed, raw_topics
+
+
 def generate_decomposed_topics(
     goal: str | None,
     chunks_text: str,
@@ -775,10 +815,12 @@ def generate_decomposed_topics(
     `coding_follow_ups=False` (non-coding domains) skips the 'Implementing X' follow-up append."""
     payload = {"system": SYSTEM_PROMPT,
                "user": build_decomposition_prompt(goal=goal, chunks_text=chunks_text, feedback=feedback)}
-    parsed = _coerce((model_fn or _default_model_fn)(payload))
+    fn = model_fn or _default_model_fn
+    parsed = _coerce(fn(payload))
     raw_topics = [t for t in (parsed.get("topics") or []) if isinstance(t, dict)]
     if not raw_topics:
         return []
+    parsed, raw_topics = _retry_thin_plan(parsed, raw_topics, goal, chunks_text, feedback, fn)
 
     path_plan = parsed.get("path_plan") if isinstance(parsed.get("path_plan"), dict) else {}
     path_plan.setdefault("required_capabilities", [])

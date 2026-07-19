@@ -1112,5 +1112,105 @@ class CoverageStubSynthesis(unittest.TestCase):
         self.assertEqual(t["title"], "Bayes theorem")
 
 
+class ThinPlanRetry(unittest.TestCase):
+    """A single teaching topic claiming several distinct in_scope commitments is an undecomposed area goal
+    (live: 'fluid turbulence' regens shrank 3→2→1 topics; the last was ONE concept_intuition topic claiming
+    characteristics + causes + laminar-vs-turbulent). The pipeline re-asks ONCE with thinness feedback and
+    accepts the retry only when strictly richer. Narrow single-technique plans (0-1 commitments) never retry."""
+
+    @staticmethod
+    def _plan(topics):
+        return {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": topics}
+
+    @staticmethod
+    def _topic(tid, title, scope, tt="concept_intuition"):
+        return {"topic_id": tid, "capability_id": tid, "subject_key": tid, "primary_action": "understand",
+                "content_role": "foundation", "topic_type": tt, "title": title, "unit_title": "u",
+                "purpose": "p", "in_scope": scope, "basis": "goal"}
+
+    def test_thin_plan_retried_and_richer_result_adopted(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        thin = self._plan([self._topic("turb", "Understanding Fluid Turbulence",
+                                       ["characteristics of turbulence", "causes of turbulence",
+                                        "laminar vs turbulent flow"])])
+        rich = self._plan([self._topic("mech", "Physics of Turbulence", ["energy transfer"],
+                                       tt="science_mechanism"),
+                           self._topic("regime", "Laminar vs Turbulent Flow", ["the transition"],
+                                       tt="science_mechanism")])
+        calls = []
+        def fn(payload):
+            calls.append(payload["user"])
+            return thin if len(calls) == 1 else rich
+        topics = generate_decomposed_topics("learn fluid turbulence", "s", model_fn=fn)
+        self.assertEqual(len(calls), 2)
+        self.assertIn("TOO THIN", calls[1])                   # feedback names the failure
+        self.assertIn("laminar vs turbulent flow", calls[1])  # and the claimed commitments
+        titles = {t["title"] for t in topics}
+        self.assertIn("Physics of Turbulence", titles)
+        self.assertNotIn("Understanding Fluid Turbulence", titles)
+
+    def test_narrow_single_technique_plan_not_retried(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        narrow = self._plan([self._topic("cts", "Completing the Square", ["one commitment"],
+                                         tt="math_formula_method")])
+        calls = []
+        def fn(payload):
+            calls.append(1)
+            return narrow
+        generate_decomposed_topics("learn completing the square", "s", model_fn=fn)
+        self.assertEqual(len(calls), 1)                       # 0-1 commitments -> legitimate narrow goal
+
+    def test_retry_that_stays_thin_keeps_original(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        thin = self._plan([self._topic("turb", "Understanding Fluid Turbulence", ["a", "b", "c"])])
+        calls = []
+        def fn(payload):
+            calls.append(1)
+            return thin
+        topics = generate_decomposed_topics("learn fluid turbulence", "s", model_fn=fn)
+        self.assertEqual(len(calls), 2)                       # retried once, then accepted the original
+        self.assertTrue(any(t["title"] == "Understanding Fluid Turbulence" for t in topics))
+
+
+class EdgeCaseGroundingPlanGuard(unittest.TestCase):
+    """Card-level adapter passes must respect the certified plan: a topic certified verified_example=null
+    never receives adapter-spec edge cases (live: 'Understanding Fluid Turbulence' matched the broad
+    'turbulence' alias and got Reynolds edge cases + an untaught Re=ρvD/μ in its practice card)."""
+
+    @staticmethod
+    def _topic(title, tt, scope_plan):
+        import types as _types
+        meta = {"scope_plan": scope_plan} if scope_plan is not None else {}
+        return _types.SimpleNamespace(title=title, course_type=tt, topic_type=tt,
+                                      decomposition_metadata=meta, order_index=1, study_path=None)
+
+    def _cards(self):
+        return [{"blueprint_key": "edge_case", "card_type": "edge_case", "title": "LLM Edge",
+                 "points": ["wrong llm claim"]}]
+
+    def test_certified_null_verified_example_blocks_grounding(self):
+        from app.services.lean_lesson_generator import _ground_edge_case_card
+        t = self._topic("Understanding Fluid Turbulence", "concept_intuition",
+                        {"verified_example": None, "we_policy": "not_applicable"})
+        cards = self._cards()
+        self.assertFalse(_ground_edge_case_card(cards, t))
+        self.assertEqual(cards[0]["points"], ["wrong llm claim"])   # untouched, no adapter leak
+
+    def test_certified_matching_adapter_still_grounds(self):
+        from app.services.lean_lesson_generator import _ground_edge_case_card
+        t = self._topic("Reynolds Number", "math_formula_method",
+                        {"verified_example": "reynolds_number", "we_policy": "verified"})
+        cards = self._cards()
+        self.assertTrue(_ground_edge_case_card(cards, t))
+        self.assertTrue(cards[0].get("_edge_case_grounded"))
+
+    def test_uncertified_legacy_topic_keeps_old_behavior(self):
+        from app.services.lean_lesson_generator import _ground_edge_case_card
+        t = self._topic("Reynolds Number", "math_formula_method", None)
+        cards = self._cards()
+        self.assertTrue(_ground_edge_case_card(cards, t))           # no plan -> grounding unchanged
+
+
 if __name__ == "__main__":
     unittest.main()
