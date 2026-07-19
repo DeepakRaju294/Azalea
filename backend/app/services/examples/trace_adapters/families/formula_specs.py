@@ -118,6 +118,24 @@ GRAVITATIONAL_PE = FormulaSpec(
 # ======================================================================================================
 # Live gap: a "fluid turbulence" science_mechanism path shipped an essay-shaped LLM "worked example" (steps
 # = "identify conditions… provide examples… summarize key points") — no problem, no values, nothing computed.
+def _reynolds_interpretation(env: dict) -> str | None:
+    """What the computed Re MEANS (science plan §8): the regime classification the number exists to make.
+    Thresholds are the conventional internal-pipe-flow values; instance_ok keeps generated examples away from
+    the 2000-4500 boundary band, so the transitional wording is a defensive fallback only."""
+    try:
+        re_v = float(env.get("Re"))
+    except (TypeError, ValueError):
+        return None
+    if re_v < 2300:
+        band = "below the ~2300 threshold, so this pipe flow is in the laminar regime"
+    elif re_v <= 4000:
+        band = "in the ~2300-4000 transitional band, so the regime is uncertain"
+    else:
+        band = "above the ~4000 threshold, so this pipe flow is in the turbulent regime"
+    return (f"Re ≈ {re_v:g} is {band} (conventional thresholds for fully developed internal pipe "
+            "flow; they are approximate and depend on disturbances and geometry).")
+
+
 # The quantitative core of turbulence onset IS the Reynolds number; routing turbulence-titled topics here gives
 # them a real, verified calculation. Oil framing keeps every value a clean 1-dp SI number (water's mu=0.001
 # doesn't fit the 1-dp float sampler), and the ranges genuinely span laminar -> turbulent.
@@ -162,6 +180,7 @@ REYNOLDS_NUMBER = FormulaSpec(
     # so close to a regime boundary that the classification reads ambiguous to a learner.
     instance_ok=lambda g: (g["D"] >= 0.2 and g["mu"] >= 0.2
                            and not (2000 <= g["rho"] * g["v"] * g["D"] / g["mu"] <= 4500)),
+    interpret=_reynolds_interpretation,
 )
 
 # Live gap: a 'Navier-Stokes Equations' science_mechanism topic shipped an unverified essay-WE opening with

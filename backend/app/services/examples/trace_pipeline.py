@@ -511,6 +511,19 @@ def _fmt_state_val(v: Any) -> str:
     return str(v)
 
 
+def _interpretation_note(adapter: Any, final_state: dict[str, Any]) -> str:
+    """The adapter spec's deterministic interpretation of the final computed state, or ''. Best-effort — an
+    interpretation must never break a verified example."""
+    spec = getattr(adapter, "_formula_spec", None)
+    fn = getattr(spec, "interpret", None)
+    if not callable(fn):
+        return ""
+    try:
+        return str(fn(dict(final_state or {})) or "").strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _apply_step_field_contract(cards: list[dict[str, Any]], trace: ContractTrace, adapter: Any) -> None:
     """Learner-facing STEP-FIELD CONTRACT for non-coding trace-backed cards (product decision, path review):
     - Goal states what the step is doing (the stage's primary decision) — restored as a bullet now that step
@@ -541,7 +554,16 @@ def _apply_step_field_contract(cards: list[dict[str, Any]], trace: ContractTrace
         shown = changed or list(after)
         result = "; ".join(f"{k} = {_fmt_state_val(after[k])}" for k in shown)
         if idx == len(cards) - 1 and ans:
-            result = f"{result}. Final answer: {ans}." if result else f"Final answer: {ans}."
+            # Don't restate an identical answer ("Re = 5532.27. Final answer: Re = 5532.27." read twice live).
+            if result.strip().rstrip(".").lower() == ans.strip().rstrip(".").lower():
+                result = f"{result.rstrip('.')}."
+            else:
+                result = f"{result}. Final answer: {ans}." if result else f"Final answer: {ans}."
+            # Spec-authored INTERPRETATION of the final value (science plan §8): what the number MEANS, with
+            # its qualifiers. Deterministic (from the adapter spec), rendered via the teaching_note channel.
+            note = _interpretation_note(adapter, after)
+            if note and not card.get("teaching_note"):
+                card["teaching_note"] = {"type": "interpretation", "content": note}
         card["result"] = result
         if not str(card.get("goal") or "").strip():
             st = stages.get(str(step.operation or ""))

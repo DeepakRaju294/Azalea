@@ -1212,5 +1212,42 @@ class EdgeCaseGroundingPlanGuard(unittest.TestCase):
         self.assertTrue(_ground_edge_case_card(cards, t))           # no plan -> grounding unchanged
 
 
+class WorkedExampleInterpretation(unittest.TestCase):
+    """Science plan §8: a science worked example must not end at a bare number. The adapter spec's
+    deterministic `interpret` produces an 'Interpretation:' teaching note on the final step (live: a
+    turbulence lesson computed Re = 5532 and never said the flow was turbulent). Also guards the
+    final-card polish: an answer identical to the result is not restated as 'Final answer: …'."""
+
+    def test_reynolds_interpretation_units(self):
+        from app.services.examples.trace_adapters.families.formula_specs import _reynolds_interpretation
+        self.assertIn("laminar", _reynolds_interpretation({"Re": 1000}))
+        self.assertIn("turbulent", _reynolds_interpretation({"Re": 5500}))
+        self.assertIn("transitional", _reynolds_interpretation({"Re": 3000}))
+        self.assertIsNone(_reynolds_interpretation({"Re": None}))
+        self.assertIsNone(_reynolds_interpretation({}))
+
+    def test_final_card_carries_interpretation_and_no_duplicate_answer(self):
+        from app.services.examples.trace_pipeline import solve_trace_pipeline
+        sol = solve_trace_pipeline({"title": "Turbulence", "topic_type": "science_mechanism",
+                                    "course_type": "science_mechanism", "id": "t1"})
+        last = (sol.get("cards") or [])[-1]
+        note = last.get("teaching_note") or {}
+        self.assertEqual(note.get("type"), "interpretation")
+        content = str(note.get("content"))
+        self.assertTrue(("laminar" in content) or ("turbulent" in content), content)
+        # the interpretation names the SAME regime the computed value implies
+        re_v = float(str(last.get("result")).split("=")[1].strip().rstrip("."))
+        self.assertIn("laminar" if re_v < 2300 else "turbulent", content)
+        self.assertEqual(str(last.get("result")).count(f"{re_v:g}"), 1)   # answer stated once, not restated
+
+    def test_adapters_without_interpret_are_untouched(self):
+        from app.services.examples.trace_pipeline import solve_trace_pipeline
+        sol = solve_trace_pipeline({"title": "Kinetic Energy", "topic_type": "math_formula_method",
+                                    "course_type": "math_formula_method", "id": "t2"})
+        cards = sol.get("cards") or []
+        self.assertTrue(cards)
+        self.assertIsNone((cards[-1].get("teaching_note") or {}).get("type"))
+
+
 if __name__ == "__main__":
     unittest.main()

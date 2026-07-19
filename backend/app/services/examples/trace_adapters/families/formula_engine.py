@@ -157,6 +157,11 @@ class FormulaSpec:
     # (e.g. total probability with P(A|B1)==P(A|B2), where the answer trivially equals the common conditional
     # and the partition weighting looks irrelevant). None = accept every candidate.
     instance_ok: Optional[Callable[[dict[str, Any]], bool]] = None
+    # Deterministic result INTERPRETATION (science-architecture plan §8): callable(final evaluation env) -> one
+    # plain sentence saying what the computed value MEANS — with its qualifiers/assumptions — or None to skip.
+    # Rendered as an "Interpretation:" note on the final worked-example step. A science example must not end at
+    # a bare number (live: a turbulence lesson computed Re = 5532 and never said the flow was turbulent).
+    interpret: Optional[Callable[[dict[str, Any]], Optional[str]]] = None
 
     # ------- derived -------------------------------------------------------------------------------
     def base_env(self, example_input: dict[str, Any]) -> dict[str, Any]:
