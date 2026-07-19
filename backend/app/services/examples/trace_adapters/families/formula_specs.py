@@ -152,6 +152,45 @@ REYNOLDS_NUMBER = FormulaSpec(
                            and not (2000 <= g["rho"] * g["v"] * g["D"] / g["mu"] <= 4500)),
 )
 
+# Live gap: a 'Navier-Stokes Equations' science_mechanism topic shipped an unverified essay-WE opening with
+# raw PDE notation (∂u/∂t + u·∇u = −∇P/ρ + ν∇²u) — "Demonstrate the implications…", nothing computable. The
+# N-S equations' SIMPLEST EXACT SOLUTION is computable: laminar pipe pressure drop ΔP = 32 μ L v / D²
+# (Hagen–Poiseuille form). Routing N-S titles here replaces the essay with a real, verified calculation the
+# notes honestly frame as "N-S solved in its simplest case".
+LAMINAR_PRESSURE_DROP = FormulaSpec(
+    slug="laminar_pressure_drop", title="Laminar pipe pressure drop (Navier-Stokes exact solution)",
+    family="physics",
+    aliases=["navier-stokes", "navier stokes", "hagen-poiseuille", "hagen poiseuille", "poiseuille",
+             "laminar pipe flow", "pipe pressure drop"],
+    priority=95,
+    problem_template=("Oil of viscosity {mu} Pa*s flows at an average speed of {v} m/s through a straight "
+                      "pipe {L} m long with diameter {D} m. Compute the pressure drop across the pipe for "
+                      "laminar flow."),
+    givens=[Given("mu", "Pa*s", 0, 1, integer=False),
+            Given("L", "m", 2, 9),
+            Given("v", "m/s", 1, 3, integer=False),
+            Given("D", "m", 0, 1, integer=False)],
+    outputs=[Output("dP", "dP = 32*mu*L*v/D^2", "32*mu*L*v/(D*D)", "Pa", "compute_pressure_drop",
+                    "pressure drop")],
+    conventions={"formula": "dP = 32*mu*L*v/D^2 (laminar pipe flow)",
+                 "units": "SI (Pa*s, m, m/s, Pa)",
+                 "origin": "the Navier-Stokes equations solved exactly for steady laminar flow in a pipe"},
+    canonical_latex="\\Delta P = \\frac{32\\,\\mu L v}{D^2}",
+    canonical_notes=[
+        "\\(\\mu\\): dynamic viscosity.  \\(L\\): pipe length.  \\(v\\): average flow speed.  \\(D\\): pipe "
+        "diameter.  \\(\\Delta P\\): pressure lost to viscous friction.",
+        "This is the Navier–Stokes equations solved EXACTLY in their simplest case — steady, laminar flow in "
+        "a straight pipe (the Hagen–Poiseuille result). Turbulent flow has no such closed solution.",
+    ],
+    edge_cases=[
+        "Halving the diameter QUADRUPLES the pressure drop (\\(\\Delta P \\propto 1/D^2\\)) — narrow pipes "
+        "are expensive to pump through.",
+        "The formula holds only for LAMINAR flow; past the turbulent transition the drop grows faster than "
+        "linearly with speed.",
+    ],
+    instance_ok=lambda g: g["D"] >= 0.2 and g["mu"] >= 0.2,
+)
+
 OHMS_LAW = FormulaSpec(
     slug="ohms_law", title="Ohm's law with power", family="physics",
     aliases=["ohm's law", "ohms law", "ohm law"], priority=95,
@@ -1286,6 +1325,7 @@ ALL_SPECS = [
     # physics / EE
     KINEMATICS, KINETIC_ENERGY, NEWTONS_SECOND_LAW, WEIGHT_FORCE, MOMENTUM, WORK_DONE, GRAVITATIONAL_PE, OHMS_LAW,
     PROJECTILE_RANGE, CENTRIPETAL_ACCEL, WAVE_SPEED, PRESSURE, MECHANICAL_POWER, SPRING_PE, REYNOLDS_NUMBER,
+    LAMINAR_PRESSURE_DROP,
     # finance
     SIMPLE_INTEREST, COMPOUND_INTEREST, PRESENT_VALUE, PERCENT_CHANGE, FUTURE_VALUE, BREAK_EVEN, PROFIT_MARGIN,
     # geometry
