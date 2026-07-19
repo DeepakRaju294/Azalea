@@ -1,0 +1,86 @@
+{
+ "labeling_version": "1",
+ "labeled_on": "2026-07-18",
+ "reviewer": "analyst (Azalea recall-popup feasibility)",
+ "note": "Immutable manual verdicts on each DISTINCT owner-resolved case, keyed by case_key and joined by scripts/recall_popup_feasibility_audit.py. The audit never manufactures these; unmatched cases are reported 'unlabeled'. verdict in {strict_valid, borderline_function, invalid}. strict_valid = a trustworthy self-contained DEFINITION (what the concept IS). borderline_function = self-contained + usable recall but a function/behaviour/theorem statement or notation-laden (not a definition). invalid = owner has no definition-quality material.",
+ "cases": [
+  {
+   "case_key": "row echelon form || row echelon form || row echelon form ref is a matrix form that makes solving sys",
+   "candidate_source": "Row echelon form (REF) is a matrix form that makes solving systems of equations straightforward.",
+   "verdict": "strict_valid",
+   "rationale": "Opens with the concept + copula 'is'; concise self-contained definition."
+  },
+  {
+   "case_key": "elementary row operations || elementary row operations || row operation a technique used to manipulate rows of a matri",
+   "candidate_source": "Row Operation — A technique used to manipulate rows of a matrix, including swapping, scaling, and adding rows.",
+   "verdict": "strict_valid",
+   "rationale": "Dash-form definition; head ('Row Operation') is the singular of the concept, content is a proper definition."
+  },
+  {
+   "case_key": "row operations || row operations || reject",
+   "candidate_source": "Row operations are fundamental transformations applied to systems of linear equations:",
+   "verdict": "strict_valid",
+   "rationale": "Content IS a self-contained definition ('Row operations are fundamental transformations…'); harvester false-negative — it ends with a list-introducing colon so the extractor found no fragment. Valid content, not delivered."
+  },
+  {
+   "case_key": "tcp congestion control || introduction to tcp congestion control || reject",
+   "candidate_source": "TCP Congestion Control regulates the flow of data over a network.",
+   "verdict": "borderline_function",
+   "rationale": "Self-contained and useful as recall, but a function statement ('regulates'), not a definition of what it IS."
+  },
+  {
+   "case_key": "z scores || calculating z scores || z score z represents how many standard deviations a data poi",
+   "candidate_source": "Z-Score (Z): Represents how many standard deviations a data point is from the mean, calculated using the formula Z = (X - μ) / σ.",
+   "verdict": "borderline_function",
+   "rationale": "Definitional core ('Represents how many standard deviations…') but carries unresolved notation (Z = (X-μ)/σ); §4 rejects unresolved notation."
+  },
+  {
+   "case_key": "combinations || combinations || combinations represent the selection of items where order do",
+   "candidate_source": "Combinations represent the selection of items where order does not matter.",
+   "verdict": "strict_valid",
+   "rationale": "Opens with concept + 'represent'; concise self-contained definition."
+  },
+  {
+   "case_key": "permutations || permutations || reject",
+   "candidate_source": "Permutations",
+   "verdict": "invalid",
+   "rationale": "This owner lesson has no definition-quality statement for the concept (only the bare title matched)."
+  },
+  {
+   "case_key": "permutations || permutations || permutation an arrangement of objects in a specific order",
+   "candidate_source": "Permutation — An arrangement of objects in a specific order.",
+   "verdict": "strict_valid",
+   "rationale": "Dash-form definition; head is the singular of the concept; content is a proper definition."
+  },
+  {
+   "case_key": "combinations || combinations || reject",
+   "candidate_source": "Combinations determine how to select items from a set:",
+   "verdict": "borderline_function",
+   "rationale": "Function statement ('determine how to select'), list-introducing colon; usable recall, not a definition."
+  },
+  {
+   "case_key": "binomial theorem || binomial theorem || reject",
+   "candidate_source": "The Binomial Theorem expresses the expansion of (a+b)^n …",
+   "verdict": "borderline_function",
+   "rationale": "Describes what the theorem does ('expresses the expansion of') with notation; a theorem/function summary, not a strict definition."
+  },
+  {
+   "case_key": "combinations || combinations || combinations count how many ways we can choose items from a ",
+   "candidate_source": "Combinations count how many ways we can choose items from a set.",
+   "verdict": "strict_valid",
+   "rationale": "Opens with concept + 'count'; concise self-contained definition."
+  },
+  {
+   "case_key": "total probability || law of total probability || reject",
+   "candidate_source": "Calculates total probability via different partitions of the sample space:",
+   "verdict": "borderline_function",
+   "rationale": "Function statement ('Calculates…'), list-introducing colon; usable recall, not a definition."
+  },
+  {
+   "case_key": "total probability || law of total probability || total probability theorem states that p a can be calculated ",
+   "candidate_source": "Total Probability Theorem — States that P(A) can be calculated as Σ P(A|Bi) * P(Bi) for all i.",
+   "verdict": "borderline_function",
+   "rationale": "Theorem summary with unresolved Σ notation; usable recall, not a concise definition."
+  }
+ ]
+}

@@ -193,24 +193,29 @@ def sentence_definitions(owner_lesson, want):
                 yield (card.get("title") or want, st)
 
 
-# ---- Human labels (recorded 2026-07-18) ---------------------------------------------------------------
-# The deterministic harvester is a PROXY; these are the analyst's verdicts on each owner-resolved case, so the
-# JSON stores real labels instead of null. Verdict ∈ strict_valid | borderline_function | invalid.
-#   strict_valid       — a trustworthy, self-contained DEFINITION (what the concept IS).
-#   borderline_function— self-contained + usable recall, but a function/behaviour/theorem statement, not a
-#                        definition (TCP "regulates…", total-prob "calculates…", the Σ-laden theorem line).
-#   invalid            — owner carries no definition-quality material for this concept.
-_BORDERLINE_OWNERS = {"introduction to tcp congestion control", "law of total probability"}
+# ---- Human labels: an EXTERNAL, immutable record joined by case_key --------------------------------------
+# The deterministic harvester is only a proxy. The audit does NOT manufacture "human" verdicts — it JOINS an
+# analyst-authored label file (recall_popup_hand_labels.json) by a stable case_key. Any owner-resolved case with
+# no matching label is reported as "unlabeled", and precision/yield are computed over LABELED cases only. Rerunning
+# against future lessons therefore surfaces new unlabeled cases instead of inventing labels for them.
+# Verdict ∈ strict_valid | borderline_function | invalid.
+_LABELS_PATH = os.path.join(os.path.dirname(__file__), "recall_popup_hand_labels.json")
 
 
-def hand_label(concept, owner, harvest):
-    o = _norm(owner)
-    if harvest.startswith("[REJECT"):
-        return "borderline_function" if o in _BORDERLINE_OWNERS else "invalid"
-    # harvested a line: the Σ-laden "…Theorem — States that P(A) can be calculated…" is a theorem statement.
-    if "states that" in harvest.lower() or "σ" in harvest.lower() or "Σ" in harvest:
-        return "borderline_function"
-    return "strict_valid"
+def case_key(concept, owner_title, harvest):
+    """Stable identity of an owner-resolved case: concept + owner + (reject | normalized harvested-line prefix).
+    Duplicate displaying lessons that resolve to the same owner + same line share one key (correct)."""
+    h = "reject" if harvest.startswith("[REJECT") else _norm(harvest)[:60]
+    return f"{_norm(concept)} || {_norm(owner_title)} || {h}"
+
+
+def load_labels():
+    if not os.path.exists(_LABELS_PATH):
+        return {}, {}
+    with open(_LABELS_PATH, encoding="utf-8") as f:
+        doc = json.load(f)
+    by_key = {c["case_key"]: c["verdict"] for c in doc.get("cases", [])}
+    return by_key, {k: doc.get(k) for k in ("labeling_version", "labeled_on", "reviewer")}
 
 
 def prose_fallback(owner_lesson, want):
@@ -229,6 +234,24 @@ def prose_fallback(owner_lesson, want):
                     and len(sent.split()) >= 6 and not any(d in sent.lower() for d in _DANGLING):
                 return sent.strip()
     return None
+
+
+def relaxed_source(concept_text, owner_lesson):
+    """Best owner definitional snippet for the concept WITHOUT the quality gate — so the label file can record the
+    actual candidate text even when strict §4 rejected it."""
+    want = _norm(concept_text)
+    for head, full in definition_entries(owner_lesson):
+        nh = _norm(head)
+        if nh and (nh == want or want in nh or nh in want):
+            return full[:160]
+    for card in iter_cards(owner_lesson):
+        if card.get("card_type") not in ("definition", "core_idea", "purpose_context"):
+            continue
+        for _f, _i, s in card_items(card):
+            st = s.strip().lstrip("- ").strip()
+            if _norm(st).startswith(want) or _singular_plural_prefix(re.sub(r"^(the|a|an)\s+", "", _norm(st)), want):
+                return st[:160]
+    return ""
 
 
 def harvest_recall(concept_text, owner_lesson):
@@ -250,9 +273,11 @@ def harvest_recall(concept_text, owner_lesson):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--show", type=int, default=15, help="how many per-candidate rows to print")
+    ap.add_argument("--emit-label-template", action="store_true",
+                    help="print distinct owner-resolved cases (case_key + source) to author the label file")
     args = ap.parse_args()
 
+    labels_by_key, labels_meta = load_labels()
     db = SessionLocal()
 
     # Preload: topic_id -> lesson_json / title / study_path, and normalized title -> [topic_id].
@@ -337,9 +362,17 @@ def main():
 
                 # Stage 3: strict §4 harvest (+ §4b projection when strict fails).
                 recall, reason = harvest_recall(text, owner_lesson)
+                harvest_str = recall or f"[REJECT:{reason}]"
+                ckey = case_key(text, topic_title.get(owner, ""), harvest_str)
                 owner_resolved_rows.append({
+                    "case_key": ckey,
                     "concept": text, "owner": topic_title.get(owner, "")[:40],
-                    "harvest": recall or f"[REJECT:{reason}]",
+                    "harvest": harvest_str,
+                    "harvested": recall is not None,
+                    "recall_line": recall,
+                    "path": topic_path.get(disp_topic),
+                    "candidate_source": (recall or relaxed_source(text, owner_lesson) or "[none]")[:160],
+                    "label": labels_by_key.get(ckey, "unlabeled"),
                 })
                 if recall is None:
                     drops[reason] += 1
@@ -376,57 +409,78 @@ def main():
 
     db.close()
 
+    if args.emit_label_template:
+        seen = {}
+        for c in owner_resolved_rows:
+            seen.setdefault(c["case_key"], c)
+        template = {
+            "labeling_version": "TEMPLATE — fill verdict + rationale, then set metadata",
+            "labeled_on": "YYYY-MM-DD", "reviewer": "",
+            "cases": [{"case_key": c["case_key"], "concept": c["concept"], "owner": c["owner"],
+                       "candidate_source": c["candidate_source"], "verdict": "", "rationale": ""}
+                      for c in seen.values()],
+        }
+        print(json.dumps(template, ensure_ascii=False, indent=1))
+        return
+
     cand = funnel["candidates"] or 1
     n_topics = len(topic_title) or 1
     per100 = funnel["candidates"] / (lessons_scanned or 1) * 100
     recent_prev = recent_with_reviews / recent_window * 100
 
-    # Staged rates — each stage on ITS OWN denominator (the spec's strict_harvest_rate is harvests / anchored
-    # review links, NOT kept / all candidates, which conflates anchor availability + harvest + caps).
     def _rate(a, b):
         return round(a / b, 3) if b else None
+
+    # Pipeline stages, each on its OWN denominator. The harvester ACCEPTANCE stage is named honestly: it is the
+    # deterministic §4 extractor's raw accept rate, NOT "strict harvest" — some accepts are later hand-labeled
+    # non-clean, so calling it strict would make the metric and the audited result disagree.
     stage_rates = {
-        "anchor_eligibility":  _rate(funnel["anchor_eligible"], funnel["candidates"]),          # 25/41
-        "owner_resolution":    _rate(funnel["owner_resolved"], funnel["anchor_eligible"]),        # 21/25
-        "strict_harvest":      _rate(funnel["harvested"], funnel["owner_resolved"]),              # deterministic §4 pass / 21
-        "post_cap_survival":   _rate(funnel["kept"], funnel["harvested"]),
-        "end_to_end_yield":    _rate(funnel["kept"], funnel["candidates"]),
+        "anchor_eligibility":              _rate(funnel["anchor_eligible"], funnel["candidates"]),
+        "owner_resolution":                _rate(funnel["owner_resolved"], funnel["anchor_eligible"]),
+        "deterministic_harvester_acceptance": _rate(funnel["harvested"], funnel["owner_resolved"]),
     }
-    strict_harvest_rate = stage_rates["strict_harvest"]  # SPEC definition: harvests / anchored (owner-resolved)
 
-    # Apply the recorded hand labels → precision (of harvested) vs yield (of owner-resolved). These are DIFFERENT
-    # metrics: precision = "when the harvester keeps a line, is it a real definition?"; yield/coverage = "of all
-    # owner-resolved candidates, how many produce a trustworthy definition?".
-    labels = Counter()
-    for c in owner_resolved_rows:
-        c["label"] = hand_label(c["concept"], c["owner"], c["harvest"])
-        labels[c["label"]] += 1
-    harvested_cases = [c for c in owner_resolved_rows if not c["harvest"].startswith("[REJECT")]
-    strict_valid_harvested = sum(1 for c in harvested_cases if c["label"] == "strict_valid")
-    harvester_precision = _rate(strict_valid_harvested, len(harvested_cases))
-    strict_definition_yield = _rate(labels["strict_valid"], funnel["owner_resolved"])  # coverage, NOT precision
+    # Join the EXTERNAL hand labels (never manufactured here). Precision, yield and diversity are computed over
+    # LABELED cases; unlabeled cases are surfaced, not scored.
+    labels = Counter(c["label"] for c in owner_resolved_rows)
+    unlabeled = labels.get("unlabeled", 0)
+    harvested_cases = [c for c in owner_resolved_rows if c["harvested"]]
+    strict_valid_delivered = [c for c in harvested_cases if c["label"] == "strict_valid"]
+    strict_valid_missed = [c for c in owner_resolved_rows if c["label"] == "strict_valid" and not c["harvested"]]
 
+    audited = {
+        "raw_harvester_acceptance": f'{funnel["harvested"]}/{funnel["owner_resolved"]}',
+        "audited_strict_valid_yield": f'{len(strict_valid_delivered)}/{funnel["owner_resolved"]}',   # delivered clean defs
+        "audited_precision": f'{len(strict_valid_delivered)}/{len(harvested_cases)}',                # of what it kept
+        "harvester_false_negatives": len(strict_valid_missed),   # valid def content the extractor missed
+        "unlabeled_cases": unlabeled,
+        "label_provenance": labels_meta,
+    }
+
+    # Diversity — mixed (any harvested) AND strict-valid-only (the meaningful measure under the strict contract).
+    sv_delivered = strict_valid_delivered
     diversity = {
         "unique_candidate_concepts": len(candidate_concepts),
-        "unique_harvested_concepts": len(harvested_concepts),
-        "unique_recall_lines": len(harvested_lines),
-        "paths_with_eligible_popups": len(paths_with_harvest),
+        "any_harvested_concepts": len(harvested_concepts),
+        "any_harvested_recall_lines": len(harvested_lines),
+        "paths_with_any_harvested_popup": len(paths_with_harvest),
+        "strict_valid_concepts": len({_norm(c["concept"]) for c in sv_delivered}),
+        "strict_valid_recall_lines": len({c["recall_line"] for c in sv_delivered if c["recall_line"]}),
+        "paths_with_strict_valid_popup": len({c["path"] for c in sv_delivered if c["path"]}),
     }
 
-    # Decision. Labeling clarifies precision, but it cannot fix low volume or poor definition ownership — so the
-    # binding facts are diversity + yield, and the honest verdict is deferral, not "provisional pending labels".
-    if diversity["unique_recall_lines"] < 12 or diversity["paths_with_eligible_popups"] < 12:
-        decision = "defer_to_v2"
-        why = ("harvester is precise ({hp}) but coverage is thin: only {ul} unique recall lines across {up} "
-               "study paths ({uc} distinct concepts), strict-definition yield {yd} of owner-resolved. Labeling "
-               "cannot fix low volume or absent definition ownership — freeze the interaction design and let the "
-               "scope plan (v2 `uses`/definition_owners) raise candidate volume + ownership first.").format(
-                   hp=harvester_precision, ul=diversity["unique_recall_lines"],
-                   up=diversity["paths_with_eligible_popups"],
-                   uc=diversity["unique_harvested_concepts"], yd=strict_definition_yield)
-    else:
-        decision = "strict_v1"
-        why = "precise harvest, adequate concept/line/path diversity — build v1 with strict §4 only."
+    # DECISION is a recorded PRODUCT JUDGMENT, not an automatic threshold (the spec explicitly rejects a universal
+    # minimum-viable-cohort number). The evidence below supports deferral; a human owner would flip it only by
+    # deciding this cohort is worth a dedicated UI.
+    decision = "defer_to_v2"
+    why = ("PRODUCT JUDGMENT (not a fixed threshold). The harvester is precise ({prec}) but the strict-valid "
+           "cohort is tiny: {svl} unique recall lines across {svp} study paths and {svc} concepts, audited "
+           "strict-valid yield {yld} of owner-resolved. Volume + concept diversity + inconsistent definition "
+           "ownership are the binding constraints, which labeling clarifies but cannot fix. Freeze the interaction "
+           "design; revisit under v2 scope-plan `uses`/`definition_owners`.").format(
+               prec=audited["audited_precision"], svl=diversity["strict_valid_recall_lines"],
+               svp=diversity["paths_with_strict_valid_popup"], svc=diversity["strict_valid_concepts"],
+               yld=audited["audited_strict_valid_yield"])
 
     report = {
         "prevalence": {
@@ -441,18 +495,11 @@ def main():
         "funnel": dict(funnel),
         "drop_reasons": dict(drops),
         "stage_rates": stage_rates,
-        "strict_harvest_rate": strict_harvest_rate,           # SPEC: harvests / anchored(owner-resolved)
-        "harvester_strict_precision": harvester_precision,    # strict_valid / harvested  (~how accurate the keeps are)
-        "strict_definition_yield": strict_definition_yield,   # strict_valid / owner-resolved (coverage, NOT precision)
-        "human_precision_on_sample": {
-            "labeled_2026_07_18": dict(labels),
-            "harvester_strict_precision": harvester_precision,
-            "strict_definition_yield_over_owner_resolved": strict_definition_yield,
-        },
-        "kept_popups": funnel["kept"],
+        "audited": audited,
+        "labels": dict(labels),
         "decision": decision,
         "rationale": why,
-        "owner_resolved_cases": owner_resolved_rows,   # each now carries its "label"
+        "owner_resolved_cases": owner_resolved_rows,   # each carries case_key + label + candidate_source
     }
 
     if args.json:
@@ -476,23 +523,28 @@ def main():
               "anchor_eligible", "owner_resolved", "harvested", "kept"):
         if k in funnel:
             print(f"  {k:26} {funnel[k]}")
-    print("\n--- STAGE RATES " + "-" * 63)
+    print("\n--- STAGE RATES (own denominators) " + "-" * 44)
     for k, v in stage_rates.items():
-        print(f"  {k:26} {v}")
-    print(f"  strict_harvest_rate (SPEC: harvested / owner-resolved) = {strict_harvest_rate}")
-    print("\n--- DIVERSITY (occurrences overstate breadth — dedup) " + "-" * 26)
+        print(f"  {k:36} {v}")
+    print("\n--- AUDITED (external hand labels, joined) " + "-" * 36)
+    print(f"  raw_harvester_acceptance:     {audited['raw_harvester_acceptance']}")
+    print(f"  audited_strict_valid_yield:   {audited['audited_strict_valid_yield']}   (delivered clean definitions)")
+    print(f"  audited_precision:            {audited['audited_precision']}   (of what the harvester kept)")
+    print(f"  harvester_false_negatives:    {audited['harvester_false_negatives']}   (valid content the extractor missed)")
+    print(f"  labels:                       {dict(labels)}")
+    print(f"  label_provenance:             {audited['label_provenance']}")
+    if audited["unlabeled_cases"]:
+        print(f"  ** {audited['unlabeled_cases']} UNLABELED cases — add them to {os.path.basename(_LABELS_PATH)} **")
+    print("\n--- DIVERSITY (strict-valid is the meaningful measure) " + "-" * 25)
     for k, v in diversity.items():
-        print(f"  {k:28} {v}")
-    print("\n--- PRECISION vs YIELD (hand-labeled 2026-07-18) " + "-" * 31)
-    print(f"  labels:                      {dict(labels)}")
-    print(f"  harvester_strict_precision:  {harvester_precision}   (strict_valid / harvested — accuracy of keeps)")
-    print(f"  strict_definition_yield:     {strict_definition_yield}   (strict_valid / owner-resolved — COVERAGE)")
+        mark = " <=" if k.startswith("strict_valid") or k == "paths_with_strict_valid_popup" else ""
+        print(f"  {k:34} {v}{mark}")
     print("\n--- DROP REASONS " + "-" * 62)
     for k, v in drops.most_common():
         print(f"  {k:26} {v}")
-    print("\n--- OWNER-RESOLVED CASES (label per case) " + "-" * 37)
+    print("\n--- OWNER-RESOLVED CASES (joined label per case) " + "-" * 30)
     for c in owner_resolved_rows:
-        print(f"  [{c['label'][:9]:9}] {c['concept'][:22]:22} | {c['owner'][:30]:30} | {c['harvest'][:60]}")
+        print(f"  [{c['label'][:11]:11}] {c['concept'][:20]:20} | {c['owner'][:26]:26} | {c['harvest'][:52]}")
     print("\n" + "=" * 80)
     print(f"DECISION: {report['decision'].upper()}")
     print(f"  {report['rationale']}")

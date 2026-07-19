@@ -37,23 +37,27 @@ decommission task, §13). Flag: `AZALEA_RECALL_POPUPS` (requires `AZALEA_PREREQ_
 > and every metric is now on its own denominator with the 21 owner-resolved cases hand-labeled and stored.)
 > - **Prevalence:** 41 `review_earlier_topic` candidates corpus-wide (2.2%); recent-200-lessons-with-review-links
 >   = **14%** (a recency window, NOT a verified flag-on cohort).
-> - **Staged rates:** anchor-eligibility 25/41 = **0.61**; owner-resolution 21/25 = **0.84**; deterministic
->   strict-§4 harvest 11/21 = **0.52**.
-> - **Precision vs yield (distinct metrics — the earlier note wrongly called yield "precision"):**
->   `harvester_strict_precision` = **0.82** (9 strict-valid / 11 kept; the 2 non-clean keeps carry unresolved
->   Σ/σ notation) — the harvester is accurate. `strict_definition_yield` = **0.43** (9 strict-valid / 21
->   owner-resolved) — this is COVERAGE, not accuracy. Labels: strict_valid 9, borderline_function 6 (TCP
->   "regulates…", total-probability "calculates…", notation-laden lines), invalid 6.
-> - **Diversity is the binding constraint (occurrences overstate breadth):** the harvested lines dedup to only
->   **7 unique recall lines across 6 concepts and 7 study paths** — five of the "kept" are the *same* "Combinations
->   represent…" line. Nine popups over ~6 concepts is far weaker than nine independent definitions.
+> - **Staged rates (own denominators):** anchor-eligibility 25/41 = **0.61**; owner-resolution 21/25 = **0.84**;
+>   `deterministic_harvester_acceptance` 11/21 = **0.52** (named honestly — it is the extractor's raw accept rate,
+>   NOT "strict harvest", since some accepts are non-clean).
+> - **Audited against an EXTERNAL immutable label file** (`scripts/recall_popup_hand_labels.json`, joined by
+>   `case_key` — the audit never manufactures verdicts; unlabeled cases surface, not scored). `raw_harvester_
+>   acceptance` 11/21; **`audited_strict_valid_yield` = 9/21 ≈ 0.43** (clean definitions actually delivered);
+>   **`audited_precision` = 9/11 ≈ 0.82** (of what it kept); `harvester_false_negatives` = 1 (a valid "Row
+>   operations are…" definition the extractor dropped on a trailing colon). Labels (occurrence): strict_valid 10,
+>   borderline_function 9, invalid 2.
+> - **Diversity — strict-valid is the meaningful measure (occurrences overstate breadth):** the delivered clean
+>   definitions dedup to only **5 unique recall lines across 4 concepts and 5 study paths** (all-harvested, incl.
+>   borderline: 7 lines / 6 concepts / 7 paths). Most "kept" are the *same* "Combinations represent…" line. Four
+>   concepts of genuinely-strict content across the whole corpus is far weaker than the occurrence count implies.
 > - §4b was NOT load-bearing (failures are absent/function-statement owners, not prose-rescuable) — stays deferred.
 > **Read:** anchor + owner stages are healthy and the harvester is precise; the binding constraints are **low volume
 > + thin concept diversity + inconsistent definition ownership** — which manual labeling clarifies but cannot fix.
-> Fold into **v2 scope-plan `uses`/`definition_owners`**, where candidate volume and canonical definition ownership
-> become structural. **Open design decision to settle at v2 (see §4 note):** enforce a strict *definition* only, or
-> broaden the promised content type to a trustworthy *recall statement* (which would legitimately admit the
-> "borderline_function" lines like "TCP congestion control regulates the flow of data over a network").
+> `defer_to_v2` is a recorded **product judgment on this evidence, not an automatic threshold**. Fold into **v2
+> scope-plan `uses`/`definition_owners`**, where candidate volume and canonical definition ownership become
+> structural. **Content-type decision to settle at v2 (see §4 note): lean toward the broader typed "recall
+> statement" contract** — a strict definition is safe but a concise functional reminder ("TCP congestion control
+> regulates the flow of data over a network") is often exactly what lets a learner resume reading.
 
 
 The whole feature can be "correct" and still worthless if almost nothing harvests. Owner-topic identities today are
@@ -167,15 +171,18 @@ limits…"*). Instead:
    number-agnostic, no copula to get wrong.
 3. **Multiple bullets, or a verb-led / context-dependent fragment** — **reject** (no popup).
 
-> **Content-type decision (open, settle at v2 — the §0 audit surfaced it).** v1 as written promises a strict
-> *definition* (what the concept IS) and therefore rejects **function/behaviour statements** ("TCP congestion
-> control **regulates** the flow of data over a network"; "…**calculates** the total probability…") and
+> **Content-type decision (settle at v2 — the §0 audit surfaced it; RECOMMENDATION: option (b)).** v1 as written
+> promises a strict *definition* (what the concept IS) and therefore rejects **function/behaviour statements** ("TCP
+> congestion control **regulates** the flow of data over a network"; "…**calculates** the total probability…") and
 > **notation-laden** lines (a Z-score line ending `Z = (X-μ)/σ`). The audit labeled those `borderline_function`:
-> self-contained and genuinely useful as recall, but not definitions. Two coherent options — pick ONE at v2, do
-> not straddle: **(a)** keep the strict-definition promise (higher precision, lower yield — the audit's 0.43), or
-> **(b)** broaden the promised type to a trustworthy *recall statement* that also admits function/behaviour
-> statements (raises yield, needs its own fixtures: still reject dangling/pronoun/example/modal-"can indicate"
-> leads and unresolved notation). The harvester's `recall_source` must record which contract produced the line.
+> self-contained and genuinely useful as recall, but not definitions. Decide by **learner value, not taxonomy** — a
+> strict definition is safe but a concise functional reminder is often exactly what lets a learner resume reading.
+> **(a)** keep the strict-definition promise (higher precision, lower yield — 0.43); **(b, recommended)** broaden to
+> a **typed trustworthy *recall statement*** with a `recall_type ∈ {definition, function, theorem_summary,
+> notation}`, EACH with its own deterministic acceptance rules, all still rejecting unresolved notation, examples,
+> and dangling/pronoun/modal-"can indicate" leads. `notation` stays gated behind the §9 typed-symbol prerequisite.
+> The stored payload records `recall_type` (extending `recall_source`) so telemetry can compare which types earn
+> opens. This raises yield (the ~9 borderline_function cases become first-class) without loosening precision.
 
 This is shape-driven string assembly, never generation. Stamp the extractor with `harvester_version` (below) so a
 future template change never makes old payloads look corrupt. This widens strict coverage without touching §4b.
