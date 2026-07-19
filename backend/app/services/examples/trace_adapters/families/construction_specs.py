@@ -132,7 +132,12 @@ def _deprec_step(s: dict, i: int) -> tuple:
 
 DEPRECIATION_SCHEDULE = ConstructSpec(
     slug="depreciation_schedule", title="straight-line depreciation schedule", family="finance",
-    aliases=["depreciation schedule", "straight-line depreciation", "book value schedule"], priority=57,
+    # "depreciation expense" — live: a certified path's surviving topic was titled 'Depreciation Expense',
+    # missed routing, and shipped an unverified symbolic worked example. "straight line depreciation" (space
+    # form) mirrors the hyphen alias. NOT bare "depreciation": declining-balance/units-of-production topics
+    # must never route to the straight-line schedule.
+    aliases=["depreciation schedule", "straight-line depreciation", "straight line depreciation",
+             "depreciation expense", "book value schedule"], priority=57,
     piece_word="year", problem_template="An asset costs ${cost} with salvage value ${salvage} and a useful life "
                                         "of {life} years. Build the straight-line book-value schedule.",
     setup=_deprec_setup, pieces=lambda s: s["life"], step=_deprec_step,

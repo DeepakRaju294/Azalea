@@ -30,9 +30,12 @@ class IntroBackstop(unittest.TestCase):
         out = _ensure_intro_topic([dict(t) for t in withrole], "g")
         self.assertEqual(len(out), 3)   # orientation role already present -> no synthetic intro
 
-    def test_single_topic_untouched(self):
+    def test_single_topic_gets_intro_too(self):
+        # Product decision (live failure: a certified-down-to-one-topic path shipped with no orientation,
+        # no prereq card, no roadmap): single-topic paths open with an intro like every other path.
         out = _ensure_intro_topic([dict(_TWO[0])], "g")
-        self.assertEqual(len(out), 1)
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0]["course_type"], "study_path_introduction")
 
 
 if __name__ == "__main__":

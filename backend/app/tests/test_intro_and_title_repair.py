@@ -44,14 +44,16 @@ class SingleTopicPipeline(unittest.TestCase):
         return generate_decomposed_topics("Want to learn about Ohm's law", "src",
                                           model_fn=lambda payload: _SINGLE)
 
-    def test_single_technique_stays_lean_no_intro(self):
-        # Intentional: a genuinely single-technique path is not padded with an orientation intro.
+    def test_single_technique_gets_intro_too(self):
+        # Product decision (live failure: a path certified down to ONE topic shipped with no orientation,
+        # no prereq card, no roadmap): single-topic paths open with an intro like every other path.
         topics = self._run()
-        self.assertEqual([t["course_type"] for t in topics], ["science_mechanism"])
+        self.assertEqual([t["course_type"] for t in topics],
+                         ["study_path_introduction", "science_mechanism"])
 
     def test_the_teaching_topic_title_is_repaired_end_to_end(self):
         topics = self._run()
-        self.assertEqual(topics[0]["title"], "Ohm's Law")           # not "With Ohm's Law"
+        self.assertEqual(topics[1]["title"], "Ohm's Law")           # not "With Ohm's Law"
 
 
 if __name__ == "__main__":

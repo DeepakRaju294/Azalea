@@ -76,11 +76,12 @@ def _apply_domain_gate(topics: list[dict[str, Any]], domain: str | None) -> list
 
 
 def _ensure_intro_topic(topics: list[dict[str, Any]], goal: str | None) -> list[dict[str, Any]]:
-    """Bulletproof backstop: a multi-topic path ALWAYS opens with a lightweight orientation topic. The
-    pipeline-level guarantee can be bypassed (regeneration, a stale decomposition), so enforce it here at
-    the OUTERMOST point — for both engines. Idempotent: skips when an intro already leads the path, and
-    leaves a single-topic path untouched (it self-orients)."""
-    if not topics or len(topics) < 2:
+    """Bulletproof backstop: EVERY path opens with a lightweight orientation topic — single-topic paths too
+    (product decision; live failure: a 'straight line depreciation' path certified down to one topic and
+    shipped with no orientation, no prereq card, no roadmap). The pipeline-level guarantee can be bypassed
+    (regeneration, a stale decomposition), so enforce it here at the OUTERMOST point — for both engines.
+    Idempotent: skips when an intro already leads the path."""
+    if not topics:
         return topics
     if any(str(t.get("course_type") or t.get("topic_type") or "").lower() == "study_path_introduction"
            or str(t.get("content_role") or "").lower() == "orientation" for t in topics):

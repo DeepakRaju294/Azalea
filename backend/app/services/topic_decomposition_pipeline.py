@@ -810,7 +810,9 @@ def generate_decomposed_topics(
     has_opener = any(_is_opener(t) for t in topics_out)
     # Synthesize an intro for a multi-topic path — OR whenever we folded prerequisites that need a home.
     # (A genuinely single-technique path is intentionally left lean, no intro padding — see the fixture tests.)
-    if not has_opener and (len(non_intro) >= 2 or (dropped_prereqs and non_intro)):
+    # Single-topic paths get an intro too (product decision, live failure: a 'straight line depreciation'
+    # path certified down to ONE topic and shipped with no orientation, no prereq card, no roadmap).
+    if not has_opener and non_intro:
         intro = _synthesize_intro_topic(goal)
         intro["order_index"] = 0
         topics_out = [intro, *topics_out]
