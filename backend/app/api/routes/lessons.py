@@ -228,7 +228,8 @@ def _finalize_lesson_cards(lesson_json: dict, v2_topic: dict) -> None:
     """Deterministic post-solve guarantees: the worked-example setup card, blueprint card order,
     visual gating, and the completeness audit. Safe to run more than once — used by both the inline
     enrich path and the deferred worked-example path."""
-    from app.services.examples.handoff import ensure_worked_example_setup, validate_and_order_cards
+    from app.services.examples.handoff import (enforce_example_plan, ensure_worked_example_setup,
+                                               validate_and_order_cards)
     from app.services.examples.worked_example_audit import audit_worked_examples
     from app.services.legacy_v2_visual_bridge import gate_legacy_visuals
 
@@ -237,6 +238,8 @@ def _finalize_lesson_cards(lesson_json: dict, v2_topic: dict) -> None:
     gate_legacy_visuals(lesson_json)
     audit_worked_examples(lesson_json, v2_topic, regenerate=None, max_regenerations=2)
     _audit_required_cards(lesson_json, v2_topic)
+    # LAST — so no audit/backfill above re-adds a fabricated example the certified plan withholds.
+    enforce_example_plan(lesson_json, v2_topic)
 
 
 def _audit_required_cards(lesson_json: dict, v2_topic: dict) -> None:
@@ -316,6 +319,8 @@ def apply_deferred_worked_example(topic: Topic, lesson_json: dict) -> bool:
             # the study path's subject domain — lets the solver suppress a fabricated worked example on a
             # qualitative (concept-domain) topic that has no verifying adapter.
             "path_domain": str(getattr(getattr(topic, "study_path", None), "domain", None) or "").lower(),
+            # the certified scope plan (incl. we_policy) — read by enforce_example_plan at finalize.
+            "decomposition_metadata": dict(getattr(topic, "decomposition_metadata", None) or {}),
         }
         applied = apply_llm_solved_worked_example(lesson_json, v2_topic)
         _finalize_lesson_cards(lesson_json, v2_topic)
@@ -370,6 +375,8 @@ def enrich_legacy_lesson_with_v2_visuals(
             "modifiers": list(getattr(topic, "modifiers", None) or []),
             # study path's subject domain — gates the concept-domain fabricated-worked-example suppression
             "path_domain": str(getattr(getattr(topic, "study_path", None), "domain", None) or "").lower(),
+            # the certified scope plan (incl. we_policy) — read by enforce_example_plan at finalize.
+            "decomposition_metadata": dict(getattr(topic, "decomposition_metadata", None) or {}),
         }
         # Missing-adapter demand: if this is a computational topic with NO adapter, record it (best-effort) so
         # the most-requested unsupported concepts surface as the priority queue for which adapter to build next.

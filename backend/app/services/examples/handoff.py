@@ -577,6 +577,39 @@ def validate_and_order_cards(lesson_json: dict[str, Any], topic: dict[str, Any])
         _log.warning("examples: CardValidator failed: %s", exc)
 
 
+def enforce_example_plan(lesson_json: dict[str, Any], topic: dict[str, Any]) -> None:
+    """EXAMPLE-PLAN enforcement (scope-plan increment #1): the certified plan resolved, at PLAN time, whether a
+    verified adapter backs this topic's worked example. When the stamp says `withhold_fabricated` and the
+    lesson's worked-example cards carry NO trace-backed step, they are a fabricated pseudo-example (live: a
+    turbulence 'worked example' that was an essay chopped into steps; Navier-Stokes PDE prose as Step cards) —
+    strip them; the lesson ships honestly qualitative. NEVER strips verified content: any trace_backed card
+    keeps the whole example (e.g. an adapter added after the plan was stamped). Unstamped topics (pre-plan
+    lessons, legacy paths) are untouched. Runs LAST in finalize so no audit/backfill re-adds what it removed."""
+    try:
+        meta = topic.get("decomposition_metadata") if isinstance(topic, dict) else None
+        policy = ((meta or {}).get("scope_plan") or {}).get("we_policy")
+        if policy != "withhold_fabricated":
+            return
+        cards = lesson_json.get("lesson_cards")
+        if not isinstance(cards, list):
+            return
+        we = [c for c in cards if isinstance(c, dict)
+              and str(c.get("blueprint_key") or c.get("card_type") or "").lower() == "worked_example"]
+        if not we:
+            return
+        if any((c.get("metadata") or {}).get("trace_backed") for c in we):
+            return                                       # verified content — the plan is stale, keep it
+        from app.services.examples.solver import _strip_worked_example_cards
+
+        removed = _strip_worked_example_cards(cards)
+        if removed:
+            lesson_json.setdefault("metadata", {})["worked_example_withheld"] = "no_verified_example_planned"
+            _log.info("examples: example-plan enforcement stripped %d fabricated worked-example card(s) "
+                      "from %r (we_policy=withhold_fabricated)", removed, topic.get("title"))
+    except Exception as exc:  # noqa: BLE001 — enforcement must never break a lesson
+        _log.warning("examples: enforce_example_plan failed: %s", exc)
+
+
 def ensure_worked_example_setup(lesson_json: dict[str, Any], topic: dict[str, Any]) -> None:
     """Deterministic guarantee: every worked example opens with a setup card (the
     problem being solved), REGARDLESS of which path produced the lesson — fixture,

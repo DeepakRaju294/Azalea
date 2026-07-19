@@ -445,6 +445,60 @@ class PrereqChainRedundancy(unittest.TestCase):
         self.assertNotIn("binary trees\n", pts + "\n")       # chain-redundant parent of BST
 
 
+class ExamplePlanCertification(unittest.TestCase):
+    """Scope-plan increment #1: the certifier resolves AT PLAN TIME which verified adapter backs each
+    WE-centric topic (scope_plan.verified_example + we_policy), and finalize enforces it — a topic planned
+    with NO verified example never ships a fabricated pseudo-example (live: turbulence essay-steps,
+    Navier-Stokes PDE prose as Step cards). Trace-backed content is always kept; unstamped topics untouched."""
+
+    @staticmethod
+    def _t(title, tt):
+        return {"title": title, "course_type": tt, "topic_type": tt, "in_scope": [], "out_of_scope": []}
+
+    def _plan(self, topic):
+        return (topic.get("decomposition_metadata") or {}).get("scope_plan") or {}
+
+    def test_certifier_stamps_verified_and_withhold(self):
+        from app.services.topic_generator import _certify_path_scope
+        out = _certify_path_scope([self._t("Classes of Turbulence", "science_mechanism"),
+                                   self._t("Photosynthesis Mechanism", "science_mechanism"),
+                                   self._t("Comparing MST Algorithms", "compare_distinguish")],
+                                  "want to learn about fluid turbulence")
+        by = {t["title"]: self._plan(t) for t in out}
+        self.assertEqual(by["Classes of Turbulence"]["verified_example"], "reynolds_number")
+        self.assertEqual(by["Classes of Turbulence"]["we_policy"], "verified")
+        self.assertIsNone(by["Photosynthesis Mechanism"]["verified_example"])
+        self.assertEqual(by["Photosynthesis Mechanism"]["we_policy"], "withhold_fabricated")
+        self.assertEqual(by["Comparing MST Algorithms"]["we_policy"], "not_applicable")
+
+    def test_enforcement_strips_fabricated_keeps_verified_and_unstamped(self):
+        from app.services.examples.handoff import enforce_example_plan
+
+        def lesson(cards):
+            return {"lesson_cards": list(cards)}
+
+        def we(tb=False):
+            return {"blueprint_key": "worked_example", "card_type": "worked_example", "title": "Step",
+                    "metadata": ({"trace_backed": True} if tb else {})}
+
+        bg = {"blueprint_key": "background", "card_type": "purpose_context", "title": "BG"}
+        withhold = {"title": "NS", "decomposition_metadata": {"scope_plan": {"we_policy": "withhold_fabricated"}}}
+        l1 = lesson([bg, we(), we()])
+        enforce_example_plan(l1, withhold)
+        self.assertEqual([c["blueprint_key"] for c in l1["lesson_cards"]], ["background"])
+        self.assertEqual(l1["metadata"]["worked_example_withheld"], "no_verified_example_planned")
+        l2 = lesson([bg, we(True), we()])                     # verified content -> whole example kept
+        enforce_example_plan(l2, withhold)
+        self.assertEqual(sum(c["blueprint_key"] == "worked_example" for c in l2["lesson_cards"]), 2)
+        l3 = lesson([bg, we()])                               # unstamped legacy topic -> untouched
+        enforce_example_plan(l3, {"title": "old"})
+        self.assertEqual(len(l3["lesson_cards"]), 2)
+        l4 = lesson([bg, we()])                               # plan says verified -> untouched
+        enforce_example_plan(l4, {"title": "T", "decomposition_metadata":
+                                  {"scope_plan": {"we_policy": "verified"}}})
+        self.assertEqual(len(l4["lesson_cards"]), 2)
+
+
 class SameAdapterDuplicateTopics(unittest.TestCase):
     """Live (depreciation path): 'Straight-Line Depreciation Formula' AND 'Applying Straight-Line
     Depreciation' both routed to depreciation_schedule — the learner built the same book-value schedule twice

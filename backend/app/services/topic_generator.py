@@ -319,6 +319,21 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
         meta["canonical_concept_key"] = key
         meta["concept_facet"] = facet
         is_deep_teaching = ttype in (_METHOD_LESSON_TYPES | {"coding_implementation"})
+        # EXAMPLE-PLAN certification (scope-plan increment #1): resolve at PLAN time which verified adapter —
+        # if any — will back this topic's worked example, and record the policy. A WE-centric topic that
+        # resolves NO adapter is stamped withhold_fabricated: the lesson ships honestly qualitative (no
+        # essay-shaped pseudo-example) instead of fabricating steps (live failures: turbulence 'worked
+        # example' = an essay chopped into steps; Navier-Stokes = unverified PDE prose as Step cards).
+        we_centric = ttype in _WE_CENTRIC_TYPES or ttype == "coding_implementation"
+        verified_example = None
+        if we_centric:
+            try:
+                from app.services.examples.trace_pipeline import route_adapter
+                _a = route_adapter({"title": str(topic.get("title") or ""),
+                                    "topic_type": ttype, "course_type": ttype})
+                verified_example = getattr(_a, "slug", None)
+            except Exception:  # noqa: BLE001 — certification must never break generation
+                verified_example = None
         meta["scope_plan"] = {
             "scope_in": list(topic.get("in_scope") or []),
             "scope_out": list(topic.get("out_of_scope") or []),
@@ -327,6 +342,9 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
                 else ("application" if facet == "implementation" else "supporting")
             ),
             "depth": "deep" if key == goal_key or is_deep_teaching else "overview",
+            "verified_example": verified_example,
+            "we_policy": ("verified" if verified_example
+                          else ("withhold_fabricated" if we_centric else "not_applicable")),
         }
         topic["decomposition_metadata"] = meta
         identities.append({"canonical_concept_key": key, "facet": facet,
