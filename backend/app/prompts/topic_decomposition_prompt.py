@@ -39,6 +39,62 @@ Return ONLY JSON:
   "reason": "one sentence"}}
 """
 
+REQUIREMENTS_SYSTEM_PROMPT = (
+    "You are Azalea's curriculum planner. Given a learner goal (and source material when provided), list the "
+    "LEARNING REQUIREMENTS a beginner course on that goal must satisfy — the complete conceptual progression, "
+    "independent of how it will later be split into lessons. You are NOT designing topics, lessons, or cards; "
+    "you are defining what any adequate course on this goal must cover. Return ONLY valid JSON."
+)
+
+
+def build_goal_requirements_prompt(goal: str | None, chunks_text: str) -> str:
+    """The REQUIREMENTS-FIRST call (curriculum-authority design): a dedicated frame whose only job is deciding
+    WHAT must be learned, made before any topic exists. Separating this from the decomposition call fixes the
+    invent-and-compress-in-one-breath failure (live: 'fluid turbulence' repeatedly came back as 1-2 shallow
+    topics because the same call both discovered the curriculum and squeezed it into a topic list)."""
+    return f"""
+GOAL:
+{goal or "General understanding of the material"}
+
+SOURCE MATERIAL:
+{chunks_text}
+
+---
+List the learning requirements a BEGINNER course satisfying this goal must cover.
+
+RULES:
+- 4-8 requirements; each is ONE teachable outcome, concrete and checkable ("explain how energy transfers from
+  large eddies to smaller scales before viscous dissipation removes it", NEVER "understand the basics").
+- Cover the subject's standard conceptual progression the way a textbook chapter sequence would: what it is and
+  its distinctions/regimes, the governing quantities or criteria AND their physical meaning, the central
+  mechanism(s), observable consequences/applications, and — only when genuinely core — how it is modeled.
+- Requirements define WHAT must be learned, not lesson titles, card counts, or ordering.
+- A narrow single-technique goal may genuinely need only 2-3 requirements; do not pad.
+- name = a 2-5 word noun phrase naming the requirement (it may become a topic title later).
+- kind: "core" (the goal is not met without it) | "supporting" (needed to make a core requirement teachable).
+
+Return ONLY JSON:
+{{"requirements": [
+  {{"requirement_id": "R1", "name": "Flow regimes and transition",
+    "statement": "distinguish laminar, transitional and turbulent flow and what governs the transition",
+    "kind": "core"}}
+]}}
+"""
+
+
+def _requirements_block(reqs: list[dict[str, Any]]) -> str:
+    lines = [f"- {r.get('requirement_id')} ({r.get('kind', 'core')}): {r.get('statement')}"
+             for r in reqs]
+    return (
+        "\n\nAUTHORITATIVE GOAL REQUIREMENTS — decided BEFORE this decomposition; they define what the path "
+        "MUST cover, and you decide how to group them into topics:\n" + "\n".join(lines) + "\n"
+        "EVERY \"core\" requirement MUST be covered by at least one topic — add topics if the minimal set "
+        "would leave one uncovered. Each topic declares which requirements it covers in a "
+        "`covers_requirements` field (list of requirement_ids, e.g. [\"R1\", \"R3\"]). A core requirement "
+        "covered by NO topic is a planning failure."
+    )
+
+
 SYSTEM_PROMPT = (
     "You are Azalea. Decompose a learner goal + source into a CAPABILITY GRAPH, then into a minimal, "
     "non-overlapping, ordered study path. Work backward from the end capability to the required "
@@ -48,14 +104,16 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_decomposition_prompt(goal: str | None, chunks_text: str, feedback: str | None = None) -> str:
+def build_decomposition_prompt(goal: str | None, chunks_text: str, feedback: str | None = None,
+                               goal_requirements: list[dict[str, Any]] | None = None) -> str:
     fb = f"\n\nUSER FEEDBACK (apply to the path):\n{feedback.strip()}" if feedback and feedback.strip() else ""
+    req = _requirements_block(goal_requirements) if goal_requirements else ""
     return f"""
 GOAL:
 {goal or "General understanding of the material"}
 
 SOURCE MATERIAL:
-{chunks_text}{fb}
+{chunks_text}{fb}{req}
 
 ---
 PROCESS (capability-first):

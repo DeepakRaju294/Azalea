@@ -19,7 +19,9 @@ from app.core.topic_decomposition import (
 )
 from app.core.topic_decomposition_appender import IMPLEMENTATION_FOLLOW_UP, append_coding_follow_ups
 from app.core.topic_decomposition_validator import OverlapResolver, validate_topic_decomposition
-from app.prompts.topic_decomposition_prompt import SYSTEM_PROMPT, build_decomposition_prompt
+from app.prompts.topic_decomposition_prompt import (
+    REQUIREMENTS_SYSTEM_PROMPT, SYSTEM_PROMPT, build_decomposition_prompt, build_goal_requirements_prompt,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -761,8 +763,87 @@ def _synthesize_intro_topic(goal: str | None) -> dict[str, Any]:
     }
 
 
+def _goal_requirements(goal: str | None, chunks_text: str, fn: ModelFn) -> list[dict[str, Any]]:
+    """The REQUIREMENTS-FIRST call (curriculum-authority design): decide WHAT the path must cover BEFORE any
+    topic exists, in a dedicated frame. The result is injected into the decomposition prompt as authoritative
+    and checked deterministically afterward (an unowned core requirement flows into the B.4.1 coverage repair,
+    which synthesizes a topic for it). Kill switch: AZALEA_GOAL_REQUIREMENTS=0. Best-effort — a failed call
+    means decomposition proceeds exactly as before."""
+    if os.getenv("AZALEA_GOAL_REQUIREMENTS", "") == "0":
+        return []
+    try:
+        payload = {"system": REQUIREMENTS_SYSTEM_PROMPT,
+                   "user": build_goal_requirements_prompt(goal, chunks_text)}
+        parsed = _coerce(fn(payload))
+        reqs: list[dict[str, Any]] = []
+        for i, r in enumerate(parsed.get("requirements") or []):
+            if not isinstance(r, dict):
+                continue
+            statement = " ".join(str(r.get("statement") or "").split()).strip()
+            if not statement:
+                continue
+            rid = str(r.get("requirement_id") or "").strip() or f"R{i + 1}"
+            kind = str(r.get("kind") or "core").strip().lower()
+            reqs.append({"requirement_id": rid,
+                         "name": " ".join(str(r.get("name") or "").split()).strip(),
+                         "statement": statement,
+                         "kind": kind if kind in ("core", "supporting") else "core"})
+        if reqs:
+            _log.info("goal requirements: %d requirements for goal %r: %s", len(reqs), goal,
+                      [r["requirement_id"] for r in reqs])
+        return reqs[:8]
+    except Exception:  # noqa: BLE001 — requirements are additive; never block decomposition
+        _log.info("goal requirements call failed for goal %r — decomposing without requirements", goal)
+        return []
+
+
+def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[dict[str, Any]],
+                                  requirements: list[dict[str, Any]]) -> None:
+    """Deterministic requirement-coverage check (the anti-self-referential validator): a core requirement no
+    topic claims via covers_requirements becomes a REQUIRED standalone capability in the path plan, so the
+    existing B.4.1 coverage repair synthesizes a topic for it. Mutates path_plan in place; also records the
+    requirements + ownership for telemetry/audit."""
+    if not requirements:
+        return
+    owned: set[str] = set()
+    for t in raw_topics:
+        for rid in (t.get("covers_requirements") or []):
+            owned.add(str(rid).strip())
+    caps = path_plan.setdefault("required_capabilities", [])
+    cap_ids = {str(c.get("capability_id")) for c in caps if isinstance(c, dict)}
+    unowned: list[str] = []
+    for r in requirements:
+        rid = r["requirement_id"]
+        r["owned"] = rid in owned
+        if r["owned"] or r.get("kind") != "core":
+            continue
+        unowned.append(rid)
+        cid = f"goal_req_{rid.lower()}"
+        if cid in cap_ids:
+            continue
+        subject_source = r.get("name") or r["statement"]
+        caps.append({
+            "capability_id": cid,
+            "subject_key": normalize_subject_key(subject_source),
+            "primary_capability": (r.get("name") or r["statement"])[:120],
+            "description": r["statement"],
+            "ownership_mode": "standalone",
+            "owner_topic_id": None,
+            "prerequisite_capability_ids": [],
+            "satisfies_end_actions": [],
+            "basis": "goal_requirement",
+            "policy_reason": "unowned_goal_requirement",
+        })
+    path_plan["goal_requirements"] = requirements
+    if unowned:
+        _log.info("goal requirements: %s unowned by any topic — appended as required capabilities "
+                  "(coverage repair will synthesize topics)", unowned)
+
+
 def _retry_thin_plan(parsed: dict[str, Any], raw_topics: list[dict[str, Any]], goal: str | None,
-                     chunks_text: str, feedback: str | None, fn: ModelFn) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+                     chunks_text: str, feedback: str | None, fn: ModelFn,
+                     goal_requirements: list[dict[str, Any]] | None = None,
+                     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """One bounded re-ask when the model returned a SINGLE teaching topic that itself claims several distinct
     content commitments — the signature of an undecomposed area goal (live: 'fluid turbulence' came back as one
     concept_intuition topic whose in_scope listed characteristics + causes + laminar-vs-turbulent; regens of the
@@ -787,7 +868,8 @@ def _retry_thin_plan(parsed: dict[str, Any], raw_topics: list[dict[str, Any]], g
     combined = f"{feedback.strip()}\n\n{thin_note}" if feedback and feedback.strip() else thin_note
     try:
         payload = {"system": SYSTEM_PROMPT,
-                   "user": build_decomposition_prompt(goal=goal, chunks_text=chunks_text, feedback=combined)}
+                   "user": build_decomposition_prompt(goal=goal, chunks_text=chunks_text, feedback=combined,
+                                                      goal_requirements=goal_requirements)}
         parsed2 = _coerce(fn(payload))
         raw2 = [x for x in (parsed2.get("topics") or []) if isinstance(x, dict)]
         teaching2 = [x for x in raw2 if str(x.get("topic_type") or "") != "study_path_introduction"]
@@ -813,18 +895,27 @@ def generate_decomposed_topics(
     """Single-call decompose -> append coding follow-ups -> validate -> adapt to legacy topics.
     Returns [] when the model produced nothing usable (caller falls back to the legacy generator).
     `coding_follow_ups=False` (non-coding domains) skips the 'Implementing X' follow-up append."""
-    payload = {"system": SYSTEM_PROMPT,
-               "user": build_decomposition_prompt(goal=goal, chunks_text=chunks_text, feedback=feedback)}
     fn = model_fn or _default_model_fn
+    # REQUIREMENTS FIRST (curriculum authority): decide WHAT must be covered before any topic exists, then
+    # decompose AGAINST those requirements. Best-effort: [] keeps the old single-call behavior exactly.
+    requirements = _goal_requirements(goal, chunks_text, fn)
+    payload = {"system": SYSTEM_PROMPT,
+               "user": build_decomposition_prompt(goal=goal, chunks_text=chunks_text, feedback=feedback,
+                                                  goal_requirements=requirements)}
     parsed = _coerce(fn(payload))
     raw_topics = [t for t in (parsed.get("topics") or []) if isinstance(t, dict)]
     if not raw_topics:
         return []
-    parsed, raw_topics = _retry_thin_plan(parsed, raw_topics, goal, chunks_text, feedback, fn)
+    parsed, raw_topics = _retry_thin_plan(parsed, raw_topics, goal, chunks_text, feedback, fn,
+                                          goal_requirements=requirements)
 
     path_plan = parsed.get("path_plan") if isinstance(parsed.get("path_plan"), dict) else {}
     path_plan.setdefault("required_capabilities", [])
     path_plan.setdefault("end_capability_actions", [])
+    # Deterministic requirement coverage: an unowned CORE requirement becomes a required capability, so the
+    # validator's B.4.1 coverage repair synthesizes a topic for it — the validator now checks the plan against
+    # requirements decided BEFORE the topics, not against the topic list's own claims.
+    _enforce_requirement_coverage(path_plan, raw_topics, requirements)
 
     topics = [_normalize_topic(t) for t in raw_topics]
     path_plan, topics = append_coding_follow_ups(path_plan, topics, enabled=coding_follow_ups)

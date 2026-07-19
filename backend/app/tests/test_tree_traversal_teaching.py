@@ -1129,6 +1129,11 @@ class ThinPlanRetry(unittest.TestCase):
                 "content_role": "foundation", "topic_type": tt, "title": title, "unit_title": "u",
                 "purpose": "p", "in_scope": scope, "basis": "goal"}
 
+    @staticmethod
+    def _decomp_calls(calls):
+        """Only the DECOMPOSITION calls (the requirements-first call is a separate, additive frame)."""
+        return [u for u in calls if "PROCESS (capability-first)" in u]
+
     def test_thin_plan_retried_and_richer_result_adopted(self):
         from app.services.topic_decomposition_pipeline import generate_decomposed_topics
         thin = self._plan([self._topic("turb", "Understanding Fluid Turbulence",
@@ -1141,11 +1146,14 @@ class ThinPlanRetry(unittest.TestCase):
         calls = []
         def fn(payload):
             calls.append(payload["user"])
-            return thin if len(calls) == 1 else rich
+            if "PROCESS (capability-first)" not in payload["user"]:
+                return {}                                     # the requirements call — none provided
+            return thin if len(self._decomp_calls(calls)) == 1 else rich
         topics = generate_decomposed_topics("learn fluid turbulence", "s", model_fn=fn)
-        self.assertEqual(len(calls), 2)
-        self.assertIn("TOO THIN", calls[1])                   # feedback names the failure
-        self.assertIn("laminar vs turbulent flow", calls[1])  # and the claimed commitments
+        decomp = self._decomp_calls(calls)
+        self.assertEqual(len(decomp), 2)
+        self.assertIn("TOO THIN", decomp[1])                   # feedback names the failure
+        self.assertIn("laminar vs turbulent flow", decomp[1])  # and the claimed commitments
         titles = {t["title"] for t in topics}
         self.assertIn("Physics of Turbulence", titles)
         self.assertNotIn("Understanding Fluid Turbulence", titles)
@@ -1156,21 +1164,99 @@ class ThinPlanRetry(unittest.TestCase):
                                          tt="math_formula_method")])
         calls = []
         def fn(payload):
-            calls.append(1)
+            calls.append(payload["user"])
             return narrow
         generate_decomposed_topics("learn completing the square", "s", model_fn=fn)
-        self.assertEqual(len(calls), 1)                       # 0-1 commitments -> legitimate narrow goal
+        self.assertEqual(len(self._decomp_calls(calls)), 1)    # 0-1 commitments -> legitimate narrow goal
 
     def test_retry_that_stays_thin_keeps_original(self):
         from app.services.topic_decomposition_pipeline import generate_decomposed_topics
         thin = self._plan([self._topic("turb", "Understanding Fluid Turbulence", ["a", "b", "c"])])
         calls = []
         def fn(payload):
-            calls.append(1)
+            calls.append(payload["user"])
             return thin
         topics = generate_decomposed_topics("learn fluid turbulence", "s", model_fn=fn)
-        self.assertEqual(len(calls), 2)                       # retried once, then accepted the original
+        self.assertEqual(len(self._decomp_calls(calls)), 2)    # retried once, then accepted the original
         self.assertTrue(any(t["title"] == "Understanding Fluid Turbulence" for t in topics))
+
+
+class GoalRequirementsFirst(unittest.TestCase):
+    """Requirements-first planning (curriculum-authority design): a dedicated call decides WHAT the path must
+    cover BEFORE any topic exists; the decomposition receives those requirements as authoritative; an unowned
+    CORE requirement becomes a required capability, so the validator's coverage repair synthesizes a topic for
+    it. This replaces the self-referential check (plan validated against its own capability claims) with a
+    check against requirements decided independently of the topic proposal."""
+
+    _REQS = {"requirements": [
+        {"requirement_id": "R1", "name": "Flow regimes", "kind": "core",
+         "statement": "distinguish laminar, transitional and turbulent flow"},
+        {"requirement_id": "R2", "name": "Energy cascade and dissipation", "kind": "core",
+         "statement": "explain how energy transfers from large eddies to smaller scales before viscous "
+                      "dissipation removes it"},
+    ]}
+
+    @staticmethod
+    def _topic(tid, title, covers, tt="science_mechanism"):
+        return {"topic_id": tid, "capability_id": tid, "subject_key": tid, "primary_action": "understand",
+                "content_role": "mechanism", "topic_type": tt, "title": title, "unit_title": "u",
+                "purpose": "p", "in_scope": ["a", "b"], "covers_requirements": covers, "basis": "goal"}
+
+    def _fn(self, decomposition):
+        calls = []
+        def fn(payload):
+            calls.append(payload["user"])
+            if "learning requirements" in payload["user"]:
+                return self._REQS
+            return decomposition
+        return fn, calls
+
+    def test_requirements_injected_as_authoritative(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [self._topic("t1", "Flow Regimes", ["R1"]),
+                           self._topic("t2", "Energy Cascade", ["R2"])]}
+        fn, calls = self._fn(plan)
+        generate_decomposed_topics("learn fluid turbulence", "s", model_fn=fn)
+        decomp = next(u for u in calls if "PROCESS (capability-first)" in u)
+        self.assertIn("AUTHORITATIVE GOAL REQUIREMENTS", decomp)
+        self.assertIn("R2 (core)", decomp)
+        self.assertIn("covers_requirements", decomp)
+
+    def test_unowned_core_requirement_synthesizes_a_topic(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        # the model covers R1 but silently drops R2 — the historical thin-path failure
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [self._topic("t1", "Flow Regimes", ["R1"])]}
+        fn, calls = self._fn(plan)
+        topics = generate_decomposed_topics("learn fluid turbulence", "s", model_fn=fn)
+        titles = [t["title"] for t in topics]
+        self.assertTrue(any("Energy cascade and dissipation" in t for t in titles), titles)
+
+    def test_owned_requirements_add_nothing(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [self._topic("t1", "Flow Regimes", ["R1"]),
+                           self._topic("t2", "Energy Cascade", ["R2"])]}
+        fn, calls = self._fn(plan)
+        topics = generate_decomposed_topics("learn fluid turbulence", "s", model_fn=fn)
+        teaching = [t for t in topics if t["course_type"] != "study_path_introduction"]
+        self.assertEqual(len(teaching), 2)                    # nothing synthesized on top
+
+    def test_kill_switch_skips_requirements_call(self):
+        import os
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [self._topic("t1", "Flow Regimes", ["R1"]),
+                           self._topic("t2", "Energy Cascade", ["R2"])]}
+        fn, calls = self._fn(plan)
+        os.environ["AZALEA_GOAL_REQUIREMENTS"] = "0"
+        try:
+            generate_decomposed_topics("learn fluid turbulence", "s", model_fn=fn)
+        finally:
+            os.environ.pop("AZALEA_GOAL_REQUIREMENTS", None)
+        self.assertFalse(any("learning requirements" in u for u in calls))
+        self.assertFalse(any("AUTHORITATIVE GOAL REQUIREMENTS" in u for u in calls))
 
 
 class EdgeCaseGroundingPlanGuard(unittest.TestCase):
