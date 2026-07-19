@@ -459,22 +459,29 @@ class GraphFamilyDeterministicCoding(unittest.TestCase):
                     self.assertIsNone(generate_coding_cards(tr, display_solution(slug, lang), base),
                                       f"{slug} {lang}: translated display must fall back to the LLM")
 
-    def test_recursive_dfs_walkthrough_narrates_recursion_and_falls_back_for_coding(self):
-        # DFS is presented RECURSIVELY (more intuitive than an explicit stack): the adapter's trace narrates
-        # the depth-first descent + backtracking, and the canonical code is recursive. Recursive accumulation
-        # (order += dfs(...)) does not map to one slice per step, so coding falls back to the LLM (not on the
-        # deterministic whitelist) — and the code/walkthrough are both recursive, so they no longer conflict.
+    def test_recursive_dfs_shared_accumulator_narrates_and_maps_to_code(self):
+        # DFS is presented RECURSIVELY with a SHARED accumulator: the old per-frame `order += dfs(...)`
+        # concatenated on return, so the global visit-order prefix never existed in any variable — the
+        # executed-reference gate could not ground the per-step states (audit: 2-3 missing per seed, the
+        # postorder bug class) AND deterministic coding narration could not map steps to code. The shared
+        # `order.append(node)` fixes both: gate-covered, and generate_coding_cards now produces correct
+        # code-anchored cards. Shipping them stays behind the curated DETERMINISTIC_CODING_SLUGS whitelist
+        # (a deliberate promotion decision, not a side effect of this fix).
         from app.services.examples.canonical_solutions import display_solution, canonical_python
         from app.services.examples.coding_narration import generate_coding_cards
         from app.services.examples.trace_adapters import DETERMINISTIC_CODING_SLUGS
         self.assertNotIn("dfs_iter", DETERMINISTIC_CODING_SLUGS)
-        self.assertIn("order += dfs", canonical_python("dfs_iter"))             # recursive code
+        self.assertIn("visit_dfs(graph, neighbor, visited, order)", canonical_python("dfs_iter"))
+        self.assertIn("order.append(node)", canonical_python("dfs_iter"))
         a = ADAPTERS["dfs_iter"]
         tr = tp.select_instance(a, seed=3)
         prose = " ".join(s.decision + " " + s.reason for s in tr.steps).lower()
         self.assertIn("recurse", prose)                                        # recursion narrated
         self.assertIn("backtrack", prose)                                      # and backtracking (is_teaching_trace)
-        self.assertIsNone(generate_coding_cards(tr, display_solution("dfs_iter"), tp._deterministic_narration(tr, a)))
+        cards = generate_coding_cards(tr, display_solution("dfs_iter"), tp._deterministic_narration(tr, a))
+        self.assertIsNotNone(cards)                                            # steps now map to code lines
+        self.assertEqual(len(cards), len(tr.steps))
+        self.assertEqual(cards[-1]["result_state"]["order"], tr.final_answer["visit_order"])
 
 
 class DeterministicCodingIsWhitelisted(unittest.TestCase):

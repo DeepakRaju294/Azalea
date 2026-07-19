@@ -39,15 +39,21 @@ def bfs(graph, start):
                 queue.append(neighbor)
     return order
 """,
-    # DFS recursive — simpler than an explicit stack, equally efficient.
-    "dfs_iter": """def dfs(graph, node, visited=None):
-    if visited is None:
-        visited = set()
+    # DFS recursive with a SHARED accumulator (helper top-level FIRST, wrapper LAST for find_entry_function —
+    # same contract as the tree traversals). The old per-frame `order += dfs(...)` concatenated on RETURN, so
+    # the global visit-order prefix never existed in any variable — the executed-reference gate could not
+    # ground the trace's per-step states (audit: 2-3 states missing per seed; the postorder bug class).
+    "dfs_iter": """def visit_dfs(graph, node, visited, order):
     visited.add(node)
-    order = [node]
+    order.append(node)
     for neighbor in graph[node]:
         if neighbor not in visited:
-            order += dfs(graph, neighbor, visited)
+            visit_dfs(graph, neighbor, visited, order)
+
+def dfs(graph, node):
+    visited = set()
+    order = []
+    visit_dfs(graph, node, visited, order)
     return order
 """,
     "kruskal": """def find(parent, u):

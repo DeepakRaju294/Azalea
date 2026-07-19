@@ -343,19 +343,27 @@ def _list_keys(state: Optional[dict]) -> list:
     return [json.dumps(v, default=str) for v in (state or {}).values() if isinstance(v, list)]
 
 
-def _is_tree_trace(trace: Any) -> bool:
-    prov = getattr(trace, "provenance", None) or {}
-    return str(prov.get("adapter") or "").startswith("tree_")
+# Non-array adapter families the gate COVERS: audited (2026-07-20) — their canonicals reproduce every trace
+# intermediate state across seeds. Audited and deliberately EXCLUDED: sieve_of_eratosthenes (trace tracks a
+# `crossed` list, code the standard boolean array — semantically equivalent, incomparable by state containment;
+# needs a per-adapter state projection); kruskal/prim (_execute_on_instance cannot build runnable args from the
+# recovered instance yet); bst_search (scalar states — containment is vacuous).
+_GATED_GRAPH_SLUGS = frozenset({"bfs", "dfs_iter", "topological_sort", "n_queens"})
+
+
+def _gate_covered_trace(trace: Any) -> bool:
+    slug = str((getattr(trace, "provenance", None) or {}).get("adapter") or "")
+    return slug.startswith("tree_") or slug in _GATED_GRAPH_SLUGS
 
 
 def reproduces_trace_applies(trace: Any, code: Optional[str]) -> bool:
     """True when the executed-reference trace-reproduction gate can run: code present + array-shaped topic OR
-    a tree traversal (instance recoverable via provenance). Trees were skipped ('never a false withhold') —
-    which shipped a reversed-preorder postorder canonical beside a true-postorder trace: right final answer,
-    every per-step annotation wrong. Other non-array families stay skipped until audited the same way."""
+    an audited non-array family (see _GATED_GRAPH_SLUGS). Skipping trees shipped a reversed-preorder postorder
+    canonical beside a true-postorder trace (right final answer, every per-step annotation wrong); the same
+    audit then caught dfs_iter's per-frame accumulator. Remaining families stay skipped until audited."""
     if not code or find_entry_function(code or "") is None:
         return False
-    return _input_array(trace) is not None or _is_tree_trace(trace)
+    return _input_array(trace) is not None or _gate_covered_trace(trace)
 
 
 _DECISION_CMP = re.compile(r"(<=|>=|==|<|>)")
@@ -448,9 +456,9 @@ def code_reproduces_trace(code: str, trace: Any) -> list:
     AND every trace step's state occurs among the code's real intermediate states (proving the code is the
     SAME variant as the walkthrough, not a lookalike whose per-line annotations would contradict it).
     Non-empty = variant drift or a broken solution; the code must not be shown beside this walkthrough. SKIPS
-    shapes the gate does not cover yet (returns [] — never a false positive): arrays and tree traversals are
-    covered; other families pending the same audit."""
-    if _input_array(trace) is None and not _is_tree_trace(trace):
+    shapes the gate does not cover yet (returns [] — never a false positive): arrays, tree traversals, and the
+    audited graph slugs are covered; other families pending the same audit."""
+    if _input_array(trace) is None and not _gate_covered_trace(trace):
         return []
     run = _execute_on_instance(code, trace)
     if run is None:                                          # cannot run either form -> unverifiable, skip
@@ -458,7 +466,8 @@ def code_reproduces_trace(code: str, trace: Any) -> list:
     steps, result, _ = run
     out: list = []
     fa = getattr(trace, "final_answer", None) or {}
-    expected = fa.get("sorted") if fa.get("sorted") is not None else fa.get("visit_order")
+    expected = next((fa[k] for k in ("sorted", "visit_order", "topo_order", "queen_rows")
+                     if fa.get(k) is not None), None)
     if expected is not None and result != expected:
         out.append(f"code result {result} != trace final answer {expected}")
     from collections import deque
