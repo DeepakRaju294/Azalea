@@ -41,9 +41,9 @@ Return ONLY JSON:
 
 REQUIREMENTS_SYSTEM_PROMPT = (
     "You are Azalea's curriculum planner. Given a learner goal (and source material when provided), list the "
-    "LEARNING REQUIREMENTS a beginner course on that goal must satisfy — the complete conceptual progression, "
+    "LEARNING REQUIREMENTS a course on that goal must satisfy — the complete conceptual progression, "
     "independent of how it will later be split into lessons. You are NOT designing topics, lessons, or cards; "
-    "you are defining what any adequate course on this goal must cover. Return ONLY valid JSON."
+    "you are defining what a course on this goal must cover. Return ONLY valid JSON."
 )
 
 
@@ -60,7 +60,7 @@ SOURCE MATERIAL:
 {chunks_text}
 
 ---
-List the learning requirements a BEGINNER course satisfying this goal must cover.
+List the learning requirements a course satisfying this goal must cover.
 
 RULES:
 - 4-8 requirements; each is ONE teachable outcome, concrete and checkable ("explain how energy transfers from
