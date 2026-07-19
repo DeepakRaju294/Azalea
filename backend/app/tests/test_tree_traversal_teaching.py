@@ -381,6 +381,29 @@ class StepFieldContract(unittest.TestCase):
         self.assertEqual(sol["cards"][0]["work"], ["result.append(node.val)  // append 4"])  # untouched
 
 
+class CircularPrereqAnatomyStrip(unittest.TestCase):
+    """Live failure (18:05 path): prereq 'node traversal' on a 'bst traversal' goal survived the circular
+    guard because 'node' is not a goal word — then told the learner to already 'explain and implement
+    pre/in/post-order traversal', the exact content of the path. Structural-anatomy words (node/element/tree/
+    vertex…) are not a different subject; stripped, the prereq collapses to the goal subject → circular.
+    A prereq naming ONLY a structure ('trees') is a legitimate structural prereq and stays."""
+
+    def test_anatomy_wrapped_goal_subject_is_circular(self):
+        from app.services.topic_decomposition_pipeline import _is_circular_prereq
+        goal = "Want to learn about bst traversal"
+        self.assertTrue(_is_circular_prereq("node traversal", goal))
+        self.assertTrue(_is_circular_prereq("tree traversal", goal))
+        self.assertTrue(_is_circular_prereq("Traversal Basics", goal))
+
+    def test_structural_and_distinct_prereqs_are_kept(self):
+        from app.services.topic_decomposition_pipeline import _is_circular_prereq
+        goal = "Want to learn about bst traversal"
+        self.assertFalse(_is_circular_prereq("binary search trees", goal))
+        self.assertFalse(_is_circular_prereq("trees", goal))                      # structure-only name
+        self.assertFalse(_is_circular_prereq("linked lists", "learn binary search trees"))
+        self.assertFalse(_is_circular_prereq("conditional probability", "learn bayes theorem"))
+
+
 class CodingTopicsHaveNoKeyTerms(unittest.TestCase):
     """Structural consistency (path review): components_terms was OPTIONAL on coding_implementation, so the
     model added it to one sibling implementation and not the others — arbitrary structure across a family.

@@ -125,6 +125,13 @@ _GENERIC_PREREQ_WORDS = frozenset({
 })
 
 
+# Generic structure-anatomy words: parts every tree/graph/list already has. In a prereq name they add no
+# outside subject ("node traversal" is just "traversal"); a name that is ONLY anatomy ("trees") names a real
+# structure and is kept.
+_STRUCTURAL_ANATOMY_WORDS = frozenset({
+    "node", "nodes", "element", "elements", "item", "items", "tree", "trees", "vertex", "vertices"})
+
+
 def _is_circular_prereq(name: str, goal: str | None) -> bool:
     """True when a proposed prerequisite is really THE GOAL SUBJECT wrapped in generic words — e.g. goal
     'learn combinatorial analysis' with prereq 'Combinatorial Principles'. Such a prereq is CIRCULAR (its
@@ -149,7 +156,15 @@ def _is_circular_prereq(name: str, goal: str | None) -> bool:
     # All generic ("basics", "fundamentals") → names no outside subject at all → circular/useless as a prereq.
     if not words:
         return True
-    return all(_in_goal(w) for w in words)
+    # Structural-anatomy words are not a DIFFERENT subject — they are the generic parts of the structure the
+    # goal already implies. Live failure: prereq "node traversal" on a "bst traversal" goal survived because
+    # "node" is not a goal word, then told the learner to already "explain and implement pre/in/post-order
+    # traversal" — the exact content of the path. Stripping anatomy words makes it {traversal} ⊆ goal →
+    # circular. A prereq naming ONLY a structure ("trees") stays: that is a legitimate structural prereq.
+    core = [w for w in words if w not in _STRUCTURAL_ANATOMY_WORDS]
+    if not core:
+        return False
+    return all(_in_goal(w) for w in core)
 
 
 # Broad whole-DISCIPLINE names that make poor prerequisites: they restate an entire field rather than the
