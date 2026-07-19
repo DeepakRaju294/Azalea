@@ -3430,6 +3430,37 @@ def _acceptable_concept(c: str) -> bool:
     return True
 
 
+# A prerequisite must be something a learner could plausibly study on its own (open_study_path spins up a whole
+# path for it). Structural sub-parts of a data structure — "left and right children", "visited nodes", "parent
+# node" — are NOT study-worthy: nobody makes a study path to learn "left and right children"; those belong glossed
+# inline. Detect them two ways: (1) the phrase's HEAD noun is a structural part-term; (2) its gloss defines it as
+# "a node…/the nodes…/part of…" (a part, not a subject). Data structures/algorithms (tree, graph, list, recursion)
+# pass — their HEAD is a subject noun and their gloss opens "a data structure…/an algorithm…".
+# Only UNAMBIGUOUS structural parts — nobody studies these standalone. Ambiguous terms are deliberately left out
+# (keys/values/pointers can be real topics; "roots" can mean polynomial roots) and handled by the gloss check.
+_STRUCTURAL_PART_HEADS = frozenset({
+    "node", "nodes", "child", "children", "parent", "parents", "leaf", "leaves", "sibling", "siblings",
+    "subtree", "subtrees", "vertex", "vertices", "edge", "edges"})
+_PART_GLOSS_OPENERS = (
+    "a node", "the node", "nodes ", "the nodes", "nodes,", "a part of", "part of a", "part of the",
+    "one of the", "each node", "a value in", "the value of", "a pointer", "the pointer", "a key ", "an element")
+
+
+def _study_worthy_prereq(name: str, gloss: str | None) -> bool:
+    """False for a structural sub-part / internal term that should be glossed inline, never offered as a
+    standalone prerequisite path (e.g. 'left and right children', 'visited nodes', 'parent node')."""
+    words = str(name or "").split()
+    if not words:
+        return False
+    head = words[-1].lower().strip(".,;:")
+    if head in _STRUCTURAL_PART_HEADS:
+        return False
+    g = str(gloss or "").strip().lower()
+    if any(g.startswith(op) for op in _PART_GLOSS_OPENERS):
+        return False
+    return True
+
+
 def _concepts_from_prereq_line(s: str) -> list[str]:
     """Clean concept phrase(s) from one prereq bullet. A 'such as A and B' list → [A, B]; else the leading noun
     phrase before the first verb → [X]. Everything is trimmed and filtered (_acceptable_concept) so complex
@@ -4055,6 +4086,14 @@ def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic, brief_fn=None
                     requirements.setdefault(bname, str(b["required_knowledge"]).strip())
         except Exception:  # noqa: BLE001 — enrichment must never break generation
             pass
+    # Drop prereqs that aren't study-worthy topics (structural sub-parts like "left and right children" / "visited
+    # nodes"): they must never become an open_study_path prereq. Runs BEFORE link emission (§_ground precedes
+    # emission), so a dropped bullet gets no link either. Guard: if the filter would empty the card, keep the
+    # original names — an off prereq is less bad than a prereq card with nothing in it.
+    worthy = [n for n in names if _study_worthy_prereq(n, glosses.get(n.lower()))]
+    if worthy:
+        names = worthy
+
     # One prereq = one idea group: the MAIN bullet is the bare topic name (also the interactive-link anchor —
     # the name of the study path the link opens), with the refresher ("what it is") and the actionable line
     # ("what to learn there before this path") as its indented sub-bullets.

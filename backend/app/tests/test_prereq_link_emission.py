@@ -7,8 +7,9 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.lean_lesson_generator import (
-    _attach_link_anchors, _concepts_from_prereq_line, _emit_prereq_interactive_links, _lean_card_to_legacy,
-    _model_popup_links, _strip_prereq_goal_phrase, _topic_title_aliases,
+    _attach_link_anchors, _concepts_from_prereq_line, _emit_prereq_interactive_links, _ground_prereq_card,
+    _lean_card_to_legacy, _model_popup_links, _strip_prereq_goal_phrase, _study_worthy_prereq,
+    _topic_title_aliases,
 )
 
 _FLAG = "AZALEA_PREREQ_LINKS"
@@ -117,6 +118,46 @@ class PrereqLinkEmission(unittest.TestCase):
         self.assertIn("Basic probability concepts", texts)
         self.assertIn("conditional probability", texts)                # goal-phrase "Understanding " stripped
         self.assertTrue(all(l["action"] == "open_study_path" for l in links))
+
+    def test_study_worthy_prereq_filter(self):
+        # Structural sub-parts a learner would never build a study path for → rejected.
+        self.assertFalse(_study_worthy_prereq("Left and right children",
+                                              "The nodes directly connected to a parent node."))
+        self.assertFalse(_study_worthy_prereq("Visited nodes", "Nodes that have been processed."))
+        self.assertFalse(_study_worthy_prereq("parent node", "the node above a given node"))
+        self.assertFalse(_study_worthy_prereq("edges", "connections between vertices"))
+        # Real, learnable prerequisite topics → kept.
+        self.assertTrue(_study_worthy_prereq("binary tree", "a data structure where each node has two children"))
+        self.assertTrue(_study_worthy_prereq("Binary search trees", "a sorted tree structure"))
+        self.assertTrue(_study_worthy_prereq("recursion", "a function that calls itself"))
+        self.assertTrue(_study_worthy_prereq("roots of a polynomial", "the x-values where it equals zero"))
+
+    def test_ground_prereq_card_drops_structural_subparts(self):
+        # The live BST-traversal failure: the prereq card listed binary tree + 'Visited nodes' + 'Left and right
+        # children'; only the study-worthy 'binary tree' should survive (no open_study_path for the sub-parts).
+        intro = _Topic("i", "Introduction to BST Traversal", 0, course_type="study_path_introduction",
+                       prereqs=["binary tree", "Visited nodes", "Left and right children"])
+        intro.decomposition_metadata = {"assumed_prerequisite_glosses": {
+            "binary tree": "a data structure where each node has at most two children",
+            "visited nodes": "Nodes that have been processed during a tree traversal.",
+            "left and right children": "The nodes directly connected to a parent node on either side."}}
+        cards = [{"card_type": "purpose_context", "blueprint_key": "prerequisites",
+                  "title": "Prerequisites", "points": ["binary tree", "Visited nodes", "Left and right children"]}]
+        out = _ground_prereq_card(cards, intro, brief_fn=lambda names, goal: [])
+        pts = " \n ".join(out[0]["points"]).lower()
+        self.assertIn("binary tree", pts)
+        self.assertNotIn("visited nodes", pts)
+        self.assertNotIn("left and right children", pts)
+
+    def test_ground_prereq_card_keeps_all_when_all_unworthy(self):
+        # Guard: never produce an empty prereq card — if every prereq is a sub-part, keep them rather than blank.
+        intro = _Topic("i", "Intro", 0, course_type="study_path_introduction",
+                       prereqs=["Visited nodes", "Left and right children"])
+        cards = [{"card_type": "purpose_context", "blueprint_key": "prerequisites",
+                  "title": "Prerequisites", "points": ["Visited nodes", "Left and right children"]}]
+        out = _ground_prereq_card(cards, intro, brief_fn=lambda names, goal: [])
+        pts = " \n ".join(out[0]["points"]).lower()
+        self.assertIn("visited nodes", pts)
 
     def test_strip_prereq_goal_phrase(self):
         self.assertEqual(_strip_prereq_goal_phrase("Understanding conditional probability"),
