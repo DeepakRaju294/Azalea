@@ -232,12 +232,18 @@ _UMBRELLA_FIELDS = frozenset({
 def _drop_umbrella_prereqs(prereqs: list[str]) -> list[str]:
     """Remove a broad umbrella-discipline prerequisite ('Statistics', 'Mathematics') when at least one more
     specific prerequisite remains — the specific one is what the learner actually needs, and the umbrella just
-    duplicates it vaguely. If EVERY prereq is an umbrella (nothing more specific), keep them untouched."""
+    duplicates it vaguely. If EVERY prereq is an umbrella (nothing more specific), keep exactly ONE: two
+    whole-discipline names are near-synonyms by construction (live: 'fluid dynamics' AND 'Fluid Mechanics'
+    listed side by side — different words, so no lexical dedup could see them; both umbrellas)."""
     specific = [p for p in prereqs if _norm_title(p) not in _UMBRELLA_FIELDS]
     if specific and len(specific) < len(prereqs):
         dropped = [p for p in prereqs if _norm_title(p) in _UMBRELLA_FIELDS]
         _log.info("topic_decomposition: dropped umbrella-field prereq(s) %s (kept specific: %s)", dropped, specific)
-    return specific if specific else prereqs
+        return specific
+    if not specific and len(prereqs) > 1:
+        _log.info("topic_decomposition: multiple umbrella-only prereqs %s -> kept first", prereqs)
+        return prereqs[:1]
+    return prereqs
 
 
 def _norm_title(t: str) -> str:
@@ -868,6 +874,9 @@ def generate_decomposed_topics(
                 # A prereq that is itself a prerequisite OF another listed prereq is redundant — refreshing
                 # the advanced one's path covers it (textbook model: offer the immediately-prior unit).
                 ap = _drop_prereq_chain_redundancy(ap)
+                # Umbrella dedup on the FINAL merged list too (demotion can add an umbrella beside the
+                # model's — 'fluid dynamics' + 'Fluid Mechanics' are invisible to lexical dedup).
+                ap = _drop_umbrella_prereqs(ap)
                 t["assumed_prerequisites"] = ap
                 if prereq_glosses or prereq_requirements:
                     meta = t.setdefault("decomposition_metadata", {})
