@@ -1212,6 +1212,83 @@ class EdgeCaseGroundingPlanGuard(unittest.TestCase):
         self.assertTrue(_ground_edge_case_card(cards, t))           # no plan -> grounding unchanged
 
 
+class ScopeOutBackfill(unittest.TestCase):
+    """Sibling-boundary backfill: every live scope_out came back empty, so no topic excluded its siblings'
+    content and lessons overlapped freely. A teaching topic with no model-provided out_of_scope inherits its
+    siblings' scope_in commitments as explicit exclusions (own commitments excepted)."""
+
+    @staticmethod
+    def _t(title, scope_in, scope_out=None, tt="science_mechanism"):
+        return {"title": title, "course_type": tt, "topic_type": tt,
+                "in_scope": scope_in, "out_of_scope": scope_out or []}
+
+    def test_empty_scope_out_inherits_sibling_commitments(self):
+        from app.services.topic_generator import _certify_path_scope
+        out = _certify_path_scope([
+            self._t("Turbulence", ["definition of turbulence", "contrast with laminar flow"]),
+            self._t("Energy Cascade", ["energy transfer across scales", "viscous dissipation"]),
+        ], "learn fluid turbulence")
+        by = {t["title"]: t for t in out}
+        self.assertIn("energy transfer across scales", by["Turbulence"]["out_of_scope"])
+        self.assertIn("definition of turbulence", by["Energy Cascade"]["out_of_scope"])
+        self.assertNotIn("contrast with laminar flow", by["Turbulence"]["out_of_scope"])  # own item excluded
+        plan = (by["Turbulence"].get("decomposition_metadata") or {}).get("scope_plan") or {}
+        self.assertTrue(plan.get("scope_out_backfilled"))
+        self.assertEqual(plan.get("scope_out"), by["Turbulence"]["out_of_scope"])
+
+    def test_model_provided_scope_out_untouched(self):
+        from app.services.topic_generator import _certify_path_scope
+        out = _certify_path_scope([
+            self._t("Turbulence", ["definition"], scope_out=["RANS closures"]),
+            self._t("Energy Cascade", ["dissipation"]),
+        ], "learn fluid turbulence")
+        by = {t["title"]: t for t in out}
+        self.assertEqual(by["Turbulence"]["out_of_scope"], ["RANS closures"])
+        plan = (by["Turbulence"].get("decomposition_metadata") or {}).get("scope_plan") or {}
+        self.assertNotIn("scope_out_backfilled", plan)
+
+
+class GroundingPassesShareThePlanGuard(unittest.TestCase):
+    """_plan_allowed_adapter is the single guard for EVERY pass pulling adapter-spec content into cards —
+    the injection pass must not become the back door the grounding guard closed."""
+
+    @staticmethod
+    def _topic(title, tt, scope_plan):
+        import types as _types
+        meta = {"scope_plan": scope_plan} if scope_plan is not None else {}
+        return _types.SimpleNamespace(title=title, course_type=tt, topic_type=tt,
+                                      decomposition_metadata=meta, order_index=1, study_path=None)
+
+    def test_injection_blocked_for_certified_null_topic(self):
+        from app.services.lean_lesson_generator import _inject_grounded_cards
+        t = self._topic("Understanding Fluid Turbulence", "concept_intuition",
+                        {"verified_example": None, "we_policy": "not_applicable"})
+        cards = [{"blueprint_key": "background", "card_type": "purpose_context", "points": ["x"]}]
+        _inject_grounded_cards(cards, t, have_formula=False, have_edge=False)
+        self.assertEqual(len(cards), 1)                     # nothing injected
+
+    def test_injection_adds_formula_with_meaning_note_for_certified_topic(self):
+        from app.services.lean_lesson_generator import _inject_grounded_cards
+        t = self._topic("Turbulence", "science_mechanism",
+                        {"verified_example": "reynolds_number", "we_policy": "verified"})
+        cards = [{"blueprint_key": "background", "card_type": "purpose_context", "points": ["x"]},
+                 {"blueprint_key": "worked_example", "card_type": "worked_example", "points": ["y"]}]
+        _inject_grounded_cards(cards, t, have_formula=False, have_edge=False)
+        formula = next(c for c in cards if c.get("blueprint_key") == "formula_breakdown")
+        self.assertLess(cards.index(formula), 2 + 1)        # placed before the worked example
+        joined = " ".join(formula["points"])
+        self.assertIn("INERTIAL", joined)                   # the meaning note, not just the equation
+        self.assertIn("characteristic length", joined.lower())
+
+    def test_formula_grounding_blocked_for_certified_null_topic(self):
+        from app.services.lean_lesson_generator import _ground_formula_card
+        t = self._topic("Understanding Fluid Turbulence", "concept_intuition",
+                        {"verified_example": None, "we_policy": "not_applicable"})
+        cards = [{"blueprint_key": "formula_breakdown", "points": ["The formula:", "WRONG"]}]
+        self.assertFalse(_ground_formula_card(cards, t))
+        self.assertEqual(cards[0]["points"], ["The formula:", "WRONG"])
+
+
 class WorkedExampleInterpretation(unittest.TestCase):
     """Science plan §8: a science worked example must not end at a bare number. The adapter spec's
     deterministic `interpret` produces an 'Interpretation:' teaching note on the final step (live: a

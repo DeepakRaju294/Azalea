@@ -8560,15 +8560,34 @@ def _derive_key_takeaways(cards: list[dict[str, Any]], max_items: int = 5,
     return out[:max_items] if len(out) >= 2 else []              # don't force a single hollow takeaway
 
 
+def _plan_allowed_adapter(topic: Topic):
+    """The adapter a card-level grounding/injection pass may use, honoring the certified scope plan.
+
+    When the topic carries a certified scope_plan, its verified_example is AUTHORITATIVE over routing:
+    null means no adapter content may be grounded into this lesson at all, and a routed adapter that
+    differs from the planned one is rejected. Topics without a plan (legacy) keep pure routing. This is
+    the single guard for every pass that pulls adapter-spec content into cards — routing independently
+    here re-opened the verified-but-irrelevant hole at card level (live: a concept topic certified
+    verified_example=null matched the broad 'turbulence' alias and shipped Reynolds spec content)."""
+    from app.services.examples.trace_pipeline import route_adapter
+    scope_plan = ((getattr(topic, "decomposition_metadata", None) or {}).get("scope_plan") or {})
+    planned = scope_plan.get("verified_example")
+    if scope_plan and not planned:
+        return None
+    adapter = route_adapter({"title": getattr(topic, "title", "") or "",
+                             "course_type": _topic_type_key(topic)})
+    if planned and adapter is not None and getattr(adapter, "slug", None) != planned:
+        return None
+    return adapter
+
+
 def _ground_formula_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
     """For an adapter-backed formula topic, replace the free-prose formula_breakdown card with the adapter's
     CANONICAL formula. The lean LLM writes the formula card from its own knowledge and sometimes gets it
     wrong (e.g. 'P(A) + P(B) = P(+)'), contradicting the adapter-verified worked example in the same topic.
     The correct formula is right there in the adapter spec — use it. No-op for non-adapter topics."""
     try:
-        from app.services.examples.trace_pipeline import route_adapter
-        adapter = route_adapter({"title": getattr(topic, "title", "") or "",
-                                 "course_type": _topic_type_key(topic)})
+        adapter = _plan_allowed_adapter(topic)
         spec = getattr(adapter, "_formula_spec", None) if adapter is not None else None
         if spec is None:
             return False
@@ -8635,21 +8654,11 @@ def _ground_edge_case_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
     indeterminate results" — actually the posterior is 0; the undefined case is P(B)=0). The true behavior is
     known to the spec author, so use it. No-op for non-adapter topics or specs without authored edge_cases.
 
-    PLAN-AUTHORITATIVE GUARD: when the topic carries a certified scope plan, the plan's verified_example is
-    the ONLY adapter this pass may ground from. Routing independently here re-opened the verified-but-
-    irrelevant hole at card level (live: 'Understanding Fluid Turbulence', certified verified_example=null,
-    matched the broad 'turbulence' alias → Reynolds spec edge cases + the practice backfill then asked a
-    beginner to explain Re=ρvD/μ, a formula NO card ever taught)."""
+    PLAN-AUTHORITATIVE (via _plan_allowed_adapter): a topic certified verified_example=null is never
+    grounded (live: 'Understanding Fluid Turbulence' matched the broad 'turbulence' alias → Reynolds spec
+    edge cases + the practice backfill then asked a beginner to explain Re=ρvD/μ, never taught)."""
     try:
-        from app.services.examples.trace_pipeline import route_adapter
-        scope_plan = ((getattr(topic, "decomposition_metadata", None) or {}).get("scope_plan") or {})
-        planned_slug = scope_plan.get("verified_example")
-        if scope_plan and not planned_slug:
-            return False                                   # certified: NO adapter backs this topic
-        adapter = route_adapter({"title": getattr(topic, "title", "") or "",
-                                 "course_type": _topic_type_key(topic)})
-        if planned_slug and adapter is not None and getattr(adapter, "slug", None) != planned_slug:
-            return False                                   # certified to a DIFFERENT adapter than routing found
+        adapter = _plan_allowed_adapter(topic)
         spec = None
         if adapter is not None:                            # any declarative engine that authors edge_cases
             spec = getattr(adapter, "_formula_spec", None) or getattr(adapter, "_rowreduce_spec", None)
@@ -8667,8 +8676,8 @@ def _ground_edge_case_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
             for sib in siblings:
                 if (getattr(sib, "order_index", 0) or 0) >= my_order:
                     continue
-                sib_ad = route_adapter({"title": getattr(sib, "title", "") or "",
-                                        "course_type": _topic_type_key(sib)})
+                # honor the SIBLING's plan too: a sibling certified to no adapter never rendered these edges
+                sib_ad = _plan_allowed_adapter(sib)
                 sib_spec = None
                 if sib_ad is not None:
                     sib_spec = (getattr(sib_ad, "_formula_spec", None)
@@ -8836,13 +8845,12 @@ def _inject_grounded_cards(cards: list[dict[str, Any]], topic: Topic, *, have_fo
     """When a formula concept is decomposed as a type that emits NO formula/edge card (e.g. `science_mechanism`
     for Ohm's law) but an adapter routes for it, INSERT the grounded formula card + edge card so the learner
     still gets the isolated `$$` math and the correct boundary facts instead of LLM prose. No-op when the cards
-    already exist (grounded in place) or no adapter routes."""
+    already exist (grounded in place), no adapter routes, or the certified plan forbids adapter content
+    (_plan_allowed_adapter — injection must not become the back door the grounding guard closed)."""
     if have_formula and have_edge:
         return
     try:
-        from app.services.examples.trace_pipeline import route_adapter
-        adapter = route_adapter({"title": getattr(topic, "title", "") or "",
-                                 "course_type": _topic_type_key(topic)})
+        adapter = _plan_allowed_adapter(topic)
         spec = getattr(adapter, "_formula_spec", None) if adapter is not None else None
         if spec is None:
             return

@@ -445,6 +445,32 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
                            "title": str(topic.get("title") or "")})
         certified.append(topic)
 
+    # SCOPE_OUT backfill (scope-plan #2, sibling boundaries): every scope_out came back empty live, so no
+    # topic ever excluded its siblings' content and lessons overlapped freely (two turbulence topics both
+    # taught fluctuations/vortices/Reynolds). Deterministic: a teaching topic with NO model-provided
+    # out_of_scope inherits its siblings' scope_in commitments as explicit exclusions (its own commitments
+    # excepted). Flows into the lean prompt's "Out of scope:" line; stamped for telemetry.
+    for topic in certified:
+        ttype = str(topic.get("course_type") or topic.get("topic_type") or "").strip().lower()
+        if ttype == "study_path_introduction" or (topic.get("out_of_scope") or []):
+            continue
+        own = {" ".join(str(s).lower().split()) for s in (topic.get("in_scope") or [])}
+        sibling_scope: list[str] = []
+        for other in certified:
+            if other is topic:
+                continue
+            for item in other.get("in_scope") or []:
+                norm = " ".join(str(item).lower().split())
+                if norm and norm not in own and norm not in {" ".join(s.lower().split())
+                                                             for s in sibling_scope}:
+                    sibling_scope.append(str(item).strip())
+        if sibling_scope:
+            topic["out_of_scope"] = sibling_scope[:6]
+            plan = ((topic.get("decomposition_metadata") or {}).get("scope_plan") or {})
+            if plan:
+                plan["scope_out"] = list(topic["out_of_scope"])
+                plan["scope_out_backfilled"] = True
+
     blocked_prereq_keys = taught_keys | ({goal_key} if goal_key else set())
     for topic in certified:
         ttype = str(topic.get("course_type") or topic.get("topic_type") or "").strip().lower()

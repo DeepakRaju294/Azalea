@@ -166,6 +166,14 @@ REYNOLDS_NUMBER = FormulaSpec(
     canonical_notes=[
         "\\(\\rho\\): fluid density.  \\(v\\): flow speed.  \\(D\\): pipe diameter.  \\(\\mu\\): dynamic "
         "viscosity.  \\(Re\\) is dimensionless.",
+        # WHY the ratio means something (reviewer gap: the lesson taught substitution, not meaning) —
+        # the numerator scales the inertial effects, the denominator the viscous ones.
+        "What it compares: \\(\\rho v D\\) scales the INERTIAL effects (a fast, dense flow keeps pushing "
+        "ahead) and \\(\\mu\\) the VISCOUS effects (internal friction that smooths disturbances out). A "
+        "large \\(Re\\) means inertia dominates, so small disturbances can grow instead of being damped — "
+        "which is why high \\(Re\\) favors turbulence, all else equal.",
+        "\\(D\\) is the CHARACTERISTIC LENGTH of the geometry — the pipe diameter here; other geometries "
+        "use their own length scale, so thresholds are geometry-specific.",
         "Pipe-flow regimes: \\(Re < 2300\\) laminar, \\(2300\\)–\\(4000\\) transitional, \\(Re > 4000\\) "
         "turbulent — high speed, large diameter, or low viscosity push the flow toward turbulence.",
     ],
