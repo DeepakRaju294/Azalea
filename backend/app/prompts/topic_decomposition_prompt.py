@@ -86,6 +86,14 @@ RULES:
 - content_role ∈ {", ".join(CONTENT_ROLES)}; topic_type ∈ {", ".join(TOPIC_TYPES)}.
 - practice_evidence_type ∈ {", ".join(PRACTICE_EVIDENCE_TYPES)}.
 - expected_output = the concrete artifact the learner produces (distinct from practice_target).
+- in_scope = the topic's CONTENT COMMITMENTS — REQUIRED and NON-EMPTY (3-6 entries) for every teaching
+  topic; [] is allowed ONLY on the study_path_introduction. Each entry is ONE concrete concept, subskill,
+  relationship, or distinction THIS topic must teach — specific and checkable ("how eddies transfer energy
+  to smaller scales", "the base case of the recursion"), never a vague area ("turbulence basics",
+  "fundamentals"). The generated lesson is validated against these commitments: an empty list means the
+  topic promised nothing and generic filler would pass, so NEVER leave it empty.
+  out_of_scope = neighboring concepts deliberately NOT taught here — especially content owned by a sibling
+  topic in this path or already listed in assumed_prerequisites.
 - ONE concept = ONE topic. "Understanding X" and "applying X" are the SAME capability, never two topics:
   a single topic teaches a concept end-to-end and its card structure already carries intuition →
   worked example → practice. Do NOT emit a separate "understand" topic and "apply" topic for the same

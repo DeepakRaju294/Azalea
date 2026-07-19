@@ -218,6 +218,10 @@ _SUBJECT_FRAMING_WORDS: frozenset[str] = frozenset({
     # step/understanding/basics framings the LLM pads a single technique with ("Steps to X", "Understanding the
     # Basics of X") — stripping them lets those reduce to the bare subject so the same-subject dedup fires.
     "steps", "step", "understanding", "understand", "basics", "basic", "overview", "fundamentals", "fundamental",
+    # goal-phrase intent words ("I want to learn about X") — these reach this vocabulary via the GOAL string in
+    # _canonical_concept_key; leaving them in made goal keys like about_cost_opportunity that could never match
+    # the taught topic's key, so the goal-core role was silently unreachable for non-adapter subjects.
+    "about", "want", "wants", "i", "my", "me",
 })
 
 
@@ -285,6 +289,36 @@ def _topic_facet(topic: dict[str, Any]) -> str:
     return "implementation" if ttype == "coding_implementation" else "core"
 
 
+# Overview-shaped topic types: fine as supporting topics, but the GOAL's own concept carried only by one of
+# these means the path never teaches the goal in depth (depth guard, shadow-stamped in _certify_path_scope).
+_OVERVIEW_TOPIC_TYPES = {"concept_intuition", "terminology_components", "compare_distinguish"}
+
+# Planning-field phrases that carry no content commitment — never worth backfilling into scope_in.
+_GENERIC_SCOPE_PREFIXES = ("reach the capability", "general understanding")
+
+
+def _backfill_scope_commitments(topic: dict[str, Any]) -> list[str]:
+    """Deterministic scope_in fallback for a teaching topic whose plan carried no content commitments.
+
+    Derived from the topic's own planning fields (learner_outcome / primary_capability / expected_output) —
+    weak but honest commitments, so the lesson generator and validators always see at least one owned item.
+    The synthetic 'Reach the capability: …' purpose default is excluded (it commits to nothing)."""
+    out: list[str] = []
+    title_low = " ".join(str(topic.get("title") or "").split()).strip().rstrip(".").lower()
+    seen: set[str] = {title_low}  # a commitment that just restates the title commits to nothing
+    for cand in (topic.get("learner_outcome"), topic.get("primary_capability"),
+                 topic.get("expected_output"), topic.get("purpose")):
+        s = " ".join(str(cand or "").split()).strip().rstrip(".")
+        low = s.lower()
+        if not s or low in seen or any(low.startswith(p) for p in _GENERIC_SCOPE_PREFIXES):
+            continue
+        seen.add(low)
+        out.append(s)
+        if len(out) >= 3:
+            break
+    return out
+
+
 def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[dict[str, Any]]:
     """Make a single live scope plan authoritative over all topic-list transforms.
 
@@ -334,27 +368,40 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
                 verified_example = getattr(_a, "slug", None)
             except Exception:  # noqa: BLE001 — certification must never break generation
                 verified_example = None
-        # SHADOW (scope-plan #2 evidence): an empty scope_in on a teaching topic means the plan carries NO
-        # content commitments — the generator can ship a few generic cards and still "satisfy" the blueprint
-        # (live: every topic on a thin turbulence path had scope_in=[]). Logged + stamped for telemetry;
-        # enforcement (reject/re-ask) comes once the shadow data sizes the problem.
+        # SCOPE COMMITMENTS (scope-plan #2 enforcement): an empty scope_in on a teaching topic means the plan
+        # carries NO content commitments — the generator can ship a few generic cards and still "satisfy" the
+        # blueprint (live: every topic on a thin turbulence path had scope_in=[]). The decomposition prompt now
+        # REQUIRES non-empty in_scope; when the model still returns none, backfill deterministically from the
+        # topic's own planning fields so downstream always sees at least one commitment. `scope_in_empty` keeps
+        # recording the MODEL's behavior (pre-backfill) so telemetry can size prompt compliance.
         scope_in_empty = not (topic.get("in_scope") or [])
+        scope_in_backfilled = False
         if scope_in_empty:
             _log.info("scope certification: EMPTY scope_in on teaching topic %r (%s) — no content commitments",
                       topic.get("title"), ttype)
+            backfill = _backfill_scope_commitments(topic)
+            if backfill:
+                topic["in_scope"] = backfill
+                scope_in_backfilled = True
+        role = ("goal_core" if key == goal_key
+                else ("application" if facet == "implementation" else "supporting"))
         meta["scope_plan"] = {
             "scope_in_empty": scope_in_empty,
+            "scope_in_backfilled": scope_in_backfilled,
             "scope_in": list(topic.get("in_scope") or []),
             "scope_out": list(topic.get("out_of_scope") or []),
-            "role": (
-                "goal_core" if key == goal_key
-                else ("application" if facet == "implementation" else "supporting")
-            ),
+            "role": role,
             "depth": "deep" if key == goal_key or is_deep_teaching else "overview",
             "verified_example": verified_example,
             "we_policy": ("verified" if verified_example
                           else ("withhold_fabricated" if we_centric else "not_applicable")),
         }
+        # DEPTH GUARD (shadow): the goal's own concept taught only through an overview-shaped type means the
+        # path never goes deep on the thing the learner asked for. Stamp + log; no behavior change yet.
+        if role == "goal_core" and ttype in _OVERVIEW_TOPIC_TYPES:
+            meta["scope_plan"]["depth_flag"] = "goal_core_overview_type"
+            _log.info("scope certification: goal-core topic %r has overview type %s — depth flag stamped",
+                      topic.get("title"), ttype)
         topic["decomposition_metadata"] = meta
         identities.append({"canonical_concept_key": key, "facet": facet,
                            "title": str(topic.get("title") or "")})

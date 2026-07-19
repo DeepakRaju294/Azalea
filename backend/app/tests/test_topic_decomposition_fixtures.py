@@ -131,9 +131,12 @@ class MultiConceptFixtures(unittest.TestCase):
         t_a["primary_action"] = "apply"
         topics = generate_decomposed_topics("learn bayes theorem", "s",
                                             model_fn=lambda p: {"path_plan": plan, "topics": [t_u, t_a]})
-        self.assertEqual(len(topics), 1)                        # understand + apply folded into one
-        self.assertEqual(topics[0]["title"], "Bayes' Theorem")  # leading study-verb stripped
-        self.assertEqual(topics[0]["course_type"], "problem_solving_application")
+        # understand + apply folded into ONE teaching topic; a synthesized intro opens the path
+        # (every path gets an intro — product decision) but never adds a second teaching topic.
+        teaching = [t for t in topics if t["course_type"] != "study_path_introduction"]
+        self.assertEqual(len(teaching), 1)
+        self.assertEqual(teaching[0]["title"], "Bayes' Theorem")  # leading study-verb stripped
+        self.assertEqual(teaching[0]["course_type"], "problem_solving_application")
 
     def test_single_technique_one_topic_no_padding(self):
         plan = {"end_capability_actions": ["calculate"],
@@ -142,8 +145,11 @@ class MultiConceptFixtures(unittest.TestCase):
         topic = _topic("cts", subject="completing_the_square", title="Completing the Square")
         topics = generate_decomposed_topics("learn completing the square", "s", model_fn=lambda p: {
             "path_plan": plan, "topics": [topic]})
-        self.assertEqual(len(topics), 1)   # one capability -> one topic, nothing padded/synthesized
-        self.assertEqual(topics[0]["title"], "Completing the Square")
+        # one capability -> one TEACHING topic (no padding); the synthesized intro is the only addition
+        teaching = [t for t in topics if t["course_type"] != "study_path_introduction"]
+        self.assertEqual(len(teaching), 1)
+        self.assertEqual(teaching[0]["title"], "Completing the Square")
+        self.assertEqual(topics[0]["course_type"], "study_path_introduction")  # intro opens the path
 
 
 if __name__ == "__main__":

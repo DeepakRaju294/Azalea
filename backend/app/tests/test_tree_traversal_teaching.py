@@ -972,5 +972,101 @@ class TreeTraversalFamilyExpansion(unittest.TestCase):
             self.assertIn(order_word, impl_title)            # the pair shares the same traversal order
 
 
+class ScopeCommitments(unittest.TestCase):
+    """Bucket C / scope-plan #2 enforcement: the decomposition prompt REQUIRES non-empty in_scope on teaching
+    topics; when the model still returns none, the certifier backfills deterministic commitments from the
+    topic's own planning fields (stamped scope_in_backfilled) so a lesson can never be validated against an
+    empty commitment list. scope_in_empty keeps recording the MODEL's behavior, pre-backfill."""
+
+    def _plan(self, topic):
+        return (topic.get("decomposition_metadata") or {}).get("scope_plan") or {}
+
+    def test_prompt_requires_content_commitments(self):
+        from app.prompts.topic_decomposition_prompt import build_decomposition_prompt
+        p = build_decomposition_prompt("learn fluid turbulence", "source text")
+        self.assertIn("CONTENT COMMITMENTS", p)
+        self.assertIn("NON-EMPTY", p)
+        self.assertIn("NEVER leave it empty", p)
+
+    def test_empty_scope_backfilled_from_planning_fields(self):
+        from app.services.topic_generator import _certify_path_scope
+        t = {"title": "Physics of Turbulence", "course_type": "science_mechanism",
+             "topic_type": "science_mechanism", "in_scope": [], "out_of_scope": [],
+             "learner_outcome": "Explain how eddies transfer kinetic energy to smaller scales",
+             "expected_output": "A written causal chain from shear to dissipation",
+             "purpose": "Reach the capability: turbulence"}
+        out = _certify_path_scope([t], "understand something else entirely")
+        plan = self._plan(out[0])
+        self.assertTrue(plan["scope_in_empty"])              # the MODEL emitted nothing (telemetry preserved)
+        self.assertTrue(plan["scope_in_backfilled"])
+        self.assertIn("Explain how eddies transfer kinetic energy to smaller scales", out[0]["in_scope"])
+        self.assertIn("A written causal chain from shear to dissipation", out[0]["in_scope"])
+        # the generic purpose default commits to nothing and is never backfilled
+        self.assertFalse(any(s.lower().startswith("reach the capability") for s in out[0]["in_scope"]))
+        self.assertEqual(plan["scope_in"], out[0]["in_scope"])
+
+    def test_model_scope_untouched_and_title_restatement_rejected(self):
+        from app.services.topic_generator import _certify_path_scope
+        provided = {"title": "Sunk Costs", "course_type": "science_mechanism", "topic_type": "science_mechanism",
+                    "in_scope": ["opportunity vs sunk framing"], "out_of_scope": []}
+        bare = {"title": "Sunk Costs", "course_type": "science_mechanism", "topic_type": "science_mechanism",
+                "in_scope": [], "out_of_scope": [], "learner_outcome": "Sunk Costs"}  # outcome == title
+        out = _certify_path_scope([provided], "goal a")
+        plan = self._plan(out[0])
+        self.assertFalse(plan["scope_in_empty"])
+        self.assertFalse(plan["scope_in_backfilled"])
+        self.assertEqual(out[0]["in_scope"], ["opportunity vs sunk framing"])
+        out2 = _certify_path_scope([bare], "goal a")
+        plan2 = self._plan(out2[0])
+        self.assertTrue(plan2["scope_in_empty"])
+        self.assertFalse(plan2["scope_in_backfilled"])       # title restatement is not a commitment
+        self.assertEqual(out2[0]["in_scope"], [])
+
+    def test_depth_guard_stamps_goal_core_overview_type(self):
+        from app.services.topic_generator import _certify_path_scope
+        core = {"title": "Opportunity Cost", "course_type": "concept_intuition",
+                "topic_type": "concept_intuition", "in_scope": ["tradeoffs"], "out_of_scope": []}
+        support = {"title": "Sunk Costs", "course_type": "concept_intuition",
+                   "topic_type": "concept_intuition", "in_scope": ["x"], "out_of_scope": []}
+        out = _certify_path_scope([core, support], "learn opportunity cost")
+        by = {t["title"]: self._plan(t) for t in out}
+        self.assertEqual(by["Opportunity Cost"]["role"], "goal_core")
+        self.assertEqual(by["Opportunity Cost"].get("depth_flag"), "goal_core_overview_type")
+        self.assertNotIn("depth_flag", by["Sunk Costs"])     # supporting overview topics are fine
+        # a goal-core topic with a deep teaching type is never flagged
+        deep = {"title": "Merge Sort", "course_type": "algorithm_walkthrough",
+                "topic_type": "algorithm_walkthrough", "in_scope": ["x"], "out_of_scope": []}
+        out2 = _certify_path_scope([deep], "learn merge sort")
+        self.assertNotIn("depth_flag", self._plan(out2[0]))
+
+
+class CoverageStubSynthesis(unittest.TestCase):
+    """B.4.1 coverage repair must never surface a raw capability_id as a learner-facing title (live: a stub
+    topic literally titled 'C1'), and the synthesized topic carries the capability description as its one
+    known content commitment."""
+
+    def test_opaque_capability_titles_from_description(self):
+        from app.core.topic_decomposition_validator import _synthesize_topic_for_capability
+        t = _synthesize_topic_for_capability(
+            "C1", {"description": "Explain how counting principles combine into permutations."})
+        self.assertNotEqual(t["title"].lower(), "c1")
+        self.assertIn("counting principles", t["title"].lower())
+        self.assertEqual(t["in_scope"], ["Explain how counting principles combine into permutations"])
+        self.assertEqual(t["learner_outcome"], "Explain how counting principles combine into permutations")
+
+    def test_primary_capability_still_wins(self):
+        from app.core.topic_decomposition_validator import _synthesize_topic_for_capability
+        t = _synthesize_topic_for_capability(
+            "perm_basics", {"subject_key": "permutations", "primary_capability": "Count permutations of n items",
+                            "description": "d."})
+        self.assertEqual(t["title"], "Count permutations of n items")
+        self.assertEqual(t["in_scope"], ["d"])
+
+    def test_readable_subject_key_used_without_primary_capability(self):
+        from app.core.topic_decomposition_validator import _synthesize_topic_for_capability
+        t = _synthesize_topic_for_capability("cap_9", {"subject_key": "bayes_theorem", "description": "d."})
+        self.assertEqual(t["title"], "Bayes theorem")
+
+
 if __name__ == "__main__":
     unittest.main()

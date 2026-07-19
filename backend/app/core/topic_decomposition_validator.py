@@ -223,7 +223,15 @@ def _synthesize_topic_for_capability(cid: str, cap: dict[str, Any]) -> dict[str,
     subject = normalize_subject_key(str(cap.get("subject_key") or cid))
     role = str(cap.get("content_role") or cap.get("role") or "concept_intuition")
     ttype = resolve_topic_type(role) or "concept_intuition"
-    title = str(cap.get("primary_capability") or subject.replace("_", " ")).strip()
+    description = " ".join(str(cap.get("description") or "").split()).strip().rstrip(".")
+    # Title preference: primary_capability → a readable subject → the capability description. Never fall
+    # through to the raw capability_id (live: a stub topic literally titled "C1" reached the learner-facing
+    # path when the capability carried neither a subject_key nor a primary_capability).
+    subject_words = subject.replace("_", " ").strip()
+    subject_is_opaque = not subject_words or subject_words == str(cid).strip().lower()
+    title = str(cap.get("primary_capability") or "").strip()
+    if not title:
+        title = description[:80] if subject_is_opaque and description else subject_words
     if title:
         title = title[0].upper() + title[1:]
     return {
@@ -238,6 +246,9 @@ def _synthesize_topic_for_capability(cid: str, cap: dict[str, Any]) -> dict[str,
         "expected_output": str(cap.get("expected_output") or ""),
         "basis": str(cap.get("basis") or "coverage_repair"),
         "topic_relationships": [],
+        # the capability's own description is the one content commitment we KNOW this topic owns
+        "in_scope": [description] if description else [],
+        "learner_outcome": description or None,
         "provenance": {"synthesized": True, "reason": "coverage_repair"},
     }
 
