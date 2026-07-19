@@ -31,15 +31,26 @@ decommission task, §13). Flag: `AZALEA_RECALL_POPUPS` (requires `AZALEA_PREREQ_
 ## 0. Feasibility gate — run BEFORE building the UI (read-only audit)
 
 > **AUDIT RESULT (2026-07-18, `scripts/recall_popup_feasibility_audit.py` over 1482 stored lessons) → DECISION:
-> `strict_v1`.** Prevalence: 41 `review_earlier_topic` candidates corpus-wide (2.2% of lessons) — but that is
-> diluted by ~1000 pre-feature lessons; **recent-window prevalence (200 newest, flag-on era) is 14%**. Harvest:
-> **every owner-resolved candidate (21/21) harvested via strict §4; §4b never fired** (`fallback_would_harvest=0`)
-> → the background-definition fallback is NOT load-bearing and is **deferred out of v1**. `strict_harvest_rate =
-> 0.44` (18 kept / 41). The dominant leak is the **anchor stage** (16/41 `weak_or_missing_anchor`), mostly legacy
-> title-target links whose text never appears verbatim in prose — expected to shrink as the corpus shifts to
-> scanner concept-links. Sample survivors are clean ("Combinations represent the selection of items where order
-> does not matter."; "TCP Congestion Control regulates the flow of data over a network."). **Build v1 = strict §4
-> only; skip §4b; the anchor stage is the thing to watch.**
+> `strict_v1_provisional` — do NOT start the UI/staleness build on this yet.** A first pass over-claimed (a loose
+> harvester accepted dangling/purpose/example lines like "It measures how many standard deviations…"); the
+> harvester was tightened to enforce §4 self-containment and the funnel is now reported per-stage on its own
+> denominator:
+> - **Prevalence:** 41 `review_earlier_topic` candidates corpus-wide (2.2%); recent-200-lessons-with-review-links
+>   = **14%** (NOT verified flag-on — just the newest 200).
+> - **Staged rates:** anchor-eligibility 25/41 = **0.61**; owner-resolution 21/25 = **0.84**; deterministic
+>   strict-§4 harvest 9/21 = **0.43**; end-to-end 9/41 = **0.22**.
+> - **Hand-labeled precision on the 21 owner-resolved (the real test):** ~**8 trustworthy self-contained
+>   definitions** (harvester precision ≈ 8/9 — one false positive, a z-score interpretation line where a stray
+>   "is" matched), ~5 borderline function-statements (usable recall but not strict definitions: TCP "regulates…",
+>   total-probability "calculates…"), ~7 genuine rejects (owner has only formulas/purpose clauses). **True strict
+>   precision ≈ 0.38, not the ~1.0 first implied.**
+> - §4b was NOT load-bearing on the failures (they are absent/function-statement owners, not missing-definition-
+>   card owners prose would rescue) — still deferred, but this is not a strong signal.
+> **Read:** anchor + owner stages are healthy; the binding constraint is that only ~8 owner-resolved candidates
+> corpus-wide yield a trustworthy strict definition. That is real but thin. **Do not build the UI on this; either
+> improve upstream (scanner emits more/better review links; owners carry clean definitions) or fold into v2
+> scope-plan `uses` where candidate volume + definition ownership are structural.** `human_precision_on_sample`
+> must be recorded before any `strict_v1` (non-provisional) decision.
 
 
 The whole feature can be "correct" and still worthless if almost nothing harvests. Owner-topic identities today are
@@ -216,11 +227,12 @@ canonical hash of the item that anchor points at.
 - **Text hash** (`source_text_hash`, `current_anchor_text_hash`): SHA-256 over the UTF-8 bytes of the canonically
   normalized text (§5: NFC → trim → collapse internal whitespace → preserve math symbols → no lowercase),
   serialized as lowercase hex.
-- **`popup_id`**: SHA-256 over a **versioned, length-delimited canonical payload** — stable key order, compact
-  JSON, then hash its UTF-8 bytes. Never plain string concatenation (component boundaries would be ambiguous):
+- **`popup_id`**: SHA-256 over a **canonical JSON payload** whose structural quoting already delimits every
+  component (so raw string concatenation's boundary ambiguity cannot arise). Canonicalization = UTF-8, keys sorted
+  lexicographically, no insignificant whitespace (compact separators `,`/`:`), then hash the UTF-8 bytes. (This is
+  the delimiter — no separate length-prefix framing is needed once fields are JSON-quoted with sorted keys.)
   ```json
-  {"v":1,"current_topic_id":"…","current_card_id":"…","current_anchor_text_hash":"…",
-   "concept_id":"…","source_text_hash":"…","popup_version":"1"}
+  {"concept_id":"…","current_anchor_text_hash":"…","current_card_id":"…","current_topic_id":"…","popup_version":"1","source_text_hash":"…","v":1}
   ```
 - `popup_id` is reproducible from the **stored link + recall payload + containing lesson/card context** (it needs
   `current_topic_id`, `current_card_id`, and the link's `concept_id`) — NOT from `RecallPopupV1` in isolation.
@@ -288,8 +300,9 @@ missing_recall | duplicate_concept | over_card_cap | over_topic_cap`. Serializat
 
 - Recall attachment runs **after** final card ordering and content cleanup, so anchors and card IDs are stable:
   `finalize content → finalize card IDs + visible text → emit review links → attach match_kind → harvest recall
-  → rank + cap → validate payload/source/anchor → persist`. If later enrichment rewrites an anchored item,
-  revalidate the anchor and re-hash `source_text_hash`.
+  → rank + cap → validate payload/source/anchor → persist`. If later enrichment rewrites the **displaying**
+  anchored item, revalidate the anchor and re-hash **`current_anchor_text_hash`**; if it rewrites the **owner**
+  source items, re-hash **`source_text_hash`**. (Each hash tracks its own side — §5c.)
 - **Staleness validation runs at API serialization on lesson retrieval** — NOT the frontend (the owner lesson may
   not be loaded in the browser). It **always re-extracts and re-hashes** (a generation ID could not prove
   immutability anyway — lessons are mutated in place), validating **BOTH sides** because both the displaying and
@@ -313,9 +326,10 @@ missing_recall | duplicate_concept | over_card_cap | over_topic_cap`. Serializat
 - **Typed stale-event** (dedup so repeated reads don't emit unbounded identical events):
   ```
   { reason, expected_hash, observed_hash: str | null }     dedup key = popup_id + reason + observed_hash
-  reason ∈ stale_current_anchor | current_anchor_hash_mismatch | missing_current_card | missing_current_anchor |
-           stale_source | missing_source_card | missing_source_span | harvest_failed |
-           unsupported_harvester_version
+  reason hierarchy — two umbrella reasons, each with granular causes (log the granular one; group by umbrella):
+    stale_current_anchor  ⊇  { missing_current_card, missing_current_anchor, current_anchor_hash_mismatch }
+    stale_source          ⊇  { missing_source_card, missing_source_span, harvest_failed, source_hash_mismatch }
+    unsupported_harvester_version  (standalone — precedes both, since it blocks re-hashing at all)
   ```
   (Rejected for v1: eager reverse-dependency invalidation on owner regeneration — operationally stronger but more
   infrastructure than v1 warrants.)

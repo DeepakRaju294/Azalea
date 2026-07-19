@@ -86,8 +86,51 @@ def anchor_tier(card, link_text):
 # ---- §4 strict harvest over an owner lesson ------------------------------------------------------------
 
 _DANGLING = ("this process", "as above", "as shown", "this method", "the above", "it does this")
-_VERB_LED = {"confirms", "returns", "computes", "sends", "receives", "does", "is", "are", "makes",
-             "creates", "adds", "removes", "checks", "sets", "gets", "runs", "holds"}
+# A fragment whose FIRST word is one of these is a behaviour/purpose/example clause, not a self-contained
+# definition — §4 rejects it ("Enables simplification…", "Useful for scenarios where…").
+_NON_DEFINITIONAL_LEAD = {
+    "confirms", "returns", "computes", "sends", "receives", "does", "is", "are", "makes", "creates", "adds",
+    "removes", "checks", "sets", "gets", "runs", "holds", "enables", "allows", "helps", "provides", "lets",
+    "supports", "used", "use", "useful", "important", "needed", "required", "for", "when", "where", "which",
+    "this", "that", "these", "they", "it", "e", "eg", "example",
+}
+_LEADING_PRONOUN = {"it", "this", "these", "they", "that", "he", "she", "we", "you"}
+_DEF_VERB = re.compile(
+    r"\b(is|are|means|refers to|represents?|describes?|denotes?|counts?|measures?|arranges?)\b")
+
+
+def _singular_plural_prefix(text, want):
+    """startswith, tolerant of a trailing plural 's' on the leading concept token
+    ('a combination is…' matches want 'combinations')."""
+    if text.startswith(want):
+        return True
+    tw = want.split()
+    tt = text.split()
+    if not tw or len(tt) < len(tw):
+        return False
+    for a, b in zip(tt, tw):
+        if a == b or a.rstrip("s") == b.rstrip("s"):
+            continue
+        return False
+    return True
+
+
+def _self_contained_definition(sent, want):
+    """§4 shape-1: the sentence must OPEN with the concept (optionally behind the/a/an, singular/plural tolerant),
+    carry a definitional verb, and contain no dangling/pronoun/context lead. Returns True/False."""
+    low = sent.strip().lower()
+    words = re.findall(r"[a-z]+", low)
+    if not words or words[0] in _LEADING_PRONOUN:
+        return False
+    ns = _norm(sent)
+    stripped = re.sub(r"^(the|a|an)\s+", "", ns)
+    if not (_singular_plural_prefix(ns, want) or _singular_plural_prefix(stripped, want)):
+        return False
+    if not _DEF_VERB.search(low):
+        return False
+    if any(d in low for d in _DANGLING):
+        return False
+    return True
 
 
 def definition_entries(lesson_json):
@@ -110,30 +153,29 @@ def definition_entries(lesson_json):
 
 
 def _clean_frag(frag):
+    """§4 shape 2/3: the {Term} — {fragment} predicate must be a self-contained definition, not a
+    behaviour/purpose/example clause."""
     low = frag.lower()
     if any(d in low for d in _DANGLING):
         return None, "dangling_reference"
     first = re.findall(r"[a-z]+", low)
-    if first and first[0] in _VERB_LED:
-        return None, "verb_led_fragment"
+    if first and first[0] in _NON_DEFINITIONAL_LEAD:
+        return None, "non_definitional_lead"
     if len(frag.split()) < 3:
         return None, "fragment_too_short"
     return frag.rstrip("."), None
 
 
 def sentence_definitions(owner_lesson, want):
-    """§4 shape-1: a definition/core_idea/purpose card whose title matches the concept OR a complete sentence
-    that itself opens with the concept — used directly. Yields (head, sentence)."""
+    """§4 shape-1: a complete sentence that is SELF-CONTAINED — opens with the concept (behind at most the/a/an),
+    carries a definitional verb, no dangling/pronoun/context lead. Title-only matches are NOT sufficient."""
     for card in iter_cards(owner_lesson):
         if card.get("card_type") not in ("definition", "core_idea", "purpose_context"):
             continue
-        nt = _norm(card.get("title") or "")
-        head_match = bool(nt) and (nt == want or want in nt or nt in want)
         for _f, _i, s in card_items(card):
             st = s.strip().lstrip("- ").strip()
-            if len(st.split()) >= 6 and st.endswith((".", ")")) and st[:1].isupper():
-                if _norm(st).startswith(want) or head_match:
-                    yield (card.get("title") or want, st)
+            if len(st.split()) >= 6 and st.endswith((".", ")")) and _self_contained_definition(st, want):
+                yield (card.get("title") or want, st)
 
 
 def prose_fallback(owner_lesson, want):
@@ -200,6 +242,7 @@ def main():
     per_topic_concept = defaultdict(set)
     survivors = []
     rows = []
+    owner_resolved_rows = []   # every owner-resolved candidate + its harvest outcome (for manual precision labeling)
 
     recent_window = 200
     recent_with_reviews = 0
@@ -252,6 +295,10 @@ def main():
 
                 # Stage 3: strict §4 harvest (+ §4b projection when strict fails).
                 recall, reason = harvest_recall(text, owner_lesson)
+                owner_resolved_rows.append({
+                    "concept": text, "owner": topic_title.get(owner, "")[:40],
+                    "harvest": recall or f"[REJECT:{reason}]",
+                })
                 if recall is None:
                     drops[reason] += 1
                     if reason == "no_definition" and prose_fallback(owner_lesson, _norm(text)):
@@ -285,28 +332,38 @@ def main():
 
     cand = funnel["candidates"] or 1
     n_topics = len(topic_title) or 1
-    strict_rate = funnel["kept"] / cand
     per100 = funnel["candidates"] / (lessons_scanned or 1) * 100
-    recent_prev = recent_with_reviews / recent_window * 100  # % of recent (flag-on era) lessons w/ a candidate
+    recent_prev = recent_with_reviews / recent_window * 100
 
-    # Decision: prevalence must be read on the RECENT (flag-on) window — the full corpus is diluted by ~1000
-    # pre-feature lessons. Harvest must clear the bar and §4b must not be load-bearing.
-    fallback_needed = funnel.get("fallback_would_harvest", 0) > max(3, funnel["kept"] * 0.3)
+    # Staged rates — each stage on ITS OWN denominator (the spec's strict_harvest_rate is harvests / anchored
+    # review links, NOT kept / all candidates, which conflates anchor availability + harvest + caps).
+    def _rate(a, b):
+        return round(a / b, 3) if b else None
+    stage_rates = {
+        "anchor_eligibility":  _rate(funnel["anchor_eligible"], funnel["candidates"]),          # 25/41
+        "owner_resolution":    _rate(funnel["owner_resolved"], funnel["anchor_eligible"]),        # 21/25
+        "strict_harvest":      _rate(funnel["harvested"], funnel["owner_resolved"]),              # deterministic §4 pass / 21
+        "post_cap_survival":   _rate(funnel["kept"], funnel["harvested"]),
+        "end_to_end_yield":    _rate(funnel["kept"], funnel["candidates"]),
+    }
+    strict_harvest_rate = stage_rates["strict_harvest"]  # SPEC definition: harvests / anchored (owner-resolved)
+
+    # Decision is PROVISIONAL until human precision is labeled on the owner-resolved sample (the script's
+    # deterministic §4 pass is necessary, not sufficient — a human must confirm the surviving lines read as
+    # trustworthy self-contained recall). The script therefore never emits a final `strict_v1`.
+    fallback_needed = funnel.get("fallback_would_harvest", 0) > max(3, funnel["harvested"] * 0.3)
     if recent_prev < 5 and per100 < 3:
-        decision = "do_not_build"
-        why = ("even among recent flag-on lessons the review links are too rare to justify a dedicated popover "
-               "UI + two-sided staleness + telemetry surface.")
-    elif strict_rate >= 0.35 and not fallback_needed:
-        decision = "strict_v1"
-        why = (f"harvest is viable (strict §4 covers owner-resolved candidates; §4b not load-bearing) and "
-               f"recent-window prevalence is {recent_prev:.0f}% of lessons — build v1 with strict §4 only.")
+        decision = "do_not_build_provisional"
+        why = "review links too rare even in the recent window to justify the UI/staleness/telemetry surface."
     elif fallback_needed:
-        decision = "enable_4b"
-        why = "candidates exist but strict §4 under-covers; the §4b background-definition fallback is load-bearing."
+        decision = "enable_4b_provisional"
+        why = "strict §4 under-covers on the tightened harvester; the §4b fallback looks load-bearing."
     else:
-        decision = "strict_v1_low_volume"
-        why = ("harvest works but absolute volume is modest; build only if the anchor-stage loss (legacy "
-               "title-target links) is expected to shrink as the corpus shifts to scanner concept-links.")
+        decision = "strict_v1_provisional"
+        why = ("tightened strict §4 harvests {h}/{o} owner-resolved candidates; recent-window candidate "
+               "prevalence {p:.0f}%. PROVISIONAL — confirm human precision on the owner-resolved sample below "
+               "before committing to the UI build.").format(
+                   h=funnel["harvested"], o=funnel["owner_resolved"], p=recent_prev)
 
     report = {
         "prevalence": {
@@ -314,16 +371,18 @@ def main():
             "lessons_with_review_links": lessons_with_reviews,
             "review_link_candidates": funnel["candidates"],
             "review_links_per_100_lessons": round(per100, 2),
-            f"recent_{recent_window}_pct_with_review_link": round(recent_prev, 1),
+            f"recent_{recent_window}_lessons_with_review_links_pct": round(recent_prev, 1),
             "topics_total": n_topics,
         },
         "funnel": dict(funnel),
         "drop_reasons": dict(drops),
-        "strict_harvest_rate": round(strict_rate, 3),
+        "stage_rates": stage_rates,
+        "strict_harvest_rate": strict_harvest_rate,  # SPEC: harvests / anchored(owner-resolved)
+        "human_precision_on_sample": None,  # REQUIRED before finalizing — label owner_resolved_cases manually
         "kept_popups": funnel["kept"],
         "decision": decision,
         "rationale": why,
-        "sample_survivors": survivors[:10],
+        "owner_resolved_cases": owner_resolved_rows,   # the sample to hand-label for precision
     }
 
     if args.json:
@@ -339,31 +398,28 @@ def main():
           f"({p['lessons_with_review_links']/(p['lessons_scanned'] or 1)*100:.1f}%)")
     print(f"review_earlier_topic cands: {p['review_link_candidates']}")
     print(f"per 100 lessons (all-time): {p['review_links_per_100_lessons']}")
-    rk = next(k for k in p if k.startswith("recent_") and k.endswith("with_review_link"))
-    print(f"recent-window prevalence:   {p[rk]}%  ({rk.split('_')[1]} newest lessons w/ >=1 review link)")
-    print("\n--- HARVEST FUNNEL " + "-" * 60)
+    rk = next(k for k in p if k.startswith("recent_") and k.endswith("_pct"))
+    print(f"recent-window prevalence:   {p[rk]}%  ({rk.split('_')[1]} newest lessons w/ >=1 review link; "
+          f"NOT verified flag-on)")
+    print("\n--- HARVEST FUNNEL (each stage on its own denominator) " + "-" * 24)
     for k in ("candidates", "tier_exact_item", "tier_word_boundary", "tier_substring_fallback", "tier_None",
               "anchor_eligible", "owner_resolved", "harvested", "kept"):
         if k in funnel:
             print(f"  {k:26} {funnel[k]}")
+    print("\n--- STAGE RATES " + "-" * 63)
+    for k, v in stage_rates.items():
+        print(f"  {k:26} {v}")
+    print(f"  strict_harvest_rate (SPEC: harvested / owner-resolved) = {strict_harvest_rate}")
     print("\n--- DROP REASONS " + "-" * 62)
     for k, v in drops.most_common():
         print(f"  {k:26} {v}")
-    print(f"\nstrict_harvest_rate (kept / candidates): {report['strict_harvest_rate']}")
-    print(f"kept popups: {report['kept_popups']}")
-    if survivors:
-        print("\n--- SAMPLE SURVIVING POPUPS " + "-" * 51)
-        for s in survivors[:8]:
-            print(f"  [{s['tier']}] {s['concept']!r} → {s['recall']}")
+    print("\n--- OWNER-RESOLVED CASES (hand-label these for precision) " + "-" * 22)
+    for c in owner_resolved_rows:
+        print(f"  {c['concept'][:26]:26} | {c['owner']:40} | {c['harvest']}")
     print("\n" + "=" * 80)
-    print(f"DECISION: {report['decision'].upper()}")
+    print(f"DECISION: {report['decision'].upper()}  (human_precision_on_sample: NOT YET LABELED)")
     print(f"  {report['rationale']}")
     print("=" * 80)
-    if args.show:
-        print(f"\n--- PER-CANDIDATE (first {args.show}) " + "-" * 40)
-        print(f"  {'text':32} {'target':12} {'tier':18} {'recall/outcome'}")
-        for r in rows[:args.show]:
-            print(f"  {r[0]:32} {r[1]:12} {str(r[2]):18} {r[4]}  {r[3] if r[3]!='-' else ''}")
 
 
 if __name__ == "__main__":
