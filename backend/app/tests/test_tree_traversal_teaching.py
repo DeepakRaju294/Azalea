@@ -573,6 +573,44 @@ class OrientationOpenerRetype(unittest.TestCase):
         self.assertEqual(opener["title"], "Understanding Depreciation")
 
 
+class SingleOrientationOpener(unittest.TestCase):
+    """One path, one orientation: the model emitted TWO orientation-role topics and both were retyped to
+    study_path_introduction — the learner saw two prerequisites cards and two roadmaps, and real teaching
+    content ('Characteristics of Turbulent Flow') was trapped in a blueprint with no worked-example slot.
+    The FIRST orientation topic becomes the intro; every subsequent one becomes a teaching topic."""
+
+    def test_second_orientation_topic_becomes_teaching(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        def topic(tid, subj, title, role, tt, evidence="none", output=""):
+            return {"topic_id": tid, "capability_id": tid, "subject_key": subj, "primary_action": "explain",
+                    "content_role": role, "topic_type": tt, "title": title, "unit_title": "U",
+                    "purpose": "p", "in_scope": ["x"], "practice_target": "t",
+                    "practice_format": "short_answer", "practice_evidence_type": evidence,
+                    "expected_output": output, "basis": "goal"}
+        resp = {"path_plan": {"end_capability": "Understand turbulence.", "end_capability_actions": ["explain"],
+                              "assumed_prerequisites": [],
+                              "required_capabilities": [
+                                  {"capability_id": "c1", "description": "d",
+                                   "prerequisite_capability_ids": [], "satisfies_end_actions": ["explain"],
+                                   "ownership_mode": "standalone", "owner_topic_id": None, "basis": "goal"}]},
+                "topics": [
+                    topic("t0", "turbulence_theory", "Fluid Turbulence Theory", "orientation",
+                          "concept_intuition"),
+                    topic("t1", "turbulent_flow_characteristics", "Characteristics of Turbulent Flow",
+                          "orientation", "concept_intuition"),
+                    topic("t2", "turbulence_models", "Mathematical Models of Turbulence",
+                          "science_mechanism", "science_mechanism", evidence="solve_numeric", output="o"),
+                ]}
+        out = generate_decomposed_topics("want to learn about fluid turbulence", "src",
+                                         model_fn=lambda p: resp, coding_follow_ups=False)
+        intros = [t for t in out if t.get("course_type") == "study_path_introduction"]
+        self.assertEqual(len(intros), 1, [t.get("title") for t in out])
+        self.assertEqual(intros[0]["title"], "Fluid Turbulence Theory")
+        # the second orientation topic teaches now (any non-intro teaching type after domain adaptation)
+        chars = next(t for t in out if "Characteristics" in t["title"])
+        self.assertNotEqual(chars.get("course_type"), "study_path_introduction")
+
+
 class FamilyComparisonTopic(unittest.TestCase):
     """User-endorsed comparison topic ('Comparing MST Algorithms') appeared only when the model chose to emit
     one (the prompt has no comparison guidance). Now DETERMINISTIC: a family survey teaching >=2 distinct

@@ -775,18 +775,31 @@ def generate_decomposed_topics(
     # De-conflate: an 'orientation' topic the LLM actually loaded with a concrete concept is a mislabeled
     # teaching topic — restore its teaching type so the concept is TAUGHT (worked example + adapter), which
     # also frees the intro slot so a real generic orientation topic is synthesized below.
+    opener_seen = False
     for t in topics_out:
         if _is_conflated_intro(t):
             t["topic_type"] = "math_formula_method"       # domain gate remaps for non-math paths
             t["content_role"] = "calculation"
             _log.info("topic_decomposition: de-conflated mislabeled intro %r -> teaching topic", t.get("title"))
-        elif (_is_opener(t) and str(t.get("topic_type") or "") != "study_path_introduction"):
-            # A GENUINE orientation opener mistyped as a teaching type (live: 'Understanding Depreciation' as
-            # concept_intuition) consumes the intro slot while carrying a blueprint with NO prerequisites card
-            # and NO roadmap — the path structurally loses both surfaces. Retype it to the real intro.
-            t["topic_type"] = "study_path_introduction"
-            _log.info("topic_decomposition: retyped orientation opener %r -> study_path_introduction",
-                      t.get("title"))
+        elif _is_opener(t):
+            if not opener_seen:
+                opener_seen = True
+                if str(t.get("topic_type") or "") != "study_path_introduction":
+                    # A GENUINE orientation opener mistyped as a teaching type (live: 'Understanding
+                    # Depreciation' as concept_intuition) consumes the intro slot while carrying a blueprint
+                    # with NO prerequisites card and NO roadmap. Retype it to the real intro.
+                    t["topic_type"] = "study_path_introduction"
+                    _log.info("topic_decomposition: retyped orientation opener %r -> study_path_introduction",
+                              t.get("title"))
+            else:
+                # ONE path, ONE orientation: a SECOND orientation-role topic is a mislabeled teaching topic
+                # by construction (live: 'Characteristics of Turbulent Flow' also role=orientation — both got
+                # intro blueprints, so the learner saw TWO prerequisites cards and TWO roadmaps, and real
+                # teaching content was trapped in a blueprint that cannot hold a worked example).
+                t["topic_type"] = "math_formula_method"   # domain gate remaps for non-math paths
+                t["content_role"] = "calculation"
+                _log.info("topic_decomposition: retyped EXTRA orientation topic %r -> teaching topic",
+                          t.get("title"))
 
     # Prerequisites are NAMED, not taught: a `foundation`-role topic is a building block the learner is
     # assumed to have. When the path also has a real (non-foundation) concept topic, drop the foundation
