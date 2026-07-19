@@ -30,6 +30,18 @@ decommission task, §13). Flag: `AZALEA_RECALL_POPUPS` (requires `AZALEA_PREREQ_
 
 ## 0. Feasibility gate — run BEFORE building the UI (read-only audit)
 
+> **AUDIT RESULT (2026-07-18, `scripts/recall_popup_feasibility_audit.py` over 1482 stored lessons) → DECISION:
+> `strict_v1`.** Prevalence: 41 `review_earlier_topic` candidates corpus-wide (2.2% of lessons) — but that is
+> diluted by ~1000 pre-feature lessons; **recent-window prevalence (200 newest, flag-on era) is 14%**. Harvest:
+> **every owner-resolved candidate (21/21) harvested via strict §4; §4b never fired** (`fallback_would_harvest=0`)
+> → the background-definition fallback is NOT load-bearing and is **deferred out of v1**. `strict_harvest_rate =
+> 0.44` (18 kept / 41). The dominant leak is the **anchor stage** (16/41 `weak_or_missing_anchor`), mostly legacy
+> title-target links whose text never appears verbatim in prose — expected to shrink as the corpus shifts to
+> scanner concept-links. Sample survivors are clean ("Combinations represent the selection of items where order
+> does not matter."; "TCP Congestion Control regulates the flow of data over a network."). **Build v1 = strict §4
+> only; skip §4b; the anchor stage is the thing to watch.**
+
+
 The whole feature can be "correct" and still worthless if almost nothing harvests. Owner-topic identities today are
 title/alias based; an owner lesson may explain a concept in a background card ("TCP congestion control regulates
 the flow of data over a network") without ever emitting a `definition`/key-terms bullet headed by that concept —
