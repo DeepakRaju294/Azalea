@@ -357,6 +357,28 @@ class TreeTraversalFamilyExpansion(unittest.TestCase):
         out = _expand_canonical_family(topics, "learn binary search")
         self.assertEqual(len(out), 1)
 
+    def test_family_ordering_pairs_walkthrough_with_its_implementation(self):
+        # Live scramble: walkthroughs first, then implementations with one stranded out of order. The
+        # consolidation pass must interleave: In-Order WT -> Implementing In-Order -> Pre-Order WT -> ...
+        from app.services.topic_generator import _order_canonical_family
+        def coding(title):
+            return {"title": title, "course_type": "coding_implementation",
+                    "topic_type": "coding_implementation", "description": "d"}
+        scrambled = [self._walkthrough("Inorder Traversal"), self._walkthrough("Postorder Traversal"),
+                     self._walkthrough("Preorder Traversal"), coding("Implementing Inorder Traversal"),
+                     coding("Implementing Postorder Traversal"), coding("Implementing Preorder Traversal")]
+        out = _order_canonical_family(scrambled, "Want to learn about bst traversal")
+        # each walkthrough is immediately followed by ITS implementation, in canonical member order,
+        # with titles canonicalized to the family names
+        pairs = [(out[i]["course_type"], out[i + 1]["course_type"]) for i in range(0, len(out) - 1, 2)]
+        self.assertTrue(all(p == ("algorithm_walkthrough", "coding_implementation") for p in pairs), out)
+        for i in range(0, len(out) - 1, 2):
+            wt_title = out[i]["title"].lower()
+            impl_title = out[i + 1]["title"].lower()
+            order_word = next(w for w in ("in-order", "pre-order", "post-order", "level-order")
+                              if w in wt_title)
+            self.assertIn(order_word, impl_title)            # the pair shares the same traversal order
+
 
 if __name__ == "__main__":
     unittest.main()

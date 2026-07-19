@@ -973,10 +973,13 @@ Chunk index: {chunk.chunk_index}
                 decomposed = _apply_domain_gate(decomposed, domain)
                 # FAMILY-SURVEY backfill for the decomposed path too (was legacy-only — live gap: a "bst
                 # traversal" path shipped without Level-Order). Injected walkthroughs then get their coding
-                # follow-ups from the same backfill the legacy path uses.
+                # follow-ups from the same backfill, and the family is consolidated into canonical order
+                # (each walkthrough immediately followed by its implementation — the observed scramble left
+                # an implementation stranded between other members).
                 if _coding_transforms_enabled(domain):
                     decomposed = _expand_canonical_family(decomposed, goal)
                     decomposed = _append_missing_coding_topics(decomposed, goal)
+                    decomposed = _order_canonical_family(decomposed, goal)
                 _mark_coding_follow_ups(decomposed)
                 return _ensure_intro_topic(decomposed, goal)
             _log.warning("topic_generator: decomposition produced nothing — falling back to legacy")
