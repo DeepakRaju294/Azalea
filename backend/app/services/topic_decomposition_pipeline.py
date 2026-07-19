@@ -307,6 +307,45 @@ def _goal_significant_words(goal: str | None) -> set[str]:
             if len(w) >= 3 and w not in _GENERIC_PREREQ_WORDS and w not in _INTRO_FILLER}
 
 
+def _is_goal_umbrella_subject(subject_key: str, gw: set[str]) -> bool:
+    """True when a topic's subject IS the goal itself — word-set equality, acronym-aware: one goal word may
+    be the initialism of a contiguous run of subject words ('binary_search_tree_traversal' vs goal
+    {'bst','traversal'})."""
+    words = [w for w in str(subject_key or "").replace("_", " ").split() if w]
+    if not words or not gw:
+        return False
+    if set(words) == gw:
+        return True
+    for g in gw:
+        n = len(g)
+        for i in range(len(words) - n + 1):
+            if "".join(w[0] for w in words[i:i + n]) == g:
+                if set(words[:i] + words[i + n:]) == (gw - {g}):
+                    return True
+    return False
+
+
+def _drop_umbrella_coding_topics(topics_out: list[dict[str, Any]], goal: str | None) -> list[str]:
+    """Drop a coding_implementation whose subject is the GOAL ITSELF when the path already has >=2 more
+    specific implementations (live failure: the model emitted 'Implementing BST Traversal' alongside the
+    per-traversal 'Implementing Inorder/Postorder/Preorder Traversal' — the umbrella re-implements what the
+    members already cover). Never drops the only implementation. Mutates topics_out; returns dropped titles."""
+    gw = _goal_significant_words(goal)
+    if not gw:
+        return []
+    coding = [t for t in topics_out
+              if str(t.get("topic_type") or t.get("course_type") or "").strip() == "coding_implementation"]
+    umbrellas = [t for t in coding
+                 if _is_goal_umbrella_subject(str(t.get("subject_key") or t.get("title") or ""), gw)]
+    if not umbrellas or len(coding) - len(umbrellas) < 2:
+        return []
+    drop_ids = {id(t) for t in umbrellas}
+    dropped = [str(t.get("title") or "") for t in umbrellas]
+    topics_out[:] = [t for t in topics_out if id(t) not in drop_ids]
+    _log.info("topic_decomposition: dropped umbrella goal-subject coding topic(s): %s", dropped)
+    return dropped
+
+
 def _title_initialism(title: str) -> tuple[str, list[str]]:
     """(initialism, significant-ordered-words) of a topic title — 'Binary Search Tree' -> ('bst',
     ['binary','search','tree']). Order-preserving, filler-free, so the initialism matches how learners
@@ -357,6 +396,23 @@ def _demote_parent_of_goal_topics(topics_out: list[dict[str, Any]], goal: str | 
                         if _norm_title(w) not in _GENERIC_TOPIC_FILLER).strip()
         demoted.append(name or str(t.get("title") or "").strip())
         remove_ids.add(id(t))
+        # A demoted subject takes its own coding follow-up with it — 'Binary Search Tree' becoming a prereq
+        # must not leave a dangling 'Implementing Binary Search Tree' behind (the learner is ASSUMED to have
+        # the concept; its implementation is equally out of scope).
+        t_words = {w for w in _norm_title(str(t.get("title") or "")).split()
+                   if w not in _GENERIC_TOPIC_FILLER}
+        for o in teaching:
+            if id(o) in remove_ids:
+                continue
+            if str(o.get("topic_type") or o.get("course_type") or "").strip() != "coding_implementation":
+                continue
+            o_words = {w for w in _norm_title(str(o.get("title") or "")).split()
+                       if w not in _GENERIC_TOPIC_FILLER and w != "implementing"}
+            if o_words == t_words:
+                remove_ids.add(id(o))
+                demoted_impl = str(o.get("title") or "")
+                _log.info("topic_decomposition: dropping companion implementation of demoted prereq: %r",
+                          demoted_impl)
     if remove_ids and len(remove_ids) < len(teaching):       # never demote every teaching topic
         topics_out[:] = [t for t in topics_out if id(t) not in remove_ids]
         _log.info("topic_decomposition: demoted parent-of-goal topic(s) to prerequisites: %s", demoted)
@@ -711,6 +767,11 @@ def generate_decomposed_topics(
     # A teaching topic whose subject is a STRICT PARENT of the goal ('TCP Overview' on a 'TCP congestion control'
     # path) teaches FOUNDATION material, not the goal — demote it to a prerequisite so the path isn't front-loaded
     # with the very basics the learner is assumed to have (and the goal topic isn't buried under them).
+    # A coding topic whose subject is the GOAL ITSELF re-implements what the specific member implementations
+    # already cover ('Implementing BST Traversal' beside Implementing Inorder/Postorder/Preorder) — drop it.
+    # BEFORE demotion: its title carries the goal acronym, which would shield the parent walkthrough from the
+    # acronym-expansion demotion below.
+    _drop_umbrella_coding_topics(topics_out, goal)
     demoted_prereqs = _demote_parent_of_goal_topics(topics_out, goal)
     teaching = [t for t in topics_out if not _is_opener(t)]
     # Deterministic backstop: concepts shared across ≥2 topics' in_scope but taught by none are prerequisites the
@@ -720,10 +781,16 @@ def generate_decomposed_topics(
     structured_prereqs = [*llm_prereqs, *auto_prereqs, *dropped_prereqs, *demoted_prereqs]
     if structured_prereqs:
         # One concept = ONE prereq: names arrive in mixed shapes (the model sometimes emits the slug
-        # 'binary_search_tree' while a demotion contributes the display 'Binary Search Tree' — live duplicate),
-        # so dedup on a shape-blind key (alnum words) and render slugs as display phrases.
+        # 'binary_search_tree' while a demotion contributes the display 'Binary Search Tree'; and singular vs
+        # plural — 'binary search trees' vs 'binary search tree' — were live duplicates), so dedup on a
+        # shape-blind key (alnum words, light singularization) and render slugs as display phrases.
+        def _pw(w: str) -> str:
+            if len(w) >= 4 and w.endswith("s") and not w.endswith("ss"):
+                return w[:-1]
+            return w
+
         def _pkey(name: str) -> str:
-            return " ".join(re.findall(r"[a-z0-9]+", str(name or "").lower()))
+            return " ".join(_pw(w) for w in re.findall(r"[a-z0-9]+", str(name or "").lower()))
 
         def _pdisplay(name: str) -> str:
             s = str(name or "").strip()

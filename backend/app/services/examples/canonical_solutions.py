@@ -144,54 +144,46 @@ def merge_sort(arr):
             hi = mid - 1
     return -1
 """,
-    # ---- inorder traversal of a binary tree (recursion: left, node, right) ----
-    # ---- tree traversals (ITERATIVE stack/queue forms — a step-by-step trace maps to the pop/visit/push loop,
-    #      and the base case is visible, unlike a one-line recursion that repeats confusingly per visit) ----
+    # ---- tree traversals (RECURSIVE forms — product decision: recursion IS the teaching-standard shape for
+    #      tree traversal, and each trace visit maps to one recursive call. The nested helper keeps ONE
+    #      top-level function so find_entry_function picks the wrapper. Recursion also appends in the TRUE
+    #      visit order, so the executed-reference gate's intermediate-state check holds for all three —
+    #      unlike the earlier reversed-preorder postorder trick, whose per-step annotations contradicted
+    #      the walkthrough (live bug). Level-order stays a queue: breadth-first is inherently iterative.) ----
     "tree_inorder": """# Each tree node has .val (its value), .left and .right (child nodes, or None).
 def inorder(root):
     result = []
-    stack = []
-    node = root
-    while stack or node:
-        while node:
-            stack.append(node)
-            node = node.left
-        node = stack.pop()
+    def visit(node):
+        if node is None:
+            return
+        visit(node.left)
         result.append(node.val)
-        node = node.right
+        visit(node.right)
+    visit(root)
     return result
 """,
     "tree_preorder": """# Each tree node has .val (its value), .left and .right (child nodes, or None).
 def preorder(root):
     result = []
-    stack = [root]
-    while stack:
-        node = stack.pop()
+    def visit(node):
         if node is None:
-            continue
+            return
         result.append(node.val)
-        stack.append(node.right)
-        stack.append(node.left)
+        visit(node.left)
+        visit(node.right)
+    visit(root)
     return result
 """,
-    # TRUE-postorder variant (flagged stack), NOT the reversed-preorder trick: the adapter's trace visits in
-    # real postorder, and the executed-reference gate requires the code's intermediate `result` states to match
-    # the trace's step-by-step — result[::-1] only agrees at the END, so every per-step annotation contradicted
-    # the walkthrough (live bug on the BST-traversal path).
     "tree_postorder": """# Each tree node has .val (its value), .left and .right (child nodes, or None).
 def postorder(root):
     result = []
-    stack = [(root, False)]
-    while stack:
-        node, children_done = stack.pop()
+    def visit(node):
         if node is None:
-            continue
-        if children_done:
-            result.append(node.val)
-        else:
-            stack.append((node, True))
-            stack.append((node.right, False))
-            stack.append((node.left, False))
+            return
+        visit(node.left)
+        visit(node.right)
+        result.append(node.val)
+    visit(root)
     return result
 """,
     "tree_levelorder": """from collections import deque

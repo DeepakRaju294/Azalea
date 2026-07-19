@@ -242,7 +242,8 @@ class NoPrereqTopicOverlap(unittest.TestCase):
         "path_plan": {
             "end_capability": "Traverse a BST.",
             "end_capability_actions": ["trace"],
-            "assumed_prerequisites": ["binary_search_tree"],
+            # live duplicate: the model emitted the PLURAL alongside the demotion's singular display name
+            "assumed_prerequisites": ["binary search trees"],
             "required_capabilities": [
                 {"capability_id": "c_trav", "description": "Traverse.", "prerequisite_capability_ids": [],
                  "satisfies_end_actions": ["trace"], "ownership_mode": "standalone", "owner_topic_id": None,
@@ -265,6 +266,13 @@ class NoPrereqTopicOverlap(unittest.TestCase):
              "title": "Post-Order Traversal", "unit_title": "Core", "purpose": "p", "in_scope": ["postorder"],
              "practice_target": "t", "practice_format": "short_answer",
              "practice_evidence_type": "trace_structure", "expected_output": "o", "basis": "goal"},
+            # live redundancy: the model's own umbrella implementation of the goal itself
+            {"topic_id": "t_umb", "capability_id": "c_trav", "subject_key": "binary_search_tree_traversal",
+             "primary_action": "implement", "content_role": "implementation",
+             "topic_type": "coding_implementation", "title": "Implementing BST Traversal",
+             "unit_title": "Core", "purpose": "p", "in_scope": ["code"],
+             "practice_target": "t", "practice_format": "short_answer",
+             "practice_evidence_type": "write_code", "expected_output": "o", "basis": "goal"},
         ],
     }
 
@@ -279,10 +287,18 @@ class NoPrereqTopicOverlap(unittest.TestCase):
         self.assertNotIn("Binary Search Tree", titles)       # demoted, not taught
         intro = next(t for t in topics if t.get("course_type") == "study_path_introduction")
         ap = intro.get("assumed_prerequisites") or []
-        bst = [a for a in ap if "".join(sorted(a.lower().replace("_", " ").split()))
-               == "".join(sorted("binary search tree".split()))]
+        # plural-blind: 'binary search trees' (model) and 'Binary Search Tree' (demotion) are ONE concept
+        bst = [a for a in ap if "".join(sorted(w.rstrip("s") for w in a.lower().replace("_", " ").split()))
+               == "".join(sorted(w.rstrip("s") for w in "binary search tree".split()))]
         self.assertEqual(len(bst), 1, f"exactly one BST prereq expected, got {ap}")
         self.assertNotIn("_", bst[0])                        # display form, never the raw slug
+
+    def test_umbrella_goal_coding_topic_is_dropped(self):
+        topics = self._run()
+        titles = [t["title"] for t in topics]
+        self.assertNotIn("Implementing BST Traversal", titles)
+        # the specific member implementations remain
+        self.assertTrue(any(t.get("course_type") == "coding_implementation" for t in topics))
 
     def test_coding_follow_up_title_keeps_in_and_routes(self):
         topics = self._run()
@@ -298,7 +314,8 @@ class NoPrereqTopicOverlap(unittest.TestCase):
 
 class CanonicalTreeCodeSelfContained(unittest.TestCase):
     """The displayed canonical must say what .val/.left/.right ARE (the live lessons referenced node.val on a
-    class the panel never defined) and must still parse."""
+    class the panel never defined) and must still parse. Product decision: the in/pre/post traversal
+    canonicals are the RECURSIVE teaching-standard form (level-order stays a queue)."""
 
     def test_tree_canonicals_carry_node_shape_comment_and_parse(self):
         for slug in ("tree_inorder", "tree_preorder", "tree_postorder", "tree_levelorder"):
@@ -306,6 +323,39 @@ class CanonicalTreeCodeSelfContained(unittest.TestCase):
             self.assertIsNotNone(code, slug)
             self.assertIn("Each tree node has .val", code, slug)
             ast.parse(code)
+
+    def test_depth_traversal_canonicals_are_recursive(self):
+        for slug in ("tree_inorder", "tree_preorder", "tree_postorder"):
+            code = display_solution(slug, "python")
+            self.assertIn("def visit(node):", code, slug)           # recursive helper
+            self.assertIn("visit(node.left)", code, slug)
+            self.assertNotIn("stack", code, slug)                    # no iterative stack form
+
+
+class TreeTraversalFamilyExpansion(unittest.TestCase):
+    """A 'bst traversal' path shipped without Level-Order (the model under-generates; the decomposed branch
+    never ran the family backfill). The tree_traversal canonical family injects missing members."""
+
+    @staticmethod
+    def _walkthrough(title):
+        return {"title": title, "course_type": "algorithm_walkthrough",
+                "topic_type": "algorithm_walkthrough", "description": "d"}
+
+    def test_missing_members_injected_for_bst_traversal_goal(self):
+        from app.services.topic_generator import _expand_canonical_family
+        topics = [self._walkthrough("Inorder Traversal"), self._walkthrough("Postorder Traversal"),
+                  self._walkthrough("Preorder Traversal")]
+        out = _expand_canonical_family(topics, "Want to learn about bst traversal")
+        joined = " | ".join(t["title"] for t in out)
+        self.assertIn("Level-Order Traversal", joined)
+        # present members are not duplicated
+        self.assertEqual(sum("Inorder" in t["title"] or "In-Order" in t["title"] for t in out), 1)
+
+    def test_unrelated_goal_never_injects(self):
+        from app.services.topic_generator import _expand_canonical_family
+        topics = [self._walkthrough("Binary Search")]
+        out = _expand_canonical_family(topics, "learn binary search")
+        self.assertEqual(len(out), 1)
 
 
 if __name__ == "__main__":

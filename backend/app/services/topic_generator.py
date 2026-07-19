@@ -442,6 +442,14 @@ _CANONICAL_FAMILIES: dict[str, dict[str, Any]] = {
         "goal_markers": ("graph traversal", "graph traversals", "traverse a graph", "traversing a graph"),
         "members": [("Breadth-First Search", "bfs"), ("Depth-First Search", "dfs_iter")],
     },
+    # Live failure: a "bst traversal" path shipped only in/post/pre-order — the model under-generates and
+    # nothing backfilled Level-Order. Every member routes to a verified tree adapter with canonical code.
+    "tree_traversal": {
+        "goal_markers": ("bst traversal", "binary search tree traversal", "tree traversal", "tree traversals",
+                         "binary tree traversal", "traversing a tree", "traversing a bst", "traverse a bst"),
+        "members": [("In-Order Traversal", "tree_inorder"), ("Pre-Order Traversal", "tree_preorder"),
+                    ("Post-Order Traversal", "tree_postorder"), ("Level-Order Traversal", "tree_levelorder")],
+    },
 }
 
 # A member counts as already TAUGHT only by a walkthrough or coding topic — NOT a compare/concept topic that
@@ -963,6 +971,12 @@ Chunk index: {chunk.chunk_index}
                 _log.info("topic_generator: used capability-graph decomposition (%d topics)", len(decomposed))
                 # Gate BEFORE marking follow-ups so the marking reflects the final (possibly remapped) types.
                 decomposed = _apply_domain_gate(decomposed, domain)
+                # FAMILY-SURVEY backfill for the decomposed path too (was legacy-only — live gap: a "bst
+                # traversal" path shipped without Level-Order). Injected walkthroughs then get their coding
+                # follow-ups from the same backfill the legacy path uses.
+                if _coding_transforms_enabled(domain):
+                    decomposed = _expand_canonical_family(decomposed, goal)
+                    decomposed = _append_missing_coding_topics(decomposed, goal)
                 _mark_coding_follow_ups(decomposed)
                 return _ensure_intro_topic(decomposed, goal)
             _log.warning("topic_generator: decomposition produced nothing — falling back to legacy")
