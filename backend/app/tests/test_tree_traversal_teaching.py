@@ -748,6 +748,44 @@ class SingleOrientationOpener(unittest.TestCase):
         self.assertNotEqual(chars.get("course_type"), "study_path_introduction")
 
 
+class UmbrellaTitledIntroRetitle(unittest.TestCase):
+    """Live: a 'fluid turbulence' path opened with an intro titled 'Fluid Dynamics' whose background card was
+    'Why Fluid Dynamics Matters' — the whole orientation pointed at the parent discipline instead of the goal.
+    An opener titled with a whole-discipline umbrella is retitled from the goal."""
+
+    def test_umbrella_intro_takes_goal_title(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+
+        def topic(tid, subj, title, role, tt, evidence="none", output=""):
+            return {"topic_id": tid, "capability_id": "c1", "subject_key": subj,
+                    "primary_action": "explain", "content_role": role, "topic_type": tt, "title": title,
+                    "unit_title": "U", "purpose": "p", "in_scope": ["x"], "practice_target": "t",
+                    "practice_format": "short_answer", "practice_evidence_type": evidence,
+                    "expected_output": output, "basis": "goal"}
+
+        resp = {"path_plan": {"end_capability": "Understand turbulence.",
+                              "end_capability_actions": ["explain"], "assumed_prerequisites": [],
+                              "required_capabilities": [
+                                  {"capability_id": "c1", "description": "d",
+                                   "prerequisite_capability_ids": [], "satisfies_end_actions": ["explain"],
+                                   "ownership_mode": "standalone", "owner_topic_id": None, "basis": "goal"}]},
+                "topics": [topic("t0", "fluid_dynamics", "Fluid Dynamics", "orientation",
+                                 "concept_intuition"),
+                           topic("t1", "turbulence_physics", "Physics of Turbulence", "science_mechanism",
+                                 "science_mechanism", evidence="solve_numeric", output="o")]}
+        out = generate_decomposed_topics("want to learn about fluid turbulence", "src",
+                                         model_fn=lambda p: resp, coding_follow_ups=False)
+        intro = next(t for t in out if t.get("course_type") == "study_path_introduction")
+        self.assertEqual(intro["title"], "Introduction to Fluid Turbulence")
+
+    def test_goal_aligned_intro_title_kept(self):
+        from app.services.topic_decomposition_pipeline import _norm_title  # sanity: not umbrella
+        # 'Understanding Depreciation' style openers (goal-aligned, not a discipline name) keep their title —
+        # covered end-to-end by OrientationOpenerRetype; here just assert the guard's precondition.
+        from app.services.topic_decomposition_pipeline import _UMBRELLA_FIELDS
+        self.assertNotIn(_norm_title("Understanding Depreciation"), _UMBRELLA_FIELDS)
+
+
 class FamilyComparisonTopic(unittest.TestCase):
     """User-endorsed comparison topic ('Comparing MST Algorithms') appeared only when the model chose to emit
     one (the prompt has no comparison guidance). Now DETERMINISTIC: a family survey teaching >=2 distinct

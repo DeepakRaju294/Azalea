@@ -815,6 +815,16 @@ def generate_decomposed_topics(
                     t["topic_type"] = "study_path_introduction"
                     _log.info("topic_decomposition: retyped orientation opener %r -> study_path_introduction",
                               t.get("title"))
+                # An opener titled with a whole-DISCIPLINE umbrella orients the WRONG subject (live: a
+                # 'fluid turbulence' path opened with an intro titled 'Fluid Dynamics' whose background card
+                # was 'Why Fluid Dynamics Matters'). The intro's title is the GOAL's, not the parent field's.
+                stripped_title = " ".join(w for w in _norm_title(str(t.get("title") or "")).split()
+                                          if w not in _GENERIC_TOPIC_FILLER)
+                if stripped_title in _UMBRELLA_FIELDS:
+                    new_title = _intro_title(goal)
+                    _log.info("topic_decomposition: retitled umbrella-named intro %r -> %r",
+                              t.get("title"), new_title)
+                    t["title"] = new_title
             else:
                 # ONE path, ONE orientation: a SECOND orientation-role topic is a mislabeled teaching topic
                 # by construction (live: 'Characteristics of Turbulent Flow' also role=orientation — both got
