@@ -104,7 +104,7 @@ class InorderTraversalAdapter(FamilyAdapterBase):
     slug = "tree_inorder"
     label_convention = "ints"                  # §2.3 — BST node values are integers
     example_spec = ExampleSpec(
-        input=InstanceShape("integers", count=(4, 7), value_range=(1, 40), structure=["distinct", "bst"]),
+        input=InstanceShape("integers", count=(6, 8), value_range=(1, 40), structure=["distinct", "bst"]),
         stages={"visit": StageSpec(
             "visit", "visit the next node in inorder position",
             teaching_focus="a node is output only after its entire left subtree",
@@ -119,7 +119,7 @@ class InorderTraversalAdapter(FamilyAdapterBase):
     def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
         rng = random.Random(seed)
         for i in range(80):
-            n = rng.randint(4, 7)
+            n = rng.randint(6, 8)   # 6-8 nodes (product decision: richer example trees)
             values = rng.sample(range(1, 41), n)          # distinct
             tree: dict[int, dict[str, Any]] = {}
             root: int | None = None
@@ -279,7 +279,7 @@ class _TreeTraversalBase(FamilyAdapterBase):
     def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
         rng = random.Random(seed)
         for i in range(80):
-            n = rng.randint(4, 7)
+            n = rng.randint(6, 8)   # 6-8 nodes (product decision: richer example trees)
             values = rng.sample(range(1, 41), n)          # distinct
             tree: dict[int, dict[str, Any]] = {}
             root: int | None = None
@@ -357,7 +357,7 @@ class _TreeTraversalBase(FamilyAdapterBase):
 
 def _trav_spec(order_desc: str, focus: str, must: list[str], out_shape: str) -> ExampleSpec:
     return ExampleSpec(
-        input=InstanceShape("integers", count=(4, 7), value_range=(1, 40), structure=["distinct", "bst"]),
+        input=InstanceShape("integers", count=(6, 8), value_range=(1, 40), structure=["distinct", "bst"]),
         stages={"visit": StageSpec("visit", f"visit the next node in {order_desc} position", teaching_focus=focus,
                                    contains={"append this node's value to the output": "required"})},
         structure="visit+ until every node is output",
