@@ -1,33 +1,32 @@
-# Recall Popups — small spec (rev 6)
+# Recall Popups — small spec (rev 7)
 
-Status: Draft rev 6 — **approved for the feasibility-audit stage; the payload contract is now self-consistent and
-ready to run the audit.** rev 6 closes the last payload inconsistencies a sixth review found: `current_anchor_text_hash`
-is used in `popup_id` but was never stored (→ add it + validate the DISPLAYING side too), the source anchor used a
-divergent shape (→ standardize `{field, index}`, the verified existing contract), and the stale-event / harvester-
-version / typed-validation behaviors were underspecified. Flag: `AZALEA_RECALL_POPUPS` (requires
-`AZALEA_PREREQ_LINKS`). The old `AZALEA_TERM_GLOSSES` lexical-gloss system stays **permanently dead**.
+Status: Draft rev 7 — **approved to run the feasibility audit; contract frozen otherwise.** rev 7 closes three
+localized items a seventh review found: a single `source_anchor` can't describe a header+bullet definition
+(→ bounded `source_span`), the cryptographic hash/serialization contract was unstated (→ SHA-256 + versioned
+length-delimited canonical JSON), and the **active lesson prompt still instructs the model to emit lexical
+`popup_only` glosses** (`lean_lesson_prompt.py:324`) — contradicting this spec's dead-gloss premise (→ a
+decommission task, §13). Flag: `AZALEA_RECALL_POPUPS` (requires `AZALEA_PREREQ_LINKS`).
 
 > **The defining rule (unchanged, load-bearing):** *No trustworthy recall line means no popup. The ordinary
 > review link remains the fallback.* Every decision below is downstream of precision-first.
 
-> **rev 6 changes (all from the sixth review — payload self-consistency):**
-> 1. **Store `current_anchor_text_hash`** (§5) — it's an input to `popup_id`, so the payload must carry it for the
->    ID to be reproducible/auditable, and so serialization can validate the displaying anchor, not only the source.
-> 2. **Two-sided staleness** (§6b) — validate BOTH the displaying/current anchor and the source/owner anchor;
->    either failing strips the popup (`stale_current_anchor` | `stale_source`), keeps the review link.
-> 3. **One anchor shape `{field, index}`** (§5) — via a shared `ContentItemAnchor`; verified the existing link
->    anchor is `{field, index}` (`lean_lesson_generator.py:4262`). Drop the invented `item_index`.
-> 4. **Typed stale-event** (§6b) — `{reason, expected_hash, observed_hash|null}`, dedup by
->    `popup_id + reason + observed_hash`; sentinels for missing card/anchor/harvest.
-> 5. **Unsupported harvester_version → strip** (§6b) — never silently rerun the newest extractor (its output may
->    differ on unchanged source); keep the currently-emitted version supported while cached lessons hold it.
-> 6. **Typed payload validation** (§5b) — validate `RecallPopupV1` / `ContentItemAnchor` through models, not
->    scattered dict checks.
+> **rev 7 changes (all from the seventh review — localized contract + a code decommission):**
+> 1. **Bounded `source_span {field, start_index, end_index}`** (§5) — replaces the single-item source anchor so
+>    header+bullet harvesting is unambiguous (inline: `start==end`; header+bullet: `end==start+1`, no further
+>    siblings). The DISPLAYING anchor stays the single-item `ContentItemAnchor`.
+> 2. **Hash/serialization contract** (§5c) — text hash = SHA-256 over UTF-8 of normalized text, lowercase hex;
+>    `popup_id` = SHA-256 over a versioned, length-delimited canonical JSON (stable key order, compact), never raw
+>    concatenation. `popup_id` is reproducible from the stored link + payload + card context — NOT the payload alone.
+> 3. **Decommission active lexical-gloss prompt instructions** (§13) — independent of the audit outcome; keep
+>    `popup_only` only where other contracts still require it (cycle-suppressed prereq); never reuse `popup_only`
+>    for `RecallPopupV1`.
+> 4. **Current-side stale reasons** (§6b) — add `missing_current_card | missing_current_anchor |
+>    current_anchor_hash_mismatch` alongside the source-side sentinels.
 
 > **Carried:** §0 feasibility audit is a HARD BUILD GATE (recompute anchor tiers in memory; prevalence metrics;
-> `do_not_build` is legitimate); content-hash-only staleness (no per-lesson revision ID exists); §4 harvest =
-> concise definition LINE (dash form, not synthesized sentence); §4b fixtures-gated; §6 v1 ranking = order-distance;
-> §7 cached-render decision; §9 notation NOT buildable from `canonical_notes`.
+> `do_not_build` is legitimate); content-hash-only staleness (no per-lesson revision ID); two-sided staleness;
+> §4 harvest = concise definition LINE (dash form); §4b fixtures-gated; §6 v1 ranking = order-distance; §7
+> cached-render decision; §9 notation NOT buildable from `canonical_notes`; typed action-aware payload validation.
 
 ## 0. Feasibility gate — run BEFORE building the UI (read-only audit)
 
@@ -128,7 +127,7 @@ ONLY when:
 - it yields ONE concise, self-contained recall statement via an accepted source shape (below), within the display
   budget,
 - no unresolved notation and no dangling reference ("this process", "as above"),
-- stamped with `source_topic_id`, `source_card_id`, `source_anchor`, `source_text_hash`, `harvester_version`
+- stamped with `source_topic_id`, `source_card_id`, `source_span`, `source_text_hash`, `harvester_version`
   (§5), and `recall_source = structured_definition`.
 
 **Accepted source shapes (deterministic, NO LLM).** Key-term cards store fragments, not sentences. The UX needs a
@@ -156,7 +155,7 @@ ONLY when all hold:
 - contains a definitional verb (`is`, `means`, `refers to`) or a tightly-accepted domain pattern,
 - contains no instructions, examples, transitions, or unresolved references,
 - passes the same length + notation checks as §4,
-- satisfies the SAME source provenance as §4 (`source_topic_id`, `source_card_id`, `source_anchor`,
+- satisfies the SAME source provenance as §4 (`source_topic_id`, `source_card_id`, `source_span`,
   `source_text_hash`, `harvester_version`), only with `recall_source = harvested_background_definition`.
 
 The search stays confined to the already-resolved owner topic + the known concept identity — this is NOT prose
@@ -172,9 +171,14 @@ InteractiveLink
   anchor        # unchanged + match_kind (§3)
   recall_popup: RecallPopupV1 | null      # additive; presence is the frontend gate (§5b, §7)
 
-ContentItemAnchor                # ONE shape everywhere (matches the existing link anchor, lean_lesson_generator.py:4262)
+ContentItemAnchor                # single displaying item (matches the existing link anchor, lean_lesson_generator.py:4262)
   field
   index
+
+SourceSpan                       # bounded source region — a definition may span header + one bullet
+  field
+  start_index
+  end_index                      # inline: end == start; header + one bullet: end == start + 1; no further siblings
 
 RecallPopupV1
   recall                       # one harvested recall line (§4 / §4b)
@@ -182,25 +186,38 @@ RecallPopupV1
   current_anchor_text_hash     # hash of the DISPLAYING card's anchored item — input to popup_id + current-side staleness (§6b)
   source_topic_id
   source_card_id
-  source_anchor: ContentItemAnchor     # WHERE in the owner card the recall came from — {field, index}
+  source_span: SourceSpan      # WHERE in the owner card the recall came from — bounded, ≤2 items
   source_text_hash             # hash(normalize(reconstructed recall line)) — source-side staleness (§6b)
   harvester_version            # extractor/template version — re-run the SAME version to re-hash (§6b)
   recall_source                # structured_definition | harvested_background_definition
-  popup_id                     # content-hash join key (below) — NO generation ID
+  popup_id                     # content-hash join key (§5c) — NO generation ID
   popup_version
 ```
 No `action_label` — the frontend derives "Review topic" from the link action. The payload does NOT duplicate
 action-kind/target — those stay on the link. **No `*_lesson_generation_id`** — no per-lesson revision ID exists
 (one `Lesson` row per topic, mutated in place); v1 is content-hash only (Option B). The displaying link's own
-`anchor` is the same `{field, index}` shape (+ `match_kind`); `current_anchor_text_hash` is the canonical hash of
-the item that anchor points at, so `popup_id` is reproducible from the stored payload alone.
+`anchor` is the single-item `ContentItemAnchor {field, index}` (+ `match_kind`); `current_anchor_text_hash` is the
+canonical hash of the item that anchor points at.
+
+### 5c. Hash + serialization contract
+
+- **Text hash** (`source_text_hash`, `current_anchor_text_hash`): SHA-256 over the UTF-8 bytes of the canonically
+  normalized text (§5: NFC → trim → collapse internal whitespace → preserve math symbols → no lowercase),
+  serialized as lowercase hex.
+- **`popup_id`**: SHA-256 over a **versioned, length-delimited canonical payload** — stable key order, compact
+  JSON, then hash its UTF-8 bytes. Never plain string concatenation (component boundaries would be ambiguous):
+  ```json
+  {"v":1,"current_topic_id":"…","current_card_id":"…","current_anchor_text_hash":"…",
+   "concept_id":"…","source_text_hash":"…","popup_version":"1"}
+  ```
+- `popup_id` is reproducible from the **stored link + recall payload + containing lesson/card context** (it needs
+  `current_topic_id`, `current_card_id`, and the link's `concept_id`) — NOT from `RecallPopupV1` in isolation.
 
 **`source_text_hash` hashes the reconstructed recall LINE, not the whole card** — regenerating an unrelated bullet
 on the owner card must not invalidate an unchanged recall line. It is computed by running the deterministic
-extractor at `source_anchor` (raw item → parse accepted shape → reconstruct the recall line → canonicalize), NOT
-by hashing the raw item (the raw `Term: fragment` won't match the reconstructed `Term — fragment`). Fixed
-canonicalization: Unicode NFC → trim → collapse internal whitespace → **preserve** mathematical symbols → do NOT
-lowercase (exact comparison). If the source card or `source_anchor` disappears, treat as stale.
+extractor over `source_span` (read the ≤2 bounded items → parse accepted shape → reconstruct the recall line →
+canonicalize), NOT by hashing the raw item (the raw `Term: fragment` won't match the reconstructed
+`Term — fragment`). Canonicalization is §5's. If any item in `source_span` disappears, treat as stale.
 
 **`popup_id` is regeneration-safe via content hashes** — a lesson regenerated with different recall text at the
 same IDs must NOT merge telemetry:
@@ -233,8 +250,8 @@ Required contract test — assert survival end to end, on BOTH initial generatio
 generation → schema validation → backend normalize_link → lesson persistence → API response
            → frontend normalization → inline rendering
 ```
-surviving fields: `concept_id`, `anchor.match_kind`, `recall_popup` (incl. `source_text_hash`, `harvester_version`,
-`source_anchor`, `recall_source`).
+surviving fields: `concept_id`, `anchor.match_kind`, `recall_popup` (incl. `current_anchor_text_hash`,
+`source_text_hash`, `harvester_version`, `source_span`, `recall_source`).
 
 ## 6. Selection pipeline + caps (candidates ≠ rendered) — fully deterministic
 
@@ -271,7 +288,7 @@ missing_recall | duplicate_concept | over_card_cap | over_topic_cap`. Serializat
     verify link text still has an exact/word-boundary match → hash the anchored item →
     compare current_anchor_text_hash
   Source/owner side (batch-load distinct source cards, ≤3 per topic):
-    locate source_anchor → rerun the SAME harvester_version at it (raw item → parse shape →
+    read source_span (≤2 items) → rerun the SAME harvester_version over it (parse shape →
     reconstruct line → canonicalize) → compare source_text_hash
   ```
   If EITHER side fails (mismatch, or card/anchor gone) → **strip only `recall_popup` from a RESPONSE COPY**, keep
@@ -284,8 +301,9 @@ missing_recall | duplicate_concept | over_card_cap | over_topic_cap`. Serializat
 - **Typed stale-event** (dedup so repeated reads don't emit unbounded identical events):
   ```
   { reason, expected_hash, observed_hash: str | null }     dedup key = popup_id + reason + observed_hash
-  reason ∈ stale_current_anchor | stale_source | missing_source_card | missing_source_anchor |
-           harvest_failed | unsupported_harvester_version
+  reason ∈ stale_current_anchor | current_anchor_hash_mismatch | missing_current_card | missing_current_anchor |
+           stale_source | missing_source_card | missing_source_span | harvest_failed |
+           unsupported_harvester_version
   ```
   (Rejected for v1: eager reverse-dependency invalidation on owner regeneration — operationally stronger but more
   infrastructure than v1 warrants.)
@@ -397,3 +415,18 @@ click, focus restoration, and viewport collision especially are not free):
   enforced from `teaches`. THIS is where body-topic prerequisite recall becomes possible — because scope
   ownership makes local necessity explicit, and where a real "needed for this step" ranking replaces §6's
   deterministic proxy.
+
+## 13. Decommission the active lexical-gloss prompt (independent of the audit)
+
+The spec calls the lexical-gloss system dead, but the ACTIVE lesson prompt still instructs the model to generate
+`popup_only` glosses for "technical terms a motivated beginner would pause to look up"
+(`lean_lesson_prompt.py:324`). Because `popup_only` is rendered inline, these glosses are a **currently
+user-visible feature** — so this is a product decision, not silent cleanup, and is called out here rather than
+executed by this spec. When approved:
+- Remove the lexical-popup generation instructions from active prompts; stop requesting undefined-term popups from
+  the lesson model.
+- Keep the `popup_only` action ONLY where other contracts still require it (e.g. cycle-suppressed prerequisite
+  behavior). Keep old stored lessons with glosses readable.
+- Do NOT reuse `popup_only` for `RecallPopupV1` — recall remains an additive enrichment of `review_earlier_topic`.
+- Rationale: the active instruction wastes output tokens, encourages unwanted `interactive_links`, adds noise to
+  structured generation, and preserves the exact lexical-vs-recall ambiguity this spec exists to end.
