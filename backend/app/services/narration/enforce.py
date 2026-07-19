@@ -64,6 +64,20 @@ def math_slice_mode() -> str:
     return m if m in (rollout.SHADOW_VALIDATE, rollout.ON_ENFORCED) else ""
 
 
+# Path-A-ONLY science slice: activates just the prompt scaffold directive (Principle → Apply → Interpret) for
+# science-domain topics, killing the coding loop framing ("Repeated action / Stopping condition") on science
+# process cards. Deliberately does NOT enroll any science card family at on_enforced (path B) and does not touch
+# _ENFORCED_DOMAINS — the science rows of the matrix stay deferred until their audit closes (§4).
+_SCIENCE_SLICE_FLAG = "AZALEA_NARRATION_SCIENCE_SLICE"
+
+
+def science_slice_mode() -> str:
+    """The mode the science narration slice is activated at (AZALEA_NARRATION_SCIENCE_SLICE), or '' when dark.
+    Read ONLY by the path-A prompt scaffold injection — there is no science display step yet."""
+    m = str(os.getenv(_SCIENCE_SLICE_FLAG, "")).strip().lower()
+    return m if m in (rollout.SHADOW_VALIDATE, rollout.ON_ENFORCED) else ""
+
+
 def enroll_audited_math_slice() -> None:
     """Surgically enroll ONLY the audited math slice at the mode named by AZALEA_NARRATION_MATH_SLICE. Dark when
     the flag is unset (the default). Idempotent; best-effort (a live→off_legacy attempt is simply skipped)."""

@@ -536,6 +536,13 @@ LEAN_SYSTEM_PROMPT = build_lean_system_prompt(omit_worked_example=False)
 # TREE_TRAVERSAL, and RECURSIVE_TRAVERSAL).
 
 TOPIC_FAMILY_FRAGMENTS: dict[str, str] = {
+    "minimum_spanning_tree": """MINIMUM SPANNING TREE ACCURACY RULES (this topic is MST / Prim / Kruskal):
+- Definition: an MST is a minimum-total-weight spanning tree of a CONNECTED, WEIGHTED, UNDIRECTED graph. A disconnected graph has a minimum spanning FOREST, not an MST spanning every vertex.
+- Kruskal considers edges globally in nondecreasing weight order, accepts an edge only when it joins different components, and stops as soon as V-1 edges have been accepted. It skips cycle-forming edges; never describe this as skipping edges merely because vertices/components are disconnected.
+- Prim grows one tree from a start vertex by repeatedly choosing a minimum-weight edge crossing from the current tree to a vertex outside it.
+- Complexity must name the implementation assumptions. Standard edge-list Kruskal with disjoint-set union is O(E log E) time and O(V + E) storage including the edge list. Adjacency-list Prim with a binary heap is O(E log V) time and O(V + E) storage; an adjacency-matrix implementation is O(V^2) time and O(V^2) storage.
+- Do not claim Kruskal should be avoided for sparse graphs. Do not claim Prim is inherently best for dense graphs without naming the matrix implementation. Equal-weight edges require no change to either algorithm; ties can yield multiple valid MSTs with the same minimum total weight.
+- Every graph exercise must specify vertices AND weighted undirected edges. Never ask the learner to compute an MST from weights alone without endpoints.""",
     "graph_traversal": """GRAPH TRAVERSAL RULES (this topic is graph BFS/DFS):
 - For graph BFS use a queue. For graph DFS use recursion when the topic emphasizes recursive structure, otherwise an explicit stack.
 - DFS / BFS VISITED CONVENTION — pin "mark when discovered" (a.k.a. mark-when-pushed/enqueued). For iterative graph DFS the code MUST mark nodes visited at the moment they are pushed onto the stack (not when popped), and BFS MUST mark at the moment they are enqueued. This convention prevents duplicate pushes/enqueues, keeps the visited set in sync with the stack/queue contents, and makes the runtime-state bullets line up cleanly across steps.
@@ -609,6 +616,9 @@ TOPIC_FAMILY_FRAGMENTS: dict[str, str] = {
 
 
 _TOPIC_FAMILY_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "minimum_spanning_tree": (
+        "mst", "minimum spanning tree", "kruskal", "prim",
+    ),
     "graph_traversal": (
         "bfs", "dfs", "depth-first", "breadth-first",
         "depth first", "breadth first",
@@ -868,17 +878,20 @@ def build_lean_user_prompt(
             "authored in a separate pass. Generate every OTHER card in the plan as normal."
         )
 
-    # Path-A narration scaffold (DARK unless the math slice flag is live): steer the process/method card to the
-    # domain's own frames (math → Setup/Operation/Result/Why) instead of the coding loop framing, so a math
-    # method isn't presented as a running loop ("Starting state / Repeated action / State update"). Best-effort.
+    # Path-A narration scaffold (DARK unless the domain's slice flag is live): steer the process/method card to
+    # the domain's own frames (math → Setup/Operation/Result/Why; science → Principle/Apply/Interpret) instead of
+    # the coding loop framing, so a math method isn't presented as a running loop ("Starting state / Repeated
+    # action / State update") and a science mechanism doesn't get a "Stopping condition". Each domain has its own
+    # activation flag so enabling one never flips the other. Best-effort.
     try:
         from app.services.narration.contracts import process_scaffold_directive
-        from app.services.narration.enforce import math_slice_mode
+        from app.services.narration.enforce import math_slice_mode, science_slice_mode
         from app.services.narration.shadow import resolve_narration_domain
 
-        if math_slice_mode():
+        if math_slice_mode() or science_slice_mode():
             _nd = resolve_narration_domain(topic_type, getattr(study_path, "domain", None))
-            if _nd == "math":                                  # v1 slice: math only
+            _slice_live = (_nd == "math" and math_slice_mode()) or (_nd == "science" and science_slice_mode())
+            if _slice_live:
                 _scaffold_directive = process_scaffold_directive(_nd)
                 if _scaffold_directive:
                     parts.append(_scaffold_directive)

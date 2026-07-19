@@ -59,5 +59,76 @@ class PromptInjection(unittest.TestCase):
         self.assertIn('"Operation"', prompt)
 
 
+def _fake_science_topic():
+    """A science path's science_mechanism topic (the turbulence 'Physics of Turbulence' shape)."""
+    sp = types.SimpleNamespace(goal="Learn fluid turbulence", domain="science", topics=[])
+    return types.SimpleNamespace(
+        title="Physics of Turbulence", description="", topic_type="science_mechanism",
+        course_type="science_mechanism", study_path=sp, id="t1", purpose="", learner_outcome=None,
+        in_scope=None, out_of_scope=None, modifiers=None, decomposition_metadata=None,
+        assumed_prerequisites=None,
+    )
+
+
+class SciencePromptInjection(unittest.TestCase):
+    """AZALEA_NARRATION_SCIENCE_SLICE activates the science scaffold (Principle/Apply/Interpret) — path A only.
+
+    Guards the regression where science topics kept the coding loop framing ('Repeated action / Stopping
+    condition'), which produced mechanism prose like 'turbulence persists until forces stabilize it'."""
+
+    def setUp(self):
+        self._prev = {f: os.environ.pop(f, None)
+                      for f in (enforce._MATH_SLICE_FLAG, enforce._SCIENCE_SLICE_FLAG)}
+
+    def tearDown(self):
+        for f, v in self._prev.items():
+            os.environ.pop(f, None)
+            if v is not None:
+                os.environ[f] = v
+
+    def test_science_directive_names_science_frames(self):
+        d = contracts.process_scaffold_directive("science")
+        for f in ("Principle", "Apply", "Interpret"):
+            self.assertIn(f, d)
+        self.assertIn("Repeated action", d)          # explicitly forbidden
+        self.assertIn("not a running program", d)
+
+    def test_flag_off_is_dark(self):
+        prompt = build_lean_user_prompt(_fake_science_topic(), [])
+        self.assertNotIn("PROCESS/METHOD CARD FRAMES", prompt)
+
+    def test_flag_on_injects_science_scaffold_for_science_topic(self):
+        os.environ[enforce._SCIENCE_SLICE_FLAG] = "on_enforced"
+        prompt = build_lean_user_prompt(_fake_science_topic(), [])
+        self.assertIn("PROCESS/METHOD CARD FRAMES (science)", prompt)
+        self.assertIn('"Principle"', prompt)
+        self.assertIn('"Interpret"', prompt)
+
+    def test_science_flag_does_not_activate_math_paths(self):
+        os.environ[enforce._SCIENCE_SLICE_FLAG] = "on_enforced"
+        prompt = build_lean_user_prompt(_fake_math_topic(), [])
+        self.assertNotIn("PROCESS/METHOD CARD FRAMES", prompt)
+
+    def test_math_flag_does_not_activate_science_paths(self):
+        os.environ[enforce._MATH_SLICE_FLAG] = "on_enforced"
+        prompt = build_lean_user_prompt(_fake_science_topic(), [])
+        self.assertNotIn("PROCESS/METHOD CARD FRAMES", prompt)
+
+    def test_subject_agnostic_topic_on_science_path_gets_science_scaffold(self):
+        """A science path's process_walkthrough resolves to science via the path domain."""
+        os.environ[enforce._SCIENCE_SLICE_FLAG] = "on_enforced"
+        t = _fake_science_topic()
+        t.topic_type = "process_walkthrough"
+        t.course_type = "process_walkthrough"
+        prompt = build_lean_user_prompt(t, [])
+        self.assertIn("PROCESS/METHOD CARD FRAMES (science)", prompt)
+
+    def test_science_slice_mode_rejects_unknown_values(self):
+        os.environ[enforce._SCIENCE_SLICE_FLAG] = "banana"
+        self.assertEqual(enforce.science_slice_mode(), "")
+        os.environ[enforce._SCIENCE_SLICE_FLAG] = "on_enforced"
+        self.assertEqual(enforce.science_slice_mode(), "on_enforced")
+
+
 if __name__ == "__main__":
     unittest.main()
