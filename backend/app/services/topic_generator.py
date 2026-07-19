@@ -721,6 +721,20 @@ def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> l
     return result
 
 
+def _fix_intro_prefixed_units(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A TEACHING topic filed under an 'Introduction to X' unit header reads backwards (live: the intro sat
+    under 'Core Concepts' while the main 'Fluid Turbulence' lesson sat under 'Introduction to Fluid
+    Turbulence'). A non-intro topic whose unit starts with an intro prefix takes its own title as the unit."""
+    for t in topics:
+        ttype = str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
+        if ttype == "study_path_introduction":
+            continue
+        unit = str(t.get("unit_title") or "").strip()
+        if unit.lower().startswith(("introduction to ", "intro to ")):
+            t["unit_title"] = str(t.get("title") or "").strip() or unit
+    return topics
+
+
 def _drop_same_adapter_duplicate_topics(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Two NON-coding teaching topics that route to the SAME adapter generate the same KIND of verified worked
     example — the learner does the identical exercise twice with different numbers (live: a depreciation path's
@@ -1219,6 +1233,7 @@ Chunk index: {chunk.chunk_index}
                     decomposed = _ensure_family_comparison_topic(decomposed, goal)
                 # Same-adapter duplicates produce the identical exercise twice — all domains, not just coding.
                 decomposed = _drop_same_adapter_duplicate_topics(decomposed)
+                decomposed = _fix_intro_prefixed_units(decomposed)
                 # Certify again because family/coding policy may have added rows. The second pass records their
                 # identities and guarantees policy cannot reintroduce an overlap or duplicate.
                 decomposed = _certify_path_scope(decomposed, goal)

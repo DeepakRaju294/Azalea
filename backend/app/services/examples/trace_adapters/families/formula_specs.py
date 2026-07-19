@@ -114,6 +114,44 @@ GRAVITATIONAL_PE = FormulaSpec(
 # ======================================================================================================
 # ELECTRICAL ENGINEERING (B9 circuits) — family "physics"
 # ======================================================================================================
+# Live gap: a "fluid turbulence" science_mechanism path shipped an essay-shaped LLM "worked example" (steps
+# = "identify conditions… provide examples… summarize key points") — no problem, no values, nothing computed.
+# The quantitative core of turbulence onset IS the Reynolds number; routing turbulence-titled topics here gives
+# them a real, verified calculation. Oil framing keeps every value a clean 1-dp SI number (water's mu=0.001
+# doesn't fit the 1-dp float sampler), and the ranges genuinely span laminar -> turbulent.
+REYNOLDS_NUMBER = FormulaSpec(
+    slug="reynolds_number", title="Reynolds number and flow regime", family="physics",
+    aliases=["reynolds number", "reynolds", "fluid turbulence", "turbulent flow", "turbulence",
+             "laminar and turbulent", "laminar or turbulent", "flow regime"],
+    priority=95,
+    problem_template=("Oil of density {rho} kg/m^3 and viscosity {mu} Pa*s flows at {v} m/s through a pipe "
+                      "of diameter {D} m. Compute the Reynolds number for the flow."),
+    givens=[Given("rho", "kg/m^3", 850, 950),
+            Given("v", "m/s", 1, 6, integer=False),
+            Given("D", "m", 0, 1, integer=False),
+            Given("mu", "Pa*s", 0, 1, integer=False)],
+    outputs=[Output("Re", "Re = rho*v*D/mu", "rho*v*D/mu", "", "compute_reynolds_number", "Reynolds number")],
+    conventions={"formula": "Re = rho*v*D/mu", "units": "SI (kg/m^3, m/s, m, Pa*s); Re is dimensionless",
+                 "regimes": "pipe flow: Re < 2300 laminar, 2300-4000 transitional, > 4000 turbulent"},
+    canonical_latex="Re = \\frac{\\rho v D}{\\mu}",
+    canonical_notes=[
+        "\\(\\rho\\): fluid density.  \\(v\\): flow speed.  \\(D\\): pipe diameter.  \\(\\mu\\): dynamic "
+        "viscosity.  \\(Re\\) is dimensionless.",
+        "Pipe-flow regimes: \\(Re < 2300\\) laminar, \\(2300\\)–\\(4000\\) transitional, \\(Re > 4000\\) "
+        "turbulent — high speed, large diameter, or low viscosity push the flow toward turbulence.",
+    ],
+    edge_cases=[
+        "As \\(\\mu\\) grows (thicker fluid), \\(Re\\) falls — very viscous flows stay laminar even at high "
+        "speed.",
+        "\\(Re\\) scales linearly with each of \\(\\rho\\), \\(v\\), \\(D\\): doubling the pipe diameter "
+        "doubles \\(Re\\).",
+    ],
+    # Reject degenerate instances: a zero-ish diameter/viscosity from the 1-dp sampler, or a Reynolds number
+    # so close to a regime boundary that the classification reads ambiguous to a learner.
+    instance_ok=lambda g: (g["D"] >= 0.2 and g["mu"] >= 0.2
+                           and not (2000 <= g["rho"] * g["v"] * g["D"] / g["mu"] <= 4500)),
+)
+
 OHMS_LAW = FormulaSpec(
     slug="ohms_law", title="Ohm's law with power", family="physics",
     aliases=["ohm's law", "ohms law", "ohm law"], priority=95,
@@ -1247,7 +1285,7 @@ PERCENT_INCREASE = FormulaSpec(
 ALL_SPECS = [
     # physics / EE
     KINEMATICS, KINETIC_ENERGY, NEWTONS_SECOND_LAW, WEIGHT_FORCE, MOMENTUM, WORK_DONE, GRAVITATIONAL_PE, OHMS_LAW,
-    PROJECTILE_RANGE, CENTRIPETAL_ACCEL, WAVE_SPEED, PRESSURE, MECHANICAL_POWER, SPRING_PE,
+    PROJECTILE_RANGE, CENTRIPETAL_ACCEL, WAVE_SPEED, PRESSURE, MECHANICAL_POWER, SPRING_PE, REYNOLDS_NUMBER,
     # finance
     SIMPLE_INTEREST, COMPOUND_INTEREST, PRESENT_VALUE, PERCENT_CHANGE, FUTURE_VALUE, BREAK_EVEN, PROFIT_MARGIN,
     # geometry

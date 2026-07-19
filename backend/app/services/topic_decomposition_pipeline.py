@@ -223,6 +223,9 @@ def _is_circular_prereq(name: str, goal: str | None) -> bool:
 _UMBRELLA_FIELDS = frozenset({
     "statistics", "mathematics", "math", "maths", "programming", "coding", "computer science",
     "computing", "data science", "science", "engineering", "arithmetic",
+    # whole-subfield umbrellas (live: 'fluid mechanics' beside the specific 'Viscosity' + 'Reynolds Number' —
+    # the umbrella vaguely restates what its specific siblings already cover)
+    "fluid mechanics", "fluid dynamics", "physics", "chemistry", "accounting", "finance", "economics",
 })
 
 
