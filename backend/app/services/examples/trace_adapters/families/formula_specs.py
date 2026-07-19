@@ -123,6 +123,14 @@ REYNOLDS_NUMBER = FormulaSpec(
     slug="reynolds_number", title="Reynolds number and flow regime", family="physics",
     aliases=["reynolds number", "reynolds", "fluid turbulence", "turbulent flow", "turbulence",
              "laminar and turbulent", "laminar or turbulent", "flow regime"],
+    # TURBULENCE MODELING topics (k-epsilon, LES, RANS closures) must NOT route here: a 'Turbulence Models'
+    # topic (scope: k-epsilon, LES) shipped a VERIFIED-but-IRRELEVANT Re calculation — worse than unverified,
+    # because the verification badge lends trust to an example that does not teach the topic's declared scope.
+    # Blocked, the topic stamps withhold_fabricated and ships honestly qualitative. (This also fixes canonical
+    # identity: _canonical_concept_key consults routing first, so these topics were being IDENTIFIED as
+    # reynolds_number.)
+    not_aliases=["turbulence model", "turbulence models", "turbulence modeling", "turbulence modelling",
+                 "k-epsilon", "k epsilon", "large eddy", "les", "rans", "reynolds stress", "closure"],
     priority=95,
     problem_template=("Oil of density {rho} kg/m^3 and viscosity {mu} Pa*s flows at {v} m/s through a pipe "
                       "of diameter {D} m. Compute the Reynolds number for the flow."),
@@ -141,10 +149,11 @@ REYNOLDS_NUMBER = FormulaSpec(
         "turbulent — high speed, large diameter, or low viscosity push the flow toward turbulence.",
     ],
     edge_cases=[
-        "As \\(\\mu\\) grows (thicker fluid), \\(Re\\) falls — very viscous flows stay laminar even at high "
-        "speed.",
+        "As \\(\\mu\\) grows (thicker fluid), \\(Re\\) falls — a very viscous flow tends to stay laminar at "
+        "speeds that would make a thin fluid turbulent (all else equal; geometry and the other scales still "
+        "matter).",
         "\\(Re\\) scales linearly with each of \\(\\rho\\), \\(v\\), \\(D\\): doubling the pipe diameter "
-        "doubles \\(Re\\).",
+        "doubles \\(Re\\), all else held equal.",
     ],
     # Reject degenerate instances: a zero-ish diameter/viscosity from the 1-dp sampler, or a Reynolds number
     # so close to a regime boundary that the classification reads ambiguous to a learner.
@@ -181,10 +190,13 @@ LAMINAR_PRESSURE_DROP = FormulaSpec(
         "diameter.  \\(\\Delta P\\): pressure lost to viscous friction.",
         "This is the Navier–Stokes equations solved EXACTLY in their simplest case — steady, laminar flow in "
         "a straight pipe (the Hagen–Poiseuille result). Turbulent flow has no such closed solution.",
+        "Assumptions (all required): steady, incompressible, Newtonian fluid, fully developed laminar flow, "
+        "straight circular pipe.",
     ],
     edge_cases=[
-        "Halving the diameter QUADRUPLES the pressure drop (\\(\\Delta P \\propto 1/D^2\\)) — narrow pipes "
-        "are expensive to pump through.",
+        "At FIXED average speed \\(v\\), halving the diameter QUADRUPLES the pressure drop "
+        "(\\(\\Delta P \\propto 1/D^2\\)); at fixed volumetric FLOW RATE the dependence is even steeper "
+        "(\\(\\Delta P \\propto 1/D^4\\)) — narrow pipes are expensive to pump through.",
         "The formula holds only for LAMINAR flow; past the turbulent transition the drop grows faster than "
         "linearly with speed.",
     ],

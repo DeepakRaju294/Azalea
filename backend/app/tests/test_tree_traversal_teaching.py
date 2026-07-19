@@ -590,6 +590,82 @@ class OrientationOpenerRetype(unittest.TestCase):
         self.assertEqual(opener["title"], "Understanding Depreciation")
 
 
+class ExampleRelevanceGuards(unittest.TestCase):
+    """External review: a 'Turbulence Models' topic (scope: k-epsilon, LES) shipped a VERIFIED-but-IRRELEVANT
+    Reynolds calculation — worse than unverified, because the verification badge lends trust to an example
+    that does not teach the topic. Modeling titles must not route to reynolds_number (they withhold instead);
+    and _canonical_concept_key (adapter-first) must no longer IDENTIFY them as reynolds_number."""
+
+    def test_modeling_titles_do_not_route_to_reynolds(self):
+        for t in ("Turbulence Models", "Turbulence Modeling with k-epsilon", "Large Eddy Simulation",
+                  "RANS Closures"):
+            a = route_adapter({"title": t, "topic_type": "science_mechanism",
+                               "course_type": "science_mechanism"})
+            self.assertIsNone(a, t)
+
+    def test_plain_turbulence_titles_still_route(self):
+        for t in ("Fluid Turbulence", "Classes of Turbulence", "Laminar vs Turbulent Flow"):
+            a = route_adapter({"title": t, "topic_type": "science_mechanism",
+                               "course_type": "science_mechanism"})
+            self.assertEqual(getattr(a, "slug", None), "reynolds_number", t)
+
+    def test_turbulence_models_identity_is_not_the_adapter(self):
+        from app.services.topic_generator import _canonical_concept_key
+        self.assertNotEqual(_canonical_concept_key("Turbulence Models", "science_mechanism"),
+                            "reynolds_number")
+
+
+class CertifiedPathProseGuard(unittest.TestCase):
+    """External review finding 1: prereqs were generated in two places — certification emptied the structured
+    list, then the intro's PROSE path re-invented 'Fluid mechanics' with an open_study_path link (the exact
+    overlap certification had removed). On a certified path (any sibling stamped with scope_plan), empty
+    structured prereqs is a certified decision: the prose path must not run."""
+
+    def _intro(self, certified):
+        class _SP:
+            goal = "want to learn about fluid turbulence"
+            topics = []
+
+        class _T:
+            id, title, order_index = "i", "Introduction to Fluid Turbulence", 0
+            course_type, topic_type = "study_path_introduction", None
+            assumed_prerequisites = []
+            decomposition_metadata = {}
+            study_path = _SP()
+
+        class _Sib:
+            id, title, order_index = "s", "Turbulence Models", 1
+            course_type, topic_type = "science_mechanism", "science_mechanism"
+            assumed_prerequisites = []
+            decomposition_metadata = ({"scope_plan": {"we_policy": "withhold_fabricated"}}
+                                      if certified else {})
+            study_path = None
+
+        sib = _Sib()
+        t = _T()
+        t.study_path.topics = [t, sib]
+        return t
+
+    def _cards(self):
+        return [{"card_type": "purpose_context", "blueprint_key": "prerequisites",
+                 "title": "Prerequisites",
+                 "points": ["Fluid mechanics", "  - the study of fluids", "Dynamics of motion"]}]
+
+    def test_certified_path_prose_prereqs_not_invented(self):
+        from app.services.lean_lesson_generator import _ground_prereq_card
+        cards = self._cards()
+        out = _ground_prereq_card(cards, self._intro(certified=True), brief_fn=lambda n, g: [])
+        # untouched: the grounding did NOT rebuild the card from prose-derived names
+        self.assertEqual(out[0]["points"][0], "Fluid mechanics")
+        self.assertNotIn("What it is:", " ".join(out[0]["points"]))
+
+    def test_uncertified_path_prose_fallback_still_works(self):
+        from app.services.lean_lesson_generator import _ground_prereq_card
+        cards = self._cards()
+        out = _ground_prereq_card(cards, self._intro(certified=False), brief_fn=lambda n, g: [])
+        self.assertTrue(any("Fluid mechanics" in str(p) for p in out[0]["points"]))
+
+
 class SingleOrientationOpener(unittest.TestCase):
     """One path, one orientation: the model emitted TWO orientation-role topics and both were retyped to
     study_path_introduction — the learner saw two prerequisites cards and two roadmaps, and real teaching

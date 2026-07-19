@@ -4040,6 +4040,21 @@ def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic, brief_fn=None
             seen.add(name.lower())
             names.append(name)
     if not names:
+        # PLAN-AUTHORITATIVE GUARD: on a scope-CERTIFIED path (any sibling carries a stamped scope_plan),
+        # empty structured prereqs is a certified DECISION — the certifier may have deliberately emptied the
+        # list (e.g. every declared prereq overlapped a taught topic). The prose path below would re-invent
+        # prereqs the certifier never saw and hand them open_study_path links (live: certification emptied the
+        # list, then the intro's prose card resurrected 'Fluid mechanics' beside the taught 'Fluid Dynamics
+        # Fundamentals' — the exact overlap certification had removed). Certified + empty ⇒ render no prereqs.
+        try:
+            sibs = getattr(getattr(topic, "study_path", None), "topics", None) or []
+            certified = any(isinstance(getattr(s, "decomposition_metadata", None), dict)
+                            and (getattr(s, "decomposition_metadata") or {}).get("scope_plan")
+                            for s in sibs)
+        except Exception:  # noqa: BLE001 — the guard must never break the card
+            certified = False
+        if certified:
+            return cards
         # PROSE PATH: decomposition emitted no structured prereqs (common model variance), so the model's own
         # prose prereq card stands — with sub-bullets that are fragments, not the refresher/what-to-learn
         # contract. Recover the prereq NAMES from the card's main bullets with the same precision-first
