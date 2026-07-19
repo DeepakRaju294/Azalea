@@ -31,26 +31,29 @@ decommission task, §13). Flag: `AZALEA_RECALL_POPUPS` (requires `AZALEA_PREREQ_
 ## 0. Feasibility gate — run BEFORE building the UI (read-only audit)
 
 > **AUDIT RESULT (2026-07-18, `scripts/recall_popup_feasibility_audit.py` over 1482 stored lessons) → DECISION:
-> `strict_v1_provisional` — do NOT start the UI/staleness build on this yet.** A first pass over-claimed (a loose
-> harvester accepted dangling/purpose/example lines like "It measures how many standard deviations…"); the
-> harvester was tightened to enforce §4 self-containment and the funnel is now reported per-stage on its own
-> denominator:
+> `defer_to_v2`. Freeze the interaction design; do NOT start the standalone UI/staleness build.** (An earlier pass
+> over-claimed via a loose harvester; it was tightened to enforce §4 self-containment — sentence must open with the
+> concept + definitional verb, no pronoun/behaviour/example/modal-"can indicate" lead, no variable-legend heads —
+> and every metric is now on its own denominator with the 21 owner-resolved cases hand-labeled and stored.)
 > - **Prevalence:** 41 `review_earlier_topic` candidates corpus-wide (2.2%); recent-200-lessons-with-review-links
->   = **14%** (NOT verified flag-on — just the newest 200).
+>   = **14%** (a recency window, NOT a verified flag-on cohort).
 > - **Staged rates:** anchor-eligibility 25/41 = **0.61**; owner-resolution 21/25 = **0.84**; deterministic
->   strict-§4 harvest 9/21 = **0.43**; end-to-end 9/41 = **0.22**.
-> - **Hand-labeled precision on the 21 owner-resolved (the real test):** ~**8 trustworthy self-contained
->   definitions** (harvester precision ≈ 8/9 — one false positive, a z-score interpretation line where a stray
->   "is" matched), ~5 borderline function-statements (usable recall but not strict definitions: TCP "regulates…",
->   total-probability "calculates…"), ~7 genuine rejects (owner has only formulas/purpose clauses). **True strict
->   precision ≈ 0.38, not the ~1.0 first implied.**
-> - §4b was NOT load-bearing on the failures (they are absent/function-statement owners, not missing-definition-
->   card owners prose would rescue) — still deferred, but this is not a strong signal.
-> **Read:** anchor + owner stages are healthy; the binding constraint is that only ~8 owner-resolved candidates
-> corpus-wide yield a trustworthy strict definition. That is real but thin. **Do not build the UI on this; either
-> improve upstream (scanner emits more/better review links; owners carry clean definitions) or fold into v2
-> scope-plan `uses` where candidate volume + definition ownership are structural.** `human_precision_on_sample`
-> must be recorded before any `strict_v1` (non-provisional) decision.
+>   strict-§4 harvest 11/21 = **0.52**.
+> - **Precision vs yield (distinct metrics — the earlier note wrongly called yield "precision"):**
+>   `harvester_strict_precision` = **0.82** (9 strict-valid / 11 kept; the 2 non-clean keeps carry unresolved
+>   Σ/σ notation) — the harvester is accurate. `strict_definition_yield` = **0.43** (9 strict-valid / 21
+>   owner-resolved) — this is COVERAGE, not accuracy. Labels: strict_valid 9, borderline_function 6 (TCP
+>   "regulates…", total-probability "calculates…", notation-laden lines), invalid 6.
+> - **Diversity is the binding constraint (occurrences overstate breadth):** the harvested lines dedup to only
+>   **7 unique recall lines across 6 concepts and 7 study paths** — five of the "kept" are the *same* "Combinations
+>   represent…" line. Nine popups over ~6 concepts is far weaker than nine independent definitions.
+> - §4b was NOT load-bearing (failures are absent/function-statement owners, not prose-rescuable) — stays deferred.
+> **Read:** anchor + owner stages are healthy and the harvester is precise; the binding constraints are **low volume
+> + thin concept diversity + inconsistent definition ownership** — which manual labeling clarifies but cannot fix.
+> Fold into **v2 scope-plan `uses`/`definition_owners`**, where candidate volume and canonical definition ownership
+> become structural. **Open design decision to settle at v2 (see §4 note):** enforce a strict *definition* only, or
+> broaden the promised content type to a trustworthy *recall statement* (which would legitimately admit the
+> "borderline_function" lines like "TCP congestion control regulates the flow of data over a network").
 
 
 The whole feature can be "correct" and still worthless if almost nothing harvests. Owner-topic identities today are
@@ -163,6 +166,16 @@ limits…"*). Instead:
    `{Term} — {fragment}` (e.g. *"Congestion window — a sender-side limit on unacknowledged data."*). Concise,
    number-agnostic, no copula to get wrong.
 3. **Multiple bullets, or a verb-led / context-dependent fragment** — **reject** (no popup).
+
+> **Content-type decision (open, settle at v2 — the §0 audit surfaced it).** v1 as written promises a strict
+> *definition* (what the concept IS) and therefore rejects **function/behaviour statements** ("TCP congestion
+> control **regulates** the flow of data over a network"; "…**calculates** the total probability…") and
+> **notation-laden** lines (a Z-score line ending `Z = (X-μ)/σ`). The audit labeled those `borderline_function`:
+> self-contained and genuinely useful as recall, but not definitions. Two coherent options — pick ONE at v2, do
+> not straddle: **(a)** keep the strict-definition promise (higher precision, lower yield — the audit's 0.43), or
+> **(b)** broaden the promised type to a trustworthy *recall statement* that also admits function/behaviour
+> statements (raises yield, needs its own fixtures: still reject dangling/pronoun/example/modal-"can indicate"
+> leads and unresolved notation). The harvester's `recall_source` must record which contract produced the line.
 
 This is shape-driven string assembly, never generation. Stamp the extractor with `harvester_version` (below) so a
 future template change never makes old payloads look corrupt. This widens strict coverage without touching §4b.

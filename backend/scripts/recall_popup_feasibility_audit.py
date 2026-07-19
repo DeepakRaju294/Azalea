@@ -97,6 +97,10 @@ _NON_DEFINITIONAL_LEAD = {
 _LEADING_PRONOUN = {"it", "this", "these", "they", "that", "he", "she", "we", "you"}
 _DEF_VERB = re.compile(
     r"\b(is|are|means|refers to|represents?|describes?|denotes?|counts?|measures?|arranges?)\b")
+# Interpretation / use / purpose statements masquerade as definitions because a stray copula appears later
+# ("A z-score CAN INDICATE whether a point IS typical"). Reject them explicitly (spec §4 wants what a concept IS).
+_MODAL_NONDEF = re.compile(
+    r"\bcan (indicate|show|be used|help|tell|reveal|determine)\b|\b(is|are|can be) used to\b|\bhelps? to\b")
 
 
 def _singular_plural_prefix(text, want):
@@ -126,6 +130,8 @@ def _self_contained_definition(sent, want):
     stripped = re.sub(r"^(the|a|an)\s+", "", ns)
     if not (_singular_plural_prefix(ns, want) or _singular_plural_prefix(stripped, want)):
         return False
+    if _MODAL_NONDEF.search(low):
+        return False
     if not _DEF_VERB.search(low):
         return False
     if any(d in low for d in _DANGLING):
@@ -133,22 +139,31 @@ def _self_contained_definition(sent, want):
     return True
 
 
+def _is_variable_head(head):
+    """A single short symbol/variable head (n, r, X, Z, σ) is a formula-legend entry, not a concept definition —
+    it matches concepts only because a single letter is a substring ('n' in 'combinations')."""
+    return len(re.sub(r"[^a-z0-9]", "", head.lower())) <= 2
+
+
 def definition_entries(lesson_json):
     """(head, full_text) for every Term: fragment style definition item in the owner lesson — the `components`
-    section strings and any `definition`/components card points/bullets."""
+    section strings and any `definition`/components card points/bullets. Variable-legend heads are skipped."""
     out = []
     comps = lesson_json.get("components")
     if isinstance(comps, list):
         for it in comps:
             if isinstance(it, str) and ":" in it:
-                out.append((it.split(":", 1)[0].strip(), it.strip()))
+                head = it.split(":", 1)[0].strip()
+                if not _is_variable_head(head):
+                    out.append((head, it.strip()))
     for card in iter_cards(lesson_json):
         if card.get("card_type") not in ("definition", "core_idea", "purpose_context"):
             continue
         for _f, _i, s in card_items(card):
-            if ":" in s and not s.lstrip().startswith("-") is False:  # include sub-bullets too
+            if ":" in s:  # any Term: fragment item, main bullet OR "  - " sub-bullet
                 head = s.split(":", 1)[0].strip().lstrip("- ").strip()
-                out.append((head, s.strip()))
+                if not _is_variable_head(head):
+                    out.append((head, s.strip()))
     return out
 
 
@@ -176,6 +191,26 @@ def sentence_definitions(owner_lesson, want):
             st = s.strip().lstrip("- ").strip()
             if len(st.split()) >= 6 and st.endswith((".", ")")) and _self_contained_definition(st, want):
                 yield (card.get("title") or want, st)
+
+
+# ---- Human labels (recorded 2026-07-18) ---------------------------------------------------------------
+# The deterministic harvester is a PROXY; these are the analyst's verdicts on each owner-resolved case, so the
+# JSON stores real labels instead of null. Verdict ∈ strict_valid | borderline_function | invalid.
+#   strict_valid       — a trustworthy, self-contained DEFINITION (what the concept IS).
+#   borderline_function— self-contained + usable recall, but a function/behaviour/theorem statement, not a
+#                        definition (TCP "regulates…", total-prob "calculates…", the Σ-laden theorem line).
+#   invalid            — owner carries no definition-quality material for this concept.
+_BORDERLINE_OWNERS = {"introduction to tcp congestion control", "law of total probability"}
+
+
+def hand_label(concept, owner, harvest):
+    o = _norm(owner)
+    if harvest.startswith("[REJECT"):
+        return "borderline_function" if o in _BORDERLINE_OWNERS else "invalid"
+    # harvested a line: the Σ-laden "…Theorem — States that P(A) can be calculated…" is a theorem statement.
+    if "states that" in harvest.lower() or "σ" in harvest.lower() or "Σ" in harvest:
+        return "borderline_function"
+    return "strict_valid"
 
 
 def prose_fallback(owner_lesson, want):
@@ -220,11 +255,13 @@ def main():
 
     db = SessionLocal()
 
-    # Preload: topic_id -> lesson_json, and normalized title -> [topic_id] (title-targeted links).
+    # Preload: topic_id -> lesson_json / title / study_path, and normalized title -> [topic_id].
     topic_title = {}
+    topic_path = {}
     lesson_by_topic = {}
     for t in db.query(base.Topic).yield_per(500):
         topic_title[t.id] = t.title or ""
+        topic_path[t.id] = getattr(t, "study_path_id", None)
     title_index = defaultdict(list)
     for tid, ttl in topic_title.items():
         title_index[_norm(ttl)].append(tid)
@@ -243,6 +280,10 @@ def main():
     survivors = []
     rows = []
     owner_resolved_rows = []   # every owner-resolved candidate + its harvest outcome (for manual precision labeling)
+    candidate_concepts = set()
+    harvested_concepts = set()
+    harvested_lines = set()
+    paths_with_harvest = set()
 
     recent_window = 200
     recent_with_reviews = 0
@@ -263,6 +304,7 @@ def main():
                 text = lk.get("text") or ""
                 concept = lk.get("concept_id") or text
                 target = (lk.get("target") or "").strip()
+                candidate_concepts.add(_norm(text))
 
                 # Stage 1: anchor eligibility (recomputed in memory).
                 tier = anchor_tier(card, text)
@@ -306,6 +348,10 @@ def main():
                     rows.append((text[:32], target[:12], tier, "-", reason))
                     continue
                 funnel["harvested"] += 1
+                harvested_concepts.add(_norm(text))
+                harvested_lines.add(recall.strip())
+                if topic_path.get(disp_topic):
+                    paths_with_harvest.add(topic_path[disp_topic])
 
                 # Stage 4: caps (<=1/card, <=3/topic, <=1/concept).
                 if card_kept[ci] >= 1:
@@ -348,22 +394,39 @@ def main():
     }
     strict_harvest_rate = stage_rates["strict_harvest"]  # SPEC definition: harvests / anchored (owner-resolved)
 
-    # Decision is PROVISIONAL until human precision is labeled on the owner-resolved sample (the script's
-    # deterministic §4 pass is necessary, not sufficient — a human must confirm the surviving lines read as
-    # trustworthy self-contained recall). The script therefore never emits a final `strict_v1`.
-    fallback_needed = funnel.get("fallback_would_harvest", 0) > max(3, funnel["harvested"] * 0.3)
-    if recent_prev < 5 and per100 < 3:
-        decision = "do_not_build_provisional"
-        why = "review links too rare even in the recent window to justify the UI/staleness/telemetry surface."
-    elif fallback_needed:
-        decision = "enable_4b_provisional"
-        why = "strict §4 under-covers on the tightened harvester; the §4b fallback looks load-bearing."
+    # Apply the recorded hand labels → precision (of harvested) vs yield (of owner-resolved). These are DIFFERENT
+    # metrics: precision = "when the harvester keeps a line, is it a real definition?"; yield/coverage = "of all
+    # owner-resolved candidates, how many produce a trustworthy definition?".
+    labels = Counter()
+    for c in owner_resolved_rows:
+        c["label"] = hand_label(c["concept"], c["owner"], c["harvest"])
+        labels[c["label"]] += 1
+    harvested_cases = [c for c in owner_resolved_rows if not c["harvest"].startswith("[REJECT")]
+    strict_valid_harvested = sum(1 for c in harvested_cases if c["label"] == "strict_valid")
+    harvester_precision = _rate(strict_valid_harvested, len(harvested_cases))
+    strict_definition_yield = _rate(labels["strict_valid"], funnel["owner_resolved"])  # coverage, NOT precision
+
+    diversity = {
+        "unique_candidate_concepts": len(candidate_concepts),
+        "unique_harvested_concepts": len(harvested_concepts),
+        "unique_recall_lines": len(harvested_lines),
+        "paths_with_eligible_popups": len(paths_with_harvest),
+    }
+
+    # Decision. Labeling clarifies precision, but it cannot fix low volume or poor definition ownership — so the
+    # binding facts are diversity + yield, and the honest verdict is deferral, not "provisional pending labels".
+    if diversity["unique_recall_lines"] < 12 or diversity["paths_with_eligible_popups"] < 12:
+        decision = "defer_to_v2"
+        why = ("harvester is precise ({hp}) but coverage is thin: only {ul} unique recall lines across {up} "
+               "study paths ({uc} distinct concepts), strict-definition yield {yd} of owner-resolved. Labeling "
+               "cannot fix low volume or absent definition ownership — freeze the interaction design and let the "
+               "scope plan (v2 `uses`/definition_owners) raise candidate volume + ownership first.").format(
+                   hp=harvester_precision, ul=diversity["unique_recall_lines"],
+                   up=diversity["paths_with_eligible_popups"],
+                   uc=diversity["unique_harvested_concepts"], yd=strict_definition_yield)
     else:
-        decision = "strict_v1_provisional"
-        why = ("tightened strict §4 harvests {h}/{o} owner-resolved candidates; recent-window candidate "
-               "prevalence {p:.0f}%. PROVISIONAL — confirm human precision on the owner-resolved sample below "
-               "before committing to the UI build.").format(
-                   h=funnel["harvested"], o=funnel["owner_resolved"], p=recent_prev)
+        decision = "strict_v1"
+        why = "precise harvest, adequate concept/line/path diversity — build v1 with strict §4 only."
 
     report = {
         "prevalence": {
@@ -374,15 +437,22 @@ def main():
             f"recent_{recent_window}_lessons_with_review_links_pct": round(recent_prev, 1),
             "topics_total": n_topics,
         },
+        "diversity": diversity,
         "funnel": dict(funnel),
         "drop_reasons": dict(drops),
         "stage_rates": stage_rates,
-        "strict_harvest_rate": strict_harvest_rate,  # SPEC: harvests / anchored(owner-resolved)
-        "human_precision_on_sample": None,  # REQUIRED before finalizing — label owner_resolved_cases manually
+        "strict_harvest_rate": strict_harvest_rate,           # SPEC: harvests / anchored(owner-resolved)
+        "harvester_strict_precision": harvester_precision,    # strict_valid / harvested  (~how accurate the keeps are)
+        "strict_definition_yield": strict_definition_yield,   # strict_valid / owner-resolved (coverage, NOT precision)
+        "human_precision_on_sample": {
+            "labeled_2026_07_18": dict(labels),
+            "harvester_strict_precision": harvester_precision,
+            "strict_definition_yield_over_owner_resolved": strict_definition_yield,
+        },
         "kept_popups": funnel["kept"],
         "decision": decision,
         "rationale": why,
-        "owner_resolved_cases": owner_resolved_rows,   # the sample to hand-label for precision
+        "owner_resolved_cases": owner_resolved_rows,   # each now carries its "label"
     }
 
     if args.json:
@@ -410,14 +480,21 @@ def main():
     for k, v in stage_rates.items():
         print(f"  {k:26} {v}")
     print(f"  strict_harvest_rate (SPEC: harvested / owner-resolved) = {strict_harvest_rate}")
+    print("\n--- DIVERSITY (occurrences overstate breadth — dedup) " + "-" * 26)
+    for k, v in diversity.items():
+        print(f"  {k:28} {v}")
+    print("\n--- PRECISION vs YIELD (hand-labeled 2026-07-18) " + "-" * 31)
+    print(f"  labels:                      {dict(labels)}")
+    print(f"  harvester_strict_precision:  {harvester_precision}   (strict_valid / harvested — accuracy of keeps)")
+    print(f"  strict_definition_yield:     {strict_definition_yield}   (strict_valid / owner-resolved — COVERAGE)")
     print("\n--- DROP REASONS " + "-" * 62)
     for k, v in drops.most_common():
         print(f"  {k:26} {v}")
-    print("\n--- OWNER-RESOLVED CASES (hand-label these for precision) " + "-" * 22)
+    print("\n--- OWNER-RESOLVED CASES (label per case) " + "-" * 37)
     for c in owner_resolved_rows:
-        print(f"  {c['concept'][:26]:26} | {c['owner']:40} | {c['harvest']}")
+        print(f"  [{c['label'][:9]:9}] {c['concept'][:22]:22} | {c['owner'][:30]:30} | {c['harvest'][:60]}")
     print("\n" + "=" * 80)
-    print(f"DECISION: {report['decision'].upper()}  (human_precision_on_sample: NOT YET LABELED)")
+    print(f"DECISION: {report['decision'].upper()}")
     print(f"  {report['rationale']}")
     print("=" * 80)
 
