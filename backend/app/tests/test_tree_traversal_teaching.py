@@ -381,6 +381,33 @@ class StepFieldContract(unittest.TestCase):
         self.assertEqual(sol["cards"][0]["work"], ["result.append(node.val)  // append 4"])  # untouched
 
 
+class CodingTopicsHaveNoKeyTerms(unittest.TestCase):
+    """Structural consistency (path review): components_terms was OPTIONAL on coding_implementation, so the
+    model added it to one sibling implementation and not the others — arbitrary structure across a family.
+    It is now absent from every coding sequence, and the CardValidator strips a model-emitted one."""
+
+    def test_no_components_terms_in_any_coding_sequence(self):
+        from app.core.course_blueprints import IMPLEMENTATION_FOLLOW_UP, get_topic_blueprint
+        for rel in (None, IMPLEMENTATION_FOLLOW_UP):
+            bp = get_topic_blueprint("coding_implementation", relationship_to_parent=rel)
+            for key in ("default_card_sequence", "continuation_card_sequence",
+                        "optional_cards", "continuation_optional_cards"):
+                self.assertNotIn("components_terms", bp.get(key) or [], f"{rel}:{key}")
+
+    def test_card_validator_strips_model_emitted_key_terms_on_coding_topic(self):
+        from app.services.examples.handoff import validate_and_order_cards
+        lesson = {"lesson_cards": [
+            {"blueprint_key": "components_terms", "card_type": "definition", "title": "Key Terms"},
+            {"blueprint_key": "code_walkthrough", "card_type": "code_walkthrough", "title": "Code"},
+            {"blueprint_key": "worked_example", "card_type": "worked_example", "title": "WE"},
+            {"blueprint_key": "practice", "card_type": "quick_practice", "title": "P"},
+        ]}
+        validate_and_order_cards(lesson, {"topic_type": "coding_implementation"})
+        keys = [c["blueprint_key"] for c in lesson["lesson_cards"]]
+        self.assertNotIn("components_terms", keys)
+        self.assertEqual(keys, ["code_walkthrough", "worked_example", "practice"])
+
+
 class TreeTraversalFamilyExpansion(unittest.TestCase):
     """A 'bst traversal' path shipped without Level-Order (the model under-generates; the decomposed branch
     never ran the family backfill). The tree_traversal canonical family injects missing members."""

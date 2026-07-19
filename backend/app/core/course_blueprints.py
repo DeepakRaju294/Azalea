@@ -1145,9 +1145,13 @@ TOPIC_BLUEPRINTS: dict[str, Blueprint] = {
     TopicType.CODING_IMPLEMENTATION.value: {
         "name": "Coding Implementation",
         "description": "Turn an already-taught idea, algorithm, formula, process, or operation into working code; teach implementation choices, code construction, and runtime execution, not the algorithm concept itself.",
+        # NO components_terms on coding topics (structural consistency, path review): it was optional, so the
+        # model added it to SOME sibling implementations and not others — arbitrary structure across a family.
+        # Implementation vocabulary (helper function, accumulator, base case) is explained INLINE in the
+        # code_walkthrough narration; concept vocabulary lives on the parent walkthrough's components_terms.
+        # Absent from every sequence => the CardValidator strips a model-emitted one deterministically.
         "default_card_sequence": sequence(
             "background",
-            "components_terms",
             "code_walkthrough",
             "worked_example",
             "complexity_analysis",
@@ -1155,13 +1159,12 @@ TOPIC_BLUEPRINTS: dict[str, Blueprint] = {
             "practice",
         ),
         "continuation_card_sequence": sequence(
-            "components_terms",
             "code_walkthrough",
             "worked_example",
             "practice",
         ),
-        "continuation_optional_cards": ["components_terms"],
-        "optional_cards": ["components_terms", "edge_case", "complexity_analysis"],
+        "continuation_optional_cards": [],
+        "optional_cards": ["edge_case", "complexity_analysis"],
         "preferred_question_types": ["coding", "debugging", "short_answer"],
         "avoid": [
             "Do not show large unexplained code dumps.",
