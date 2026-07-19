@@ -307,16 +307,32 @@ def _goal_significant_words(goal: str | None) -> set[str]:
             if len(w) >= 3 and w not in _GENERIC_PREREQ_WORDS and w not in _INTRO_FILLER}
 
 
+def _title_initialism(title: str) -> tuple[str, list[str]]:
+    """(initialism, significant-ordered-words) of a topic title — 'Binary Search Tree' -> ('bst',
+    ['binary','search','tree']). Order-preserving, filler-free, so the initialism matches how learners
+    abbreviate the phrase."""
+    words = [w for w in _norm_title(title).split() if len(w) >= 3 and w not in _GENERIC_TOPIC_FILLER]
+    return "".join(w[0] for w in words), words
+
+
 def _demote_parent_of_goal_topics(topics_out: list[dict[str, Any]], goal: str | None) -> list[str]:
-    """Demote a teaching topic that teaches a STRICT PARENT of the goal to a prerequisite. Signal: the topic's
-    significant title words are a proper subset of the goal's, AND the goal adds >=2 substantive (non-generic)
-    words beyond it — i.e. the topic covers the broad parent concept ('TCP Overview' -> {tcp}) while the goal is
-    a specific aspect of it ('tcp congestion control' -> {tcp, congestion, control}). The '>=2 substantive'
-    guard protects a goal that merely appends a generic qualifier ('gradient descent' under 'gradient descent
-    optimization' is NOT demoted). Removes the topic, returns its concept name (generic filler stripped) for the
-    intro's prereq list. Never demotes a goal-matching topic nor the last teaching topic. Mutates topics_out."""
+    """Demote a teaching topic that teaches a STRICT PARENT of the goal to a prerequisite. Two signals:
+
+    1. SUBSET: the topic's significant title words are a proper subset of the goal's, AND the goal adds >=2
+       substantive (non-generic) words beyond it — the topic covers the broad parent ('TCP Overview' -> {tcp})
+       while the goal is a specific aspect ('tcp congestion control'). The '>=2 substantive' guard protects a
+       goal that merely appends a generic qualifier ('gradient descent' under 'gradient descent optimization').
+    2. ACRONYM EXPANSION (live failure: a full 'Binary Search Tree' walkthrough on a 'bst traversal' path,
+       overlapping the BST prerequisite): the topic's title is the multiword EXPANSION of an acronym the goal
+       uses (initialism 'bst' ∈ goal words) and the goal adds >=1 substantive word beyond the acronym. Guard:
+       NO other teaching topic shares that acronym subject — on a 'bfs traversal' goal, 'Breadth-First Search'
+       IS the subject its siblings implement, never a demotable parent.
+
+    Removes the topic, returns its concept name for the intro's prereq list (structured prereqs — so the
+    grounded prereq card + open_study_path link replace the redundant topic; prereqs and taught topics must
+    never overlap). Never demotes a goal-matching topic nor the last teaching topic. Mutates topics_out."""
     gw = _goal_significant_words(goal)
-    if len(gw) < 3:                                          # short/vague goal -> no reliable parent signal
+    if len(gw) < 2:                                          # single-word/vague goal -> no reliable signal
         return []
     teaching = [t for t in topics_out if not _is_opener(t)]
     demoted, remove_ids = [], set()
@@ -324,10 +340,19 @@ def _demote_parent_of_goal_topics(topics_out: list[dict[str, Any]], goal: str | 
         # Strip generic filler BEFORE the subset test — 'TCP Mechanisms' is still the parent 'TCP' (live
         # evasion: the filler word 'mechanisms' broke the subset relation, so the parent topic survived).
         tw = {w for w in _significant_title_words(t) if w not in _GENERIC_TOPIC_FILLER}
-        if not tw or not (tw < gw):                         # proper subset only (a broader parent of the goal)
+        subset_parent = (len(gw) >= 3 and bool(tw) and tw < gw
+                         and len({w for w in (gw - tw) if w not in _GENERIC_TOPIC_FILLER}) >= 2)
+        acronym_parent = False
+        if not subset_parent:
+            initialism, words = _title_initialism(str(t.get("title") or ""))
+            if (len(words) >= 2 and initialism in gw
+                    and {w for w in gw if w != initialism and w not in _GENERIC_TOPIC_FILLER}):
+                acronym_parent = not any(
+                    initialism in _norm_title(str(o.get("title") or "")).split()
+                    or _title_initialism(str(o.get("title") or ""))[0] == initialism
+                    for o in teaching if id(o) != id(t))
+        if not (subset_parent or acronym_parent):
             continue
-        if len({w for w in (gw - tw) if w not in _GENERIC_TOPIC_FILLER}) < 2:
-            continue                                        # goal must be meaningfully MORE specific
         name = " ".join(w for w in str(t.get("title") or "").split()
                         if _norm_title(w) not in _GENERIC_TOPIC_FILLER).strip()
         demoted.append(name or str(t.get("title") or "").strip())

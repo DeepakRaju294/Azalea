@@ -88,6 +88,60 @@ class SetupCardDisplay(unittest.TestCase):
         self.assertLess(setup_points.index("Problem:"), setup_points.index("The tree"))
 
 
+class SubjectKeyHyphenCompounds(unittest.TestCase):
+    """normalize_subject_key split 'In-Order' and the framing word 'in' swallowed it -> subject_key
+    'order_traversal' -> the policy coding topic 'Implementing Order Traversal' -> routing miss -> the topic
+    shipped unverified LLM code instead of the canonical (live bug, second layer beyond _subject_phrase)."""
+
+    def test_hyphen_compound_survives_framing_strip(self):
+        from app.core.topic_decomposition import normalize_subject_key
+        self.assertEqual(normalize_subject_key("In-Order Traversal"), "in_order_traversal")
+        self.assertEqual(normalize_subject_key("Post-Order Traversal"), "post_order_traversal")
+        # all-framing compounds still drop; plain framing stripping unchanged
+        self.assertEqual(normalize_subject_key("Step-by-Step Guide to Merge Sort"), "merge_sort")
+        self.assertEqual(normalize_subject_key("Understanding Quick Sort Algorithm"), "quick_sort")
+
+    def test_policy_coding_title_from_fixed_subject_key_routes(self):
+        from app.core.topic_decomposition import normalize_subject_key
+        from app.services.topic_decomposition_pipeline import _subject_phrase
+        title = f"Implementing {_subject_phrase(normalize_subject_key('In-Order Traversal'))}"
+        self.assertEqual(title, "Implementing In Order Traversal")
+        ad = route_adapter({"title": title, "topic_type": "coding_implementation",
+                            "course_type": "coding_implementation"})
+        self.assertEqual(getattr(ad, "slug", None), "tree_inorder")
+
+
+class AcronymParentDemotion(unittest.TestCase):
+    """A full 'Binary Search Tree' walkthrough on a 'bst traversal' path overlapped the BST prerequisite —
+    prereqs and taught topics must never overlap. The topic (the multiword expansion of an acronym the goal
+    uses) is demoted to a structured prerequisite; the subject a path's siblings implement never is."""
+
+    @staticmethod
+    def _t(title, tt="algorithm_walkthrough"):
+        return {"title": title, "topic_type": tt, "course_type": tt}
+
+    def test_bst_expansion_demoted_on_bst_traversal_goal(self):
+        from app.services.topic_decomposition_pipeline import _demote_parent_of_goal_topics
+        topics = [self._t("Binary Search Tree"), self._t("In-Order Traversal"),
+                  self._t("Post-Order Traversal"),
+                  self._t("Implementing In Order Traversal", "coding_implementation")]
+        demoted = _demote_parent_of_goal_topics(topics, "Want to learn about BST traversal")
+        self.assertEqual(demoted, ["Binary Search Tree"])
+        self.assertNotIn("Binary Search Tree", [t["title"] for t in topics])
+
+    def test_acronym_subject_its_siblings_implement_is_never_demoted(self):
+        from app.services.topic_decomposition_pipeline import _demote_parent_of_goal_topics
+        topics = [self._t("Breadth-First Search"), self._t("Implementing BFS", "coding_implementation")]
+        self.assertEqual(_demote_parent_of_goal_topics(topics, "learn bfs traversal"), [])
+        self.assertEqual(len(topics), 2)
+
+    def test_goal_that_is_just_the_acronym_never_demotes(self):
+        from app.services.topic_decomposition_pipeline import _demote_parent_of_goal_topics
+        topics = [self._t("Binary Search Tree"), self._t("BST Insertion")]
+        # goal IS the acronym subject (no substantive word beyond it) -> the expansion topic stays
+        self.assertEqual(_demote_parent_of_goal_topics(topics, "learn about bst"), [])
+
+
 class CodingTopicTitleAndRouting(unittest.TestCase):
     """'In-Order Traversal' must keep its 'In-' when titling the coding topic, and both hyphen and space
     title forms must route to the tree adapters — routing is what stamps the canonical verified code, so a

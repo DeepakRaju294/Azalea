@@ -143,19 +143,34 @@ _FRAMING_WORDS = frozenset({
     "understand", "understanding", "trace", "tracing", "implement", "implementing", "implementation",
     "overview", "walkthrough", "concept", "concepts", "coding", "lesson", "guide", "step", "steps",
     "intro", "introduction", "learn", "learning", "basics", "basic", "fundamentals", "fundamental",
-    "how", "what", "why", "the", "a", "an", "of", "for", "to", "with", "in", "on", "and",
+    "how", "what", "why", "the", "a", "an", "of", "for", "to", "with", "in", "on", "and", "by",
 })
 
 
 def normalize_subject_key(proposed: Optional[str]) -> str:
     """Lowercase ASCII slug, noun-phrase only. Strips framing/lesson words and a *trailing generic*
     `algorithm` (never a mid-phrase domain `algorithm`), drops 1-char tokens (possessive 's').
-    Never empties: if stripping removes everything, falls back to the format-cleaned slug."""
-    tokens = [t for t in re.findall(r"[a-z0-9]+", str(proposed or "").lower())]
-    cleaned = [t for t in tokens if t not in _FRAMING_WORDS and len(t) > 1]
+    Never empties: if stripping removes everything, falls back to the format-cleaned slug.
+
+    A hyphenated compound is ONE unit: splitting "In-Order Traversal" let the framing stopword "in"
+    swallow "in-" → subject_key `order_traversal` → the policy-synthesized coding topic was titled
+    "Implementing Order Traversal", which failed adapter routing, so the verified canonical code was
+    never stamped (live bug). A compound is dropped only when EVERY part is framing/1-char
+    ("step-by-step" goes; "in-order" stays, slugged "in_order")."""
+    tokens = re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", str(proposed or "").lower())
+    cleaned: list[str] = []
+    for t in tokens:
+        parts = t.split("-")
+        if len(parts) > 1:
+            if all(p in _FRAMING_WORDS or len(p) <= 1 for p in parts):
+                continue
+            cleaned.append("_".join(parts))
+        elif t not in _FRAMING_WORDS and len(t) > 1:
+            cleaned.append(t)
     # 'algorithm' only as a trailing generic descriptor (keep 'genetic algorithm selection').
     if len(cleaned) > 1 and cleaned[-1] == "algorithm":
         cleaned = cleaned[:-1]
     if not cleaned:  # never empty — fall back to a format-cleaned slug of the original
-        cleaned = [t for t in tokens if len(t) > 1] or tokens
+        flat = [p for t in tokens for p in t.split("-")]
+        cleaned = [t for t in flat if len(t) > 1] or flat
     return "_".join(cleaned)
