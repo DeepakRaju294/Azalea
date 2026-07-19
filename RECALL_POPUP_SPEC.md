@@ -1,35 +1,33 @@
-# Recall Popups — small spec (rev 5)
+# Recall Popups — small spec (rev 6)
 
-Status: Draft rev 5 — **approved for the feasibility-audit stage; UI implementation waits until the revision/
-staleness model below is what actually ships.** rev 5 corrects the one real infrastructure mismatch a fifth review
-found — **there is no per-lesson generation/revision ID** (`Lesson.topic_id` is unique → one row per topic,
-`lesson_json` is mutated IN PLACE on regen/enrichment; `Lesson.id` never changes; `StudyPath.active_generation_id`
-is path-level). So v1 uses **content hashes only** (no generation IDs) and **always re-extracts + re-hashes** the
-source sentence at serialization. Flag: `AZALEA_RECALL_POPUPS` (requires `AZALEA_PREREQ_LINKS`). The old
-`AZALEA_TERM_GLOSSES` lexical-gloss system stays **permanently dead**.
+Status: Draft rev 6 — **approved for the feasibility-audit stage; the payload contract is now self-consistent and
+ready to run the audit.** rev 6 closes the last payload inconsistencies a sixth review found: `current_anchor_text_hash`
+is used in `popup_id` but was never stored (→ add it + validate the DISPLAYING side too), the source anchor used a
+divergent shape (→ standardize `{field, index}`, the verified existing contract), and the stale-event / harvester-
+version / typed-validation behaviors were underspecified. Flag: `AZALEA_RECALL_POPUPS` (requires
+`AZALEA_PREREQ_LINKS`). The old `AZALEA_TERM_GLOSSES` lexical-gloss system stays **permanently dead**.
 
-> **The defining rule (unchanged, load-bearing):** *No trustworthy recall sentence means no popup. The ordinary
+> **The defining rule (unchanged, load-bearing):** *No trustworthy recall line means no popup. The ordinary
 > review link remains the fallback.* Every decision below is downstream of precision-first.
 
-> **rev 5 changes (all from the fifth review — infra correction):**
-> 1. **No generation IDs (Option B).** `source_lesson_generation_id`/`current_lesson_generation_id` are NOT
->    grounded (verified: no per-regen revision ID; lessons update in place). v1 keys off content hashes only:
->    `source_text_hash` + `current_anchor_text_hash` (§5).
-> 2. **Regeneration-safe `popup_id`** (§5) = hash(current_topic_id, current_card_id, current_anchor_text_hash,
->    concept_id, source_text_hash, popup_version) — no generation ID.
-> 3. **Staleness ALWAYS re-extracts + re-hashes** (§6b) — a generation ID could not prove immutability anyway
->    (in-place mutation). Re-run the deterministic extractor at `source_anchor` every retrieval.
-> 4. **API suppression is non-mutating** (§6b) — strip from a RESPONSE COPY; never touch ORM `lesson_json`. Dedup
->    stale telemetry by `popup_id + stale_source_hash`.
-> 5. **Harvest = a concise definition LINE, not synthesized sentence** (§4) — `The {term} is {fragment}` breaks on
->    verb-led/plural fragments; use the grammatically-robust dash form + `harvester_version` provenance.
-> 6. **Audit recomputes anchor tiers in memory** (§0) — pre-rev-5 stored links lack `match_kind`; add prevalence
->    metrics so a rare-but-precise feature isn't mistaken for a viable one.
-> 7. **Backend normalizer is action-aware** (§5b) — validate the payload, don't just copy arbitrary dicts through.
+> **rev 6 changes (all from the sixth review — payload self-consistency):**
+> 1. **Store `current_anchor_text_hash`** (§5) — it's an input to `popup_id`, so the payload must carry it for the
+>    ID to be reproducible/auditable, and so serialization can validate the displaying anchor, not only the source.
+> 2. **Two-sided staleness** (§6b) — validate BOTH the displaying/current anchor and the source/owner anchor;
+>    either failing strips the popup (`stale_current_anchor` | `stale_source`), keeps the review link.
+> 3. **One anchor shape `{field, index}`** (§5) — via a shared `ContentItemAnchor`; verified the existing link
+>    anchor is `{field, index}` (`lean_lesson_generator.py:4262`). Drop the invented `item_index`.
+> 4. **Typed stale-event** (§6b) — `{reason, expected_hash, observed_hash|null}`, dedup by
+>    `popup_id + reason + observed_hash`; sentinels for missing card/anchor/harvest.
+> 5. **Unsupported harvester_version → strip** (§6b) — never silently rerun the newest extractor (its output may
+>    differ on unchanged source); keep the currently-emitted version supported while cached lessons hold it.
+> 6. **Typed payload validation** (§5b) — validate `RecallPopupV1` / `ContentItemAnchor` through models, not
+>    scattered dict checks.
 
-> **Carried:** §0 feasibility audit is a HARD BUILD GATE; §4b constrained background-definition fallback
-> (fixtures-gated, same provenance); §6 v1 ranking = order-distance (`order_index` is a real field); §7
-> cached-render decision; §9 notation NOT buildable from `canonical_notes` (verified free-form prose).
+> **Carried:** §0 feasibility audit is a HARD BUILD GATE (recompute anchor tiers in memory; prevalence metrics;
+> `do_not_build` is legitimate); content-hash-only staleness (no per-lesson revision ID exists); §4 harvest =
+> concise definition LINE (dash form, not synthesized sentence); §4b fixtures-gated; §6 v1 ranking = order-distance;
+> §7 cached-render decision; §9 notation NOT buildable from `canonical_notes`.
 
 ## 0. Feasibility gate — run BEFORE building the UI (read-only audit)
 
@@ -174,13 +172,18 @@ InteractiveLink
   anchor        # unchanged + match_kind (§3)
   recall_popup: RecallPopupV1 | null      # additive; presence is the frontend gate (§5b, §7)
 
+ContentItemAnchor                # ONE shape everywhere (matches the existing link anchor, lean_lesson_generator.py:4262)
+  field
+  index
+
 RecallPopupV1
   recall                       # one harvested recall line (§4 / §4b)
   needed_here                  # v1.5 optional: one sentence, generation-time, omitted when uncertain
+  current_anchor_text_hash     # hash of the DISPLAYING card's anchored item — input to popup_id + current-side staleness (§6b)
   source_topic_id
   source_card_id
-  source_anchor: {field, item_index}   # WHERE in the owner card the recall came from
-  source_text_hash             # hash(normalize(reconstructed recall line)) — content-level staleness (§6b)
+  source_anchor: ContentItemAnchor     # WHERE in the owner card the recall came from — {field, index}
+  source_text_hash             # hash(normalize(reconstructed recall line)) — source-side staleness (§6b)
   harvester_version            # extractor/template version — re-run the SAME version to re-hash (§6b)
   recall_source                # structured_definition | harvested_background_definition
   popup_id                     # content-hash join key (below) — NO generation ID
@@ -188,7 +191,9 @@ RecallPopupV1
 ```
 No `action_label` — the frontend derives "Review topic" from the link action. The payload does NOT duplicate
 action-kind/target — those stay on the link. **No `*_lesson_generation_id`** — no per-lesson revision ID exists
-(one `Lesson` row per topic, mutated in place); v1 is content-hash only (Option B).
+(one `Lesson` row per topic, mutated in place); v1 is content-hash only (Option B). The displaying link's own
+`anchor` is the same `{field, index}` shape (+ `match_kind`); `current_anchor_text_hash` is the canonical hash of
+the item that anchor points at, so `popup_id` is reproducible from the stored payload alone.
 
 **`source_text_hash` hashes the reconstructed recall LINE, not the whole card** — regenerating an unrelated bullet
 on the owner card must not invalidate an unchanged recall line. It is computed by running the deterministic
@@ -211,10 +216,13 @@ Interactive links are reconstructed field-by-field in BOTH tiers — either drop
 - **Backend `normalize_link` (`interactive_link_validation.py` ~126)** rebuilds the dict with only
   `text/explanation/why_it_matters_here/action/target` (+ conditional `concept_id`) — it does **not copy `anchor`
   at all**, so it would drop `anchor.match_kind` AND `recall_popup`. This path runs on **card regeneration**. It
-  MUST carry `anchor` (incl. `match_kind`) and `recall_popup` — and be **action-aware**, not a blind dict copy:
-  only `review_earlier_topic` may carry a `RecallPopupV1`; require `target`, `concept_id`, an eligible anchor,
-  `source_topic_id == target`, all required source fields, and a recognized `popup_version`. A payload failing any
-  check is **dropped without dropping the underlying link** (→ plain review pill).
+  MUST carry `anchor` (incl. `match_kind`) and `recall_popup` — and be **action-aware + typed**, not a blind dict
+  copy. Validate `recall_popup` through models (`RecallPopupV1`, `ContentItemAnchor`), not scattered dict checks,
+  enforcing: recognized `popup_version`; action == `review_earlier_topic`; nonempty `recall`; valid hash format
+  for `source_text_hash` + `current_anchor_text_hash`; `target` + `concept_id` present; eligible current
+  `match_kind`; both current and source anchors present; `source_topic_id == target`; `needed_here` within its
+  length budget; no multi-paragraph content. A payload failing any check is **dropped without dropping the
+  underlying link** (→ plain review pill).
 - **Frontend `normalizeInteractiveLinks()` (`page.tsx` ~6247)** carries a comment about the `concept_id` drop that
   "made every click null". `recall_popup` is top-level → MUST be added to its field copy. `anchor.match_kind` is
   nested inside `anchor` (already copied whole on the frontend) → survives there; still assert it. The frontend
@@ -243,8 +251,9 @@ surviving fields: `concept_id`, `anchor.match_kind`, `recall_popup` (incl. `sour
 5 attach recall_popup payloads
 6 record dropped reasons (telemetry)
 ```
-Drop reasons: `missing_anchor | weak_anchor | current_topic_concept | defined_on_card | missing_recall |
-duplicate_concept | over_card_cap | over_topic_cap | stale_source`.
+Drop reasons (selection-time): `missing_anchor | weak_anchor | current_topic_concept | defined_on_card |
+missing_recall | duplicate_concept | over_card_cap | over_topic_cap`. Serialization-time staleness reasons live in
+§6b (`stale_current_anchor | stale_source | …`).
 
 ### 6b. Attach ordering + staleness
 
@@ -254,14 +263,32 @@ duplicate_concept | over_card_cap | over_topic_cap | stale_source`.
   revalidate the anchor and re-hash `source_text_hash`.
 - **Staleness validation runs at API serialization on lesson retrieval** — NOT the frontend (the owner lesson may
   not be loaded in the browser). It **always re-extracts and re-hashes** (a generation ID could not prove
-  immutability anyway — lessons are mutated in place): collect distinct source topic/card refs → batch-load their
-  current `lesson_json` (≤3 per topic keeps this small) → **rerun the SAME `harvester_version` extractor at
-  `source_anchor`** (raw item → parse shape → reconstruct line → canonicalize) → compare `source_text_hash`. On
-  mismatch, or if the card/anchor is gone → **strip the `recall_popup` from a RESPONSE COPY**, leave the
-  underlying review link intact, emit `stale_source`. **Never mutate the ORM-backed `lesson_json`** — a read
-  endpoint must not become a repair/mutation path. Dedup stale telemetry by `popup_id + stale_source_hash` so
-  repeated reads don't emit unbounded identical events. (Rejected for v1: eager reverse-dependency invalidation on
-  owner regeneration — operationally stronger but more infrastructure than v1 warrants.)
+  immutability anyway — lessons are mutated in place), validating **BOTH sides** because both the displaying and
+  the owner lesson can mutate in place:
+  ```
+  Current/displaying side (this lesson):
+    locate link.anchor {field,index} in the current card → verify eligible match_kind →
+    verify link text still has an exact/word-boundary match → hash the anchored item →
+    compare current_anchor_text_hash
+  Source/owner side (batch-load distinct source cards, ≤3 per topic):
+    locate source_anchor → rerun the SAME harvester_version at it (raw item → parse shape →
+    reconstruct line → canonicalize) → compare source_text_hash
+  ```
+  If EITHER side fails (mismatch, or card/anchor gone) → **strip only `recall_popup` from a RESPONSE COPY**, keep
+  the underlying review link (renders as the plain pill), emit `stale_current_anchor` or `stale_source`. **Never
+  mutate the ORM-backed `lesson_json`** — a read endpoint must not become a repair/mutation path.
+- **Harvester-version compatibility:** if `harvester_version` is unknown to the running app → strip the popup,
+  keep the review link, log `unsupported_harvester_version`. Do NOT silently rerun the newest extractor (its
+  output may differ even on unchanged source). Keep at least the currently-emitted version supported while cached
+  lessons may still carry it.
+- **Typed stale-event** (dedup so repeated reads don't emit unbounded identical events):
+  ```
+  { reason, expected_hash, observed_hash: str | null }     dedup key = popup_id + reason + observed_hash
+  reason ∈ stale_current_anchor | stale_source | missing_source_card | missing_source_anchor |
+           harvest_failed | unsupported_harvester_version
+  ```
+  (Rejected for v1: eager reverse-dependency invalidation on owner regeneration — operationally stronger but more
+  infrastructure than v1 warrants.)
 
 ## 7. Frontend interaction + gating
 
@@ -326,10 +353,14 @@ lesson never consumes the recall budget.
 - Owner-source regeneration (re-extracted `source_text_hash` mismatch, or missing card/anchor) strips the stale
   popup from a response copy at API serialization (`stale_source`), keeps the pill and the review link, and does
   NOT mutate stored `lesson_json`.
+- In-place mutation of the DISPLAYING card's anchored item (re-extracted `current_anchor_text_hash` mismatch)
+  strips the popup (`stale_current_anchor`), keeps the review link.
+- An `unsupported_harvester_version` payload is stripped (never rerun through a newer extractor), keeps the link.
+- `popup_id` recomputed from the stored payload matches the emitted `popup_id` (reproducibility).
 - Pre-rev-5 stored links (no `match_kind`) are classified in-memory by the audit, not counted as zero.
 - `Term: fragment` becomes the dash definition line; a verb-led fragment (`ACK: confirms receipt`) is rejected.
-- `Term: fragment` and header+bullet shapes construct a sentence deterministically; multi-bullet/context-dependent
-  fragments are rejected.
+- `Term: fragment` and header+bullet shapes construct a recall line deterministically; multi-bullet/context-
+  dependent fragments are rejected.
 - `recall_popup` + `anchor.match_kind` survive BOTH backend `normalize_link` and future-card regeneration (not
   only frontend normalization).
 - Backend flag off → no NEW payloads emitted.
