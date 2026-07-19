@@ -720,6 +720,40 @@ def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> l
     return result
 
 
+def _drop_same_adapter_duplicate_topics(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Two NON-coding teaching topics that route to the SAME adapter generate the same KIND of verified worked
+    example — the learner does the identical exercise twice with different numbers (live: a depreciation path's
+    'Straight-Line Depreciation Formula' AND 'Applying Straight-Line Depreciation' both routed to
+    depreciation_schedule and both built a book-value schedule). Keep the FIRST (the introducing topic), drop
+    the repeats. A walkthrough + its coding_implementation legitimately share an adapter (teach-then-code) —
+    coding topics are exempt. Openers/compare topics never route, so they are unaffected."""
+    try:
+        from app.services.examples.trace_pipeline import route_adapter
+    except Exception:  # noqa: BLE001 — never break topic generation
+        return topics
+
+    def _ttype(t: dict[str, Any]) -> str:
+        return str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
+
+    seen: dict[str, str] = {}
+    kept: list[dict[str, Any]] = []
+    for t in topics:
+        ttype = _ttype(t)
+        if ttype in ("coding_implementation", "study_path_introduction"):
+            kept.append(t)
+            continue
+        a = route_adapter({"title": str(t.get("title") or ""), "topic_type": ttype, "course_type": ttype})
+        slug = getattr(a, "slug", None)
+        if slug and slug in seen:
+            _log.info("topic_generator: dropped %r — same adapter (%s) as %r, identical worked-example kind",
+                      t.get("title"), slug, seen[slug])
+            continue
+        if slug:
+            seen[slug] = str(t.get("title") or "")
+        kept.append(t)
+    return kept
+
+
 def _ensure_family_comparison_topic(topics: list[dict[str, Any]], goal: str | None) -> list[dict[str, Any]]:
     """Deterministic COMPARISON topic for a family survey (user-endorsed: 'Comparing MST Algorithms' — but it
     only appeared when the decomposition model chose to emit one; the prompt has no comparison guidance, so
@@ -1182,6 +1216,8 @@ Chunk index: {chunk.chunk_index}
                     decomposed = _append_missing_coding_topics(decomposed, goal)
                     decomposed = _order_canonical_family(decomposed, goal)
                     decomposed = _ensure_family_comparison_topic(decomposed, goal)
+                # Same-adapter duplicates produce the identical exercise twice — all domains, not just coding.
+                decomposed = _drop_same_adapter_duplicate_topics(decomposed)
                 # Certify again because family/coding policy may have added rows. The second pass records their
                 # identities and guarantees policy cannot reintroduce an overlap or duplicate.
                 decomposed = _certify_path_scope(decomposed, goal)

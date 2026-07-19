@@ -445,6 +445,68 @@ class PrereqChainRedundancy(unittest.TestCase):
         self.assertNotIn("binary trees\n", pts + "\n")       # chain-redundant parent of BST
 
 
+class SameAdapterDuplicateTopics(unittest.TestCase):
+    """Live (depreciation path): 'Straight-Line Depreciation Formula' AND 'Applying Straight-Line
+    Depreciation' both routed to depreciation_schedule — the learner built the same book-value schedule twice
+    with different numbers. Non-coding topics sharing an adapter collapse to the first; teach-then-code pairs
+    are exempt."""
+
+    @staticmethod
+    def _t(title, tt):
+        return {"title": title, "course_type": tt, "topic_type": tt}
+
+    def test_second_same_adapter_topic_dropped(self):
+        from app.services.topic_generator import _drop_same_adapter_duplicate_topics as dd
+        out = dd([self._t("Straight-Line Depreciation Formula", "math_formula_method"),
+                  self._t("Applying Straight-Line Depreciation", "process_walkthrough")])
+        self.assertEqual([x["title"] for x in out], ["Straight-Line Depreciation Formula"])
+
+    def test_walkthrough_plus_coding_pair_is_exempt(self):
+        from app.services.topic_generator import _drop_same_adapter_duplicate_topics as dd
+        out = dd([self._t("Kruskal's Algorithm", "algorithm_walkthrough"),
+                  self._t("Implementing Kruskal's Algorithm", "coding_implementation")])
+        self.assertEqual(len(out), 2)
+
+    def test_different_adapters_kept(self):
+        from app.services.topic_generator import _drop_same_adapter_duplicate_topics as dd
+        out = dd([self._t("In-Order Traversal", "algorithm_walkthrough"),
+                  self._t("Post-Order Traversal", "algorithm_walkthrough")])
+        self.assertEqual(len(out), 2)
+
+
+class OrientationOpenerRetype(unittest.TestCase):
+    """Live (depreciation path): the model emitted a GENUINE orientation opener typed concept_intuition —
+    it consumed the intro slot but its blueprint has NO prerequisites card and NO roadmap, so the path
+    structurally lost both surfaces. A genuine orientation opener is retyped study_path_introduction."""
+
+    def test_orientation_opener_becomes_intro_type(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        resp = {"path_plan": {"end_capability": "Compute depreciation.",
+                              "end_capability_actions": ["calculate"], "assumed_prerequisites": [],
+                              "required_capabilities": [
+                                  {"capability_id": "c1", "description": "d",
+                                   "prerequisite_capability_ids": [], "satisfies_end_actions": ["calculate"],
+                                   "ownership_mode": "standalone", "owner_topic_id": None, "basis": "goal"}]},
+                "topics": [
+                    {"topic_id": "t0", "capability_id": "orientation", "subject_key": "overview",
+                     "primary_action": "explain", "content_role": "orientation",
+                     "topic_type": "concept_intuition", "title": "Understanding Depreciation",
+                     "unit_title": "U", "purpose": "p", "in_scope": ["x"], "practice_target": "t",
+                     "practice_format": "short_answer", "practice_evidence_type": "none",
+                     "expected_output": "", "basis": "goal"},
+                    {"topic_id": "t1", "capability_id": "c1", "subject_key": "straight_line_depreciation",
+                     "primary_action": "calculate", "content_role": "calculation",
+                     "topic_type": "math_formula_method", "title": "Straight-Line Depreciation Formula",
+                     "unit_title": "U", "purpose": "p", "in_scope": ["x"], "practice_target": "t",
+                     "practice_format": "short_answer", "practice_evidence_type": "solve_numeric",
+                     "expected_output": "o", "basis": "goal"}]}
+        out = generate_decomposed_topics("Want to learn about straight line depreciation", "src",
+                                         model_fn=lambda p: resp, coding_follow_ups=False)
+        opener = out[0]
+        self.assertEqual(opener["course_type"], "study_path_introduction")
+        self.assertEqual(opener["title"], "Understanding Depreciation")
+
+
 class FamilyComparisonTopic(unittest.TestCase):
     """User-endorsed comparison topic ('Comparing MST Algorithms') appeared only when the model chose to emit
     one (the prompt has no comparison guidance). Now DETERMINISTIC: a family survey teaching >=2 distinct
