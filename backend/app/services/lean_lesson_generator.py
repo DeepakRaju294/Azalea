@@ -4054,6 +4054,16 @@ def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic, brief_fn=None
         except Exception:  # noqa: BLE001 — the guard must never break the card
             certified = False
         if certified:
+            # Certified + empty = the path HAS no external prerequisites — so the intro OMITS the card
+            # (science-architecture #13). Returning the LLM's prose card unrebuilt shipped an ungrounded
+            # surface (live: em-dash bullets, no links, no what-it-is/what-to-learn sub-bullets, plus a
+            # circular 'Turbulence fundamentals' prereq the certifier never saw).
+            pidx = next((i for i, c in enumerate(cards)
+                         if _lean_card_key(c) == "prerequisites" or _is_prereq_card(c)), -1)
+            if pidx >= 0:
+                dropped = cards.pop(pidx)
+                logger.info("prereq grounding: certified path has no prerequisites — dropped ungrounded "
+                            "prose card %r", dropped.get("title"))
             return cards
         # PROSE PATH: decomposition emitted no structured prereqs (common model variance), so the model's own
         # prose prereq card stands — with sub-bullets that are fragments, not the refresher/what-to-learn

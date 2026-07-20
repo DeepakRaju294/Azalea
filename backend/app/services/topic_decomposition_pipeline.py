@@ -60,6 +60,18 @@ def _normalize_topic(t: dict[str, Any]) -> dict[str, Any]:
         t["primary_action"] = canonical_action(t["primary_action"]) or t["primary_action"]
     if not t.get("topic_type") and t.get("content_role"):
         t["topic_type"] = resolve_topic_type(t["content_role"])
+    # ROLE/TYPE upgrade: a topic whose declared role maps to a substantive lesson shape but was typed
+    # concept_intuition gets the 4-card overview blueprint — no process card, no worked-example slot, not
+    # WE-centric (live: 'Flow Types', role=mechanism, typed concept_intuition, shipped 4 thin cards with no
+    # mechanism explanation). Upgrade ONLY out of concept_intuition and only to the role's canonical type;
+    # a deliberate concept lesson (role foundation) is untouched.
+    role = str(t.get("content_role") or "").strip().lower()
+    if role and str(t.get("topic_type") or "") == "concept_intuition":
+        canonical_tt = resolve_topic_type(role)
+        if canonical_tt and canonical_tt not in ("concept_intuition", "study_path_introduction"):
+            _log.info("topic normalize: upgraded %r from concept_intuition to %s (content_role=%s)",
+                      t.get("title"), canonical_tt, role)
+            t["topic_type"] = canonical_tt
     return t
 
 
@@ -873,11 +885,25 @@ def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[di
         if cid in cap_ids:
             continue
         subject_source = r.get("name") or r["statement"]
+        # Content-role inference: a quantitative requirement ("physical meaning of the Reynolds number")
+        # synthesized as concept_intuition gets a 4-card overview blueprint, is NOT worked-example-centric,
+        # and can never claim its own adapter (live: the Reynolds example drifted to Energy Cascade while
+        # the synthesized Reynolds topic shipped with no formula and no example). Infer from the statement.
+        rt = _req_tokens(f"{r.get('name') or ''} {r['statement']}")
+        if rt & {"number", "law", "equation", "formula", "ratio", "coefficient", "criterion",
+                 "calculate", "compute", "quantity"}:
+            role = "calculation"
+        elif rt & {"mechanism", "process", "cascade", "transfer", "cause", "effect", "dynamic",
+                   "interaction", "dissipation"}:
+            role = "mechanism"
+        else:
+            role = "concept_intuition"
         caps.append({
             "capability_id": cid,
             "subject_key": normalize_subject_key(subject_source),
             "primary_capability": (r.get("name") or r["statement"])[:120],
             "description": r["statement"],
+            "content_role": role,
             "ownership_mode": "standalone",
             "owner_topic_id": None,
             "prerequisite_capability_ids": [],

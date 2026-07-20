@@ -706,9 +706,10 @@ class CertifiedPathProseGuard(unittest.TestCase):
         from app.services.lean_lesson_generator import _ground_prereq_card
         cards = self._cards()
         out = _ground_prereq_card(cards, self._intro(certified=True), brief_fn=lambda n, g: [])
-        # untouched: the grounding did NOT rebuild the card from prose-derived names
-        self.assertEqual(out[0]["points"][0], "Fluid mechanics")
-        self.assertNotIn("What it is:", " ".join(out[0]["points"]))
+        # UPDATED CONTRACT: certified + empty structured prereqs = the path HAS no prerequisites, so the
+        # ungrounded prose card is OMITTED entirely. (Leaving it "untouched" shipped em-dash bullets with
+        # no links and no what-it-is/what-to-learn sub-bullets — the user-reported live regression.)
+        self.assertEqual(out, [])
 
     def test_uncertified_path_prose_fallback_still_works(self):
         from app.services.lean_lesson_generator import _ground_prereq_card
@@ -1604,6 +1605,51 @@ class RequirementReconciliation(unittest.TestCase):
         by = {t["title"]: (t.get("decomposition_metadata") or {}).get("scope_plan") or {} for t in out}
         self.assertIsNone(by["Physical Characteristics of Turbulent Flows"]["verified_example"])
         self.assertEqual(by["Flow Regimes and Transition"]["verified_example"], "reynolds_number")
+
+
+class TopicDepthRepairs(unittest.TestCase):
+    """User-reported thinness (00:16 path): 'Flow Types' (role=mechanism) typed concept_intuition shipped a
+    4-card overview with no process card; the synthesized 'Reynolds number significance' topic defaulted to
+    concept_intuition, was not WE-centric, and could never claim its own adapter (the Reynolds example
+    drifted to Energy Cascade)."""
+
+    def test_mechanism_role_upgraded_out_of_concept_intuition(self):
+        from app.services.topic_decomposition_pipeline import _normalize_topic
+        t = _normalize_topic({"topic_id": "t1", "subject_key": "flow_types", "title": "Flow Types",
+                              "content_role": "mechanism", "topic_type": "concept_intuition"})
+        self.assertEqual(t["topic_type"], "process_walkthrough")
+        # deliberate concept lessons (role foundation) and orientation openers stay untouched
+        t2 = _normalize_topic({"topic_id": "t2", "subject_key": "s", "title": "T",
+                               "content_role": "foundation", "topic_type": "concept_intuition"})
+        self.assertEqual(t2["topic_type"], "concept_intuition")
+        t3 = _normalize_topic({"topic_id": "t3", "subject_key": "s", "title": "T",
+                               "content_role": "orientation", "topic_type": "concept_intuition"})
+        self.assertEqual(t3["topic_type"], "concept_intuition")
+
+    def test_quantitative_requirement_synthesizes_formula_topic(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R1", "name": "Flow regimes", "kind": "core",
+             "statement": "distinguish laminar and turbulent flow"},
+            {"requirement_id": "R2", "name": "Reynolds number significance", "kind": "core",
+             "statement": "explain the physical meaning of the Reynolds number and its role in "
+                          "characterizing flow regimes"},
+        ]}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [{"topic_id": "t1", "capability_id": "t1", "subject_key": "energy_cascade",
+                            "primary_action": "understand", "content_role": "mechanism",
+                            "topic_type": "science_mechanism", "title": "Energy Cascade", "unit_title": "u",
+                            "purpose": "p", "in_scope": ["large eddies", "dissipation"],
+                            "covers_requirements": ["R1"], "basis": "goal"}]}
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+        topics = generate_decomposed_topics("learn fluid turbulence", "s", model_fn=fn)
+        reynolds = next(t for t in topics if "Reynolds" in t["title"])
+        self.assertEqual(reynolds["course_type"], "math_formula_method")   # WE-centric, can claim its adapter
+        mech_req = {"requirement_id": "R9", "name": "Energy cascade process", "kind": "core",
+                    "statement": "describe the process by which energy transfers across eddy scales"}
+        from app.services.topic_decomposition_pipeline import _req_tokens
+        self.assertTrue(_req_tokens(mech_req["statement"]) & {"process", "transfer"})
 
 
 if __name__ == "__main__":

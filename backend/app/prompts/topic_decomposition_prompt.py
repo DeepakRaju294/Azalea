@@ -91,7 +91,10 @@ def _requirements_block(reqs: list[dict[str, Any]]) -> str:
         "EVERY \"core\" requirement MUST be covered by at least one topic — add topics if the minimal set "
         "would leave one uncovered. Each topic declares which requirements it covers in a "
         "`covers_requirements` field (list of requirement_ids, e.g. [\"R1\", \"R3\"]). A core requirement "
-        "covered by NO topic is a planning failure."
+        "covered by NO topic is a planning failure. These requirements do NOT replace "
+        "path_plan.assumed_prerequisites — still emit it exactly as specified above (the 0-3 EXTERNAL "
+        "prerequisite concepts from earlier subjects, with gloss + required_knowledge; [] only when the "
+        "path genuinely assumes nothing)."
     )
 
 
