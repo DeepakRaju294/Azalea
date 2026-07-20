@@ -1260,10 +1260,15 @@ TOPIC_BLUEPRINTS: dict[str, Blueprint] = {
         "default_card_sequence": sequence(
             "background",
             "prerequisites",
+            # components_terms is REQUIRED (user decision, live gap: intros shipping as bare background +
+            # roadmap): the shared path-wide vocabulary card. The required-card backfill regenerates it when
+            # the model omits it. `prerequisites` stays optional — it is PLAN-driven (grounded from the
+            # certified assumed_prerequisites; omitted deterministically when the plan has none), so the
+            # backfill must never re-add what the plan-authoritative guard removed.
             "components_terms",
             "roadmap",
         ),
-        "optional_cards": ["prerequisites", "components_terms", "roadmap"],
+        "optional_cards": ["prerequisites", "roadmap"],
         "preferred_question_types": [],
         "avoid": [
             "Do not teach any individual subtopic in depth.",

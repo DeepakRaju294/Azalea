@@ -52,6 +52,14 @@ def _coerce(raw: Any) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+# Tokens that mark a topic as comparison/evaluation CONTENT rather than an algorithm to trace — such a topic
+# must never be typed code-able (the appender would manufacture an "Implementing <analysis>" follow-up).
+_ANALYSIS_FRAMING_TOKENS = frozenset({
+    "evaluating", "evaluate", "evaluation", "comparing", "compare", "comparison", "complexity",
+    "analysis", "analyzing", "choosing", "tradeoffs", "tradeoff",
+})
+
+
 def _normalize_topic(t: dict[str, Any]) -> dict[str, Any]:
     """Format-normalize the model's fields (subject_key, primary_action, topic_type) before validation."""
     t = dict(t)
@@ -72,6 +80,18 @@ def _normalize_topic(t: dict[str, Any]) -> dict[str, Any]:
             _log.info("topic normalize: upgraded %r from concept_intuition to %s (content_role=%s)",
                       t.get("title"), canonical_tt, role)
             t["topic_type"] = canonical_tt
+    # ANALYSIS-framed "walkthroughs": 'Evaluating Traversal Complexity' typed algorithm_walkthrough is not an
+    # algorithm — it is comparison/analysis content, and leaving the type triggers the coding-follow-up policy
+    # (live: a synthesized 'Implementing Evaluating Traversal Complexity' topic). Retype to compare_distinguish
+    # BEFORE the appender runs so no follow-up is ever manufactured for it.
+    if str(t.get("topic_type") or "") in ("algorithm_walkthrough", "data_structure_operation"):
+        toks = set(re.findall(r"[a-z0-9]+", str(t.get("title") or "").lower()))
+        toks |= {w for w in str(t.get("subject_key") or "").split("_") if w}
+        if toks & _ANALYSIS_FRAMING_TOKENS:
+            _log.info("topic normalize: %r is analysis-framed, retyped %s -> compare_distinguish",
+                      t.get("title"), t.get("topic_type"))
+            t["topic_type"] = "compare_distinguish"
+            t["content_role"] = "comparison"
     return t
 
 
@@ -783,14 +803,17 @@ def _synthesize_intro_topic(goal: str | None) -> dict[str, Any]:
     }
 
 
-def _goal_requirements(goal: str | None, chunks_text: str, fn: ModelFn) -> list[dict[str, Any]]:
+def _goal_requirements(goal: str | None, chunks_text: str, fn: ModelFn
+                       ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """The REQUIREMENTS-FIRST call (curriculum-authority design): decide WHAT the path must cover BEFORE any
-    topic exists, in a dedicated frame. The result is injected into the decomposition prompt as authoritative
-    and checked deterministically afterward (an unowned core requirement flows into the B.4.1 coverage repair,
-    which synthesizes a topic for it). Kill switch: AZALEA_GOAL_REQUIREMENTS=0. Best-effort — a failed call
-    means decomposition proceeds exactly as before."""
+    topic exists, in a dedicated frame. Returns (requirements, assumed_prerequisites) — the curriculum call
+    also owns the EXTERNAL prerequisites (what the course assumes vs teaches is one curriculum decision; the
+    decomposition model dropped assumed_prerequisites on 4 of 5 live regens once requirements landed).
+    Requirements are injected into the decomposition prompt as authoritative and checked deterministically
+    afterward (an unowned core requirement flows into the B.4.1 coverage repair). Kill switch:
+    AZALEA_GOAL_REQUIREMENTS=0. Best-effort — a failed call means decomposition proceeds exactly as before."""
     if os.getenv("AZALEA_GOAL_REQUIREMENTS", "") == "0":
-        return []
+        return [], []
     try:
         payload = {"system": REQUIREMENTS_SYSTEM_PROMPT,
                    "user": build_goal_requirements_prompt(goal, chunks_text)}
@@ -808,13 +831,19 @@ def _goal_requirements(goal: str | None, chunks_text: str, fn: ModelFn) -> list[
                          "name": " ".join(str(r.get("name") or "").split()).strip(),
                          "statement": statement,
                          "kind": kind if kind in ("core", "supporting") else "core"})
+        prereqs: list[dict[str, Any]] = []
+        for p in (parsed.get("assumed_prerequisites") or []):
+            if isinstance(p, dict) and str(p.get("name") or "").strip():
+                prereqs.append({"name": str(p["name"]).strip(),
+                                "gloss": str(p.get("gloss") or "").strip(),
+                                "required_knowledge": str(p.get("required_knowledge") or "").strip()})
         if reqs:
-            _log.info("goal requirements: %d requirements for goal %r: %s", len(reqs), goal,
-                      [r["requirement_id"] for r in reqs])
-        return reqs[:8]
+            _log.info("goal requirements: %d requirements for goal %r: %s (prereqs: %s)", len(reqs), goal,
+                      [r["requirement_id"] for r in reqs], [p["name"] for p in prereqs])
+        return reqs[:8], prereqs[:3]
     except Exception:  # noqa: BLE001 — requirements are additive; never block decomposition
         _log.info("goal requirements call failed for goal %r — decomposing without requirements", goal)
-        return []
+        return [], []
 
 
 _REQ_STOPWORDS = frozenset({
@@ -988,7 +1017,7 @@ def generate_decomposed_topics(
     fn = model_fn or _default_model_fn
     # REQUIREMENTS FIRST (curriculum authority): decide WHAT must be covered before any topic exists, then
     # decompose AGAINST those requirements. Best-effort: [] keeps the old single-call behavior exactly.
-    requirements = _goal_requirements(goal, chunks_text, fn)
+    requirements, req_prereqs = _goal_requirements(goal, chunks_text, fn)
     payload = {"system": SYSTEM_PROMPT,
                "user": build_decomposition_prompt(goal=goal, chunks_text=chunks_text, feedback=feedback,
                                                   goal_requirements=requirements)}
@@ -1006,6 +1035,13 @@ def generate_decomposed_topics(
     # validator's B.4.1 coverage repair synthesizes a topic for it — the validator now checks the plan against
     # requirements decided BEFORE the topics, not against the topic list's own claims.
     _enforce_requirement_coverage(path_plan, raw_topics, requirements)
+    # Prereq authority fallback: when the decomposition dropped assumed_prerequisites (live: 4 of 5 regens
+    # since requirements landed), the CURRICULUM call's prerequisites stand in — same structured shape
+    # (name/gloss/required_knowledge), same downstream filters (circular/umbrella/taught-overlap all apply).
+    if req_prereqs and not (path_plan.get("assumed_prerequisites") or []):
+        path_plan["assumed_prerequisites"] = req_prereqs
+        _log.info("goal requirements: decomposition emitted no assumed_prerequisites — using the "
+                  "curriculum call's: %s", [p["name"] for p in req_prereqs])
 
     topics = [_normalize_topic(t) for t in raw_topics]
     path_plan, topics = append_coding_follow_ups(path_plan, topics, enabled=coding_follow_ups)

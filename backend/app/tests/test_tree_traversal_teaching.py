@@ -477,15 +477,15 @@ class ExamplePlanCertification(unittest.TestCase):
 
     def test_certifier_stamps_verified_and_withhold(self):
         from app.services.topic_generator import _certify_path_scope
-        out = _certify_path_scope([self._t("Classes of Turbulence", "science_mechanism"),
+        out = _certify_path_scope([self._t("Flow Regimes", "science_mechanism"),
                                    self._t("Photosynthesis Mechanism", "science_mechanism"),
                                    self._t("Comparing MST Algorithms", "compare_distinguish")],
                                   "want to learn about fluid turbulence")
         by = {t["title"]: self._plan(t) for t in out}
-        self.assertEqual(by["Classes of Turbulence"]["verified_example"], "reynolds_number")
-        self.assertEqual(by["Classes of Turbulence"]["we_policy"], "verified")
+        self.assertEqual(by["Flow Regimes"]["verified_example"], "reynolds_number")
+        self.assertEqual(by["Flow Regimes"]["we_policy"], "verified")
         self.assertIsNone(by["Photosynthesis Mechanism"]["verified_example"])
-        self.assertEqual(by["Photosynthesis Mechanism"]["we_policy"], "withhold_fabricated")
+        self.assertEqual(by["Photosynthesis Mechanism"]["we_policy"], "conceptual_mechanism")
         self.assertEqual(by["Comparing MST Algorithms"]["we_policy"], "not_applicable")
 
     def test_enforcement_strips_fabricated_keeps_verified_and_unstamped(self):
@@ -614,11 +614,14 @@ class ExampleRelevanceGuards(unittest.TestCase):
                              "course_type": "science_mechanism"})
         self.assertIsNone(les)
 
-    def test_plain_turbulence_titles_still_route(self):
-        for t in ("Fluid Turbulence", "Classes of Turbulence", "Laminar vs Turbulent Flow"):
+    def test_only_flow_regime_turbulence_titles_route(self):
+        for t in ("Fluid Turbulence", "Classes of Turbulence"):
             a = route_adapter({"title": t, "topic_type": "science_mechanism",
                                "course_type": "science_mechanism"})
-            self.assertEqual(getattr(a, "slug", None), "reynolds_number", t)
+            self.assertIsNone(a, t)
+        a = route_adapter({"title": "Laminar vs Turbulent Flow", "topic_type": "science_mechanism",
+                           "course_type": "science_mechanism"})
+        self.assertEqual(getattr(a, "slug", None), "reynolds_number")
 
     def test_turbulence_models_identity_is_not_reynolds(self):
         from app.services.topic_generator import _canonical_concept_key
@@ -1092,6 +1095,85 @@ class ScienceShapeStamp(unittest.TestCase):
         self.assertEqual(self._shape(out[0]), "regime")
 
 
+class BstRegressionRoundFixes(unittest.TestCase):
+    """30th-review fixes (bst-traversal 00:59 regen): curriculum-call prereq fallback, analysis-framed
+    walkthrough retype (no manufactured 'Implementing Evaluating X' follow-up), orphan-implementation
+    pairing ('Implementing Order Traversal' + partnerless 'In-Order Traversal'), one comparison per family,
+    and the intro's components card being required again."""
+
+    def test_curriculum_call_prereqs_used_when_decomposition_omits_them(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R1", "name": "In-order traversal", "kind": "core",
+             "statement": "describe the in-order traversal algorithm"}],
+            "assumed_prerequisites": [
+                {"name": "binary search trees", "gloss": "an ordered binary tree",
+                 "required_knowledge": "know node/child structure and the BST ordering property"}]}
+        plan = {"path_plan": {"end_capability_actions": ["trace"], "required_capabilities": []},
+                "topics": [{"topic_id": "t1", "capability_id": "t1", "subject_key": "in_order_traversal",
+                            "primary_action": "trace", "content_role": "algorithm_trace",
+                            "topic_type": "algorithm_walkthrough", "title": "In-Order Traversal",
+                            "unit_title": "u", "purpose": "p",
+                            "in_scope": ["visit order of in-order traversal", "left-root-right rule"],
+                            "covers_requirements": ["R1"], "basis": "goal"}]}
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+        topics = generate_decomposed_topics("learn bst traversal", "s", model_fn=fn)
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        self.assertIn("binary search trees", [str(p) for p in (intro.get("assumed_prerequisites") or [])])
+
+    def test_analysis_framed_walkthrough_retyped_and_no_follow_up(self):
+        from app.services.topic_decomposition_pipeline import _normalize_topic
+        t = _normalize_topic({"topic_id": "t", "subject_key": "traversal_complexity",
+                              "title": "Evaluating Traversal Complexity",
+                              "content_role": "algorithm_trace", "topic_type": "algorithm_walkthrough"})
+        self.assertEqual(t["topic_type"], "compare_distinguish")
+        real = _normalize_topic({"topic_id": "t2", "subject_key": "merge_sort", "title": "Merge Sort",
+                                 "content_role": "algorithm_trace", "topic_type": "algorithm_walkthrough"})
+        self.assertEqual(real["topic_type"], "algorithm_walkthrough")   # real algorithms untouched
+
+    def test_orphan_implementation_paired_with_partnerless_walkthrough(self):
+        from app.services.topic_generator import _order_canonical_family
+        def wt(title):
+            return {"title": title, "course_type": "algorithm_walkthrough",
+                    "topic_type": "algorithm_walkthrough", "unit_title": title}
+        def impl(title, unit="x"):
+            return {"title": title, "course_type": "coding_implementation",
+                    "topic_type": "coding_implementation", "unit_title": unit}
+        topics = [wt("In-Order Traversal"), wt("Pre-Order Traversal"),
+                  impl("Implementing Pre-Order Traversal"),
+                  impl("Implementing Order Traversal")]          # the mangled orphan (routes nowhere)
+        out = _order_canonical_family(topics, "want to learn about bst traversal algorithms")
+        titles = [t["title"] for t in out]
+        self.assertIn("Implementing In-Order Traversal", titles)
+        self.assertNotIn("Implementing Order Traversal", titles)
+        # and the repaired pair sits together: walkthrough immediately followed by its implementation
+        i = titles.index("In-Order Traversal")
+        self.assertEqual(titles[i + 1], "Implementing In-Order Traversal")
+
+    def test_one_comparison_topic_per_family(self):
+        from app.services.topic_generator import _ensure_family_comparison_topic
+        def wt(title):
+            return {"title": title, "course_type": "algorithm_walkthrough",
+                    "topic_type": "algorithm_walkthrough"}
+        topics = [wt("In-Order Traversal"), wt("Pre-Order Traversal"),
+                  {"title": "Comparing Traversal Techniques", "course_type": "compare_distinguish",
+                   "topic_type": "compare_distinguish"},
+                  {"title": "Evaluating Traversal Complexity", "course_type": "compare_distinguish",
+                   "topic_type": "compare_distinguish"}]
+        out = _ensure_family_comparison_topic(topics, "want to learn about bst traversal algorithms")
+        comps = [t for t in out if t["course_type"] == "compare_distinguish"]
+        self.assertEqual(len(comps), 1)
+        self.assertEqual(comps[0]["title"], "Comparing Traversal Techniques")
+
+    def test_intro_components_card_is_required(self):
+        from app.core.course_blueprints import get_topic_blueprint
+        bp = get_topic_blueprint("study_path_introduction")
+        self.assertNotIn("components_terms", bp.get("optional_cards") or [])
+        self.assertIn("components_terms", bp.get("default_card_sequence") or [])
+        self.assertIn("prerequisites", bp.get("optional_cards") or [])   # stays plan-driven
+
+
 class CoverageStubSynthesis(unittest.TestCase):
     """B.4.1 coverage repair must never surface a raw capability_id as a learner-facing title (live: a stub
     topic literally titled 'C1'), and the synthesized topic carries the capability description as its one
@@ -1398,7 +1480,7 @@ class GroundingPassesShareThePlanGuard(unittest.TestCase):
 
     def test_injection_adds_formula_with_meaning_note_for_certified_topic(self):
         from app.services.lean_lesson_generator import _inject_grounded_cards
-        t = self._topic("Turbulence", "science_mechanism",
+        t = self._topic("Flow Regimes", "science_mechanism",
                         {"verified_example": "reynolds_number", "we_policy": "verified"})
         cards = [{"blueprint_key": "background", "card_type": "purpose_context", "points": ["x"]},
                  {"blueprint_key": "worked_example", "card_type": "worked_example", "points": ["y"]}]
@@ -1434,7 +1516,7 @@ class WorkedExampleInterpretation(unittest.TestCase):
 
     def test_final_card_carries_interpretation_and_no_duplicate_answer(self):
         from app.services.examples.trace_pipeline import solve_trace_pipeline
-        sol = solve_trace_pipeline({"title": "Turbulence", "topic_type": "science_mechanism",
+        sol = solve_trace_pipeline({"title": "Flow Regimes", "topic_type": "science_mechanism",
                                     "course_type": "science_mechanism", "id": "t1"})
         last = (sol.get("cards") or [])[-1]
         note = last.get("teaching_note") or {}
@@ -1482,8 +1564,37 @@ class AdapterIdentityGuard(unittest.TestCase):
         self.assertEqual(by["Reynolds Number"]["we_policy"], "verified")
         for other in ("Defining Fluid Turbulence", "Laminar vs Turbulent Flow"):
             self.assertIsNone(by[other]["verified_example"], other)
-            self.assertEqual(by[other]["we_policy"], "withhold_fabricated", other)
-            self.assertTrue(by[other].get("we_deduped_shared_adapter"), other)
+        self.assertEqual(by["Defining Fluid Turbulence"]["we_policy"], "conceptual_mechanism")
+        self.assertEqual(by["Laminar vs Turbulent Flow"]["we_policy"], "withhold_fabricated")
+        self.assertTrue(by["Laminar vs Turbulent Flow"].get("we_deduped_shared_adapter"))
+        self.assertFalse(by["Defining Fluid Turbulence"].get("we_deduped_shared_adapter", False))
+
+    def test_turbulence_concepts_do_not_inherit_reynolds_identity(self):
+        from app.services.topic_generator import _canonical_concept_key
+        self.assertEqual(_canonical_concept_key("want to learn about fluid turbulence"), "fluid_turbulence")
+        self.assertEqual(_canonical_concept_key("Energy Transfer in Turbulence"), "turbulent_energy_cascade")
+        self.assertEqual(_canonical_concept_key("Real-World Applications of Turbulence"),
+                         "turbulence_applications")
+        self.assertEqual(_canonical_concept_key("Reynolds Number"), "reynolds_number")
+
+    def test_broad_turbulence_path_has_exactly_one_goal_core(self):
+        from app.services.topic_generator import _certify_path_scope
+        topics = [
+            self._t("Types of Fluid Flow", "compare_distinguish"),
+            self._t("Energy Transfer in Turbulence", "science_mechanism"),
+            self._t("Real-World Applications of Turbulence", "problem_solving_application"),
+        ]
+        topics[0]["in_scope"] = ["laminar and turbulent flow classification"]
+        topics[1]["in_scope"] = ["large eddies", "energy cascade", "viscous dissipation"]
+        topics[2]["in_scope"] = ["aerodynamic drag", "industrial mixing"]
+        out = _certify_path_scope(topics, "want to learn about fluid turbulence")
+        cores = [t for t in out if self._plan(t).get("role") == "goal_core"]
+        self.assertEqual([t["title"] for t in cores], ["Energy Transfer in Turbulence"])
+        by = {t["title"]: self._plan(t) for t in out}
+        self.assertIsNone(by["Types of Fluid Flow"]["verified_example"])
+        self.assertIsNone(by["Energy Transfer in Turbulence"]["verified_example"])
+        self.assertEqual(by["Energy Transfer in Turbulence"]["we_policy"], "conceptual_mechanism")
+        self.assertIsNone(by["Real-World Applications of Turbulence"]["verified_example"])
 
     def test_true_duplicates_still_collapse(self):
         from app.services.topic_generator import _certify_path_scope
@@ -1592,7 +1703,7 @@ class RequirementReconciliation(unittest.TestCase):
                       "decomposition_metadata": {"scope_plan": {
                           "verified_example": "kinetic_energy", "we_policy": "verified"}}}
         self.assertIsNone(solve_trace_pipeline(mismatched))   # routed reynolds != planned kinetic_energy
-        planned = {"title": "Turbulence", "topic_type": "science_mechanism",
+        planned = {"title": "Flow Regimes", "topic_type": "science_mechanism",
                    "course_type": "science_mechanism", "id": "t3",
                    "decomposition_metadata": {"scope_plan": {
                        "verified_example": "reynolds_number", "we_policy": "verified"}}}

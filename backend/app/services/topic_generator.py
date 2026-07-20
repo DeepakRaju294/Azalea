@@ -257,25 +257,36 @@ _CONCEPT_ALIASES: dict[str, tuple[str, ...]] = {
     "binary_search_tree": ("bst", "binary search tree", "binary search trees"),
     "breadth_first_search": ("bfs", "breadth first search"),
     "depth_first_search": ("dfs", "depth first search"),
+    # Concept identity is deliberately more specific than adapter routing. A turbulence lesson may USE a
+    # Reynolds-number example without BECOMING the Reynolds-number concept.
+    "turbulent_energy_cascade": (
+        "energy transfer in turbulence", "energy transfer in turbulent flow",
+        "energy transfer in turbulent flows", "turbulent energy cascade", "energy cascade",
+    ),
+    "turbulence_applications": (
+        "applications of turbulence", "turbulence applications", "real world effects of turbulence",
+        "real world applications of turbulence",
+    ),
+    "flow_regimes": (
+        "flow regime", "flow regimes", "types of fluid flow", "laminar vs turbulent",
+        "laminar and turbulent flow", "laminar or turbulent flow",
+    ),
+    "reynolds_number": ("reynolds number",),
+    "fluid_turbulence": ("fluid turbulence",),
 }
 
 
 def _canonical_concept_key(value: Any, topic_type: str = "") -> str:
     """Return the shared semantic identity for a goal, prerequisite, or topic.
 
-    Adapter slugs are the strongest available catalog identity. The alias vocabulary handles concepts that
-    are not adapter-routed (and acronym/expanded-name equivalence); the final token key is deterministic.
+    Concept identity is independent of adapter routing. Adapters answer whether a trusted example can support
+    a topic; they must never rename a broad topic after one narrow formula (the live failure mapped an entire
+    turbulence path to ``reynolds_number``). The alias vocabulary handles acronym/expanded-name equivalence;
+    the final token key is deterministic.
     Possessives are normalized before tokenization so ``Kruskal's`` and ``Kruskal`` cannot become two topics.
     """
     raw = _re.sub(r"(?i)\b([a-z0-9]+)['’]s\b", r"\1", str(value or "")).strip()
     lowered = _re.sub(r"[^a-z0-9]+", " ", raw.lower()).strip()
-    try:
-        from app.services.examples.trace_pipeline import route_adapter
-        adapter = route_adapter({"title": raw, "topic_type": topic_type})
-        if adapter:
-            return adapter.slug
-    except Exception:  # noqa: BLE001 - identity fallback must never break generation
-        pass
     for key, aliases in _CONCEPT_ALIASES.items():
         if any(_re.search(rf"\b{_re.escape(alias)}\b", lowered) for alias in aliases):
             return key
@@ -354,6 +365,32 @@ def _science_shape(topic: dict[str, Any], ttype: str, verified_example: str | No
         return "quantitative_relationship"
     return "mechanism"
 
+
+def _adapter_fits_owned_scope(adapter_slug: str, topic: dict[str, Any]) -> bool:
+    """Return whether a verified adapter directly demonstrates this topic's owned learning delta.
+
+    Routing aliases are intentionally permissive for discovery, so certification applies the stricter scope
+    gate. This keeps a supporting calculation from displacing a broader mechanism or application lesson.
+    """
+    if adapter_slug != "reynolds_number":
+        return True
+    text = " ".join([
+        str(topic.get("title") or ""),
+        str(topic.get("subject_key") or ""),
+        *[str(item) for item in (topic.get("in_scope") or [])],
+        str(topic.get("learner_outcome") or ""),
+        str(topic.get("expected_output") or ""),
+    ]).lower()
+    tokens = set(_re.findall(r"[a-z0-9]+", text))
+    return (
+        "reynolds" in tokens
+        or "regime" in tokens
+        or "regimes" in tokens
+        or "classification" in tokens
+        or "classify" in tokens
+        or ({"laminar", "turbulent"} <= tokens)
+    )
+
 # Planning-field phrases that carry no content commitment — never worth backfilling into scope_in.
 _GENERIC_SCOPE_PREFIXES = ("reach the capability", "general understanding")
 
@@ -410,6 +447,10 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
         except Exception:  # noqa: BLE001 — certification must never break generation
             slug = None
         if not slug:
+            continue
+        if not _adapter_fits_owned_scope(slug, t):
+            _log.info("scope certification: rejected adapter %s for %r because it does not demonstrate "
+                      "the topic's owned scope", slug, t.get("title"))
             continue
         we_routed[i] = slug
         # claim preference: 2 = the topic's own subject IS the adapter's concept ('Reynolds Number');
@@ -498,6 +539,10 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
                 scope_in_backfilled = True
         role = ("goal_core" if key == goal_key
                 else ("application" if facet == "implementation" else "supporting"))
+        shape = _science_shape(topic, ttype, verified_example)
+        conceptual_mechanism = bool(
+            we_centric and not verified_example and ttype == "science_mechanism" and shape == "mechanism"
+        )
         meta["scope_plan"] = {
             "scope_in_empty": scope_in_empty,
             "scope_in_backfilled": scope_in_backfilled,
@@ -506,12 +551,14 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
             "role": role,
             "depth": "deep" if key == goal_key or is_deep_teaching else "overview",
             "verified_example": verified_example,
-            "we_policy": ("verified" if verified_example
-                          else ("withhold_fabricated" if we_centric else "not_applicable")),
+            "we_policy": (
+                "verified" if verified_example
+                else ("conceptual_mechanism" if conceptual_mechanism
+                      else ("withhold_fabricated" if we_centric else "not_applicable"))
+            ),
         }
         if we_deduped_shared_adapter:
             meta["scope_plan"]["we_deduped_shared_adapter"] = True
-        shape = _science_shape(topic, ttype, verified_example)
         if shape:
             meta["scope_plan"]["science_shape"] = shape
         # DEPTH GUARD (shadow): the goal's own concept taught only through an overview-shaped type means the
@@ -524,6 +571,51 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
         identities.append({"canonical_concept_key": key, "facet": facet,
                            "title": str(topic.get("title") or "")})
         certified.append(topic)
+
+    # EXACTLY ONE GOAL CORE. Broad goals often decompose into distinct facets whose titles do not equal the
+    # goal verbatim ("fluid turbulence" -> flow regimes, energy cascade, applications). In that case choose
+    # the central deep mechanism deterministically. Never let several topics become goal_core merely because
+    # a shared adapter routed them to the same formula slug.
+    teaching_topics = [
+        t for t in certified
+        if str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
+        != "study_path_introduction"
+    ]
+    selected_goal_core: dict[str, Any] | None = None
+    if teaching_topics:
+        goal_tokens, _ = _subject_tokens(str(goal or ""))
+
+        def _goal_core_score(item: dict[str, Any]) -> tuple[int, int, int, int]:
+            meta = item.get("decomposition_metadata") or {}
+            key = str(meta.get("canonical_concept_key") or "")
+            ttype = str(item.get("course_type") or item.get("topic_type") or "").strip().lower()
+            role = str(meta.get("content_role") or item.get("content_role") or "").strip().lower()
+            title_tokens, _ = _subject_tokens(str(item.get("title") or item.get("subject_key") or ""))
+            exact_goal = 1 if key and key == goal_key else 0
+            mechanism = 2 if ttype == "science_mechanism" else (1 if role == "mechanism" else 0)
+            overlap = len(goal_tokens & title_tokens)
+            # Earlier topics win a true tie, keeping the result stable across runs.
+            order = -int(item.get("order_index") or teaching_topics.index(item))
+            return exact_goal, mechanism, overlap, order
+
+        selected_goal_core = max(teaching_topics, key=_goal_core_score)
+        for item in teaching_topics:
+            meta = item.get("decomposition_metadata") or {}
+            plan = meta.get("scope_plan") or {}
+            item_type = str(item.get("course_type") or item.get("topic_type") or "").strip().lower()
+            content_role = str(meta.get("content_role") or item.get("content_role") or "").strip().lower()
+            if item is selected_goal_core:
+                plan["role"] = "goal_core"
+                plan["depth"] = "deep"
+            else:
+                plan["role"] = (
+                    "application"
+                    if content_role == "application" or "application" in item_type
+                    else "supporting"
+                )
+                plan["depth"] = "deep" if plan["role"] == "application" else "overview"
+            meta["scope_plan"] = plan
+            item["decomposition_metadata"] = meta
 
     # SCOPE_OUT backfill (scope-plan #2, sibling boundaries): every scope_out came back empty live, so no
     # topic ever excluded its siblings' content and lessons overlapped freely (two turbulence topics both
@@ -916,6 +1008,25 @@ def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> l
         a = route_adapter({"title": str(t.get("title") or ""), "topic_type": _ttype(t)})
         return a.slug if a else None
 
+    canon = {slug: name for name, slug in fam["members"]}
+    # ORPHAN-IMPLEMENTATION REPAIR: a coding follow-up whose subject key was mangled upstream routes to NO
+    # adapter and strands outside the family block, while its walkthrough sits partnerless (live: topic 2
+    # 'In-Order Traversal' with no implementation + topic 9 'Implementing Order Traversal' with we=None,
+    # dumped after the family). One orphan + one partnerless walkthrough = an unambiguous pair: retitle the
+    # orphan to the canonical 'Implementing <name>' so it routes, orders, and inherits the pair's unit.
+    wt_slugs = {_slug(t) for t in topics if _ttype(t) == "algorithm_walkthrough"} & set(order)
+    impl_slugs = {_slug(t) for t in topics if _ttype(t) == "coding_implementation"} & set(order)
+    partnerless = wt_slugs - impl_slugs
+    orphans = [t for t in topics
+               if _ttype(t) == "coding_implementation" and _slug(t) is None
+               and str(t.get("title") or "").lower().startswith("implementing")]
+    if len(partnerless) == 1 and len(orphans) == 1:
+        slug = next(iter(partnerless))
+        orphans[0]["title"] = f"Implementing {canon[slug]}"
+        orphans[0]["unit_title"] = canon[slug]
+        _log.info("topic_generator: paired orphan implementation with partnerless walkthrough %s -> %r",
+                  slug, orphans[0]["title"])
+
     fam_positions = [i for i, t in enumerate(topics)
                      if _ttype(t) in _MEMBER_TEACHING_TYPES and _slug(t) in order]
     if len(fam_positions) < 2:
@@ -926,7 +1037,6 @@ def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> l
     # walkthrough member reads the SAME way — the BARE canonical name ("In-Order Traversal", "Merge Sort") —
     # so a study-verb the LLM sprinkled on one ("Analyzing Quick Sort") or an injected suffix ("Level-Order
     # Traversal Algorithm Walkthrough" beside "Inorder Traversal" — live inconsistency) never survives.
-    canon = {slug: name for name, slug in fam["members"]}
     for t in fam_block:
         s = _slug(t)
         if s not in canon:
@@ -1041,6 +1151,15 @@ def _ensure_family_comparison_topic(topics: list[dict[str, Any]], goal: str | No
     def _ttype(t: dict[str, Any]) -> str:
         return str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
 
+    # ONE comparison per family survey: the model sometimes emits a comparison AND an analysis-framed
+    # sibling that normalization retypes to compare_distinguish ('Evaluating Traversal Complexity') —
+    # keep the first, drop the rest (their content is the comparison topic's job).
+    comps = [t for t in topics if _ttype(t) == "compare_distinguish"]
+    if len(comps) > 1:
+        drop_ids = {id(t) for t in comps[1:]}
+        topics = [t for t in topics if id(t) not in drop_ids]
+        _log.info("topic_generator: dropped %d extra comparison topic(s) for the family survey: %s",
+                  len(comps) - 1, [str(t.get("title")) for t in comps[1:]])
     if any(_ttype(t) == "compare_distinguish" for t in topics):
         return topics                                       # the model already emitted one — never duplicate
     try:
