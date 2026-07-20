@@ -8846,6 +8846,108 @@ def _estimate_minutes(cards: list[dict[str, Any]]) -> int:
     return max(3, round(total))
 
 
+# --- family vocabulary: shared terms once, in the intro ---------------------------------------------------
+# Authored per-family shared vocabulary (term, gloss). The decomposition prompt already SAYS the intro owns
+# path-wide vocabulary and topics own only their specific terms, but the model ignores it: live bst path had
+# In-Order defining Binary Tree/Node, Pre-Order defining Root/Left Child/Right Child, Post-Order defining
+# Left Subtree/Right Subtree — near-identical anatomy re-taught per topic, while the intro defined nothing.
+_FAMILY_SHARED_VOCAB: dict[str, list[tuple[str, str]]] = {
+    "tree_traversal": [
+        ("Node", "one element of the tree — holds a value and links to up to two children."),
+        ("Root", "the topmost node; every traversal starts from it."),
+        ("Left / Right Child", "a node's two possible children — in a BST the left holds smaller values, "
+                               "the right larger ones."),
+        ("Subtree", "a node together with all its descendants; traversals are defined recursively on "
+                    "subtrees."),
+        ("Leaf", "a node with no children."),
+        ("Visit", "processing a node (recording its value in the output) — the traversal orders differ "
+                  "only in WHEN each node is visited."),
+    ],
+}
+# Header words that mark a member-topic term as shared tree anatomy (kept ONLY in the intro's card).
+_FAMILY_GENERIC_HEAD_WORDS: dict[str, frozenset[str]] = {
+    "tree_traversal": frozenset({"node", "nodes", "root", "child", "children", "subtree", "subtrees",
+                                 "leaf", "leaves", "tree", "binary", "visit", "visited", "left", "right"}),
+}
+
+
+def _family_key_for_goal(goal: str | None) -> str | None:
+    from app.services.topic_generator import _CANONICAL_FAMILIES
+    g = str(goal or "").lower()
+    for key, fam in _CANONICAL_FAMILIES.items():
+        if any(m in g for m in fam.get("goal_markers", ())):
+            return key
+    return None
+
+
+def _apply_family_vocabulary(cards: list[dict[str, Any]], topic: Topic) -> None:
+    """Shared family vocabulary is taught ONCE, in the intro; member topics keep only topic-specific terms.
+
+    Intro: when the path surveys a family with authored vocab and the intro has no terms card, insert the
+    'Shared Terms' card before the roadmap. Member topics: drop term groups whose header is shared anatomy
+    (Node/Root/Child/Subtree/...) — a topic-specific term (Queue on level-order) always survives. Both
+    directions deterministic and failure-safe."""
+    try:
+        goal = str(getattr(getattr(topic, "study_path", None), "goal", None) or "")
+        fam_key = _family_key_for_goal(goal)
+        vocab = _FAMILY_SHARED_VOCAB.get(fam_key or "")
+        if not vocab:
+            return
+        is_intro = _topic_type_key(topic) == "study_path_introduction"
+        if is_intro:
+            has_terms = any(str(c.get("card_type") or "").lower() in ("definition", "key_terms")
+                            or _lean_card_key(c) == "components_terms" for c in cards)
+            if has_terms:
+                return
+            points: list[str] = []
+            for term, gloss in vocab:
+                points.append(term)
+                points.append(f"  - {gloss}")
+            card = {"id": "family-shared-terms", "blueprint_key": "components_terms",
+                    "card_type": "definition", "title": "Shared Terms for This Path",
+                    "main_concept": "Shared Terms for This Path",
+                    "learning_goal": "The vocabulary every later topic uses.",
+                    "points": points, "_family_vocab": True}
+            idx = next((i for i, c in enumerate(cards)
+                        if str(c.get("card_type") or "").lower() == "roadmap"), len(cards))
+            cards.insert(idx, card)
+            logger.info("family vocabulary: injected shared-terms card into intro (%s)", fam_key)
+            return
+        generic = _FAMILY_GENERIC_HEAD_WORDS.get(fam_key or "", frozenset())
+        if not generic:
+            return
+        for card in cards:
+            key = str(card.get("blueprint_key") or card.get("card_type") or "").lower()
+            if key not in ("components_terms", "definition", "key_terms"):
+                continue
+            points = card.get("points") or []
+            keep: list[str] = []
+            skipping = False
+            dropped = 0
+            for p in points:
+                s = str(p)
+                if _is_main_bullet(s):
+                    head_words = set(re.findall(r"[a-z]+", s.split(":")[0].lower()))
+                    skipping = bool(head_words) and head_words <= generic
+                    if skipping:
+                        dropped += 1
+                        continue
+                elif skipping:
+                    continue
+                keep.append(p)
+            if dropped and keep != points:
+                card["points"] = keep
+                logger.info("family vocabulary: dropped %d shared-anatomy term(s) from %r (intro owns them)",
+                            dropped, getattr(topic, "title", ""))
+        # a terms card emptied of every term is noise — remove it
+        cards[:] = [c for c in cards
+                    if not (str(c.get("blueprint_key") or c.get("card_type") or "").lower()
+                            in ("components_terms", "definition", "key_terms")
+                            and not (c.get("points") or []))]
+    except Exception:  # noqa: BLE001 — vocabulary shaping is best-effort; never break generation
+        logger.warning("family vocabulary pass failed", exc_info=True)
+
+
 def _convert_lean_to_legacy(
     lean_json: dict[str, Any],
     topic: Topic,
@@ -8995,6 +9097,10 @@ def _convert_lean_to_legacy(
     # If the topic type emitted no formula/edge card but an adapter routes (e.g. Ohm's law as science_mechanism),
     # inject the grounded cards so the formula is still isolated math, not LLM prose.
     _inject_grounded_cards(legacy_cards, topic, have_formula=_grounded_formula, have_edge=_grounded_edge)
+    # Family vocabulary lives in the INTRO, once — member topics keep only their topic-specific terms
+    # (user decision: every traversal topic re-defined Node/Root/Child/Subtree with slight variations
+    # while the intro defined nothing).
+    _apply_family_vocabulary(legacy_cards, topic)
     # Make any LLM-authored math render: strip \text{}, delimit bare \frac/\sqrt/greek (grounded $$ untouched).
     _sanitize_card_math(legacy_cards)
     # Final cosmetic sweep (deterministic, best-effort): phantom "this diagram" body refs when no visual,
