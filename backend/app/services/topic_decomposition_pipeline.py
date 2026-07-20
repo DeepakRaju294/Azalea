@@ -52,6 +52,15 @@ def _coerce(raw: Any) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+# Pedagogical-ASPECT words: a phrase containing one describes how a topic teaches (examples, practice,
+# outputs, definitions), never an external concept — such phrases must not be promoted to prerequisites.
+_ASPECT_PHRASE_TOKENS = frozenset({
+    "example", "examples", "practice", "problem", "problems", "exercise", "exercises",
+    "output", "outputs", "characteristic", "characteristics", "definition", "definitions",
+    "implementation", "implementations", "basics", "overview", "case", "cases",
+    "application", "applications", "illustration", "illustrations", "visual", "visuals",
+})
+
 # Tokens that mark a topic as comparison/evaluation CONTENT rather than an algorithm to trace — such a topic
 # must never be typed code-able (the appender would manufacture an "Implementing <analysis>" follow-up).
 _ANALYSIS_FRAMING_TOKENS = frozenset({
@@ -120,6 +129,12 @@ def _cross_topic_foundations(teaching_topics: list[dict[str, Any]], goal: str | 
             counts[norm] = (disp, n + 1)
     out: list[str] = []
     for norm, (display, n) in counts.items():
+        # A shared scope item is only a FOUNDATION when it names a CONCEPT. Pedagogical-aspect phrases the
+        # model copy-pastes across siblings ("examples of performed traversals", "output characteristics",
+        # "practice problems for traversal implementation" — live junk prereqs) describe the topics
+        # themselves, not an external concept a learner could study first.
+        if set(norm.split()) & _ASPECT_PHRASE_TOKENS:
+            continue
         if (n >= 2 and not _goal_names_topic({"title": display, "subject_key": display}, goal)
                 and not _is_circular_prereq(display, goal)):
             out.append(display)

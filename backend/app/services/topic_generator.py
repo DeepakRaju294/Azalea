@@ -300,6 +300,39 @@ def _topic_facet(topic: dict[str, Any]) -> str:
     return "implementation" if ttype == "coding_implementation" else "core"
 
 
+def _source_within_prereq(prereq: str, source: str) -> bool:
+    """Directional same-concept test for prerequisite blocking.
+
+    A prereq is circular only when a blocking SOURCE (the goal, or a taught topic's subject) names the SAME
+    concept the prereq names — source tokens ⊆ prereq tokens (the prereq is the concept plus qualifier noise:
+    'Key Laws Governing Turbulence' vs taught 'Laws of Turbulence'), identical despaced tokens, or acronym
+    equivalence (BSTs ↔ binary search trees). A source with EXTRA distinctive tokens — goal 'bst traversal'
+    vs prereq 'binary search trees' — is a skill ON the prereq's concept, and the structure IS the right
+    prerequisite for the skill (user decision; live regression: the greedy 'bst' alias keyed the goal as
+    binary_search_tree and key-equality blocked exactly the prereq the user asked for)."""
+    pt, pd = _subject_tokens(prereq)
+    st, sd = _subject_tokens(source)
+    if not pt or not st:
+        return False
+    if st <= pt or (pd and pd == sd):
+        return True
+    def _deplural(x: str) -> str:
+        return x[:-1] if x.endswith("s") and len(x) > 2 else x
+
+    def _content_words(text: str) -> list[str]:
+        # ORDERED framing-stripped words (goal 'Learn MST algorithms' → ['mst']) — raw text polluted the
+        # compact/initialism comparison with intent words and never matched.
+        return [w for w in _re.findall(r"[a-z0-9]+", str(text).lower())
+                if w not in _SUBJECT_FRAMING_WORDS]
+
+    pw, sw = _content_words(prereq), _content_words(source)
+    p_compact = _deplural("".join(pw))
+    s_compact = _deplural("".join(sw))
+    p_init = "".join(w[0] for w in pw)
+    s_init = "".join(w[0] for w in sw)
+    return (len(s_compact) >= 2 and s_compact == p_init) or (len(p_compact) >= 2 and p_compact == s_init)
+
+
 def _same_concept_evidence(a: str, b: str) -> bool:
     """Token-level evidence that two subjects sharing a canonical KEY are actually the same concept.
 
@@ -654,25 +687,24 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
                 plan["scope_out_backfilled"] = True
 
     blocked_prereq_keys = taught_keys | ({goal_key} if goal_key else set())
-    # Token views of the taught/goal keys, so a prereq that is a taught concept PLUS qualifier words is also
-    # blocked (live circular prereq: 'Key Laws and Principles Governing Turbulence' survived key-equality
-    # against the taught 'Laws and Principles of Turbulence' because of the extra 'governing'/'key' tokens).
-    # Superset direction ONLY — a broader prereq ('calculus' before 'stochastic calculus') stays legitimate —
-    # and multi-token taught keys only, so a single shared word can never block.
-    blocked_token_sets = [frozenset(k.split("_")) for k in blocked_prereq_keys]
-    blocked_token_sets = [s for s in blocked_token_sets if len(s) >= 2]
+    # SOURCE strings for directional blocking: raw key equality over-blocked (the greedy 'bst' alias keyed
+    # goal 'bst traversal' as binary_search_tree, deleting the 'binary search trees' prereq the user asked
+    # for) and raw key-token superset under-described the sources. A prereq is dropped only when the GOAL or
+    # a TAUGHT SUBJECT is within it per _source_within_prereq — a source with extra distinctive tokens is a
+    # skill ON the prereq's concept and never blocks it.
+    block_sources = [str(goal or "")] + [i["title"] for i in identities if i.get("title")]
     for topic in certified:
         ttype = str(topic.get("course_type") or topic.get("topic_type") or "").strip().lower()
         prereqs: list[Any] = []
         seen_prereq_keys: set[str] = set()
         for prereq in topic.get("assumed_prerequisites") or []:
             prereq_key = _canonical_concept_key(prereq)
-            if not prereq_key or prereq_key in blocked_prereq_keys or prereq_key in seen_prereq_keys:
+            if not prereq_key or prereq_key in seen_prereq_keys:
                 continue
-            prereq_tokens = frozenset(prereq_key.split("_"))
-            if any(ts <= prereq_tokens for ts in blocked_token_sets):
-                _log.info("scope certification: dropped prereq %r — contains taught concept key %s",
-                          prereq, prereq_key)
+            blocker = next((s for s in block_sources if _source_within_prereq(str(prereq), s)), None)
+            if blocker is not None:
+                _log.info("scope certification: dropped prereq %r — same concept as %r (goal/taught)",
+                          prereq, blocker)
                 continue
             prereqs.append(prereq)
             seen_prereq_keys.add(prereq_key)

@@ -27,6 +27,10 @@ from app.prompts.lean_lesson_prompt import build_lean_system_prompt, build_lean_
 from app.services.assumption_ledger_service import build_assumption_ledger
 from app.services.link_report import LINK_REPORT_KEY as _LINK_REPORT_KEY, build_link_report
 from app.services.llm_client import generate_lean_structured_lesson
+from app.services.practice_quality import validate_and_repair_practice
+from app.services.scope_validator import validate_scope_adherence
+from app.services.topic_quality_validator import validate_generated_topic
+from app.services.topic_scope_service import build_topic_scope_contract
 from app.services.lesson_generator import (
     build_source_chunk_ids,
     build_source_summary,
@@ -8570,6 +8574,57 @@ def _derive_key_takeaways(cards: list[dict[str, Any]], max_items: int = 5,
     return out[:max_items] if len(out) >= 2 else []              # don't force a single hollow takeaway
 
 
+# Data-structure words a key-terms card may promise; each is kept only when the canonical solution (or the
+# topic title) actually uses it.
+_DS_TERM_WORDS = frozenset({"stack", "queue", "deque", "heap", "hashmap", "hashtable", "dictionary"})
+
+
+def _ground_terms_against_canonical_code(cards: list[dict[str, Any]], topic: Topic) -> int:
+    """For an adapter-backed algorithm topic with a canonical solution, drop key-term GROUPS that name a data
+    structure the canonical code never uses (live: 'Stack' defined on the recursive traversal walkthroughs —
+    our canonical implementations are recursive, so the term promises a structure the code contradicts, and
+    the learner looks for a stack that never appears). A structure the code DOES use (queue in level-order)
+    keeps its term. Returns the number of dropped term groups."""
+    removed = 0
+    try:
+        adapter = _plan_allowed_adapter(topic)
+        slug = getattr(adapter, "slug", None)
+        if not slug:
+            return 0
+        from app.services.examples.canonical_solutions import CANONICAL_SOLUTIONS
+        code = CANONICAL_SOLUTIONS.get(slug)
+        if not code:
+            return 0
+        used = set(re.findall(r"[a-z]+", code.lower()))
+        used |= set(re.findall(r"[a-z]+", str(getattr(topic, "title", "") or "").lower()))
+        for card in cards:
+            key = str(card.get("blueprint_key") or card.get("card_type") or "").lower()
+            if key not in ("components_terms", "definition", "key_terms"):
+                continue
+            points, keep, skipping = card.get("points") or [], [], False
+            for p in points:
+                s = str(p)
+                if _is_main_bullet(s):
+                    head = set(re.findall(r"[a-z]+", s.split(":")[0].lower()))
+                    bad = (head & _DS_TERM_WORDS) - used
+                    skipping = bool(bad)
+                    if skipping:
+                        removed += 1
+                        logger.info("term grounding: dropped term %r on %r — %s not used by the canonical "
+                                  "solution (%s)", s.split(':')[0].strip(), getattr(topic, "title", ""),
+                                  "/".join(sorted(bad)), slug)
+                        continue
+                if skipping and not _is_main_bullet(s):
+                    continue                                 # sub-bullet of a dropped term
+                keep.append(p)
+            if removed and len(keep) != len(points):
+                card["points"] = keep
+    except Exception:  # noqa: BLE001 — grounding is best-effort, never break generation
+        logger.warning("term grounding failed", exc_info=True)
+        return removed
+    return removed
+
+
 def _plan_allowed_adapter(topic: Topic):
     """The adapter a card-level grounding/injection pass may use, honoring the certified scope plan.
 
@@ -8624,7 +8679,7 @@ def _ground_formula_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
                 card["_formula_grounded"] = True
                 return True
     except Exception as exc:  # noqa: BLE001 — grounding is best-effort, never break generation
-        _log.debug("formula grounding skipped: %s", exc)
+        logger.debug("formula grounding skipped: %s", exc)
     return False
 
 
@@ -8717,7 +8772,7 @@ def _ground_edge_case_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
                 card["_edge_case_grounded"] = True
                 return True
     except Exception as exc:  # noqa: BLE001 — grounding is best-effort, never break generation
-        _log.debug("edge-case grounding skipped: %s", exc)
+        logger.debug("edge-case grounding skipped: %s", exc)
     return False
 
 
@@ -8887,7 +8942,7 @@ def _inject_grounded_cards(cards: list[dict[str, Any]], topic: Topic, *, have_fo
                 "id": "edge-grounded", "blueprint_key": "edge_case", "card_type": "edge_case",
                 "title": title, "main_concept": title, "points": edges, "_edge_case_grounded": True})
     except Exception as exc:  # noqa: BLE001 — best-effort; never break generation
-        _log.debug("grounded-card injection skipped: %s", exc)
+        logger.debug("grounded-card injection skipped: %s", exc)
 
 
 def _estimate_minutes(cards: list[dict[str, Any]]) -> int:
@@ -9048,6 +9103,9 @@ def _convert_lean_to_legacy(
     # If the topic type emitted no formula/edge card but an adapter routes (e.g. Ohm's law as science_mechanism),
     # inject the grounded cards so the formula is still isolated math, not LLM prose.
     _inject_grounded_cards(legacy_cards, topic, have_formula=_grounded_formula, have_edge=_grounded_edge)
+    # Key terms must not promise a data structure the canonical solution never uses ('Stack' on the
+    # recursive traversal walkthroughs — live term/code contradiction).
+    _ground_terms_against_canonical_code(legacy_cards, topic)
     # Make any LLM-authored math render: strip \text{}, delimit bare \frac/\sqrt/greek (grounded $$ untouched).
     _sanitize_card_math(legacy_cards)
     # Final cosmetic sweep (deterministic, best-effort): phantom "this diagram" body refs when no visual,
@@ -9055,9 +9113,7 @@ def _convert_lean_to_legacy(
     # "the formula is —" purpose lead-ins, and a stale learning_goal left on an adapter-grounded edge card.
     _polish_card_cosmetics(legacy_cards, topic, grounded_edge=_grounded_edge)
 
-    empty_report = {"is_valid": True, "requires_regeneration": False, "issues": []}
-
-    return {
+    lesson_json = {
         "lesson_version": 2,
         "title": str(lean_json.get("title") or topic.title),
         "topic_summary": str(lean_json.get("topic_summary") or ""),
@@ -9075,14 +9131,61 @@ def _convert_lean_to_legacy(
             "adaptation_summary": "Lean lesson (v2).",
             "teaching_strategy": "lean_default",
         },
-        "scope_validation_report": empty_report,
-        "visual_validation_report": empty_report,
-        "topic_quality_report": empty_report,
-        "validation_report": empty_report,
-        "microcheck_validation_report": empty_report,
+        "visual_validation_report": {"is_valid": True, "requires_regeneration": False, "issues": []},
         # THE canonical link report (see link_report.py) — real counts from the final cards, replacing
         # the old always-valid placeholder that made lean lessons invisible to link monitoring.
         _LINK_REPORT_KEY: build_link_report(legacy_cards, source="lean_emission"),
+    }
+    _attach_lean_validation_reports(lesson_json, topic)
+    return lesson_json
+
+
+def _attach_lean_validation_reports(lesson_json: dict[str, Any], topic: Topic) -> None:
+    """Run the real validators on the still-default lean pipeline.
+
+    The previous implementation stamped unconditional green reports, hiding scope drift, missing practice,
+    and thin lessons from both retries and telemetry.
+    """
+    course_type = _topic_type_key(topic)
+    lesson_json["course_type"] = course_type
+    validate_and_repair_practice(lesson_json, course_type=course_type)
+    contract = build_topic_scope_contract(
+        topic=topic,
+        study_path=getattr(topic, "study_path", None),
+    )
+    lesson_json["topic_scope_contract"] = contract
+    # Lean post-processing legitimately injects adapter-grounded cards outside the LLM blueprint. Topic-quality
+    # validation handles blueprint coverage; scope validation here is responsible for content ownership.
+    scope_contract = dict(contract)
+    scope_contract["allowed_card_sequence"] = []
+    scope_report = validate_scope_adherence(lesson_json, scope_contract)
+    quality_report = validate_generated_topic(lesson_json, course_type=course_type)
+
+    substantive = course_type != "study_path_introduction"
+    has_check = bool(lesson_json.get("practice_questions")) or any(
+        isinstance(card, dict)
+        and isinstance(card.get("micro_check"), dict)
+        and str(card["micro_check"].get("prompt") or "").strip()
+        and str(card["micro_check"].get("answer") or "").strip()
+        for card in (lesson_json.get("lesson_cards") or [])
+    )
+    micro_issues = [] if (has_check or not substantive) else [
+        "Teaching lesson contains no comprehension or prediction check."
+    ]
+    lesson_json["microcheck_validation_report"] = {
+        "is_valid": not micro_issues,
+        "passed": not micro_issues,
+        "requires_regeneration": bool(micro_issues),
+        "issues": micro_issues,
+    }
+    reports = (scope_report, quality_report, lesson_json["microcheck_validation_report"])
+    combined_issues: list[Any] = []
+    for report in reports:
+        combined_issues.extend(report.get("issues") or [])
+    lesson_json["validation_report"] = {
+        "is_valid": not any(report.get("requires_regeneration") for report in reports),
+        "requires_regeneration": any(report.get("requires_regeneration") for report in reports),
+        "issues": combined_issues,
     }
 
 

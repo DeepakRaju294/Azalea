@@ -1219,6 +1219,100 @@ class ZeroMemberFamilyExpansion(unittest.TestCase):
         self.assertIn("is a PREREQUISITE, not a requirement", p)
 
 
+class PrereqDirectionalBlocking(unittest.TestCase):
+    """32nd-review fixes: the greedy 'bst' alias keyed goal 'bst traversal' as binary_search_tree, and raw
+    key-equality deleted the 'binary search trees' prereq the user asked for. Blocking is now directional
+    (_source_within_prereq): a source with extra distinctive tokens is a skill ON the prereq concept and
+    never blocks it; a source that IS the concept (plus qualifier noise) still does."""
+
+    def test_structure_prereq_survives_skill_goal(self):
+        from app.services.topic_generator import _certify_path_scope
+        intro = {"title": "Introduction to Bst Traversal", "course_type": "study_path_introduction",
+                 "topic_type": "study_path_introduction",
+                 "assumed_prerequisites": ["binary search trees"]}
+        wt = {"title": "In-Order Traversal", "course_type": "algorithm_walkthrough",
+              "topic_type": "algorithm_walkthrough", "in_scope": ["x"], "out_of_scope": [],
+              "assumed_prerequisites": []}
+        comparison = {"title": "Comparing Binary Search Tree Traversal Methods",
+                      "course_type": "compare_distinguish", "topic_type": "compare_distinguish",
+                      "in_scope": ["x"], "out_of_scope": [], "assumed_prerequisites": []}
+        out = _certify_path_scope([intro, wt, comparison], "want to learn about bst traversal")
+        kept = next(t for t in out if t["course_type"] == "study_path_introduction")
+        self.assertEqual(kept["assumed_prerequisites"], ["binary search trees"])
+
+    def test_goal_subject_prereq_still_blocked(self):
+        from app.services.topic_generator import _certify_path_scope
+        intro = {"title": "Introduction", "course_type": "study_path_introduction",
+                 "topic_type": "study_path_introduction",
+                 "assumed_prerequisites": ["binary search trees", "recursion"]}
+        wt = {"title": "Binary Search Trees", "course_type": "data_structure_operation",
+              "topic_type": "data_structure_operation", "in_scope": ["x"], "out_of_scope": [],
+              "assumed_prerequisites": []}
+        out = _certify_path_scope([intro, wt], "learn binary search trees")
+        kept = next(t for t in out if t["course_type"] == "study_path_introduction")
+        # taught topic IS the concept -> prereq blocked; unrelated 'recursion' survives
+        self.assertEqual(kept["assumed_prerequisites"], ["recursion"])
+
+    def test_qualifier_noise_prereq_still_blocked(self):
+        from app.services.topic_generator import _source_within_prereq
+        self.assertTrue(_source_within_prereq("Key Laws and Principles Governing Turbulence",
+                                              "Laws and Principles of Turbulence"))
+        self.assertFalse(_source_within_prereq("calculus", "stochastic calculus"))
+        self.assertTrue(_source_within_prereq("BSTs", "binary search trees"))
+
+    def test_aspect_phrases_never_become_foundations(self):
+        from app.services.topic_decomposition_pipeline import _cross_topic_foundations
+        topics = [
+            {"subject_key": "in_order_traversal", "title": "In-Order Traversal",
+             "in_scope": ["output characteristics", "examples of performed traversals",
+                          "conditional probability"]},
+            {"subject_key": "pre_order_traversal", "title": "Pre-Order Traversal",
+             "in_scope": ["output characteristics", "examples of performed traversals",
+                          "conditional probability"]},
+        ]
+        out = _cross_topic_foundations(topics, "learn bst traversal")
+        self.assertNotIn("output characteristics", out)
+        self.assertNotIn("examples of performed traversals", out)
+        self.assertIn("conditional probability", out)         # a real shared concept still promotes
+
+
+class TermsGroundedAgainstCode(unittest.TestCase):
+    """Key terms must not promise a data structure the canonical solution never uses (live: 'Stack' defined
+    on recursive traversal walkthroughs). A structure the code uses (queue in level-order) keeps its term."""
+
+    @staticmethod
+    def _topic(title, slug):
+        import types as _types
+        return _types.SimpleNamespace(title=title, course_type="algorithm_walkthrough",
+                                      topic_type="algorithm_walkthrough", order_index=1, study_path=None,
+                                      decomposition_metadata={"scope_plan": {"verified_example": slug}})
+
+    def _cards(self):
+        return [{"blueprint_key": "components_terms", "card_type": "definition", "points": [
+            "Stack", "  - A LIFO structure used to hold nodes during traversal.",
+            "Node", "  - A tree element holding a value and children.",
+        ]}]
+
+    def test_stack_term_dropped_on_recursive_traversal(self):
+        from app.services.lean_lesson_generator import _ground_terms_against_canonical_code
+        cards = self._cards()
+        removed = _ground_terms_against_canonical_code(cards, self._topic("In-Order Traversal", "tree_inorder"))
+        self.assertEqual(removed, 1)
+        joined = " ".join(cards[0]["points"])
+        self.assertNotIn("Stack", joined)
+        self.assertNotIn("LIFO", joined)                      # the term's sub-bullet went with it
+        self.assertIn("Node", joined)
+
+    def test_queue_term_kept_on_level_order(self):
+        from app.services.lean_lesson_generator import _ground_terms_against_canonical_code
+        cards = [{"blueprint_key": "components_terms", "card_type": "definition", "points": [
+            "Queue", "  - A FIFO structure holding nodes to visit."]}]
+        removed = _ground_terms_against_canonical_code(cards, self._topic("Level-Order Traversal",
+                                                                          "tree_levelorder"))
+        self.assertEqual(removed, 0)
+        self.assertIn("Queue", " ".join(cards[0]["points"]))
+
+
 class CoverageStubSynthesis(unittest.TestCase):
     """B.4.1 coverage repair must never surface a raw capability_id as a learner-facing title (live: a stub
     topic literally titled 'C1'), and the synthesized topic carries the capability description as its one
