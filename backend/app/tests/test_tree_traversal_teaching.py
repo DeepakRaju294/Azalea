@@ -547,14 +547,21 @@ class SameAdapterDuplicateTopics(unittest.TestCase):
     def test_non_we_centric_topic_never_claims_the_adapter_slug(self):
         # Live regression: 'Turbulence and Its Definitions' (concept_intuition — NO worked-example slot)
         # routed via the broad 'turbulence' alias, claimed reynolds_number FIRST, and shadowed the
-        # mechanism/formula topics -> the path shipped with NO worked example at all. Non-WE-centric types
-        # pass through; the first WE-centric topic keeps the verified example.
-        from app.services.topic_generator import _drop_same_adapter_duplicate_topics as dd
-        out = dd([self._t("Turbulence and Its Definitions", "concept_intuition"),
+        # mechanism/formula topics. Non-WE-centric types pass through. UPDATED CONTRACT (adapter-as-identity
+        # fix): distinct-concept topics sharing an adapter are KEPT — the certifier's claim pass gives the
+        # verified example to the topic whose subject IS the adapter's concept and withholds it on the rest,
+        # instead of this pass deleting whole topics.
+        from app.services.topic_generator import _certify_path_scope, _drop_same_adapter_duplicate_topics as dd
+        topics = [self._t("Turbulence and Its Definitions", "concept_intuition"),
                   self._t("Mechanism of Turbulent Flow", "science_mechanism"),
-                  self._t("Reynolds Number and Flow Regimes", "math_formula_method")])
-        self.assertEqual([x["title"] for x in out],
-                         ["Turbulence and Its Definitions", "Mechanism of Turbulent Flow"])
+                  self._t("Reynolds Number and Flow Regimes", "math_formula_method")]
+        out = dd(topics)
+        self.assertEqual(len(out), 3)                     # different concepts -> nothing deleted
+        certified = _certify_path_scope(out, "learn fluid turbulence")
+        plans = {t["title"]: (t.get("decomposition_metadata") or {}).get("scope_plan") or {}
+                 for t in certified}
+        self.assertEqual(plans["Reynolds Number and Flow Regimes"]["verified_example"], "reynolds_number")
+        self.assertIsNone(plans["Mechanism of Turbulent Flow"]["verified_example"])
 
 
 class OrientationOpenerRetype(unittest.TestCase):
@@ -1494,6 +1501,109 @@ class BlueprintGateKeepsGroundedCards(unittest.TestCase):
         validate_and_order_cards(lesson, {"topic_type": "science_mechanism"})
         keys = [c["blueprint_key"] for c in lesson["lesson_cards"]]
         self.assertNotIn("formula_breakdown", keys)          # the gate still filters untrusted cards
+
+
+class RequirementReconciliation(unittest.TestCase):
+    """Fixes from the 23:47 review: requirement ownership must be reconciled semantically, exclusions must
+    not restate a topic's own scope, plan-time example ownership must be authoritative in the solver, and a
+    prereq that is a taught concept plus qualifier words is circular."""
+
+    def test_semantic_coverage_prevents_duplicate_synthesis(self):
+        from app.services.topic_decomposition_pipeline import _requirement_covered_by_topics
+        req = {"requirement_id": "R2", "name": "Energy cascade and dissipation",
+               "statement": "describe how energy transfers from large eddies to smaller scales before "
+                            "viscous dissipation removes it"}
+        topic = {"title": "Energy Transfer in Turbulent Flows", "subject_key": "energy_transfer",
+                 "in_scope": ["energy transfer in turbulence", "large eddies and small scales",
+                              "viscous dissipation"]}
+        self.assertTrue(_requirement_covered_by_topics(req, [topic]))
+        unrelated = {"title": "Flow Regimes and Transition", "subject_key": "flow_regimes",
+                     "in_scope": ["laminar vs turbulent", "critical thresholds"]}
+        self.assertFalse(_requirement_covered_by_topics(req, [unrelated]))
+
+    def test_scope_out_backfill_skips_own_content_rephrased(self):
+        from app.services.topic_generator import _certify_path_scope
+        energy = {"title": "Energy Transfer in Turbulent Flows", "course_type": "science_mechanism",
+                  "topic_type": "science_mechanism", "out_of_scope": [],
+                  "in_scope": ["energy transfer in turbulence", "large eddies and small scales",
+                               "viscous dissipation"]}
+        synth = {"title": "Energy Transfer Mechanisms", "course_type": "science_mechanism",
+                 "topic_type": "science_mechanism", "out_of_scope": [],
+                 "in_scope": ["describe how energy transfers from large eddies to smaller scales before "
+                              "viscous dissipation removes it"]}
+        regimes = {"title": "Flow Regimes", "course_type": "science_mechanism",
+                   "topic_type": "science_mechanism", "out_of_scope": [],
+                   "in_scope": ["laminar vs turbulent classification"]}
+        out = _certify_path_scope([energy, synth, regimes], "learn fluid turbulence")
+        by = {t["title"]: t for t in out}
+        # the sentence-level restatement of energy's own scope is NOT copied into its exclusions
+        self.assertFalse(any("energy transfers from large eddies" in s
+                             for s in by["Energy Transfer in Turbulent Flows"]["out_of_scope"]))
+        # genuinely foreign sibling content still is
+        self.assertTrue(any("laminar" in s
+                            for s in by["Energy Transfer in Turbulent Flows"]["out_of_scope"]))
+
+    def test_solver_honors_plan_withhold_and_mismatch(self):
+        from app.services.examples.trace_pipeline import solve_trace_pipeline
+        withheld = {"title": "Observable Consequences of Turbulence", "topic_type": "science_mechanism",
+                    "course_type": "science_mechanism", "id": "t1",
+                    "decomposition_metadata": {"scope_plan": {
+                        "verified_example": None, "we_policy": "withhold_fabricated",
+                        "we_deduped_shared_adapter": True}}}
+        self.assertIsNone(solve_trace_pipeline(withheld))     # plan says no adapter -> no trace WE
+        mismatched = {"title": "Turbulence", "topic_type": "science_mechanism",
+                      "course_type": "science_mechanism", "id": "t2",
+                      "decomposition_metadata": {"scope_plan": {
+                          "verified_example": "kinetic_energy", "we_policy": "verified"}}}
+        self.assertIsNone(solve_trace_pipeline(mismatched))   # routed reynolds != planned kinetic_energy
+        planned = {"title": "Turbulence", "topic_type": "science_mechanism",
+                   "course_type": "science_mechanism", "id": "t3",
+                   "decomposition_metadata": {"scope_plan": {
+                       "verified_example": "reynolds_number", "we_policy": "verified"}}}
+        sol = solve_trace_pipeline(planned)
+        self.assertIsNotNone(sol)                             # matching plan solves as before
+
+    def test_enforcement_strips_deduped_trace_backed_duplicate(self):
+        from app.services.examples.handoff import enforce_example_plan
+        we = {"blueprint_key": "worked_example", "card_type": "worked_example", "title": "Step",
+              "metadata": {"trace_backed": True}}
+        lesson = {"lesson_cards": [{"blueprint_key": "background", "card_type": "purpose_context"}, we]}
+        topic = {"title": "Observable Consequences", "decomposition_metadata": {"scope_plan": {
+            "we_policy": "withhold_fabricated", "we_deduped_shared_adapter": True}}}
+        enforce_example_plan(lesson, topic)
+        keys = [c["blueprint_key"] for c in lesson["lesson_cards"]]
+        self.assertNotIn("worked_example", keys)              # verified DUPLICATE is stripped
+        # without the dedup stamp, trace-backed content is still protected (stale-plan case)
+        lesson2 = {"lesson_cards": [dict(we)]}
+        topic2 = {"title": "T", "decomposition_metadata": {"scope_plan": {
+            "we_policy": "withhold_fabricated"}}}
+        enforce_example_plan(lesson2, topic2)
+        self.assertEqual(len(lesson2["lesson_cards"]), 1)
+
+    def test_superset_prereq_of_taught_topic_blocked(self):
+        from app.services.topic_generator import _certify_path_scope
+        laws = {"title": "Laws and Principles of Turbulence", "course_type": "science_mechanism",
+                "topic_type": "science_mechanism", "in_scope": ["x"], "out_of_scope": [],
+                "assumed_prerequisites": []}
+        intro = {"title": "Introduction to Fluid Turbulence", "course_type": "study_path_introduction",
+                 "topic_type": "study_path_introduction", "in_scope": [], "out_of_scope": [],
+                 "assumed_prerequisites": ["Key Laws and Principles Governing Turbulence",
+                                           "fluid dynamics"]}
+        out = _certify_path_scope([intro, laws], "learn fluid turbulence")
+        intro_out = next(t for t in out if t["course_type"] == "study_path_introduction")
+        self.assertEqual(intro_out["assumed_prerequisites"], ["fluid dynamics"])
+
+    def test_adapter_claim_prefers_regime_shape_over_alias_matched_mechanism(self):
+        from app.services.topic_generator import _certify_path_scope
+        mech = {"title": "Physical Characteristics of Turbulent Flows", "course_type": "science_mechanism",
+                "topic_type": "science_mechanism", "in_scope": ["chaotic behavior"], "out_of_scope": []}
+        regime = {"title": "Flow Regimes and Transition", "course_type": "science_mechanism",
+                  "topic_type": "science_mechanism", "in_scope": ["laminar vs turbulent"],
+                  "out_of_scope": []}
+        out = _certify_path_scope([mech, regime], "learn fluid turbulence")
+        by = {t["title"]: (t.get("decomposition_metadata") or {}).get("scope_plan") or {} for t in out}
+        self.assertIsNone(by["Physical Characteristics of Turbulent Flows"]["verified_example"])
+        self.assertEqual(by["Flow Regimes and Transition"]["verified_example"], "reynolds_number")
 
 
 if __name__ == "__main__":

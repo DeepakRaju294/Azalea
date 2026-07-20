@@ -142,7 +142,7 @@ def _reynolds_interpretation(env: dict) -> str | None:
 REYNOLDS_NUMBER = FormulaSpec(
     slug="reynolds_number", title="Reynolds number and flow regime", family="physics",
     aliases=["reynolds number", "reynolds", "fluid turbulence", "turbulent flow", "turbulence",
-             "laminar and turbulent", "laminar or turbulent", "flow regime"],
+             "laminar and turbulent", "laminar or turbulent", "flow regime", "flow regimes"],
     # TURBULENCE MODELING topics (k-epsilon, LES, RANS closures) must NOT route here: a 'Turbulence Models'
     # topic (scope: k-epsilon, LES) shipped a VERIFIED-but-IRRELEVANT Re calculation — worse than unverified,
     # because the verification badge lends trust to an example that does not teach the topic's declared scope.

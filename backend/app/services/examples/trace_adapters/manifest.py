@@ -6,6 +6,7 @@ readable for humans; THIS is what code enforces — `manifest_gaps()` cross-chec
 so an adapter cannot ship without a complete manifest entry, and the manifest cannot name a phantom adapter."""
 from __future__ import annotations
 
+import re as _re
 from typing import Any, Optional
 
 # The structural types (ADAPTER_DEVELOPMENT_SPEC §2). T2 = "greedy frontier update" (frontier/relaxation, not
@@ -480,8 +481,17 @@ def _rule_hits(text: str, rule: dict[str, Any]) -> bool:
         return False
     if not all(a in stripped for a in rule.get("all", [])):
         return False
-    if any(g in text for g in rule.get("not", [])):
-        return False
+    # `not` guards: multi-word/long guards match as substrings; SHORT single-token guards (acronyms like
+    # "les"/"rans") match as WHOLE WORDS only — as substrings they fire inside ordinary words and silently
+    # veto legitimate routes (live: "rans" ⊂ "tRANSition" blocked 'Flow Regimes and Transition' from the
+    # reynolds adapter; "les" ⊂ "principLES" did the same for a laws topic).
+    words = set(_re.findall(r"[a-z0-9]+", text))
+    for g in rule.get("not", []):
+        if " " in g or len(g) > 4:
+            if g in text:
+                return False
+        elif g in words or f"{g}s" in words or f"{g}es" in words:   # word or its plural ("tree"/"trees")
+            return False
     return True
 
 

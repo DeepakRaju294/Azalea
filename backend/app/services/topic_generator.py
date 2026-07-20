@@ -294,12 +294,17 @@ def _same_concept_evidence(a: str, b: str) -> bool:
 
     Adapter-derived keys make this necessary: broad routing aliases give UNRELATED siblings the same key
     ('Defining Fluid Turbulence' / 'Laminar vs Turbulent Flow' / 'Reynolds Number' all route
-    reynolds_number), and collapsing on the key alone silently deleted planned topics. Evidence = a shared
-    content token (physics of turbulence / turbulence physics), identical despaced token strings
-    (quick sort / quicksort), or acronym equivalence (BFS / breadth-first search)."""
+    reynolds_number), and collapsing on the key alone silently deleted planned topics. Evidence = TWO+ shared
+    content tokens (physics of turbulence / turbulence physics) or one-sided containment (turbulence /
+    physics of turbulence) — a SINGLE shared generic token ('flow') is not evidence ('Energy Transfer in
+    Turbulent Flows' vs 'Flow Regimes and Transition' share only 'flow' and are different lessons) — plus
+    identical despaced token strings (quick sort / quicksort) and acronym equivalence (BFS / breadth-first
+    search)."""
     ta, da = _subject_tokens(a)
     tb, db = _subject_tokens(b)
-    if ta & tb:
+    if len(ta & tb) >= 2:
+        return True
+    if ta and tb and (ta <= tb or tb <= ta):
         return True
     if da and da == db:
         return True
@@ -392,7 +397,7 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
     # in every lesson. The claim PREFERS the topic whose own subject IS the adapter's concept ('Reynolds
     # Number' beats an alias-matched 'Defining Fluid Turbulence'), else the first routed topic.
     we_claims: dict[str, int] = {}
-    we_claim_exact: dict[str, bool] = {}
+    we_claim_exact: dict[str, int] = {}   # claim score: 2 exact-subject, 1 quantitative/regime shape, 0 alias
     we_routed: dict[int, str] = {}
     for i, t in enumerate(topics):
         tt = str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
@@ -407,11 +412,17 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
         if not slug:
             continue
         we_routed[i] = slug
+        # claim preference: 2 = the topic's own subject IS the adapter's concept ('Reynolds Number');
+        # 1 = a quantitative/regime-shaped lesson (the calculation is its point); 0 = alias-matched
+        # mechanism/overview lesson. Ties keep the earliest topic. (Live: 'Physical Characteristics of
+        # Turbulent Flows' — a mechanism lesson — outclaimed 'Flow Regimes and Transition' purely by order.)
         exact = _same_concept_evidence(str(t.get("subject_key") or t.get("title") or ""),
                                        slug.replace("_", " "))
-        if slug not in we_claims or (exact and not we_claim_exact[slug]):
+        shape = _science_shape(t, tt, slug)
+        score = 2 if exact else (1 if shape in ("quantitative_relationship", "regime") else 0)
+        if slug not in we_claims or score > we_claim_exact[slug]:
             we_claims[slug] = i
-            we_claim_exact[slug] = exact
+            we_claim_exact[slug] = score
     certified: list[dict[str, Any]] = []
     taught_keys: set[str] = set()
     identities: list[dict[str, str]] = []
@@ -524,15 +535,25 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
         if ttype == "study_path_introduction" or (topic.get("out_of_scope") or []):
             continue
         own = {" ".join(str(s).lower().split()) for s in (topic.get("in_scope") or [])}
+        # token view of the topic's OWN content, so a sibling commitment that merely REPHRASES it is never
+        # copied in as an exclusion (live: a topic's scope_out contained a sentence-level restatement of its
+        # own scope_in — the lesson was told its own subject was out of scope)
+        own_tokens: set[str] = set()
+        for s in [str(topic.get("title") or ""), *[str(x) for x in (topic.get("in_scope") or [])]]:
+            own_tokens |= _subject_tokens(s)[0]
         sibling_scope: list[str] = []
         for other in certified:
             if other is topic:
                 continue
             for item in other.get("in_scope") or []:
                 norm = " ".join(str(item).lower().split())
-                if norm and norm not in own and norm not in {" ".join(s.lower().split())
-                                                             for s in sibling_scope}:
-                    sibling_scope.append(str(item).strip())
+                if not norm or norm in own or norm in {" ".join(s.lower().split()) for s in sibling_scope}:
+                    continue
+                item_tokens = _subject_tokens(str(item))[0]
+                overlap = len(item_tokens & own_tokens)
+                if item_tokens and overlap >= max(2, (len(item_tokens) + 1) // 2):
+                    continue                               # semantically the topic's own content
+                sibling_scope.append(str(item).strip())
         if sibling_scope:
             topic["out_of_scope"] = sibling_scope[:6]
             plan = ((topic.get("decomposition_metadata") or {}).get("scope_plan") or {})
@@ -541,6 +562,13 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
                 plan["scope_out_backfilled"] = True
 
     blocked_prereq_keys = taught_keys | ({goal_key} if goal_key else set())
+    # Token views of the taught/goal keys, so a prereq that is a taught concept PLUS qualifier words is also
+    # blocked (live circular prereq: 'Key Laws and Principles Governing Turbulence' survived key-equality
+    # against the taught 'Laws and Principles of Turbulence' because of the extra 'governing'/'key' tokens).
+    # Superset direction ONLY — a broader prereq ('calculus' before 'stochastic calculus') stays legitimate —
+    # and multi-token taught keys only, so a single shared word can never block.
+    blocked_token_sets = [frozenset(k.split("_")) for k in blocked_prereq_keys]
+    blocked_token_sets = [s for s in blocked_token_sets if len(s) >= 2]
     for topic in certified:
         ttype = str(topic.get("course_type") or topic.get("topic_type") or "").strip().lower()
         prereqs: list[Any] = []
@@ -548,6 +576,11 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
         for prereq in topic.get("assumed_prerequisites") or []:
             prereq_key = _canonical_concept_key(prereq)
             if not prereq_key or prereq_key in blocked_prereq_keys or prereq_key in seen_prereq_keys:
+                continue
+            prereq_tokens = frozenset(prereq_key.split("_"))
+            if any(ts <= prereq_tokens for ts in blocked_token_sets):
+                _log.info("scope certification: dropped prereq %r — contains taught concept key %s",
+                          prereq, prereq_key)
                 continue
             prereqs.append(prereq)
             seen_prereq_keys.add(prereq_key)

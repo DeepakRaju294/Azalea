@@ -667,7 +667,24 @@ def solve_trace_pipeline(topic: dict[str, Any], *, format_fn: Optional[FormatFn]
     fmt = format_fn or default_format_fn
     title = str(topic.get("title") or topic.get("name") or topic.get("id") or "?")
     ctype = str(topic.get("topic_type") or topic.get("course_type") or "?")
+    # PLAN-AUTHORITATIVE GATE: the certified scope plan resolved at PLAN time which adapter — if any — backs
+    # this topic's worked example. Routing here regardless shipped a TRACE-BACKED duplicate that the withhold
+    # enforcement then protected (live: 'Observable Consequences of Turbulence', we_policy=withhold +
+    # we_deduped_shared_adapter, still got the sibling's Reynolds calculation). Unstamped topics unchanged.
+    scope_plan = ((topic.get("decomposition_metadata") or {}).get("scope_plan") or {}) \
+        if isinstance(topic.get("decomposition_metadata"), dict) else {}
+    planned_slug = scope_plan.get("verified_example")
+    if scope_plan and not planned_slug:
+        _log.info("WORKED-EXAMPLE ADAPTER: topic=%r type=%s -> plan says NO adapter (we_policy=%s) — "
+                  "adapter path skipped", title, ctype, scope_plan.get("we_policy"))
+        _gr.we(adapter=None, tp_attempted=False, tp_reason="plan_withholds_adapter")
+        return None
     adapter = route_adapter(topic)
+    if adapter is not None and planned_slug and getattr(adapter, "slug", None) != planned_slug:
+        _log.info("WORKED-EXAMPLE ADAPTER: topic=%r routed %s but plan certifies %s — adapter path skipped",
+                  title, getattr(adapter, "slug", None), planned_slug)
+        _gr.we(adapter=None, tp_attempted=False, tp_reason="plan_adapter_mismatch")
+        return None
     if adapter is not None:                                        # deterministic path (HARD guarantee)
         _log.info("WORKED-EXAMPLE ADAPTER: topic=%r type=%s -> adapter=%s (verified trace path)",
                   title, ctype, adapter.slug)

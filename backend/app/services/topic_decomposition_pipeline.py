@@ -797,6 +797,48 @@ def _goal_requirements(goal: str | None, chunks_text: str, fn: ModelFn) -> list[
         return []
 
 
+_REQ_STOPWORDS = frozenset({
+    "the", "a", "an", "of", "in", "on", "to", "and", "or", "for", "with", "from", "into", "across",
+    "between", "before", "after", "it", "its", "their", "how", "what", "why", "when", "such", "as",
+    "is", "are", "be", "can", "may", "removes", "remove", "them",
+    # requirement-statement verbs — they describe the ASK, not the content
+    "describe", "explain", "distinguish", "identify", "connect", "understand", "define", "apply",
+})
+
+
+def _req_tokens(text: str) -> set[str]:
+    """Content tokens for semantic requirement/scope matching: lowercase alnum words minus stopwords, with a
+    crude plural strip so 'transfers'/'eddies' meet 'transfer'/'eddy' forms from the other side."""
+    out: set[str] = set()
+    for w in re.findall(r"[a-z0-9]+", str(text or "").lower()):
+        if w in _REQ_STOPWORDS or len(w) < 3:
+            continue
+        for suf in ("ies", "es", "s"):
+            if w.endswith(suf) and len(w) - len(suf) >= 3:
+                w = w[: -len(suf)] + ("y" if suf == "ies" else "")
+                break
+        out.add(w)
+    return out
+
+
+def _requirement_covered_by_topics(req: dict[str, Any], raw_topics: list[dict[str, Any]]) -> bool:
+    """SEMANTIC ownership fallback: a requirement is covered when an existing topic's title + scope already
+    carries its content, even though the model forgot the requirement ID (live: 'Energy Transfer in Turbulent
+    Flows' fully covered the energy-cascade requirement, but ID-only checking synthesized a duplicate 'Energy
+    Transfer Mechanisms' topic on top of it). Deterministic token overlap — ≥3 shared content tokens, or full
+    containment of a short requirement."""
+    rt = _req_tokens(f"{req.get('name') or ''} {req.get('statement') or ''}")
+    if not rt:
+        return False
+    for t in raw_topics:
+        tt = _req_tokens(" ".join([str(t.get("title") or ""), str(t.get("subject_key") or ""),
+                                   *[str(s) for s in (t.get("in_scope") or [])]]))
+        overlap = rt & tt
+        if len(overlap) >= 3 or (len(rt) <= 3 and len(overlap) >= 2):
+            return True
+    return False
+
+
 def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[dict[str, Any]],
                                   requirements: list[dict[str, Any]]) -> None:
     """Deterministic requirement-coverage check (the anti-self-referential validator): a core requirement no
@@ -814,7 +856,16 @@ def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[di
     unowned: list[str] = []
     for r in requirements:
         rid = r["requirement_id"]
-        r["owned"] = rid in owned
+        if rid in owned:
+            r["owned"] = "declared"
+        elif _requirement_covered_by_topics(r, raw_topics):
+            # the model forgot the ID but an existing topic's scope already carries the content — owned,
+            # never synthesize a duplicate on top of it
+            r["owned"] = "semantic"
+            _log.info("goal requirements: %s covered semantically by an existing topic's scope "
+                      "(no covers_requirements declaration)", rid)
+        else:
+            r["owned"] = False
         if r["owned"] or r.get("kind") != "core":
             continue
         unowned.append(rid)

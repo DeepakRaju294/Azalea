@@ -249,6 +249,10 @@ def _synthesize_topic_for_capability(cid: str, cap: dict[str, Any]) -> dict[str,
         # the capability's own description is the one content commitment we KNOW this topic owns
         "in_scope": [description] if description else [],
         "learner_outcome": description or None,
+        # a real learner-facing purpose — without it, the mapping falls through to the synthetic
+        # "Reach the capability: <X>" default, which leaked into the intro's roadmap card (live)
+        "primary_capability": str(cap.get("primary_capability") or title or "").strip() or None,
+        "purpose": description or None,
         "provenance": {"synthesized": True, "reason": "coverage_repair"},
     }
 

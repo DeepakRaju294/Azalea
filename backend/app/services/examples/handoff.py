@@ -610,8 +610,11 @@ def enforce_example_plan(lesson_json: dict[str, Any], topic: dict[str, Any]) -> 
               and str(c.get("blueprint_key") or c.get("card_type") or "").lower() == "worked_example"]
         if not we:
             return
-        if any((c.get("metadata") or {}).get("trace_backed") for c in we):
+        deduped = bool(((meta or {}).get("scope_plan") or {}).get("we_deduped_shared_adapter"))
+        if not deduped and any((c.get("metadata") or {}).get("trace_backed") for c in we):
             return                                       # verified content — the plan is stale, keep it
+        # we_deduped_shared_adapter: a sibling OWNS this adapter's exercise, so trace-backed content here is
+        # a verified DUPLICATE, not a stale plan — strip it like any other withheld example.
         from app.services.examples.solver import _strip_worked_example_cards
 
         removed = _strip_worked_example_cards(cards)
