@@ -515,6 +515,32 @@ class ExamplePlanCertification(unittest.TestCase):
                                   {"scope_plan": {"we_policy": "verified"}}})
         self.assertEqual(len(l4["lesson_cards"]), 2)
 
+    def test_conceptual_mechanism_gets_the_same_strip_as_withhold_fabricated(self):
+        # 34th review live gap: 'Energy Transfer in Turbulence' stamped conceptual_mechanism shipped an
+        # essay chopped into 6 numbered steps (Step 4 'illustrate using a diagram' with no diagram, Step 5
+        # jumping to a SIBLING topic's aviation content) — no lesson-side enforcement was reading this
+        # policy at all. Nothing produces trace_backed content for conceptual_mechanism today, so it gets
+        # the identical fabrication guard as withhold_fabricated.
+        from app.services.examples.handoff import enforce_example_plan
+
+        def lesson(cards):
+            return {"lesson_cards": list(cards)}
+
+        def we(tb=False):
+            return {"blueprint_key": "worked_example", "card_type": "worked_example", "title": "Step",
+                    "metadata": ({"trace_backed": True} if tb else {})}
+
+        bg = {"blueprint_key": "background", "card_type": "purpose_context", "title": "BG"}
+        conceptual = {"title": "Energy Transfer", "decomposition_metadata":
+                     {"scope_plan": {"we_policy": "conceptual_mechanism"}}}
+        l1 = lesson([bg, we(), we(), we()])
+        enforce_example_plan(l1, conceptual)
+        self.assertEqual([c["blueprint_key"] for c in l1["lesson_cards"]], ["background"])
+        self.assertEqual(l1["metadata"]["worked_example_withheld"], "no_verified_example_planned")
+        l2 = lesson([bg, we(True), we()])                     # a trace-backed card still survives
+        enforce_example_plan(l2, conceptual)
+        self.assertEqual(sum(c["blueprint_key"] == "worked_example" for c in l2["lesson_cards"]), 2)
+
 
 class SameAdapterDuplicateTopics(unittest.TestCase):
     """Live (depreciation path): 'Straight-Line Depreciation Formula' AND 'Applying Straight-Line
@@ -1998,6 +2024,64 @@ class DecisionTraceIntegration(unittest.TestCase):
         survivor_trace = out[0].get("decomposition_metadata", {}).get("decision_trace", [])
         self.assertTrue(any(e["stage"] == "identity.absorbed_duplicate" for e in survivor_trace),
                         survivor_trace)
+
+
+class FoundationAdapterShieldGuard(unittest.TestCase):
+    """34th review (turbulence 23:12): the model tagged 'Reynolds Number' content_role=foundation, and the
+    old fold blindly trusted that tag — 'Flow Regimes' then claimed the reynolds_number adapter and taught
+    the full formula/worked-example/interpretation, so the intro told the learner to go learn Reynolds
+    number on a SEPARATE path first, immediately before the very next topic taught it from scratch. A
+    foundation-tagged topic that routes to the SAME adapter as a kept teaching topic is dropped outright —
+    verified empirically that neither prereq-folding NOR keeping it as a standalone topic is safe: concept
+    identity is intentionally adapter-independent, so it never gets caught by same-adapter/near-duplicate
+    dedup passes downstream (concept_intuition isn't WE-centric)."""
+
+    @staticmethod
+    def _plan(topics, reqs=None):
+        return {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": topics}, (reqs or {"requirements": []})
+
+    def test_adapter_shielded_foundation_dropped_not_folded_as_prereq(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        flow = {"topic_id": "t1", "capability_id": "t1", "subject_key": "flow_regimes",
+                "primary_action": "understand", "content_role": "calculation",
+                "topic_type": "science_mechanism", "title": "Flow Regimes", "unit_title": "u", "purpose": "p",
+                "in_scope": ["laminar", "turbulent"], "basis": "goal"}
+        reynolds = {"topic_id": "t2", "capability_id": "t2", "subject_key": "reynolds_number",
+                   "primary_action": "understand", "content_role": "foundation",
+                   "topic_type": "concept_intuition", "title": "Reynolds Number", "unit_title": "u",
+                   "purpose": "p", "in_scope": ["basics"], "basis": "goal"}
+        plan, reqs = self._plan([flow, reynolds])
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+        topics = generate_decomposed_topics("want to learn about fluid turbulence", "s", model_fn=fn,
+                                            coding_follow_ups=False)
+        titles = [t["title"] for t in topics]
+        self.assertIn("Flow Regimes", titles)
+        self.assertNotIn("Reynolds Number", titles)            # dropped, not left as a redundant topic
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        # never sent to a separate 'go learn Reynolds number first' path
+        self.assertNotIn("Reynolds Number", intro.get("assumed_prerequisites") or [])
+
+    def test_unrelated_foundation_still_folds_normally(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        flow = {"topic_id": "t1", "capability_id": "t1", "subject_key": "flow_regimes",
+                "primary_action": "understand", "content_role": "calculation",
+                "topic_type": "science_mechanism", "title": "Flow Regimes", "unit_title": "u", "purpose": "p",
+                "in_scope": ["laminar", "turbulent"], "basis": "goal"}
+        unrelated = {"topic_id": "t2", "capability_id": "t2", "subject_key": "vector_calculus",
+                    "primary_action": "understand", "content_role": "foundation",
+                    "topic_type": "concept_intuition", "title": "Vector Calculus", "unit_title": "u",
+                    "purpose": "p", "in_scope": ["basics"], "basis": "goal"}
+        plan, reqs = self._plan([flow, unrelated])
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+        topics = generate_decomposed_topics("want to learn about fluid turbulence", "s", model_fn=fn,
+                                            coding_follow_ups=False)
+        titles = [t["title"] for t in topics]
+        self.assertNotIn("Vector Calculus", titles)            # still folded away, as before
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        self.assertIn("Vector Calculus", intro.get("assumed_prerequisites") or [])  # legitimately external
 
 
 if __name__ == "__main__":

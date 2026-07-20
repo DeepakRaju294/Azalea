@@ -1225,10 +1225,46 @@ def generate_decomposed_topics(
     # generic wrapping ("Combinatorial Principles" on a combinatorial-analysis path) — folding it would turn
     # the path's own first units into a self-referencing prereq link (live failure: the path collapsed to
     # Binomial+Applications with everything else "assumed"). Both stay taught.
+    # ADAPTER-IDENTITY GUARD: the model's own content_role tag is not the last word — a topic it tagged
+    # "foundation" can still be the EXACT concept a kept real-concept topic's verified worked example is
+    # about (live: the model tagged 'Reynolds Number' foundation, then 'Flow Regimes' got the Reynolds
+    # adapter and taught the full formula/worked-example/interpretation — so the intro told the learner to
+    # go learn Reynolds number on a SEPARATE path first, then the very next topic taught it from scratch).
+    # A foundation topic whose title routes to the SAME adapter as a kept topic is not external background;
+    # it is content this path is about to teach — exclude it from folding (the same-adapter dedup pass
+    # downstream then collapses it as a genuine duplicate, same as any other same-adapter pair).
+    def _adapter_slug(t: dict[str, Any]) -> str | None:
+        try:
+            from app.services.examples.trace_pipeline import route_adapter
+            a = route_adapter({"title": str(t.get("title") or ""),
+                               "topic_type": str(t.get("topic_type") or "")})
+            return getattr(a, "slug", None)
+        except Exception:  # noqa: BLE001 — routing must never break decomposition
+            return None
+
     foundations = [t for t in topics_out
                    if not _is_opener(t) and _role(t) == "foundation" and not _goal_names_topic(t, goal)
                    and not _is_circular_prereq(str(t.get("title") or t.get("subject_key") or ""), goal)]
     real_concepts = [t for t in topics_out if not _is_opener(t) and _role(t) != "foundation"]
+    real_concept_adapters = {s for s in (_adapter_slug(t) for t in real_concepts) if s}
+    _redundant_by_adapter = [t for t in foundations if _adapter_slug(t) in real_concept_adapters]
+    if _redundant_by_adapter:
+        # DROP entirely — neither folded to an external prereq NOR kept as its own topic. Concept identity is
+        # intentionally adapter-INDEPENDENT (a broad topic must never be renamed after one narrow formula), so
+        # this survives as a separate topic with no title/token overlap with its sibling and never gets caught
+        # by the later same-adapter/near-duplicate dedup passes (concept_intuition isn't WE-centric) — verified
+        # empirically. Its content is fully subsumed by the sibling's adapter-grounded worked example.
+        drop_ids = {id(t) for t in _redundant_by_adapter}
+        topics_out = [t for t in topics_out if id(t) not in drop_ids]
+        foundations = [t for t in foundations if t not in _redundant_by_adapter]
+        record_path_decision(
+            path_plan, "topics.foundation_dropped_redundant_with_adapter",
+            f"dropped {[str(t.get('title')) for t in _redundant_by_adapter]}",
+            "the model tagged these content_role=foundation, but they route to the SAME adapter as a kept "
+            "teaching topic — that topic's worked example already teaches this exact concept in full "
+            "(formula, calculation, interpretation), so this is neither external prerequisite material "
+            "(it would tell the learner to 'go learn X first' right before X is taught from scratch) nor "
+            "a needed standalone topic — dropped rather than folded or kept")
     dropped_prereqs: list[str] = []
     if foundations and real_concepts:
         dropped_prereqs = [str(t.get("title") or _subject_phrase(str(t.get("subject_key") or ""))).strip()

@@ -610,7 +610,14 @@ def enforce_example_plan(lesson_json: dict[str, Any], topic: dict[str, Any]) -> 
     try:
         meta = topic.get("decomposition_metadata") if isinstance(topic, dict) else None
         policy = ((meta or {}).get("scope_plan") or {}).get("we_policy")
-        if policy != "withhold_fabricated":
+        # conceptual_mechanism gets the SAME strip as withhold_fabricated: it means "no verified adapter
+        # backs this topic" exactly like withhold_fabricated does — the distinct label exists for a future
+        # traced-qualitative-reasoning system, but no such system exists yet, so nothing currently produces
+        # trace_backed content for it. Without this, a science_mechanism topic with no adapter shipped the
+        # exact essay-chopped-into-numbered-steps pattern the whole withhold policy was built to eliminate
+        # (live: 'Energy Transfer in Turbulence' — Step 4 'illustrate using a diagram' with no diagram,
+        # Step 5 jumping to a SIBLING topic's aviation content).
+        if policy not in ("withhold_fabricated", "conceptual_mechanism"):
             return
         cards = lesson_json.get("lesson_cards")
         if not isinstance(cards, list):
