@@ -558,6 +558,9 @@ def _fold_prereq_topics(topics_out: list[dict[str, Any]], prereq_names: list[str
     for t in teaching:
         if _goal_names_topic(t, goal):
             continue                                    # the goal names it → it stays a taught topic
+        if str(t.get("basis") or "") == "goal_requirement":
+            continue                                    # a curriculum REQUIREMENT is in-path by definition —
+                                                        # a prereq declaration can never fold it away
         if _topic_teaches_prereq(t, prereq_names):
             remove_ids.add(id(t))
             removed.append(str(t.get("title") or ""))
@@ -660,6 +663,11 @@ def _to_legacy(topic: dict[str, Any], title_by_id: dict[str, str], fallback_orde
             # carry the intro's structured prereq glosses (name->one-line "what it is") so the lean generator
             # can render "name — gloss" bullets and thread the gloss into the open_study_path popup.
             **_carried_meta,
+            # requirements-first audit trail (intro only): what the curriculum call demanded + how each
+            # requirement was owned (declared/semantic/False) — without this, a collapse like "one topic
+            # claimed everything" is undiagnosable from the persisted path.
+            **({"goal_requirements": topic.get("goal_requirements")}
+               if topic.get("goal_requirements") else {}),
         },
     }
 
@@ -834,11 +842,12 @@ def _req_tokens(text: str) -> set[str]:
 
 
 def _requirement_covered_by_topics(req: dict[str, Any], raw_topics: list[dict[str, Any]]) -> bool:
-    """SEMANTIC ownership fallback: a requirement is covered when an existing topic's title + scope already
-    carries its content, even though the model forgot the requirement ID (live: 'Energy Transfer in Turbulent
-    Flows' fully covered the energy-cascade requirement, but ID-only checking synthesized a duplicate 'Energy
-    Transfer Mechanisms' topic on top of it). Deterministic token overlap — ≥3 shared content tokens, or full
-    containment of a short requirement."""
+    """SEMANTIC ownership: a requirement is covered when a topic's title + scope actually carries its content.
+    Used two ways: as the fallback when the model forgot the requirement ID (live: 'Energy Transfer in
+    Turbulent Flows' fully covered the energy-cascade requirement, but ID-only checking synthesized a
+    duplicate on top of it), and as VERIFICATION of a declared covers_requirements claim (live: the model
+    claimed everything on one topic and the path collapsed — a declaration is a signal, not proof).
+    Deterministic token overlap — ≥3 shared content tokens, or near-full containment of a short requirement."""
     rt = _req_tokens(f"{req.get('name') or ''} {req.get('statement') or ''}")
     if not rt:
         return False
@@ -859,24 +868,28 @@ def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[di
     requirements + ownership for telemetry/audit."""
     if not requirements:
         return
-    owned: set[str] = set()
+    declared: dict[str, list[dict[str, Any]]] = {}
     for t in raw_topics:
         for rid in (t.get("covers_requirements") or []):
-            owned.add(str(rid).strip())
+            declared.setdefault(str(rid).strip(), []).append(t)
     caps = path_plan.setdefault("required_capabilities", [])
     cap_ids = {str(c.get("capability_id")) for c in caps if isinstance(c, dict)}
     unowned: list[str] = []
     for r in requirements:
         rid = r["requirement_id"]
-        if rid in owned:
+        declaring = declared.get(rid) or []
+        if declaring and _requirement_covered_by_topics(r, declaring):
             r["owned"] = "declared"
         elif _requirement_covered_by_topics(r, raw_topics):
-            # the model forgot the ID but an existing topic's scope already carries the content — owned,
-            # never synthesize a duplicate on top of it
+            # covers the forgot-the-ID case AND the declared-but-by-the-wrong-topic case — some topic's
+            # scope genuinely carries the content, so never synthesize a duplicate on top of it
             r["owned"] = "semantic"
-            _log.info("goal requirements: %s covered semantically by an existing topic's scope "
-                      "(no covers_requirements declaration)", rid)
+            _log.info("goal requirements: %s covered semantically by an existing topic's scope", rid)
         else:
+            if declaring:
+                _log.info("goal requirements: %s DECLARED by %r but the topic's scope does not carry it — "
+                          "treating as unowned (a declaration is a signal, not proof)",
+                          rid, str(declaring[0].get("title") or "?"))
             r["owned"] = False
         if r["owned"] or r.get("kind") != "core":
             continue
@@ -1083,6 +1096,14 @@ def generate_decomposed_topics(
         intro["order_index"] = 0
         topics_out = [intro, *topics_out]
         _log.info("topic_decomposition: synthesized orientation intro (LLM emitted none)")
+
+    # Requirements-first audit trail: persist the curriculum call's requirements + per-requirement ownership
+    # on the opener's metadata, so a collapsed path is diagnosable from the DB (live: a one-topic path where
+    # the model claimed every requirement — nothing recorded what was demanded vs owned).
+    if path_plan.get("goal_requirements"):
+        opener = next((t for t in topics_out if _is_opener(t)), None)
+        if opener is not None:
+            opener["goal_requirements"] = path_plan["goal_requirements"]
 
     # The intro's prerequisites are the SINGLE structured source of truth for its prerequisites card and the
     # prereq links: the LLM's explicit path_plan.assumed_prerequisites (clean concept names + glosses) plus
