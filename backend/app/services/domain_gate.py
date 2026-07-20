@@ -189,8 +189,22 @@ def _normalize_title(title: str, target_type: str) -> str:
 def rewrite_topic_contract(topic: dict[str, Any], target_type: str, domain: str, *, reason: str) -> dict[str, Any]:
     """Deterministically rewrite the FULL topic contract on a remap (never just `course_type`). Preserves the
     original for audit; records `rewrite_reason` / `rewrite_version`."""
+    from app.core.decision_trace import record_topic_decision
+
     original_title = str(topic.get("title") or "")
     original_role = str(topic.get("content_role") or "")
+    original_type = _tt(topic)
+    record_topic_decision(
+        topic, "domain_gate.remapped", f"{original_type} -> {target_type}",
+        {
+            "science_qualitative": "this domain's gate family only allows math_formula_method when the "
+                "topic is quantitatively centered — this one isn't, so it's remapped to science_mechanism",
+            "native_coverage_recovery": "after all forbidden remaps, no topic in this path had the "
+                "family's own native teaching type — this topic was relabeled to guarantee the path "
+                "teaches at least one native-shaped lesson",
+        }.get(reason, f"'{original_type}' is not in this domain's gate family allow-list — remapped to "
+              f"the closest fit ({reason})"),
+        domain=domain, gate_family=gate_family_of(domain), rewrite_reason=reason)
     topic.setdefault("_original_title", original_title)
     topic.setdefault("_original_course_type", _tt(topic))
     topic.setdefault("_original_content_role", original_role)

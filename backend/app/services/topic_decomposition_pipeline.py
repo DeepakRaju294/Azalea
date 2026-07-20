@@ -19,6 +19,9 @@ from app.core.topic_decomposition import (
 )
 from app.core.topic_decomposition_appender import IMPLEMENTATION_FOLLOW_UP, append_coding_follow_ups
 from app.core.topic_decomposition_validator import OverlapResolver, validate_topic_decomposition
+from app.core.decision_trace import (
+    record_path_decision, record_topic_decision, take_path_trace, take_topic_trace,
+)
 from app.prompts.topic_decomposition_prompt import (
     REQUIREMENTS_SYSTEM_PROMPT, SYSTEM_PROMPT, build_decomposition_prompt, build_goal_requirements_prompt,
 )
@@ -88,6 +91,10 @@ def _normalize_topic(t: dict[str, Any]) -> dict[str, Any]:
         if canonical_tt and canonical_tt not in ("concept_intuition", "study_path_introduction"):
             _log.info("topic normalize: upgraded %r from concept_intuition to %s (content_role=%s)",
                       t.get("title"), canonical_tt, role)
+            record_topic_decision(t, "normalize.type_upgrade", f"topic_type -> {canonical_tt}",
+                                  "concept_intuition under-blueprints a substantive role: no process card, "
+                                  "no worked-example slot, not WE-centric", content_role=role,
+                                  from_type="concept_intuition")
             t["topic_type"] = canonical_tt
     # ANALYSIS-framed "walkthroughs": 'Evaluating Traversal Complexity' typed algorithm_walkthrough is not an
     # algorithm — it is comparison/analysis content, and leaving the type triggers the coding-follow-up policy
@@ -99,6 +106,12 @@ def _normalize_topic(t: dict[str, Any]) -> dict[str, Any]:
         if toks & _ANALYSIS_FRAMING_TOKENS:
             _log.info("topic normalize: %r is analysis-framed, retyped %s -> compare_distinguish",
                       t.get("title"), t.get("topic_type"))
+            record_topic_decision(t, "normalize.analysis_retype", "topic_type -> compare_distinguish",
+                                  "title/subject reads as comparison or complexity ANALYSIS, not an "
+                                  "algorithm to trace — leaving it code-able would let the follow-up "
+                                  "appender manufacture an 'Implementing <analysis>' topic",
+                                  from_type=t.get("topic_type"),
+                                  matched_tokens=sorted(toks & _ANALYSIS_FRAMING_TOKENS))
             t["topic_type"] = "compare_distinguish"
             t["content_role"] = "comparison"
     return t
@@ -350,6 +363,12 @@ def _disambiguate_topic_titles(ordered: list[dict[str, Any]], goal: str | None) 
                 t["title"] = f"More on {title}"
             _log.info("topic_decomposition: disambiguated colliding title %r -> %r "
                       "(goal=%s prev=%s)", title, t.get("title"), collides_goal, collides_prev)
+            record_topic_decision(
+                t, "title.disambiguated", f"title -> {t.get('title')!r}",
+                ("title restated the whole goal subject as a LATE synthesis/application topic — real "
+                 "teaching topics already precede it" if collides_goal
+                 else "title collided with an earlier topic's title after normalization"),
+                original_title=title)
         seen[" ".join(sorted(_norm_title(str(t.get("title") or "")).split()))] = 1
         teaching_seen += 1
 
@@ -429,6 +448,12 @@ def _collapse_near_duplicate_topics(topics_out: list[dict[str, Any]]) -> set:
             remove_ids.add(id(drop))
             _log.info("topic_decomposition: collapsed near-duplicate %r into %r (synonym-only title diff)",
                       drop.get("title"), keep.get("title"))
+            record_topic_decision(
+                keep, "dedup.near_duplicate_merged", f"absorbed {drop.get('title')!r}",
+                "titles shared a substantial subject and differed only by generic filler words "
+                "('Mechanisms' / 'Overview' / ...) — the same lesson split by synonyms; the more "
+                "substantive topic kept, the other's scope merged in and it was dropped",
+                dropped_topic_type=drop.get("topic_type"), shared_words=sorted(shared))
     if remove_ids:
         topics_out[:] = [t for t in topics_out if id(t) not in remove_ids]
     return remove_ids
@@ -706,6 +731,12 @@ def _to_legacy(topic: dict[str, Any], title_by_id: dict[str, str], fallback_orde
             # claimed everything" is undiagnosable from the persisted path.
             **({"goal_requirements": topic.get("goal_requirements")}
                if topic.get("goal_requirements") else {}),
+            # decision trace (this module + topic_generator.py's later certification pass append to the
+            # SAME list — take_topic_trace here just moves what accumulated up to this point).
+            "decision_trace": take_topic_trace(topic),
+            # path-level decisions (opener only) — everything above and outside any single topic's story.
+            **({"path_decision_trace": topic.get("path_decision_trace")}
+               if topic.get("path_decision_trace") else {}),
         },
     }
 
@@ -927,6 +958,11 @@ def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[di
         declaring = declared.get(rid) or []
         if declaring and _requirement_covered_by_topics(r, declaring):
             r["owned"] = "declared"
+            for dt in declaring:
+                record_topic_decision(dt, "requirement.claim_verified", f"owns {rid}",
+                                      "declared this requirement via covers_requirements, and its own "
+                                      "title/scope semantically carries the requirement's content",
+                                      requirement=r.get("name") or rid)
         elif _requirement_covered_by_topics(r, raw_topics):
             # covers the forgot-the-ID case AND the declared-but-by-the-wrong-topic case — some topic's
             # scope genuinely carries the content, so never synthesize a duplicate on top of it
@@ -937,6 +973,12 @@ def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[di
                 _log.info("goal requirements: %s DECLARED by %r but the topic's scope does not carry it — "
                           "treating as unowned (a declaration is a signal, not proof)",
                           rid, str(declaring[0].get("title") or "?"))
+                for dt in declaring:
+                    record_topic_decision(dt, "requirement.claim_rejected", f"claim of {rid} not honored",
+                                          "declared this requirement via covers_requirements, but its "
+                                          "own title/scope does not semantically carry the content — a "
+                                          "declaration is a signal, not proof, so the requirement is "
+                                          "still treated as unowned", requirement=r.get("name") or rid)
             r["owned"] = False
         if r["owned"] or r.get("kind") != "core":
             continue
@@ -972,6 +1014,18 @@ def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[di
             "policy_reason": "unowned_goal_requirement",
         })
     path_plan["goal_requirements"] = requirements
+    owned_by = {"declared": [], "semantic": [], False: []}
+    for r in requirements:
+        owned_by.setdefault(r["owned"], []).append(r["requirement_id"])
+    record_path_decision(
+        path_plan, "requirement.coverage_check",
+        f"{len(owned_by['declared'])} declared+verified, {len(owned_by['semantic'])} semantic, "
+        f"{len(owned_by[False])} unowned",
+        "every requirement's covers_requirements claim is checked against the declaring topic's actual "
+        "scope (not trusted at face value); an unowned CORE requirement becomes a required capability so "
+        "the B.4.1 coverage repair synthesizes a topic for it",
+        declared=owned_by["declared"] or None, semantic=owned_by["semantic"] or None,
+        unowned=owned_by[False] or None)
     if unowned:
         _log.info("goal requirements: %s unowned by any topic — appended as required capabilities "
                   "(coverage repair will synthesize topics)", unowned)
@@ -980,17 +1034,21 @@ def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[di
 def _retry_thin_plan(parsed: dict[str, Any], raw_topics: list[dict[str, Any]], goal: str | None,
                      chunks_text: str, feedback: str | None, fn: ModelFn,
                      goal_requirements: list[dict[str, Any]] | None = None,
-                     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+                     ) -> tuple[dict[str, Any], list[dict[str, Any]], Optional[str]]:
     """One bounded re-ask when the model returned a SINGLE teaching topic that itself claims several distinct
     content commitments — the signature of an undecomposed area goal (live: 'fluid turbulence' came back as one
     concept_intuition topic whose in_scope listed characteristics + causes + laminar-vs-turbulent; regens of the
     same goal shrank 3 → 2 → 1 topics). A single-topic plan whose topic carries 0-1 commitments is a legitimate
     narrow-technique goal and is NEVER retried. The retry is accepted only when it comes back strictly richer;
-    otherwise the original plan stands. Costs at most one extra decomposition call, only on thin plans."""
+    otherwise the original plan stands. Costs at most one extra decomposition call, only on thin plans.
+
+    Third return value is the retry OUTCOME for the caller's decision trace: None (not attempted — the plan
+    wasn't thin), "expanded" (adopted a richer plan), "stayed_thin" (retried, model still returned one
+    topic), or "failed" (the retry call itself raised)."""
     teaching = [t for t in raw_topics
                 if str(t.get("topic_type") or "") != "study_path_introduction"]
     if len(teaching) != 1 or len(list(teaching[0].get("in_scope") or [])) < 2:
-        return parsed, raw_topics
+        return parsed, raw_topics, None
     t = teaching[0]
     commitments = "; ".join(str(s) for s in (t.get("in_scope") or []))
     thin_note = (
@@ -1013,11 +1071,12 @@ def _retry_thin_plan(parsed: dict[str, Any], raw_topics: list[dict[str, Any]], g
         if len(teaching2) > 1:
             _log.info("thin-plan retry: expanded %d -> %d teaching topics for goal %r",
                       len(teaching), len(teaching2), goal)
-            return parsed2, raw2
+            return parsed2, raw2, "expanded"
         _log.info("thin-plan retry: model kept a single teaching topic for goal %r — accepting original", goal)
     except Exception:  # noqa: BLE001 — the retry is best-effort; the original plan is always usable
         _log.info("thin-plan retry failed for goal %r — accepting original plan", goal)
-    return parsed, raw_topics
+        return parsed, raw_topics, "failed"
+    return parsed, raw_topics, "stayed_thin"
 
 
 def generate_decomposed_topics(
@@ -1043,12 +1102,31 @@ def generate_decomposed_topics(
     raw_topics = [t for t in (parsed.get("topics") or []) if isinstance(t, dict)]
     if not raw_topics:
         return []
-    parsed, raw_topics = _retry_thin_plan(parsed, raw_topics, goal, chunks_text, feedback, fn,
-                                          goal_requirements=requirements)
+    _topics_before_retry = len(raw_topics)
+    parsed, raw_topics, _retry_outcome = _retry_thin_plan(parsed, raw_topics, goal, chunks_text, feedback, fn,
+                                                           goal_requirements=requirements)
 
     path_plan = parsed.get("path_plan") if isinstance(parsed.get("path_plan"), dict) else {}
     path_plan.setdefault("required_capabilities", [])
     path_plan.setdefault("end_capability_actions", [])
+
+    # Curriculum-call outcome, recorded now that path_plan exists to hold it (the call itself ran before).
+    record_path_decision(
+        path_plan, "curriculum.requirements_call",
+        f"{len(requirements)} requirement(s), {len(req_prereqs)} external prerequisite(s)" if requirements
+        else "no requirements produced (kill switch, empty/failed call, or narrow goal)",
+        "a dedicated call decides WHAT the path must cover before any topic exists — decoupled from the "
+        "decomposition call so curriculum discovery and topic compression are no longer the same LLM turn",
+        requirement_ids=[r["requirement_id"] for r in requirements] or None,
+        prerequisite_names=[p["name"] for p in req_prereqs] or None)
+    if _retry_outcome is not None:
+        record_path_decision(
+            path_plan, "curriculum.thin_plan_retry", _retry_outcome,
+            "the pre-retry plan had a single teaching topic claiming multiple distinct content "
+            "commitments — an undecomposed area goal — so the model was re-asked once with those "
+            "commitments named; a richer result is adopted only if it strictly expanded",
+            raw_topics_before=_topics_before_retry, raw_topics_after=len(raw_topics))
+
     # Deterministic requirement coverage: an unowned CORE requirement becomes a required capability, so the
     # validator's B.4.1 coverage repair synthesizes a topic for it — the validator now checks the plan against
     # requirements decided BEFORE the topics, not against the topic list's own claims.
@@ -1060,6 +1138,11 @@ def generate_decomposed_topics(
         path_plan["assumed_prerequisites"] = req_prereqs
         _log.info("goal requirements: decomposition emitted no assumed_prerequisites — using the "
                   "curriculum call's: %s", [p["name"] for p in req_prereqs])
+        record_path_decision(path_plan, "curriculum.prereq_fallback",
+                             f"used the curriculum call's {len(req_prereqs)} prerequisite(s)",
+                             "the decomposition call dropped assumed_prerequisites entirely — the "
+                             "curriculum call's own list stands in rather than shipping the path with no "
+                             "named prerequisites")
 
     topics = [_normalize_topic(t) for t in raw_topics]
     path_plan, topics = append_coding_follow_ups(path_plan, topics, enabled=coding_follow_ups)
@@ -1082,6 +1165,10 @@ def generate_decomposed_topics(
             t["topic_type"] = "math_formula_method"       # domain gate remaps for non-math paths
             t["content_role"] = "calculation"
             _log.info("topic_decomposition: de-conflated mislabeled intro %r -> teaching topic", t.get("title"))
+            record_topic_decision(t, "opener.deconflated", "topic_type -> math_formula_method (teaching)",
+                                  "tagged as an orientation opener but loaded with a concrete concept — "
+                                  "restored to a taught type so the concept gets a worked example and an "
+                                  "adapter, and the real intro slot is freed")
         elif _is_opener(t):
             if not opener_seen:
                 opener_seen = True
@@ -1092,6 +1179,10 @@ def generate_decomposed_topics(
                     t["topic_type"] = "study_path_introduction"
                     _log.info("topic_decomposition: retyped orientation opener %r -> study_path_introduction",
                               t.get("title"))
+                    record_topic_decision(t, "opener.retyped", "topic_type -> study_path_introduction",
+                                          "genuinely orientation-role content mistyped as a teaching type — "
+                                          "would otherwise carry a blueprint with no prerequisites card and "
+                                          "no roadmap")
                 # An opener titled with a whole-DISCIPLINE umbrella orients the WRONG subject (live: a
                 # 'fluid turbulence' path opened with an intro titled 'Fluid Dynamics' whose background card
                 # was 'Why Fluid Dynamics Matters'). The intro's title is the GOAL's, not the parent field's.
@@ -1101,6 +1192,10 @@ def generate_decomposed_topics(
                     new_title = _intro_title(goal)
                     _log.info("topic_decomposition: retitled umbrella-named intro %r -> %r",
                               t.get("title"), new_title)
+                    record_topic_decision(t, "opener.retitled", f"title -> {new_title!r}",
+                                          "the opener was titled after the whole parent DISCIPLINE, so the "
+                                          "path appeared to orient the wrong subject — retitled from the goal",
+                                          old_title=t.get("title"))
                     t["title"] = new_title
             else:
                 # ONE path, ONE orientation: a SECOND orientation-role topic is a mislabeled teaching topic
@@ -1111,6 +1206,10 @@ def generate_decomposed_topics(
                 t["content_role"] = "calculation"
                 _log.info("topic_decomposition: retyped EXTRA orientation topic %r -> teaching topic",
                           t.get("title"))
+                record_topic_decision(t, "opener.extra_retyped", "topic_type -> math_formula_method (teaching)",
+                                      "a path has exactly ONE orientation topic; this was a second one, so "
+                                      "it was a mislabeled teaching topic trapped in a blueprint with no "
+                                      "worked-example slot")
 
     # Prerequisites are NAMED, not taught: a `foundation`-role topic is a building block the learner is
     # assumed to have. When the path also has a real (non-foundation) concept topic, drop the foundation
@@ -1138,6 +1237,10 @@ def generate_decomposed_topics(
         topics_out = [t for t in topics_out if id(t) not in drop_ids]
         _log.info("topic_decomposition: folded %d prerequisite topic(s) into the intro: %s",
                   len(dropped_prereqs), dropped_prereqs)
+        record_path_decision(path_plan, "topics.foundation_folded", f"removed {dropped_prereqs}",
+                             "role=foundation topics are building blocks the learner is assumed to have, "
+                             "not the goal itself — dropped as taught topics and carried as named (not "
+                             "taught) prerequisites on the intro instead")
 
     non_intro = [t for t in topics_out if not _is_opener(t)]
     has_opener = any(_is_opener(t) for t in topics_out)
@@ -1150,6 +1253,10 @@ def generate_decomposed_topics(
         intro["order_index"] = 0
         topics_out = [intro, *topics_out]
         _log.info("topic_decomposition: synthesized orientation intro (LLM emitted none)")
+        record_path_decision(path_plan, "intro.synthesized", "inserted a generic orientation topic",
+                             "the model emitted no study_path_introduction and this is a multi-topic (or "
+                             "prereq-carrying) path — every such path opens with an intro by product "
+                             "decision", title=intro.get("title"))
 
     # Requirements-first audit trail: persist the curriculum call's requirements + per-requirement ownership
     # on the opener's metadata, so a collapsed path is diagnosable from the DB (live: a one-topic path where
@@ -1164,20 +1271,37 @@ def generate_decomposed_topics(
     # any foundation topics we folded above. No prose parsing — these names are canonical by construction.
     # Exclude any prereq the GOAL itself names (that concept is in-scope, taught, not an external prereq).
     llm_prereqs, prereq_glosses, prereq_requirements = _path_assumed_prereqs(path_plan)
+    _prereqs_from_model = list(llm_prereqs)
     # Drop a declared prereq the goal names (in scope, taught) or one that is circular (goal subject in generic
     # wrapping) — those must stay taught topics, never external links.
     llm_prereqs = [p for p in llm_prereqs
                    if not _goal_names_topic({"title": p, "subject_key": p}, goal)
                    and not _is_circular_prereq(p, goal)]
+    _dropped_goal_or_circular = [p for p in _prereqs_from_model if p not in llm_prereqs]
     # Drop a broad umbrella-discipline prereq ('Statistics') when a more specific one remains ('mean and
     # median') — the umbrella just vaguely restates the specific concept, which is the redundancy learners notice.
+    _before_umbrella = list(llm_prereqs)
     llm_prereqs = _drop_umbrella_prereqs(llm_prereqs)
+    if _dropped_goal_or_circular or _before_umbrella != llm_prereqs:
+        record_path_decision(
+            path_plan, "prerequisites.model_list_filtered", f"kept {llm_prereqs}",
+            "dropped any prereq the goal itself names or that is circular with a taught topic, then "
+            "collapsed umbrella-discipline duplicates down to the more specific prereq",
+            model_proposed=_prereqs_from_model,
+            dropped_goal_or_circular=_dropped_goal_or_circular or None,
+            dropped_umbrella=[p for p in _before_umbrella if p not in llm_prereqs] or None)
     # A concept is EITHER an external prerequisite OR a topic this path teaches — never both. When the LLM
     # declares a concept as a prereq AND also emits a standalone topic for it (live failure: 'Graph
     # Representation' prereq + the 'Implementing Graph Representation' topic on a Dijkstra path), the learner is
     # ASSUMED to have it — so keep the PREREQUISITE (external, linked) and fold away the redundant topic, rather
     # than padding a Dijkstra path with a full graph-representation lesson. Recompute `teaching` afterward.
-    _fold_prereq_topics(topics_out, llm_prereqs, goal)
+    _folded_prereq_topics = _fold_prereq_topics(topics_out, llm_prereqs, goal)
+    if _folded_prereq_topics:
+        record_path_decision(path_plan, "topics.folded_into_prerequisite",
+                             f"removed taught topic(s) {_folded_prereq_topics}",
+                             "the LLM declared the same concept BOTH as an external prerequisite and as "
+                             "its own taught topic — the learner is assumed to have it, so the "
+                             "prerequisite (external, linked) wins and the redundant topic is dropped")
     # A teaching topic whose subject is a STRICT PARENT of the goal ('TCP Overview' on a 'TCP congestion control'
     # path) teaches FOUNDATION material, not the goal — demote it to a prerequisite so the path isn't front-loaded
     # with the very basics the learner is assumed to have (and the goal topic isn't buried under them).
@@ -1185,8 +1309,17 @@ def generate_decomposed_topics(
     # already cover ('Implementing BST Traversal' beside Implementing Inorder/Postorder/Preorder) — drop it.
     # BEFORE demotion: its title carries the goal acronym, which would shield the parent walkthrough from the
     # acronym-expansion demotion below.
-    _drop_umbrella_coding_topics(topics_out, goal)
+    _dropped_umbrella_coding = _drop_umbrella_coding_topics(topics_out, goal)
+    if _dropped_umbrella_coding:
+        record_path_decision(path_plan, "topics.umbrella_coding_dropped", f"removed {_dropped_umbrella_coding}",
+                             "a coding topic whose subject IS the whole goal re-implements what the "
+                             "specific member implementations already cover")
     demoted_prereqs = _demote_parent_of_goal_topics(topics_out, goal)
+    if demoted_prereqs:
+        record_path_decision(path_plan, "topics.demoted_to_prerequisite", f"demoted {demoted_prereqs}",
+                             "the topic's subject is a STRICT PARENT of the goal (foundation material the "
+                             "learner is assumed to have, not the thing the goal asks to learn) — moved "
+                             "from a taught topic to an external, linked prerequisite")
     teaching = [t for t in topics_out if not _is_opener(t)]
     # Deterministic backstop: concepts shared across ≥2 topics' in_scope but taught by none are prerequisites the
     # LLM tends to omit (e.g. 'conditional probability' on a Bayes path). Their gloss is harvested downstream from
@@ -1242,6 +1375,15 @@ def generate_decomposed_topics(
             title_by_id[str(t.get("topic_id"))] = (
                 f"Implementing {_subject_phrase(subject)}"
                 if canonical_action(t.get("primary_action")) == "implement" else _subject_phrase(subject))
+
+    # Path-level decision trace (curriculum call, thin-plan retry, requirement coverage, prereq merging,
+    # topic drops/demotions/folds) is attached to the opener LAST, once every path-level record_path_decision
+    # call above has run — mirrors the goal_requirements attach pattern.
+    _path_trace = take_path_trace(path_plan)
+    if _path_trace:
+        _opener = next((t for t in ordered if _is_opener(t)), None)
+        if _opener is not None:
+            _opener["path_decision_trace"] = _path_trace
 
     legacy = [_to_legacy(t, title_by_id, i) for i, t in enumerate(ordered, start=1)]
     for i, t in enumerate(legacy, start=1):

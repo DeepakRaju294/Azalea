@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from app.core.decision_trace import record_topic_decision
 from app.core.topic_decomposition import (
     canonical_action,
     is_coding_type,
@@ -234,7 +235,7 @@ def _synthesize_topic_for_capability(cid: str, cap: dict[str, Any]) -> dict[str,
         title = description[:80] if subject_is_opaque and description else subject_words
     if title:
         title = title[0].upper() + title[1:]
-    return {
+    topic = {
         "topic_id": f"synth_{cid}",
         "capability_id": cid,
         "title": title,
@@ -255,6 +256,13 @@ def _synthesize_topic_for_capability(cid: str, cap: dict[str, Any]) -> dict[str,
         "purpose": description or None,
         "provenance": {"synthesized": True, "reason": "coverage_repair"},
     }
+    record_topic_decision(
+        topic, "validator.synthesized_for_coverage", f"created {title!r}",
+        "a REQUIRED capability had no owning topic anywhere in the model's plan (dropped entirely, or its "
+        "covers_requirements claim failed verification) — B.4.1 coverage repair builds a standalone topic "
+        "deterministically from the capability record itself, never from the raw capability_id",
+        capability_id=cid, basis=topic["basis"])
+    return topic
 
 
 def _base_subject(subject_key: Any) -> str:

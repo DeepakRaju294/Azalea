@@ -580,11 +580,20 @@ def validate_and_order_cards(lesson_json: dict[str, Any], topic: dict[str, Any])
                                              order.get("worked_example", fallback_rank)) - 0.5
         reordered = sorted(kept, key=lambda c: order.get(_key(c), fallback_rank))  # stable
         if reordered != cards:
+            dropped_keys = [_key(c) for c in cards if c not in kept]
             dropped = len(cards) - len(kept)
             _log.info(
                 "examples: CardValidator repaired lesson (topic_type=%s, dropped=%d, reordered=%s)",
                 topic_type, dropped, [_key(c) for c in reordered],
             )
+            from app.core.decision_trace import record_lesson_decision
+            record_lesson_decision(
+                topic, "card.blueprint_gate", f"kept {[_key(c) for c in reordered]}",
+                f"the {topic_type} blueprint only allows {sorted(allowed)} (spec-grounded cards are always "
+                "exempt) — cards outside that set are untrusted LLM output and were dropped, the rest "
+                "reordered to the blueprint's sequence" if dropped else
+                f"cards reordered to the {topic_type} blueprint's sequence",
+                dropped_card_keys=dropped_keys or None)
             lesson_json["lesson_cards"] = reordered
     except Exception as exc:  # noqa: BLE001 — the gate must never break a lesson
         _log.warning("examples: CardValidator failed: %s", exc)
@@ -622,6 +631,15 @@ def enforce_example_plan(lesson_json: dict[str, Any], topic: dict[str, Any]) -> 
             lesson_json.setdefault("metadata", {})["worked_example_withheld"] = "no_verified_example_planned"
             _log.info("examples: example-plan enforcement stripped %d fabricated worked-example card(s) "
                       "from %r (we_policy=withhold_fabricated)", removed, topic.get("title"))
+            from app.core.decision_trace import record_lesson_decision
+            record_lesson_decision(
+                topic, "example.fabricated_stripped", f"removed {removed} worked-example card(s)",
+                ("this topic's adapter exercise is verified-owned by a sibling — a duplicate worked "
+                 "example here would repeat the identical calculation" if deduped else
+                 "the certified plan found NO verified adapter for this topic and the cards carry no "
+                 "trace-backed step — an essay-shaped pseudo-example, stripped so the lesson ships "
+                 "honestly qualitative instead of a fabricated worked example"),
+                we_policy=policy, deduped_shared_adapter=deduped)
     except Exception as exc:  # noqa: BLE001 — enforcement must never break a lesson
         _log.warning("examples: enforce_example_plan failed: %s", exc)
 

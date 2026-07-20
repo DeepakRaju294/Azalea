@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.prompts.topic_prompt import SYSTEM_PROMPT, build_topic_prompt
 from app.services.course_type_classifier import enrich_topic_with_course_type
+from app.core.decision_trace import record_path_decision, record_topic_decision, take_topic_trace
 from app.services.domain_classifier import gate_family_of
 from app.services.domain_gate import gate_topic_types_by_domain
 from app.services.llm_client import generate_structured_topics
@@ -462,6 +463,9 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
         return topics
     goal_key = _canonical_concept_key(goal)
     seen: dict[tuple[str, str], list[str]] = {}   # identity -> subject strings kept under it
+    seen_topic: dict[tuple[str, str], dict[str, Any]] = {}   # identity -> the FIRST surviving topic under it
+    # (a dropped duplicate's own trace never persists — it's not in the output — so its reasoning is
+    # recorded on the survivor instead, as "this topic absorbed X")
     # ONE verified exercise per adapter per path: distinct siblings may share an adapter via broad aliases
     # (turbulence trio → reynolds_number), but the learner must not do the identical verified calculation
     # in every lesson. The claim PREFERS the topic whose own subject IS the adapter's concept ('Reynolds
@@ -484,6 +488,9 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
         if not _adapter_fits_owned_scope(slug, t):
             _log.info("scope certification: rejected adapter %s for %r because it does not demonstrate "
                       "the topic's owned scope", slug, t.get("title"))
+            record_topic_decision(t, "adapter.rejected", f"routing to {slug} rejected",
+                                  "the routed adapter's worked example would not demonstrate this "
+                                  "topic's own declared scope — routing alone is not enough")
             continue
         we_routed[i] = slug
         # claim preference: 2 = the topic's own subject IS the adapter's concept ('Reynolds Number');
@@ -516,13 +523,29 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
             if any(_same_concept_evidence(subject_str, prev) for prev in seen[identity]):
                 _log.info("scope certification: dropped duplicate identity %s/%s (%r)", key, facet,
                           topic.get("title"))
+                survivor = seen_topic.get(identity)
+                if survivor is not None:
+                    # the dropped topic is never persisted, so its reason for being dropped is recorded on
+                    # the topic that absorbed it instead — otherwise the decision is unrecoverable
+                    record_topic_decision(
+                        survivor, "identity.absorbed_duplicate", f"absorbed {topic.get('title')!r}",
+                        "the dropped topic shared this topic's canonical key + facet AND showed token "
+                        "evidence of being the same concept (not just the same adapter)",
+                        canonical_concept_key=key, facet=facet, dropped_topic_type=ttype)
                 continue
             _log.info("scope certification: KEPT %r — shares key %s/%s with %r but no token evidence of "
                       "the same concept (adapter-as-identity guard)", topic.get("title"), key, facet,
                       seen[identity][0])
+            record_topic_decision(
+                topic, "identity.kept_despite_shared_key", f"kept alongside {seen[identity][0]!r}",
+                "shares canonical key + facet (usually: routes to the same adapter) with an earlier topic, "
+                "but has NO token evidence of being the same concept — broad routing aliases give "
+                "unrelated topics the same key, so key equality alone is not proof of duplication",
+                canonical_concept_key=key, facet=facet)
             seen[identity].append(subject_str)
         elif key:
             seen[identity] = [subject_str]
+            seen_topic[identity] = topic
         if key:
             taught_keys.add(key)
         meta = dict(topic.get("decomposition_metadata") or {})
@@ -555,6 +578,13 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
                           "worked example withheld (one verified exercise per adapter per path)",
                           topic.get("title"), slug)
                 we_deduped_shared_adapter = True
+                _claimant = next((t2 for i2, t2 in enumerate(topics) if we_claims.get(slug) == i2), None)
+                record_topic_decision(
+                    topic, "adapter.claim_lost", f"worked example withheld ({slug})",
+                    "another topic's own subject is a closer match for this adapter's concept (or was "
+                    "routed first on a tie) — one verified exercise per adapter per path, so this topic "
+                    "ships qualitative instead of repeating the identical calculation",
+                    adapter=slug, claimed_by=str(_claimant.get("title")) if _claimant else None)
         # SCOPE COMMITMENTS (scope-plan #2 enforcement): an empty scope_in on a teaching topic means the plan
         # carries NO content commitments — the generator can ship a few generic cards and still "satisfy" the
         # blueprint (live: every topic on a thin turbulence path had scope_in=[]). The decomposition prompt now
@@ -570,6 +600,11 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
             if backfill:
                 topic["in_scope"] = backfill
                 scope_in_backfilled = True
+                record_topic_decision(
+                    topic, "scope.in_backfilled", f"in_scope <- {backfill}",
+                    "the decomposition call left in_scope empty (no content commitments to validate the "
+                    "lesson against) — backfilled deterministically from the topic's own planning fields "
+                    "(learner_outcome / primary_capability / expected_output)")
         role = ("goal_core" if key == goal_key
                 else ("application" if facet == "implementation" else "supporting"))
         shape = _science_shape(topic, ttype, verified_example)
@@ -594,12 +629,33 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
             meta["scope_plan"]["we_deduped_shared_adapter"] = True
         if shape:
             meta["scope_plan"]["science_shape"] = shape
+        record_topic_decision(
+            topic, "identity.assigned", f"canonical_concept_key={key!r} role={role}",
+            "identity is adapter-routing-first (an adapter slug is the strongest catalog identity), else "
+            "alias/token-derived — role is goal_core only when this key matches the GOAL's own key",
+            facet=facet, is_goal_core=(role == "goal_core"))
+        if verified_example:
+            record_topic_decision(
+                topic, "adapter.claimed", f"worked example verified via {verified_example}",
+                "this topic's own subject is the closest match for the adapter's concept among any "
+                "sibling routed to the same adapter (or the only one routed to it)")
+        elif we_centric and not verified_example and not we_deduped_shared_adapter:
+            record_topic_decision(
+                topic, "adapter.none_routed", "we_policy = withhold_fabricated" if not conceptual_mechanism
+                else "we_policy = conceptual_mechanism",
+                "no adapter routes for this title/type at all — no verified worked example exists to "
+                "attach, so the lesson ships honestly qualitative rather than an invented pseudo-example")
         # DEPTH GUARD (shadow): the goal's own concept taught only through an overview-shaped type means the
         # path never goes deep on the thing the learner asked for. Stamp + log; no behavior change yet.
         if role == "goal_core" and ttype in _OVERVIEW_TOPIC_TYPES:
             meta["scope_plan"]["depth_flag"] = "goal_core_overview_type"
             _log.info("scope certification: goal-core topic %r has overview type %s — depth flag stamped",
                       topic.get("title"), ttype)
+            record_topic_decision(
+                topic, "depth.flagged", "depth_flag = goal_core_overview_type",
+                "this topic IS the goal's own concept, but its type only produces an overview-shaped "
+                "blueprint (no process card, no worked-example slot) — the path never goes deep on the "
+                "thing the learner asked for", topic_type=ttype)
         topic["decomposition_metadata"] = meta
         identities.append({"canonical_concept_key": key, "facet": facet,
                            "title": str(topic.get("title") or "")})
@@ -685,6 +741,11 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
             if plan:
                 plan["scope_out"] = list(topic["out_of_scope"])
                 plan["scope_out_backfilled"] = True
+            record_topic_decision(
+                topic, "scope.out_backfilled", f"out_of_scope <- {topic['out_of_scope']}",
+                "the model left out_of_scope empty — inherited siblings' scope_in commitments as explicit "
+                "exclusions (own content, detected by token overlap, is never copied in) so sibling "
+                "lessons don't silently overlap")
 
     blocked_prereq_keys = taught_keys | ({goal_key} if goal_key else set())
     # SOURCE strings for directional blocking: raw key equality over-blocked (the greedy 'bst' alias keyed
@@ -705,6 +766,12 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
             if blocker is not None:
                 _log.info("scope certification: dropped prereq %r — same concept as %r (goal/taught)",
                           prereq, blocker)
+                record_topic_decision(
+                    topic, "prerequisite.blocked", f"dropped {prereq!r}",
+                    f"{blocker!r} (the goal or a taught topic) IS this prerequisite's concept, not just a "
+                    "skill applied to it — directional check: a source with EXTRA distinctive tokens "
+                    "('bst traversal' vs prereq 'binary search trees') is a skill ON the concept and would "
+                    "never block it", blocked_by=blocker)
                 continue
             prereqs.append(prereq)
             seen_prereq_keys.add(prereq_key)
@@ -724,6 +791,18 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
             ],
         }
         topic["decomposition_metadata"] = meta
+
+    # Consolidate every decision recorded onto ANY certified topic across this whole function — including
+    # decisions recorded on a topic from a LATER loop iteration processing a DIFFERENT topic (e.g. an
+    # absorbed duplicate's note lands on the survivor, which may already be past its own decomposition_
+    # metadata assignment) — into the SAME decision_trace list decomposition already started. One pass at
+    # the very end catches every case correctly regardless of which loop above recorded it.
+    for topic in certified:
+        trace = take_topic_trace(topic)
+        if trace:
+            meta = dict(topic.get("decomposition_metadata") or {})
+            meta["decision_trace"] = list(meta.get("decision_trace") or []) + trace
+            topic["decomposition_metadata"] = meta
 
     for i, topic in enumerate(certified, 1):
         topic["order_index"] = i
@@ -774,6 +853,15 @@ def _drop_same_type_subject_duplicates(topics: list[dict[str, Any]]) -> list[dic
             ):
                 _log.info("topic_generator: dropping same-subject duplicate %r (%s)",
                           topic.get("title"), ttype)
+                survivor = next((k for k in kept
+                                 if str(k.get("course_type") or k.get("topic_type") or "").strip().lower()
+                                 == ttype and _subject_tokens(k.get("title"), domain)[1] == despaced), None)
+                if survivor is not None:
+                    record_topic_decision(
+                        survivor, "dedup.same_subject_same_type_collapsed",
+                        f"absorbed {topic.get('title')!r}",
+                        f"another {ttype} topic covered the identical subject (e.g. '...Process Overview' "
+                        "beside '...Step by Step' for the same algorithm) — first occurrence kept")
                 continue
             if despaced:
                 seen.append((ttype, tset, despaced))
@@ -833,6 +921,12 @@ def _collapse_same_subject_method_topics(topics: list[dict[str, Any]]) -> list[d
         winner_by_subject[subj] = keeper
         _log.info("topic_generator: collapsed same-subject method topic %r (kept %r)",
                   topics[loser].get("title"), topics[keeper].get("title"))
+        record_topic_decision(
+            topics[keeper], "dedup.same_subject_method_collapsed",
+            f"absorbed {topics[loser].get('title')!r} ({_tt(topics[loser])})",
+            "two full 'method lesson' types (walkthrough / application / mechanism) shared a subject and "
+            "would have regenerated the same background, steps, and worked example — the method-TEACHING "
+            "type wins over one that merely applies/exemplifies it")
     if not drop_idx:
         return topics
     kept = [t for i, t in enumerate(topics) if i not in drop_idx]
@@ -1011,12 +1105,16 @@ def _expand_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> 
         _log.info("canonical-family expansion: zero members — dropped %d umbrella topic(s) %s and "
                   "injecting the full canonical set", len(umbrellas),
                   [str(t.get("title")) for t in umbrellas])
+        _dropped_umbrella_titles = [str(t.get("title")) for t in umbrellas]
+    else:
+        _dropped_umbrella_titles = None
     for member_title, slug in fam["members"]:
         if slug in present:
             continue
         new = dict(template) if template else {}
         new.pop("topic_id", None)
         new.pop("id", None)
+        new.pop("_decision_trace", None)   # a fresh injected topic gets its OWN trace, not the template's
         new.update({
             # BARE canonical name — matches how model-emitted siblings are titled ("Inorder Traversal"); the
             # old " Algorithm Walkthrough" suffix made injected members read inconsistently (live complaint).
@@ -1035,6 +1133,14 @@ def _expand_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> 
         present.add(slug)
         _log.info("canonical-family expansion: injected %r (survey backfill for goal %r)",
                   new["title"], goal)
+        record_topic_decision(
+            new, "family.member_injected", f"synthesized {member_title!r}",
+            (f"the model folded the whole family survey into umbrella topic(s) {_dropped_umbrella_titles} "
+             "(now removed) — every canonical member is injected fresh so each owns its own slice"
+             if _dropped_umbrella_titles else
+             "the goal names a registered family survey and this canonical member was missing from the "
+             "model's plan — the deterministic backfill fills the gap so the survey stays complete"),
+            family=fam.get("display"), adapter=slug)
     return result
 
 
@@ -1076,10 +1182,17 @@ def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> l
                and str(t.get("title") or "").lower().startswith("implementing")]
     if len(partnerless) == 1 and len(orphans) == 1:
         slug = next(iter(partnerless))
+        _orphan_old_title = orphans[0].get("title")
         orphans[0]["title"] = f"Implementing {canon[slug]}"
         orphans[0]["unit_title"] = canon[slug]
         _log.info("topic_generator: paired orphan implementation with partnerless walkthrough %s -> %r",
                   slug, orphans[0]["title"])
+        record_topic_decision(
+            orphans[0], "family.orphan_paired", f"title -> {orphans[0]['title']!r}",
+            "this coding topic's subject key was mangled upstream so it routed to NO adapter and sat "
+            "outside the family block, while exactly one walkthrough had no implementation partner — an "
+            "unambiguous pair; retitled to the canonical form so it now routes and orders correctly",
+            original_title=_orphan_old_title, paired_with=canon[slug])
 
     fam_positions = [i for i, t in enumerate(topics)
                      if _ttype(t) in _MEMBER_TEACHING_TYPES and _slug(t) in order]
@@ -1181,6 +1294,12 @@ def _drop_same_adapter_duplicate_topics(topics: list[dict[str, Any]]) -> list[di
         if slug and slug in seen and _same_concept_evidence(title, seen[slug]):
             _log.info("topic_generator: dropped %r — same adapter (%s) as %r, identical worked-example kind",
                       t.get("title"), slug, seen[slug])
+            survivor = next((k for k in kept if str(k.get("title")) == seen[slug]), None)
+            if survivor is not None:
+                record_topic_decision(
+                    survivor, "dedup.same_adapter_worked_example_collapsed", f"absorbed {t.get('title')!r}",
+                    f"routes to the SAME adapter ({slug}) with token evidence of being the same concept — "
+                    "the learner would do the identical exercise twice with different numbers")
             continue
         if slug and slug not in seen:
             seen[slug] = title
@@ -1214,6 +1333,11 @@ def _ensure_family_comparison_topic(topics: list[dict[str, Any]], goal: str | No
         topics = [t for t in topics if id(t) not in drop_ids]
         _log.info("topic_generator: dropped %d extra comparison topic(s) for the family survey: %s",
                   len(comps) - 1, [str(t.get("title")) for t in comps[1:]])
+        record_topic_decision(
+            comps[0], "family.extra_comparisons_dropped",
+            f"absorbed {[str(t.get('title')) for t in comps[1:]]}",
+            "a family survey gets exactly ONE comparison topic (often duplicated by an analysis-framed "
+            "sibling retyped to compare_distinguish during normalization) — first kept, rest dropped")
     if any(_ttype(t) == "compare_distinguish" for t in topics):
         return topics                                       # the model already emitted one — never duplicate
     try:
@@ -1245,6 +1369,11 @@ def _ensure_family_comparison_topic(topics: list[dict[str, Any]], goal: str | No
         "estimated_minutes": 10,
     }
     _log.info("topic_generator: injected deterministic family comparison topic %r", title)
+    record_topic_decision(
+        comparison, "family.comparison_injected", f"synthesized {title!r}",
+        "the goal surveys a registered family, the path teaches >=2 distinct members, and the model "
+        "emitted no comparison of its own — a comparison is only teachable once every alternative has "
+        "been taught, so it is appended last", compared=names)
     return [*topics, comparison]
 
 
@@ -1275,6 +1404,14 @@ def _fix_noncoding_coding_topics(topics: list[dict[str, Any]]) -> list[dict[str,
                 if slug in covered:                     # a real walkthrough already teaches it -> drop the twin
                     _log.info("topic_generator: dropped non-coding coding_implementation %r (adapter %s is "
                               "coding:False; a walkthrough already covers it)", t.get("title"), slug)
+                    twin = next((w for w in topics if _tt(w) != "coding_implementation" and _slug(w) == slug),
+                                None)
+                    if twin is not None:
+                        record_topic_decision(
+                            twin, "coding.non_coding_twin_dropped", f"dropped {t.get('title')!r}",
+                            f"the adapter ({slug}) is declared coding:False — the concept is a "
+                            "derivation/formula dressed up as fake code, and this walkthrough already "
+                            "teaches it, so the redundant 'Implementing' twin is removed")
                     continue
                 title = str(t.get("title") or "")       # sole topic -> keep it, but as a walkthrough
                 t["course_type"] = t["topic_type"] = "process_walkthrough"
@@ -1283,6 +1420,11 @@ def _fix_noncoding_coding_topics(topics: list[dict[str, Any]]) -> list[dict[str,
                     t["title"] = title[len("implementing "):].strip()
                 _log.info("topic_generator: relabeled lone non-coding coding_implementation %r -> "
                           "process_walkthrough (adapter %s is coding:False)", title, slug)
+                record_topic_decision(
+                    t, "coding.relabeled_non_coding", "course_type -> process_walkthrough",
+                    f"the adapter ({slug}) is declared coding:False — the concept is a derivation/formula, "
+                    "not something implemented in code — and this is the ONLY topic covering it, so it's "
+                    "kept but re-typed rather than dropped", original_title=title)
         out.append(t)
     return out
 
@@ -1324,6 +1466,11 @@ def _fold_prereqs_into_intro(topics: list[dict[str, Any]]) -> list[dict[str, Any
                 else:
                     glossed.append({"concept": phrase, "purpose": str(t.get("purpose") or "")})
                 _log.info("topic_generator: folded prerequisite %r into intro (%s)", t.get("title"), cls)
+                record_topic_decision(
+                    intro, "prerequisite.folded_from_body", f"absorbed {t.get('title')!r} ({cls})",
+                    "a concept_intuition topic whose subject is NOT taught anywhere else on the path is a "
+                    "prerequisite the learner is assumed to have, not a teaching target — removed from the "
+                    "body and recorded on the intro instead")
                 continue
         kept.append(t)
 
@@ -1393,6 +1540,7 @@ def _append_missing_coding_topics(topics: list[dict[str, Any]], goal: str) -> li
                 have_coding.add(subject)
                 phrase = _subject_phrase(t.get("title"))
                 coding = dict(t)  # inherit every field/key the downstream expects
+                coding.pop("_decision_trace", None)   # a fresh follow-up gets its OWN trace, not the WT's
                 coding.update({
                     "title": f"Implementing {phrase}",
                     "course_type": "coding_implementation",
@@ -1408,6 +1556,12 @@ def _append_missing_coding_topics(topics: list[dict[str, Any]], goal: str) -> li
                 result.append(coding)
                 _log.info("topic_generator: appended coding_implementation %r after %r",
                           coding["title"], t.get("title"))
+                record_topic_decision(
+                    coding, "coding.follow_up_appended", f"synthesized {coding['title']!r}",
+                    "coding-family paths always give every algorithm_walkthrough / data_structure_operation "
+                    "topic an implementation follow-up (this domain gates coding_follow_ups=True) — the "
+                    "model didn't emit one for this subject, so it's appended deterministically",
+                    walkthrough=str(t.get("title")))
     for i, t in enumerate(result, 1):
         t["order_index"] = i
     return result

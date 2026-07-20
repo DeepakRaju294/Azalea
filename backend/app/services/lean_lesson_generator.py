@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 from app.core.topic_assumptions import normalize_assumption_phrase
 from app.prompts.lean_lesson_prompt import build_lean_system_prompt, build_lean_user_prompt
 from app.services.assumption_ledger_service import build_assumption_ledger
+from app.core.decision_trace import record_lesson_decision
 from app.services.link_report import LINK_REPORT_KEY as _LINK_REPORT_KEY, build_link_report
 from app.services.llm_client import generate_lean_structured_lesson
 from app.services.practice_quality import validate_and_repair_practice
@@ -3708,7 +3709,8 @@ def _formula_variable_letters(text: str) -> set[str]:
     return letters
 
 
-def _reconcile_formula_notation_conflict(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _reconcile_formula_notation_conflict(cards: list[dict[str, Any]], topic: "Topic | None" = None
+                                         ) -> list[dict[str, Any]]:
     """Notation consistency: in a formula-driven lesson the formula equation is the CANONICAL notation. When a
     components/key-terms card introduces a variable LETTER the formula never uses — e.g. defining the event as E
     and the partitions as A_i while the formula uses A and B_i — it contradicts the formula and confuses a
@@ -3727,6 +3729,12 @@ def _reconcile_formula_notation_conflict(cards: list[dict[str, Any]]) -> list[di
             if used and (used - canonical):
                 logger.info("lean_lesson: dropped key-terms card with notation %s conflicting with formula %s",
                             sorted(used), sorted(canonical))
+                record_lesson_decision(
+                    topic, "card.notation_conflict_dropped", f"dropped a {_lean_card_key(c)} card",
+                    f"defined variable letters {sorted(used)} the formula card never uses "
+                    f"(formula's canonical letters: {sorted(canonical)}) — the formula equation is the "
+                    "canonical notation; a contradicting terms card confuses a first-time learner more "
+                    "than it helps", used_letters=sorted(used), canonical_letters=sorted(canonical))
                 continue
         out.append(c)
     return out
@@ -4068,6 +4076,12 @@ def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic, brief_fn=None
                 dropped = cards.pop(pidx)
                 logger.info("prereq grounding: certified path has no prerequisites — dropped ungrounded "
                             "prose card %r", dropped.get("title"))
+                record_lesson_decision(
+                    topic, "card.prereq_omitted", f"dropped {dropped.get('title')!r}",
+                    "the certified plan has NO structured prerequisites (a certified decision, not a "
+                    "gap) — rendering the LLM's own prose prereq card would ship an ungrounded surface "
+                    "with no links and no what-it-is/what-to-learn structure, so the path shows no "
+                    "prerequisites card at all rather than a fabricated one")
             return cards
         # PROSE PATH: decomposition emitted no structured prereqs (common model variance), so the model's own
         # prose prereq card stands — with sub-bullets that are fragments, not the refresher/what-to-learn
@@ -4679,7 +4693,7 @@ def _normalize_lean_card_order(
     # Notation consistency: drop a key-terms card that contradicts the formula's variable notation (e.g. defines
     # the event as E / partitions as A_i while the formula uses A / B_i). The formula card's own breakdown then
     # remains the single, consistent source of symbol meanings.
-    normalized = _reconcile_formula_notation_conflict(normalized)
+    normalized = _reconcile_formula_notation_conflict(normalized, topic)
 
     # Enforce the layered key-terms model deterministically: strip terms an earlier topic already defined, and
     # drop the card if nothing new remains (the prompt/ledger nudge alone is not reliably obeyed by the model).
@@ -8610,9 +8624,15 @@ def _ground_terms_against_canonical_code(cards: list[dict[str, Any]], topic: Top
                     skipping = bool(bad)
                     if skipping:
                         removed += 1
+                        term_name = s.split(':')[0].strip()
                         logger.info("term grounding: dropped term %r on %r — %s not used by the canonical "
-                                  "solution (%s)", s.split(':')[0].strip(), getattr(topic, "title", ""),
+                                  "solution (%s)", term_name, getattr(topic, "title", ""),
                                   "/".join(sorted(bad)), slug)
+                        record_lesson_decision(
+                            topic, "card.term_dropped", f"dropped key term {term_name!r}",
+                            f"promised the data structure {'/'.join(sorted(bad))}, but the canonical "
+                            f"solution ({slug}) never uses it — a term the code contradicts misleads more "
+                            "than it teaches", adapter=slug)
                         continue
                 if skipping and not _is_main_bullet(s):
                     continue                                 # sub-bullet of a dropped term
@@ -8677,6 +8697,12 @@ def _ground_formula_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
                 card["points"] = points
                 card.pop("body", None)
                 card["_formula_grounded"] = True
+                record_lesson_decision(
+                    topic, "card.formula_grounded", f"replaced with the {getattr(adapter, 'slug', '?')} spec",
+                    "the LLM writes the formula card from its own knowledge and sometimes gets it wrong, "
+                    "contradicting the adapter-verified worked example in the same topic — the adapter "
+                    "spec's canonical formula + notes are authoritative and replace the free-prose version",
+                    adapter=getattr(adapter, "slug", None))
                 return True
     except Exception as exc:  # noqa: BLE001 — grounding is best-effort, never break generation
         logger.debug("formula grounding skipped: %s", exc)
@@ -8755,6 +8781,11 @@ def _ground_edge_case_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
                     logger.info("edge-case grounding: dropped duplicate grounded edge card on %r "
                                 "(same grounded content as earlier sibling %r)",
                                 getattr(topic, "title", ""), getattr(sib, "title", ""))
+                    record_lesson_decision(
+                        topic, "card.edge_case_dropped_as_duplicate", "removed the edge-case card entirely",
+                        f"an earlier sibling ({getattr(sib, 'title', '?')!r}) already grounded the "
+                        "IDENTICAL adapter-authored boundary facts — repeating the same card on every "
+                        "later topic would read as copy-paste")
                     return True
         except Exception:  # noqa: BLE001 — sibling dedup is best-effort
             pass
@@ -8770,6 +8801,11 @@ def _ground_edge_case_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
                 card["main_concept"] = title
                 card.pop("body", None)
                 card["_edge_case_grounded"] = True
+                record_lesson_decision(
+                    topic, "card.edge_case_grounded", f"replaced with {len(edges)} adapter-authored fact(s)",
+                    "the LLM often states a subtly wrong edge case for this kind of formula — the true "
+                    "boundary behavior is known to the adapter spec's author, so it replaces the free-prose "
+                    "version rather than being merely checked against it")
                 return True
     except Exception as exc:  # noqa: BLE001 — grounding is best-effort, never break generation
         logger.debug("edge-case grounding skipped: %s", exc)

@@ -1937,5 +1937,68 @@ class TopicDepthRepairs(unittest.TestCase):
         self.assertTrue(_req_tokens(mech_req["statement"]) & {"process", "transfer"})
 
 
+class DecisionTraceIntegration(unittest.TestCase):
+    """Comprehensive decision logging (2026-07-20): every deterministic pipeline pass now records WHY it
+    acted, not just a log line. The tricky correctness case: a decision recorded on topic A from a LATER
+    loop iteration processing topic B (e.g. B absorbed as A's duplicate) must still reach A's persisted
+    trace even though A's own decomposition_metadata was assigned earlier in the same pass — verified via
+    the full _certify_path_scope + family-survey pipeline, not just the primitive in isolation."""
+
+    def test_family_survey_end_to_end_trace_reaches_every_topic(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R1", "name": "In-order traversal", "kind": "core",
+             "statement": "describe the in-order traversal algorithm"},
+            {"requirement_id": "R2", "name": "Pre-order traversal", "kind": "core",
+             "statement": "describe the pre-order traversal algorithm"},
+        ], "assumed_prerequisites": [
+            {"name": "binary search trees", "gloss": "an ordered binary tree",
+             "required_knowledge": "know node/child structure"}]}
+        plan = {"path_plan": {"end_capability_actions": ["trace"], "required_capabilities": []},
+                "topics": [{"topic_id": "t1", "capability_id": "t1", "subject_key": "in_order_traversal",
+                            "primary_action": "trace", "content_role": "algorithm_trace",
+                            "topic_type": "algorithm_walkthrough", "title": "In-Order Traversal",
+                            "unit_title": "u", "purpose": "p",
+                            "in_scope": ["visit order", "left-root-right"],
+                            "covers_requirements": ["R1"], "basis": "goal"}]}
+
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+
+        topics = generate_decomposed_topics("want to learn about bst traversal algorithms", "s",
+                                            model_fn=fn, coding_follow_ups=True)
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        path_trace = (intro.get("decomposition_metadata") or {}).get("path_decision_trace") or []
+        path_stages = {e["stage"] for e in path_trace}
+        self.assertIn("curriculum.requirements_call", path_stages)
+        self.assertIn("requirement.coverage_check", path_stages)
+        self.assertIn("curriculum.prereq_fallback", path_stages)
+
+        by_title = {t["title"]: t for t in topics}
+        self.assertIn("In-Order Traversal", by_title)
+        wt_trace = by_title["In-Order Traversal"].get("decomposition_metadata", {}).get("decision_trace", [])
+        self.assertTrue(any(e["stage"] == "requirement.claim_verified" for e in wt_trace))
+        # the coverage-repair-synthesized topic for the unowned R2 carries its OWN origin story
+        synth = next((t for t in topics if "Pre-order" in t["title"]), None)
+        self.assertIsNotNone(synth)
+        synth_trace = synth.get("decomposition_metadata", {}).get("decision_trace", [])
+        self.assertTrue(any(e["stage"] == "validator.synthesized_for_coverage" for e in synth_trace))
+
+    def test_absorbed_duplicate_decision_reaches_survivor_despite_loop_order(self):
+        # regression: identity dedup records "absorbed X" on the SURVIVOR, which may be processed EARLIER
+        # in the certification loop than the duplicate it absorbs — the final consolidation pass in
+        # _certify_path_scope must still pick this up, not just decisions recorded on the topic's OWN turn.
+        from app.services.topic_generator import _certify_path_scope
+        physics = {"title": "Physics of Turbulence", "course_type": "science_mechanism",
+                   "topic_type": "science_mechanism", "in_scope": ["x"], "out_of_scope": []}
+        turbulence_physics = {"title": "Turbulence Physics", "course_type": "science_mechanism",
+                              "topic_type": "science_mechanism", "in_scope": ["y"], "out_of_scope": []}
+        out = _certify_path_scope([physics, turbulence_physics], "learn fluid turbulence")
+        self.assertEqual(len(out), 1)                          # confirms the collapse actually happened
+        survivor_trace = out[0].get("decomposition_metadata", {}).get("decision_trace", [])
+        self.assertTrue(any(e["stage"] == "identity.absorbed_duplicate" for e in survivor_trace),
+                        survivor_trace)
+
+
 if __name__ == "__main__":
     unittest.main()
