@@ -1239,6 +1239,10 @@ def _ensure_family_comparison_topic(topics: list[dict[str, Any]], goal: str | No
         "in_scope": [f"{a} vs {b}" for a, b in zip(names, names[1:])] or names,
         "out_of_scope": [], "prerequisite_topics": [], "source_refs": [],
         "order_index": max((int(t.get("order_index") or 0) for t in topics), default=0) + 1,
+        # create_topic_from_generated_data reads this with a HARD key lookup; every model-emitted topic gets
+        # it via normalization, but this injected dict skipped it — KeyError the first time the injector
+        # actually fired live (model emitted no comparison of its own).
+        "estimated_minutes": 10,
     }
     _log.info("topic_generator: injected deterministic family comparison topic %r", title)
     return [*topics, comparison]
