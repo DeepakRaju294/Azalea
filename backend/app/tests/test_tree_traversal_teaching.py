@@ -1174,6 +1174,51 @@ class BstRegressionRoundFixes(unittest.TestCase):
         self.assertIn("prerequisites", bp.get("optional_cards") or [])   # stays plan-driven
 
 
+class ZeroMemberFamilyExpansion(unittest.TestCase):
+    """31st-review regression: requirements-first induced ONE collapsed 'BST Traversal Methods' umbrella
+    (+ 'Implementing BST Traversal'), and the expansion's >=1-member guard blocked injection exactly when it
+    mattered most. With an in-path umbrella as evidence, the full canonical set is injected and the umbrella
+    topics are dropped; without any family evidence, unrelated paths stay untouched."""
+
+    def test_umbrella_only_survey_expands_to_full_canonical_set(self):
+        from app.services.topic_generator import _expand_canonical_family
+        topics = [
+            {"title": "BST Traversal Methods", "course_type": "algorithm_walkthrough",
+             "topic_type": "algorithm_walkthrough", "unit_title": "u",
+             "in_scope": ["definition of in-order traversal", "definition of pre-order traversal"]},
+            {"title": "Implementing BST Traversal", "course_type": "coding_implementation",
+             "topic_type": "coding_implementation", "unit_title": "u"},
+        ]
+        out = _expand_canonical_family(topics, "Want to learn about bst traversal")
+        titles = [t["title"] for t in out]
+        for member in ("In-Order Traversal", "Pre-Order Traversal", "Post-Order Traversal",
+                       "Level-Order Traversal"):
+            self.assertIn(member, titles)
+        self.assertNotIn("BST Traversal Methods", titles)         # umbrella dropped
+        self.assertNotIn("Implementing BST Traversal", titles)
+
+    def test_no_family_evidence_no_injection(self):
+        from app.services.topic_generator import _expand_canonical_family
+        topics = [{"title": "Hash Tables", "course_type": "algorithm_walkthrough",
+                   "topic_type": "algorithm_walkthrough"}]
+        out = _expand_canonical_family(topics, "want to learn about bst traversal")
+        self.assertEqual([t["title"] for t in out], ["Hash Tables"])
+
+    def test_umbrella_prereq_dropped_beside_specific(self):
+        from app.services.topic_decomposition_pipeline import _drop_umbrella_prereqs
+        self.assertEqual(_drop_umbrella_prereqs(["Data Structures", "Recursion"]), ["Recursion"])
+        # a lone parent-discipline prereq is still kept (turbulence: 'fluid dynamics' alone was approved)
+        self.assertEqual(_drop_umbrella_prereqs(["Data Structures"]), ["Data Structures"])
+
+    def test_requirements_prompt_carries_survey_and_specificity_rules(self):
+        from app.prompts.topic_decomposition_prompt import build_goal_requirements_prompt
+        p = build_goal_requirements_prompt("learn bst traversal", "s")
+        self.assertIn("FAMILY SURVEYS", p)
+        self.assertIn("its OWN requirement", p)
+        self.assertIn('NOT "data structures"', p)
+        self.assertIn("is a PREREQUISITE, not a requirement", p)
+
+
 class CoverageStubSynthesis(unittest.TestCase):
     """B.4.1 coverage repair must never surface a raw capability_id as a learner-facing title (live: a stub
     topic literally titled 'C1'), and the synthesized topic carries the capability description as its one

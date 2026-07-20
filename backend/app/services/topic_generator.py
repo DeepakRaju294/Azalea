@@ -953,10 +953,32 @@ def _expand_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> 
     present = {slug for t in topics if _ttype(t) in _MEMBER_TEACHING_TYPES
                for slug in [_slug(t.get("title"), _ttype(t))] if slug}
     member_slugs = {slug for _, slug in fam["members"]}
-    if not (present & member_slugs):            # path teaches no member of this family -> do not inject
-        return topics
     template = next((t for t in topics if _ttype(t) == "algorithm_walkthrough"), None)
     result = list(topics)
+    if not (present & member_slugs):
+        # ZERO members (requirements-first live regression): the model folded the WHOLE family into one
+        # umbrella topic ("BST Traversal Methods" + "Implementing BST Traversal"), so the old >=1-member
+        # guard blocked injection exactly when it mattered most. The goal already names the family (markers
+        # matched); require an in-path UMBRELLA topic as evidence, inject the full canonical set, and drop
+        # the umbrella walkthrough/coding topics (each member now owns its slice of their content).
+        fam_words = {w for name, _ in fam["members"] for w in name.lower().replace("-", " ").split()
+                     if len(w) >= 4}
+        fam_words |= {w for w in str(fam.get("display") or "").lower().split() if len(w) >= 4}
+
+        def _is_umbrella(t: dict[str, Any]) -> bool:
+            title_words = set(str(t.get("title") or "").lower().replace("-", " ").split())
+            return (_ttype(t) in _MEMBER_TEACHING_TYPES and bool(fam_words & title_words)
+                    and _slug(t.get("title"), _ttype(t)) is None)
+
+        umbrellas = [t for t in result if _is_umbrella(t)]
+        if not umbrellas:
+            return topics                       # no in-path evidence of the family — do not inject
+        template = next((t for t in umbrellas if _ttype(t) == "algorithm_walkthrough"), template)
+        drop = {id(t) for t in umbrellas}
+        result = [t for t in result if id(t) not in drop]
+        _log.info("canonical-family expansion: zero members — dropped %d umbrella topic(s) %s and "
+                  "injecting the full canonical set", len(umbrellas),
+                  [str(t.get("title")) for t in umbrellas])
     for member_title, slug in fam["members"]:
         if slug in present:
             continue

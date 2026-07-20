@@ -70,14 +70,22 @@ RULES:
   mechanism(s), observable consequences/applications, and — only when genuinely core — how it is modeled.
 - Requirements define WHAT must be learned, not lesson titles, card counts, or ordering.
 - A narrow single-technique goal may genuinely need only 2-3 requirements; do not pad.
+- FAMILY SURVEYS: when the goal surveys a FAMILY of techniques (sorting algorithms, tree/graph traversals,
+  search methods), EACH canonical member is its OWN requirement ("in-order traversal", "pre-order traversal",
+  "post-order traversal", "level-order traversal" — four requirements), NEVER one collapsed "explain the
+  methods" requirement. The members ARE the curriculum; collapsing them collapses the course.
 - name = a 2-5 word noun phrase naming the requirement (it may become a topic title later).
 - kind: "core" (the goal is not met without it) | "supporting" (needed to make a core requirement teachable).
 - assumed_prerequisites = the 0-3 EXTERNAL concepts a learner must already know BEFORE this course — from a
   DIFFERENT, earlier subject (the concept a college course would teach in the units leading up to this
   material: "binary search trees" before a BST-traversal course, "fluid dynamics" before turbulence,
-  "derivatives" before integration by parts). NEVER a requirement of this course restated, never the goal
-  subject itself, never trivial background. A prerequisite is a concept the course ASSUMES; a requirement is
-  a concept the course TEACHES — the same concept must not appear in both lists. [] when nothing applies.
+  "derivatives" before integration by parts). Name the SPECIFIC concept, never an umbrella discipline
+  ("binary search trees", NOT "data structures"; "fluid dynamics", NOT "physics"). When the goal targets a
+  skill ON a structure or object ("BST traversal", "matrix inversion"), that structure ("binary search
+  trees", "matrices") is a PREREQUISITE, not a requirement — the course uses it, it does not teach it.
+  NEVER a requirement of this course restated, never the goal subject itself, never trivial background.
+  A prerequisite is a concept the course ASSUMES; a requirement is a concept the course TEACHES — the same
+  concept must not appear in both lists. [] when nothing applies.
 
 Return ONLY JSON:
 {{"requirements": [

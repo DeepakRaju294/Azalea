@@ -268,6 +268,9 @@ _UMBRELLA_FIELDS = frozenset({
     # whole-subfield umbrellas (live: 'fluid mechanics' beside the specific 'Viscosity' + 'Reynolds Number' —
     # the umbrella vaguely restates what its specific siblings already cover)
     "fluid mechanics", "fluid dynamics", "physics", "chemistry", "accounting", "finance", "economics",
+    # CS umbrellas (live: 'Data Structures' beside the specific 'Recursion' on a bst-traversal path — the
+    # learner needs binary search trees, not the whole field)
+    "data structures", "algorithms", "software engineering",
 })
 
 
