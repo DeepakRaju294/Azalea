@@ -41,7 +41,14 @@ def _required_cards(blueprint: dict[str, Any]) -> list[str]:
 
 def _insert_at_blueprint_position(cards: list[dict[str, Any]], card: dict[str, Any],
                                   key: str, order: list[str]) -> None:
-    """Insert `card` so the deck follows the blueprint order as closely as possible."""
+    """Insert `card` so the deck follows the blueprint order as closely as possible.
+
+    `order` must be the blueprint's FULL declared sequence, not just the required-cards subset:
+    an existing OPTIONAL card (e.g. prerequisites, itself not being backfilled) has no rank in a
+    required-only list and defaults to "last", so a backfilled required card that belongs AFTER it
+    (e.g. components_terms, which the sequence places after prerequisites) gets inserted BEFORE it
+    instead — live: a study_path_introduction whose model output dropped components_terms had it
+    backfilled and spliced ahead of the prerequisites card, contradicting the declared order."""
     rank = {k: i for i, k in enumerate(order)}
     target = rank.get(key, len(order))
     for i, existing in enumerate(cards):
@@ -70,6 +77,7 @@ def backfill_missing_required_cards(
     except Exception:  # noqa: BLE001
         return []
     required = _required_cards(blueprint)
+    full_sequence = list(blueprint.get("default_card_sequence") or []) or required
     cards = lesson_json.setdefault("lesson_cards", [])
     present = {_card_key(c) for c in cards if isinstance(c, dict) and not _is_empty(c)}
     missing = [k for k in required if k not in present]
@@ -86,7 +94,7 @@ def backfill_missing_required_cards(
                 fn = single_card_fn or _default_single_card
                 card = fn(key, lesson_json, topic)
                 if card:
-                    _insert_at_blueprint_position(cards, card, key, required)
+                    _insert_at_blueprint_position(cards, card, key, full_sequence)
                     action = "regenerated"
         except Exception as exc:  # noqa: BLE001 — backfill must never break a lesson
             detail = repr(exc)
@@ -101,7 +109,7 @@ def backfill_missing_required_cards(
     if "practice" in still:
         card = _deterministic_practice_card(lesson_json, topic)
         if card:
-            _insert_at_blueprint_position(cards, card, "practice", required)
+            _insert_at_blueprint_position(cards, card, "practice", full_sequence)
             log_card_failure(topic=topic, card_key="practice", stage="backfill",
                              reason="missing_required_card", action="synthesized_deterministic", detail="")
             present = {_card_key(c) for c in cards if isinstance(c, dict) and not _is_empty(c)}

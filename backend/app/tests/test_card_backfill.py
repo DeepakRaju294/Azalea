@@ -47,6 +47,22 @@ class BackfillTests(unittest.TestCase):
         self.assertLess(keys.index("background"), keys.index("code_walkthrough"))  # placed by blueprint order
         self.assertEqual(still, [])
 
+    def test_backfilled_card_slots_after_an_earlier_OPTIONAL_card(self):
+        """40th-round live finding: a study_path_introduction whose model output was missing
+        components_terms (REQUIRED) but had prerequisites (OPTIONAL) got it backfilled and inserted
+        BEFORE prerequisites — contradicting the blueprint's declared order (background, prerequisites,
+        components_terms, roadmap). Root cause: _insert_at_blueprint_position ranked only the
+        REQUIRED-cards subset, so the unranked optional 'prerequisites' card defaulted to "last" and
+        the newly-inserted components_terms spliced in ahead of it."""
+        intro_topic = {"id": "t2", "title": "Introduction to Fluid Turbulence",
+                       "topic_type": "study_path_introduction"}
+        lesson = {"lesson_cards": [card("background"), card("prerequisites"), card("roadmap")]}
+        still = backfill_missing_required_cards(
+            lesson, intro_topic, single_card_fn=lambda k, l, t: card(k))
+        self.assertEqual(still, [])
+        keys = [c["blueprint_key"] for c in lesson["lesson_cards"]]
+        self.assertEqual(keys, ["background", "prerequisites", "components_terms", "roadmap"])
+
     def test_drop_logged_when_regeneration_fails(self):
         lesson = {"lesson_cards": [card("code_walkthrough"), card("practice")]}
         still = backfill_missing_required_cards(
