@@ -313,6 +313,9 @@ def build_topic_scope_contract(
                 *explicit_in_scope,
             ]
         ),
+        # The explicit plan-owned learning deltas, kept separate from title/purpose framing so validators can
+        # require substantive coverage of every commitment without treating a title mention as coverage.
+        "owned_scope_content": dedupe_keep_order(explicit_in_scope),
         "out_of_scope_content": out_of_scope_content,
         "must_not_teach": must_not_teach,
         "allowed_card_sequence": allowed_sequence,

@@ -217,6 +217,7 @@ def validate_scope_adherence(
                 )
 
     issues.extend(validate_practice_types(practice_questions, topic_scope_contract))
+    issues.extend(validate_owned_scope_coverage(cards, topic_scope_contract))
     if not text_only_core_mode:
         issues.extend(validate_visual_scope(lesson_json, cards, topic_scope_contract))
 
@@ -227,6 +228,61 @@ def validate_scope_adherence(
     }
     lesson_json["scope_validation_report"] = report
     return report
+
+
+_COVERAGE_STOPWORDS = {
+    "about", "after", "before", "between", "characteristics", "describe", "eventual", "from",
+    "into", "process", "processes", "role", "that", "their", "these", "this", "through", "using",
+    "what", "when", "where", "which", "with",
+}
+
+
+def _coverage_tokens(value: Any) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", str(value or "").lower())
+        if len(token) >= 4 and token not in _COVERAGE_STOPWORDS
+    }
+
+
+def validate_owned_scope_coverage(
+    cards: list[dict[str, Any]],
+    topic_scope_contract: dict[str, Any],
+) -> list[str]:
+    """Require each explicit scope commitment to be taught beyond an opening name-drop."""
+    commitments = [
+        str(item).strip()
+        for item in topic_scope_contract.get("owned_scope_content", [])
+        if str(item).strip()
+    ]
+    if not commitments:
+        return []
+    substantive_texts: list[str] = []
+    for card in cards:
+        if not isinstance(card, dict):
+            continue
+        key = str(card.get("blueprint_key") or card.get("card_type") or "").strip().lower()
+        if key in {"background", "prerequisites", "takeaway", "summary"}:
+            continue
+        substantive_texts.append(collect_any_text(card))
+    issues: list[str] = []
+    for commitment in commitments:
+        wanted = _coverage_tokens(commitment)
+        if not wanted:
+            continue
+        covered = False
+        for text in substantive_texts:
+            actual = _coverage_tokens(text)
+            shared = wanted & actual
+            required = 1 if len(wanted) == 1 else 2
+            if len(shared) >= required or len(shared) / len(wanted) >= 0.5:
+                covered = True
+                break
+        if not covered:
+            issues.append(
+                f"Owned scope commitment is only mentioned or not substantively taught: {commitment}."
+            )
+    return issues
 
 
 def build_scope_retry_feedback(report: dict[str, Any]) -> str:

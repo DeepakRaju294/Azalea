@@ -910,6 +910,39 @@ def build_lean_user_prompt(
     if getattr(topic, "out_of_scope", None):
         parts.append(f"Out of scope: {'; '.join(str(x) for x in topic.out_of_scope)}")
 
+    _scope_meta = getattr(topic, "decomposition_metadata", None)
+    _scope_plan = _scope_meta.get("scope_plan") if isinstance(_scope_meta, dict) else None
+    _science_shape = _scope_plan.get("science_shape") if isinstance(_scope_plan, dict) else None
+    if _science_shape == "mechanism":
+        parts.append(
+            "Science lesson shape: MECHANISM. Build the lesson around (1) starting condition, (2) driver, "
+            "(3) explicit cause-effect changes, (4) observable result, and (5) limiting/dissipation mechanism. "
+            "Use a traced conceptual example that demonstrates the owned in-scope mechanism. A supporting "
+            "formula or adapter must not replace that mechanism or consume the worked-example sequence."
+        )
+    elif _science_shape == "regime":
+        parts.append(
+            "Science lesson shape: REGIME. Explain the controlling quantity physically, compare regimes, "
+            "state boundary uncertainty, and state the geometry/conditions under which any thresholds apply."
+        )
+    elif _science_shape == "quantitative_relationship":
+        parts.append(
+            "Science lesson shape: QUANTITATIVE RELATIONSHIP. Define every symbol and unit, explain the "
+            "relationship before substitution, state its applicability conditions, then interpret the result."
+        )
+    elif _science_shape == "model":
+        parts.append(
+            "Science lesson shape: MODEL. Separate what is resolved, approximated, and assumed; explain the "
+            "tradeoff and the conditions under which each model is appropriate."
+        )
+
+    if primary_blueprint["topic_type"] != "study_path_introduction":
+        parts.append(
+            "Practice solvability gate: every requested calculation must provide all required numerical inputs, "
+            "define every symbol, and have a derivable answer. Every qualitative prediction must have one clear "
+            "causal target and be answerable from mechanisms explicitly taught in this lesson."
+        )
+
     if sibling_out_of_scope:
         parts.append(
             "Sibling topics covered SEPARATELY in this study path (do NOT re-teach or preview their "

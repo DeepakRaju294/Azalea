@@ -141,8 +141,11 @@ def _reynolds_interpretation(env: dict) -> str | None:
 # doesn't fit the 1-dp float sampler), and the ranges genuinely span laminar -> turbulent.
 REYNOLDS_NUMBER = FormulaSpec(
     slug="reynolds_number", title="Reynolds number and flow regime", family="physics",
-    aliases=["reynolds number", "reynolds", "fluid turbulence", "turbulent flow", "turbulence",
-             "laminar and turbulent", "laminar or turbulent", "flow regime", "flow regimes"],
+    # Keep routing narrower than the parent subject. Bare "turbulence" aliases caused energy-cascade and
+    # real-world-application topics to receive this pipe-flow calculation and canonical identity.
+    aliases=["reynolds number", "reynolds", "laminar and turbulent", "laminar or turbulent",
+             "laminar vs turbulent",
+             "flow regime", "flow regimes", "flow classification"],
     # TURBULENCE MODELING topics (k-epsilon, LES, RANS closures) must NOT route here: a 'Turbulence Models'
     # topic (scope: k-epsilon, LES) shipped a VERIFIED-but-IRRELEVANT Re calculation — worse than unverified,
     # because the verification badge lends trust to an example that does not teach the topic's declared scope.

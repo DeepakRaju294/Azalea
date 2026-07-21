@@ -3526,6 +3526,31 @@ export default function StudyPathLearnPage() {
     return isLessonVisualRenderable(visual);
   }
 
+  function openPrerequisiteStudyPath(link: LessonInteractiveLink) {
+    if (!link.target || openStudyPathBusyRef.current) return;
+    openStudyPathBusyRef.current = true;
+    void (async () => {
+      try {
+        const res = await resolveOpenStudyPath({
+          target: link.target as string,
+          target_concept_id: link.concept_id ?? null,
+          request_id:
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random()}`,
+          origin_path_id: studyPathId,
+          origin_topic_id: selectedTopicId || null,
+          origin_link_text: link.text ?? null,
+        });
+        router.push(`/study-paths/${res.study_path_id}`);
+      } catch {
+        // Best-effort: a failed create must never trap the learner in the lesson.
+      } finally {
+        openStudyPathBusyRef.current = false;
+      }
+    })();
+  }
+
   function renderLearningStep(step: LearningStep, hideVisual = false, guidanceMode = false) {
     if (step.type === "purpose_context") {
       return (
@@ -3572,32 +3597,7 @@ export default function StudyPathLearnPage() {
             setSelectedTopicId(topicId);
             setCurrentStepIndex(0);
           }}
-          onOpenStudyPath={(link) => {
-            // open_study_path (§4): create/return a prerequisite path and navigate to it. The in-flight
-            // guard makes a double-click idempotent (one intent → one path).
-            if (!link.target || openStudyPathBusyRef.current) return;
-            openStudyPathBusyRef.current = true;
-            void (async () => {
-              try {
-                const res = await resolveOpenStudyPath({
-                  target: link.target as string,
-                  target_concept_id: link.concept_id ?? null,
-                  request_id:
-                    typeof crypto !== "undefined" && "randomUUID" in crypto
-                      ? crypto.randomUUID()
-                      : `${Date.now()}-${Math.random()}`,
-                  origin_path_id: studyPathId,
-                  origin_topic_id: selectedTopicId || null,
-                  origin_link_text: link.text ?? null,
-                });
-                router.push(`/study-paths/${res.study_path_id}`);
-              } catch {
-                // Best-effort — a failed create must never trap the learner; they keep the inline gloss.
-              } finally {
-                openStudyPathBusyRef.current = false;
-              }
-            })();
-          }}
+          onOpenStudyPath={openPrerequisiteStudyPath}
         />
       );
     }
@@ -5436,7 +5436,12 @@ export default function StudyPathLearnPage() {
                       const shouldNumberMainBullets = tree.length > 1;
                       const allowCodeWork =
                         currentStep.type === "flow_card" && Boolean(currentStep.card?.code_snippet);
+                      const interactiveLinks =
+                        currentStep.type === "flow_card"
+                          ? normalizeInteractiveLinks(currentStep.card?.interactive_links)
+                          : [];
                       return (
+                        <OpenStudyPathContext.Provider value={openPrerequisiteStudyPath}>
                         <CodeWorkContext.Provider value={allowCodeWork}>
                         <div className="space-y-3">
                           {tree.map((node, i) => {
@@ -5466,7 +5471,18 @@ export default function StudyPathLearnPage() {
                                   </span>
                                   <div className="min-w-0 flex-1">
                                     <p className="text-base font-black leading-6 text-foreground">
-                                      {formatParentBulletText(node)}
+                                      <LinkedMathText
+                                        text={formatParentBulletText(node)}
+                                        links={linksForItem(interactiveLinks, "points", node.index)}
+                                        onAskAboutText={(text) =>
+                                          void handleInstantClarification({
+                                            label: "Card highlight",
+                                            question:
+                                              "Explain this part of the current card plainly, including why it matters and what I might be misunderstanding.",
+                                            selectedText: text,
+                                          })
+                                        }
+                                      />
                                     </p>
                                     {node.children.length > 0 && (
                                       <WorkspaceBulletChildren
@@ -5482,6 +5498,7 @@ export default function StudyPathLearnPage() {
                           })}
                         </div>
                         </CodeWorkContext.Provider>
+                        </OpenStudyPathContext.Provider>
                       );
                     })()}
 
