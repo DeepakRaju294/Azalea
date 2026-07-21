@@ -479,8 +479,9 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
             continue
         try:
             from app.services.examples.trace_pipeline import route_adapter
-            slug = getattr(route_adapter({"title": str(t.get("title") or ""), "topic_type": tt,
-                                          "course_type": tt}), "slug", None)
+            slug = getattr(route_adapter({"title": str(t.get("title") or ""),
+                                          "subject_key": str(t.get("subject_key") or ""),
+                                          "topic_type": tt, "course_type": tt}), "slug", None)
         except Exception:  # noqa: BLE001 — certification must never break generation
             slug = None
         if not slug:
@@ -565,6 +566,7 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
             try:
                 from app.services.examples.trace_pipeline import route_adapter
                 _a = route_adapter({"title": str(topic.get("title") or ""),
+                                    "subject_key": str(topic.get("subject_key") or ""),
                                     "topic_type": ttype, "course_type": ttype})
                 verified_example = getattr(_a, "slug", None)
             except Exception:  # noqa: BLE001 — certification must never break generation
@@ -1081,12 +1083,13 @@ def _expand_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> 
     def _ttype(t: dict[str, Any]) -> str:
         return str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
 
-    def _slug(title: Any, ttype: str) -> Optional[str]:
-        a = route_adapter({"title": str(title or ""), "topic_type": ttype})
+    def _slug(t: dict[str, Any]) -> Optional[str]:
+        a = route_adapter({"title": str(t.get("title") or ""), "subject_key": str(t.get("subject_key") or ""),
+                           "topic_type": _ttype(t)})
         return a.slug if a else None
 
     present = {slug for t in topics if _ttype(t) in _MEMBER_TEACHING_TYPES
-               for slug in [_slug(t.get("title"), _ttype(t))] if slug}
+               for slug in [_slug(t)] if slug}
     member_slugs = {slug for _, slug in fam["members"]}
     template = next((t for t in topics if _ttype(t) == "algorithm_walkthrough"), None)
     result = list(topics)
@@ -1103,7 +1106,7 @@ def _expand_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> 
         def _is_umbrella(t: dict[str, Any]) -> bool:
             title_words = set(str(t.get("title") or "").lower().replace("-", " ").split())
             return (_ttype(t) in _MEMBER_TEACHING_TYPES and bool(fam_words & title_words)
-                    and _slug(t.get("title"), _ttype(t)) is None)
+                    and _slug(t) is None)
 
         umbrellas = [t for t in result if _is_umbrella(t)]
         if not umbrellas:
@@ -1174,7 +1177,8 @@ def _order_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> l
         return str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
 
     def _slug(t: dict[str, Any]) -> Optional[str]:
-        a = route_adapter({"title": str(t.get("title") or ""), "topic_type": _ttype(t)})
+        a = route_adapter({"title": str(t.get("title") or ""), "subject_key": str(t.get("subject_key") or ""),
+                           "topic_type": _ttype(t)})
         return a.slug if a else None
 
     canon = {slug: name for name, slug in fam["members"]}
@@ -1294,7 +1298,8 @@ def _drop_same_adapter_duplicate_topics(topics: list[dict[str, Any]]) -> list[di
         if ttype not in _WE_CENTRIC_TYPES or ttype == "coding_implementation":
             kept.append(t)
             continue
-        a = route_adapter({"title": str(t.get("title") or ""), "topic_type": ttype, "course_type": ttype})
+        a = route_adapter({"title": str(t.get("title") or ""), "subject_key": str(t.get("subject_key") or ""),
+                           "topic_type": ttype, "course_type": ttype})
         slug = getattr(a, "slug", None)
         title = str(t.get("title") or "")
         # Drop only with token evidence the topics are the SAME concept — broad aliases give unrelated
@@ -1354,7 +1359,9 @@ def _ensure_family_comparison_topic(topics: list[dict[str, Any]], goal: str | No
     except Exception:  # noqa: BLE001 — never break topic generation
         return topics
     member_slugs = {slug for _, slug in fam["members"]}
-    taught = {getattr(route_adapter({"title": str(t.get("title") or ""), "topic_type": _ttype(t)}), "slug", None)
+    taught = {getattr(route_adapter({"title": str(t.get("title") or ""),
+                                     "subject_key": str(t.get("subject_key") or ""),
+                                     "topic_type": _ttype(t)}), "slug", None)
               for t in topics if _ttype(t) in _MEMBER_TEACHING_TYPES}
     taught &= member_slugs
     if len(taught) < 2:

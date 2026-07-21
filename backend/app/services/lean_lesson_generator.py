@@ -8655,14 +8655,24 @@ def _plan_allowed_adapter(topic: Topic):
     here re-opened the verified-but-irrelevant hole at card level (live: a concept topic certified
     verified_example=null matched the broad 'turbulence' alias and shipped Reynolds spec content)."""
     from app.services.examples.trace_pipeline import route_adapter
-    scope_plan = ((getattr(topic, "decomposition_metadata", None) or {}).get("scope_plan") or {})
+    meta = getattr(topic, "decomposition_metadata", None) or {}
+    scope_plan = meta.get("scope_plan") or {}
     planned = scope_plan.get("verified_example")
     if scope_plan and not planned:
         return None
     adapter = route_adapter({"title": getattr(topic, "title", "") or "",
+                             "subject_key": meta.get("subject_key") or "",
                              "course_type": _topic_type_key(topic)})
     if planned and adapter is not None and getattr(adapter, "slug", None) != planned:
         return None
+    if planned and adapter is None:
+        # the certified plan already resolved an adapter (via a signal this routing attempt didn't have,
+        # e.g. subject_key phrasing routing missed) — look it up directly by slug rather than silently
+        # withholding grounded content the plan says exists (live: a certified verified_example=
+        # 'reynolds_number' topic still got no formula/edge-case grounding because THIS re-routing, title-
+        # only at the time, failed even though certification's own routing had succeeded).
+        from app.services.examples.trace_adapters import ADAPTERS
+        adapter = ADAPTERS.get(planned)
     return adapter
 
 

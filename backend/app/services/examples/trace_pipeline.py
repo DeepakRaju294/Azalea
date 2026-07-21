@@ -50,7 +50,16 @@ def route_adapter(topic: dict[str, Any]):
     same VERIFIED conceptual trace as the walkthrough (correct), without per-step code-line highlighting
     (canonical code is Part 2, deferred). The code-walkthrough card still shows the code separately."""
     slug = str(topic.get("slug") or topic.get("topic_family") or topic.get("family") or "").lower()
-    text = (slug + " " + str(topic.get("title") or topic.get("name") or "")).lower()
+    # subject_key participates in routing alongside title: it is the SAME signal certification's own
+    # identity assignment already trusts (_canonical_concept_key checks subject_key before title), but
+    # routing historically only ever looked at title — a topic titled 'Key Quantities in Turbulence' with
+    # subject_key 'turbulence_reynolds_number' correctly identified as the Reynolds concept everywhere else,
+    # yet its adapter never routed, so it shipped withhold_fabricated with NO worked example (live: an
+    # entire turbulence path with zero examples anywhere, because the ONE topic that should have had one
+    # happened to get a paraphrased title that title-only routing had never seen before). Underscores
+    # normalize to spaces below the same way _canonical_concept_key's lowered-text match already does.
+    subject_key = str(topic.get("subject_key") or "").replace("_", " ")
+    text = (slug + " " + subject_key + " " + str(topic.get("title") or topic.get("name") or "")).lower()
     # SAFETY: never route an intro/overview/meta topic to a computational adapter.
     ttype = str(topic.get("topic_type") or topic.get("course_type") or "").lower()
     if ttype in _NON_ROUTING_TYPES or any(m in text for m in _META_TITLE_MARKERS):

@@ -1285,6 +1285,7 @@ def generate_decomposed_topics(
         try:
             from app.services.examples.trace_pipeline import route_adapter
             a = route_adapter({"title": str(t.get("title") or ""),
+                               "subject_key": str(t.get("subject_key") or ""),
                                "topic_type": str(t.get("topic_type") or "")})
             return getattr(a, "slug", None)
         except Exception:  # noqa: BLE001 — routing must never break decomposition

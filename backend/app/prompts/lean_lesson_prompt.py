@@ -713,7 +713,9 @@ def _path_notation_directive(topic: Topic, topic_type: str) -> str | None:
         from app.services.examples.trace_pipeline import route_adapter
 
         # If THIS topic has its own adapter, `_formula_notation_contract` already pins its notation exactly.
-        own = route_adapter({"title": getattr(topic, "title", "") or "", "course_type": topic_type})
+        meta = getattr(topic, "decomposition_metadata", None) or {}
+        own = route_adapter({"title": getattr(topic, "title", "") or "",
+                             "subject_key": meta.get("subject_key") or "", "course_type": topic_type})
         if getattr(own, "_formula_spec", None) is not None:
             return None
         study_path = getattr(topic, "study_path", None)
@@ -724,7 +726,9 @@ def _path_notation_directive(topic: Topic, topic_type: str) -> str | None:
             if s is topic:
                 continue
             s_type = str(getattr(s, "topic_type", None) or getattr(s, "course_type", None) or "")
-            ad = route_adapter({"title": getattr(s, "title", "") or "", "course_type": s_type})
+            s_meta = getattr(s, "decomposition_metadata", None) or {}
+            ad = route_adapter({"title": getattr(s, "title", "") or "",
+                                "subject_key": s_meta.get("subject_key") or "", "course_type": s_type})
             spec = getattr(ad, "_formula_spec", None) if ad is not None else None
             latex = getattr(spec, "canonical_latex", None) if spec is not None else None
             if latex and latex not in seen:
@@ -756,7 +760,9 @@ def _formula_notation_contract(topic: Topic, topic_type: str) -> str | None:
 
         from app.services.examples.trace_pipeline import route_adapter
 
-        adapter = route_adapter({"title": getattr(topic, "title", "") or "", "course_type": topic_type})
+        meta = getattr(topic, "decomposition_metadata", None) or {}
+        adapter = route_adapter({"title": getattr(topic, "title", "") or "",
+                                 "subject_key": meta.get("subject_key") or "", "course_type": topic_type})
         spec = getattr(adapter, "_formula_spec", None) if adapter is not None else None
         latex = getattr(spec, "canonical_latex", None) if spec is not None else None
         if not latex:

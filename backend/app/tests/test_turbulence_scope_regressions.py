@@ -51,6 +51,65 @@ class TurbulenceScopeCoverageTests(unittest.TestCase):
         ]}
         self.assertEqual(validate_owned_scope_coverage(cards, contract), [])
 
+    def test_route_adapter_uses_subject_key_when_title_is_a_paraphrase(self):
+        """37th path review: 'Fluid Turbulence Dynamics' generated with ZERO worked examples anywhere.
+        Root cause: the topic 'Key Quantities in Turbulence' (subject_key='turbulence_reynolds_number') got
+        the correct canonical identity (_canonical_concept_key checks subject_key) but route_adapter — used
+        for verified_example resolution at certification and card grounding — only ever looked at title/slug,
+        never subject_key. A learner-facing title that paraphrases the concept (no 'Reynolds' in it at all)
+        silently lost its verified adapter, ending in we_policy='withhold_fabricated' for the one topic in the
+        path that should have shipped a worked example."""
+        from app.services.examples.trace_pipeline import route_adapter
+
+        title_only = route_adapter({"title": "Key Quantities in Turbulence", "topic_type": "science_mechanism"})
+        self.assertIsNone(title_only)
+
+        with_subject_key = route_adapter({
+            "title": "Key Quantities in Turbulence",
+            "subject_key": "turbulence_reynolds_number",
+            "topic_type": "science_mechanism",
+        })
+        self.assertIsNotNone(with_subject_key)
+        self.assertEqual(with_subject_key.slug, "reynolds_number")
+
+    def test_plan_allowed_adapter_resolves_via_subject_key(self):
+        from app.services.lean_lesson_generator import _plan_allowed_adapter
+
+        topic = SimpleNamespace(
+            title="Key Quantities in Turbulence",
+            course_type="science_mechanism",
+            topic_type="science_mechanism",
+            decomposition_metadata={
+                "subject_key": "turbulence_reynolds_number",
+                "scope_plan": {"verified_example": "reynolds_number", "we_policy": "verified"},
+            },
+        )
+        adapter = _plan_allowed_adapter(topic)
+        self.assertIsNotNone(adapter)
+        self.assertEqual(adapter.slug, "reynolds_number")
+
+    def test_certify_path_scope_resolves_verified_example_via_subject_key(self):
+        """The actual site that decides `verified_example` at certification. Before the fix this topic
+        certified with verified_example=None / we_policy='withhold_fabricated' despite owning the adapter's
+        concept, because its title alone never matched a Reynolds-number alias."""
+        from app.services.topic_generator import _certify_path_scope
+
+        topics = [{
+            "title": "Key Quantities in Turbulence",
+            "subject_key": "turbulence_reynolds_number",
+            "topic_type": "science_mechanism",
+            "course_type": "science_mechanism",
+            "purpose": "Quantify the Reynolds number for a pipe flow and classify the regime.",
+            "learner_outcome": "Compute Re and classify the flow as laminar or turbulent.",
+            "in_scope": ["Reynolds number", "flow regime classification"],
+            "out_of_scope": [],
+            "prerequisite_topics": [],
+        }]
+        certified = _certify_path_scope(topics, "Learn fluid turbulence")
+        plan = (certified[0].get("decomposition_metadata") or {}).get("scope_plan") or {}
+        self.assertEqual(plan.get("verified_example"), "reynolds_number")
+        self.assertNotEqual(plan.get("we_policy"), "withhold_fabricated")
+
     def test_lean_pipeline_no_longer_stamps_missing_practice_as_valid(self):
         from app.services.lean_lesson_generator import _attach_lean_validation_reports
 
