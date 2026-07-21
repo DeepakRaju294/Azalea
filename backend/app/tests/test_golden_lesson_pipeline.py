@@ -107,6 +107,40 @@ class GoldenIntroFinalization(unittest.TestCase):
             self.assertNotIn("Probability —", joined)             # elementary stripped (bare "Probability")
             self.assertNotIn("Bayes' Theorem", joined)            # taught-topic stripped
 
+    def test_prerequisites_card_precedes_components_terms(self):
+        """37th-round-adjacent finding: study_path_introduction was in
+        _COMPONENTS_AFTER_BACKGROUND_TOPIC_TYPES, which force-hoists components_terms to sit
+        immediately after background — fighting the blueprint's own declared sequence (background,
+        prerequisites, components_terms, roadmap) and the user's explicit ordering preference. Live
+        symptom: an intro shipped with 'Key Variables and Terms' before 'Prerequisites'."""
+        out = self._run()
+        keys = [str(c.get("blueprint_key") or c.get("card_type")) for c in out]
+        self.assertLess(keys.index("prerequisites"), keys.index("components_terms"))
+
+    def test_reorders_even_when_model_emits_components_terms_first(self):
+        """The regression case directly: the model (or an earlier normalization pass) emits
+        components_terms BEFORE prerequisites — the finalizer must still ship prerequisites first,
+        not merely preserve whatever order it received."""
+        intro = _Topic("i", "Introduction to Bayes", 0, "study_path_introduction",
+                       prereqs=["conditional probability"],
+                       glosses={"conditional probability": "the probability of one event given another"},
+                       reqs={"conditional probability": "compute P(A|B) from a table"})
+        bayes = _Topic("t1", "Bayes' Theorem", 1, "math_formula_method", in_scope=["posterior probability"])
+        _Path([intro, bayes])
+        cards = [
+            {"blueprint_key": "background", "card_type": "background",
+             "points": ["Bayes updates beliefs from evidence."]},
+            {"blueprint_key": "components_terms", "card_type": "components_terms", "title": "Key Terms",
+             "points": ["Sample Space", "  - the set of all outcomes"]},
+            {"blueprint_key": "prerequisites", "card_type": "prerequisites", "title": "Prerequisites",
+             "points": ["placeholder prose the grounding replaces"]},
+            {"blueprint_key": "roadmap", "card_type": "roadmap",
+             "points": ["Bayes' Theorem:", "  - learn the update rule"]},
+        ]
+        out = _normalize_lean_card_order(cards, intro)
+        keys = [str(c.get("blueprint_key") or c.get("card_type")) for c in out]
+        self.assertLess(keys.index("prerequisites"), keys.index("components_terms"))
+
     def test_pipeline_is_idempotent(self):
         # Running the finalizer twice must not double-transform (a pass that isn't idempotent is a latent bug).
         out1 = self._run()

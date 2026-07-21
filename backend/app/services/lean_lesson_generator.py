@@ -2996,7 +2996,13 @@ _COMPONENTS_AFTER_BACKGROUND_TOPIC_TYPES = {
     "proof_reasoning",
     "compare_distinguish",
     "science_mechanism",
-    "study_path_introduction",
+    # study_path_introduction deliberately EXCLUDED: its blueprint sequence puts prerequisites
+    # BETWEEN background and components_terms (course_blueprints.py), unlike every other type
+    # here where components_terms belongs immediately after background. Forcing it up here fought
+    # that declared order at the lean stage — validate_and_order_cards corrects it later on the
+    # normal path, but if enrich raises before reaching finalize (the documented resilience
+    # fallback keeps whatever the lean stage produced), the wrong order ships to the learner
+    # (live: components_terms shipped before prerequisites on a path whose enrich never completed).
 }
 
 
@@ -4644,10 +4650,16 @@ def _normalize_lean_card_order(
         # …then REBUILD the roadmap bullets deterministically from the real upcoming topics, discarding any
         # hallucinated lead-in / concept-salad prose the model produced (accurate + confusion-free by construction).
         normalized = _ground_roadmap_card(normalized, topic)
-        # Intro = background(s) then roadmap(s); everything else has been filtered out.
+        # Intro = background(s) then roadmap(s); everything else has been filtered out. Within "others",
+        # prerequisites comes before components_terms (course_blueprints.py's declared sequence: the
+        # learner is oriented on what they're assumed to already know BEFORE the path's own shared
+        # vocabulary) — enforced here, not left to model order, since this lean-stage order is what
+        # ships if enrich's later validate_and_order_cards pass never runs (enrich failure fallback).
         backgrounds = [c for c in normalized if _lean_card_key(c) == "background"]
         roadmaps = [c for c in normalized if _lean_card_key(c) == "roadmap"]
         others = [c for c in normalized if _lean_card_key(c) not in ("background", "roadmap")]
+        _others_rank = {"prerequisites": 0, "components_terms": 1}
+        others = sorted(others, key=lambda c: _others_rank.get(_lean_card_key(c), 2))
         normalized = [*backgrounds, *others, *roadmaps]
 
     # The path's subject domain lets a subject-agnostic topic type (e.g. a math path's process_walkthrough)
