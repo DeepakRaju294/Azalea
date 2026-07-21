@@ -2253,5 +2253,67 @@ class RedundantWithSynthesizedCoverageGuard(unittest.TestCase):
         self.assertIn("Vector Calculus", intro.get("assumed_prerequisites") or [])   # legitimately external
 
 
+class SynthesizedVsRealDuplicateGuard(unittest.TestCase):
+    """43rd review (turbulence 23:33): the model wrote a genuine, non-foundation 'Explaining the Reynolds
+    Number' topic (real formula, real worked example) whose own identity ({reynolds, number}) is too short
+    to pass the coverage check's >=3-token overlap against R2's longer phrasing — the SAME documented
+    limitation as the 42nd round's foundation-fold case, but here with no foundation tag at all: B.4.1 still
+    reads R2 as unowned and synthesizes 'Governing quantities of turbulence' RIGHT BESIDE the real topic.
+    Live result: two topics teaching the same concept, the synthesized one carrying a formula missing the
+    density term entirely (no verified adapter to catch it). The real topic must survive; the synthesized
+    twin must be dropped."""
+
+    def test_synthesized_duplicate_of_a_real_non_foundation_topic_is_dropped(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R2", "name": "Governing quantities of turbulence", "kind": "core",
+             "statement": "explain key quantities such as Reynolds number and their physical significance "
+                          "in characterizing turbulence"},
+        ], "assumed_prerequisites": []}
+        reynolds = {"topic_id": "t1", "capability_id": "t1", "subject_key": "reynolds_number",
+                   "primary_action": "understand", "content_role": "calculation",
+                   "topic_type": "math_formula_method", "title": "Explaining the Reynolds Number",
+                   "unit_title": "u", "purpose": "p",
+                   "in_scope": ["Reynolds number formula and variables"], "basis": "goal"}
+        energy = {"topic_id": "t2", "capability_id": "t2", "subject_key": "energy_transfer",
+                 "primary_action": "understand", "content_role": "mechanism",
+                 "topic_type": "science_mechanism", "title": "Energy Transfer in Turbulence",
+                 "unit_title": "u", "purpose": "p", "in_scope": ["energy cascade"], "basis": "goal"}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [reynolds, energy]}
+
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+
+        topics = generate_decomposed_topics("want to learn about fluid turbulence", "s", model_fn=fn,
+                                            coding_follow_ups=False)
+        titles = [t["title"] for t in topics]
+        self.assertIn("Explaining the Reynolds Number", titles)             # the real topic survives
+        self.assertFalse(any("governing" in t.lower() and "quantities" in t.lower() for t in titles),
+                         f"expected no synthesized duplicate, got {titles}")
+
+    def test_unrelated_synthesized_topic_unaffected(self):
+        # a synthesized topic with no real counterpart must survive normally
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R5", "name": "Turbulence modeling", "kind": "core",
+             "statement": "explain the basic approaches to modeling turbulence"},
+        ], "assumed_prerequisites": []}
+        energy = {"topic_id": "t1", "capability_id": "t1", "subject_key": "energy_transfer",
+                 "primary_action": "understand", "content_role": "mechanism",
+                 "topic_type": "science_mechanism", "title": "Energy Transfer in Turbulence",
+                 "unit_title": "u", "purpose": "p", "in_scope": ["energy cascade"], "basis": "goal"}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [energy]}
+
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+
+        topics = generate_decomposed_topics("want to learn about fluid turbulence", "s", model_fn=fn,
+                                            coding_follow_ups=False)
+        titles = [t["title"] for t in topics]
+        self.assertTrue(any("modeling" in t.lower() for t in titles), f"expected the synthesized topic, got {titles}")
+
+
 if __name__ == "__main__":
     unittest.main()

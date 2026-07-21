@@ -1204,6 +1204,72 @@ def generate_decomposed_topics(
     # does not reliably emit one (and the validator stays pure), so synthesize it here when missing;
     # order_index 0 puts it ahead of the validated topics before the renumber below.
     topics_out = list(result.topics)
+    # SYNTHESIZED-VS-REAL DUPLICATE: B.4.1 coverage repair (validate_topic_decomposition, just above)
+    # synthesizes a standalone topic from a requirement's own text whenever the requirement's token-overlap
+    # coverage check fails against every existing topic — including a REAL, non-foundation topic the model
+    # itself authored, when that topic's own identity is short relative to the requirement's longer phrasing
+    # (the SAME documented _requirement_covered_by_topics limitation as the foundation-fold guard below, just
+    # without a foundation tag involved). Live: the model wrote a genuine 'Explaining the Reynolds Number'
+    # topic (verified adapter, real formula, real worked example) that shares only {reynolds, number} with
+    # R2's longer phrasing — one token short of >=3 — so B.4.1 ALSO synthesized 'Governing quantities of
+    # turbulence' on top of it: two topics teaching the identical concept, the synthesized one carrying an
+    # INCORRECT formula (missing density entirely) with no verified adapter behind it. Prefer the real,
+    # richer topic — drop the synthesized twin (topic-vs-topic comparison, not a broadened general heuristic,
+    # for the same regression-avoidance reason as the foundation-fold guard).
+    def _topic_identity_tokens(t: dict[str, Any]) -> set[str]:
+        # Deliberately EXCLUDES title: a title is often narrative/descriptive prose that picks up the
+        # path's own domain-wide vocabulary in passing (live regression caught by
+        # test_declared_claim_without_content_is_not_ownership: 'Energy Transfer in Turbulent Flows' is
+        # not ABOUT flow regimes, but its title's incidental "Turbulent Flows" matched a synthesized 'Flow
+        # regimes' topic well enough to look redundant). subject_key (the topic's deliberate canonical
+        # identity) and in_scope (its deliberate content commitment — for a synthesized topic, this IS the
+        # source requirement's full statement) are the intentional signals; title is not.
+        return _req_tokens(" ".join([str(t.get("subject_key") or ""),
+                                     *[str(x) for x in (t.get("in_scope") or [])]]))
+
+    # A word repeated across MULTIPLE core requirements is FAMILY vocabulary, not evidence two specific
+    # topics are the same concept (live regression: 'In-order traversal' / 'Pre-order traversal' both say
+    # "order"/"traversal"/"algorithm" — every family-survey member would falsely match every other member's
+    # synthesized sibling on those words alone). Excluded from the overlap count below.
+    _requirement_word_counts: dict[str, int] = {}
+    for r in requirements:
+        for w in _req_tokens(f"{r.get('name') or ''} {r.get('statement') or ''}"):
+            _requirement_word_counts[w] = _requirement_word_counts.get(w, 0) + 1
+    _cross_requirement_generic = {w for w, c in _requirement_word_counts.items() if c > 1}
+
+    _synthesized = [t for t in topics_out if str(t.get("basis") or "") == "goal_requirement"]
+    if _synthesized:
+        _synthesized_ids = {id(t) for t in _synthesized}
+        # A foundation-role topic must NEVER be treated as the "real topic to keep" here — the guard below
+        # (CORE-REQUIREMENT SHIELD / adapter-identity fold) already decides whether a foundation topic wins
+        # over a synthesized sibling, in the OPPOSITE direction (drop the foundation topic, keep the
+        # synthesized one). Comparing against foundation topics here would race that logic and could drop
+        # the synthesized topic first, leaving only a foundation topic that then gets folded into a
+        # misleading "go learn this elsewhere" prerequisite with nothing left actually teaching it.
+        _non_synthesized = [t for t in topics_out if id(t) not in _synthesized_ids
+                            and str(t.get("content_role") or "").lower() != "foundation"]
+        # >=2 tokens, not the general >=3: both sides of THIS comparison are typically short, concrete topic
+        # identities (not open-ended requirement phrasing), so 2 shared distinctive tokens (e.g. {reynold,
+        # number}) is reliable signal here — deliberately NOT reusing _requirement_covered_by_topics's >=3
+        # threshold, which requires the SHORT side to be <=3 tokens total; a synthesized topic's in_scope
+        # embeds the requirement's full (long) statement, so neither side alone was ever short enough to
+        # trigger that function's own short-topic exception.
+        _redundant_synthesized = [
+            s for s in _synthesized
+            if any(len((_topic_identity_tokens(s) & _topic_identity_tokens(r)) - _cross_requirement_generic)
+                   >= 2 for r in _non_synthesized)
+        ]
+        if _redundant_synthesized:
+            drop_ids = {id(t) for t in _redundant_synthesized}
+            topics_out = [t for t in topics_out if id(t) not in drop_ids]
+            record_path_decision(
+                path_plan, "topics.synthesized_dropped_redundant_with_real_topic",
+                f"dropped {[str(t.get('title')) for t in _redundant_synthesized]}",
+                "B.4.1 coverage repair synthesized these because the requirement's token-overlap coverage "
+                "check missed an existing REAL topic that already teaches the identical concept (the same "
+                "short-identity limitation as the foundation-fold guard, here without a foundation tag) — "
+                "the real topic is richer (may carry a verified adapter/formula) and preferred over the "
+                "generic synthesized stub, so the duplicate is dropped rather than shipping both")
     # De-conflate: an 'orientation' topic the LLM actually loaded with a concrete concept is a mislabeled
     # teaching topic — restore its teaching type so the concept is TAUGHT (worked example + adapter), which
     # also frees the intro slot so a real generic orientation topic is synthesized below.
