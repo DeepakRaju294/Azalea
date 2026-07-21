@@ -915,10 +915,19 @@ def build_lean_user_prompt(
     _science_shape = _scope_plan.get("science_shape") if isinstance(_scope_plan, dict) else None
     if _science_shape == "mechanism":
         parts.append(
-            "Science lesson shape: MECHANISM. Build the lesson around (1) starting condition, (2) driver, "
-            "(3) explicit cause-effect changes, (4) observable result, and (5) limiting/dissipation mechanism. "
-            "Use a traced conceptual example that demonstrates the owned in-scope mechanism. A supporting "
-            "formula or adapter must not replace that mechanism or consume the worked-example sequence."
+            # CONTENT guidance only, never a competing card STRUCTURE — a numbered step sequence here
+            # ("(1) starting condition ... (5) limiting mechanism") directly contradicted the science
+            # process-scaffold directive above ("THIS OVERRIDES any Starting state/Stopping condition
+            # framing... use EXACTLY Principle, Apply, Interpret"), and the model produced a garbled hybrid
+            # of both (live: 'Starting state / Each condition / State update / Stopping condition' — the
+            # exact loop framing the scaffold directive exists to eliminate).
+            "Science lesson shape: MECHANISM. Content to convey, in the frames given above if a process "
+            "scaffold was specified, otherwise as connected cause-and-effect prose: what DRIVES the effect, "
+            "the specific chain from that driver to the observable result, and what LIMITS or dissipates "
+            "it. Use a traced conceptual example that demonstrates the owned in-scope mechanism. Never "
+            "frame this as a running loop with a 'starting state' or 'stopping condition' — a mechanism is "
+            "a chain of cause and effect, not a program. A supporting formula or adapter must not replace "
+            "the mechanism explanation or consume the worked-example sequence."
         )
     elif _science_shape == "regime":
         parts.append(

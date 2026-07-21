@@ -947,7 +947,21 @@ def _requirement_covered_by_topics(req: dict[str, Any], raw_topics: list[dict[st
     Turbulent Flows' fully covered the energy-cascade requirement, but ID-only checking synthesized a
     duplicate on top of it), and as VERIFICATION of a declared covers_requirements claim (live: the model
     claimed everything on one topic and the path collapsed — a declaration is a signal, not proof).
-    Deterministic token overlap — ≥3 shared content tokens, or near-full containment of a short requirement."""
+    Deterministic token overlap — ≥3 shared content tokens, or near-full containment of a short requirement.
+
+    KNOWN LIMITATION (documented, not fixed — the fix attempted here regressed the family-survey system and
+    was reverted): a topic whose OWN distinctive identity is short (e.g. 'Reynolds Number' -> {reynold,
+    number}) can miss coverage of a longer, differently-phrased requirement by one token (live: 'explain key
+    quantities such as Reynolds number and their physical significance in characterizing turbulence' shared
+    only {reynold, number} with the 'Reynolds Number' topic — one token short of the ≥3 threshold — so a
+    duplicate 'Governing quantities of turbulence' topic was synthesized on top of it). A symmetric
+    'topic's own short title fully contained in the requirement' rule was tried and reverted: 'order'/
+    'traversal' are GENERIC family vocabulary once a distinguishing prefix like 'in'/'pre' is stripped by
+    the <4-char token filter, so the same rule let 'In-Order Traversal' falsely claim coverage of the
+    'Pre-order traversal' requirement — and unlike the Reynolds case, sibling family members may not even be
+    assembled yet at this point in the pipeline, so an in-list uniqueness check is not a reliable guard.
+    Fixing the Reynolds-class miss needs real semantic matching (a concept-contract layer), not a token
+    heuristic broad enough to also catch it safely."""
     rt = _req_tokens(f"{req.get('name') or ''} {req.get('statement') or ''}")
     if not rt:
         return False
