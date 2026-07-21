@@ -72,6 +72,34 @@ class TurbulenceScopeCoverageTests(unittest.TestCase):
         self.assertIsNotNone(with_subject_key)
         self.assertEqual(with_subject_key.slug, "reynolds_number")
 
+    def test_route_adapter_does_not_false_match_across_field_boundary(self):
+        """38th-round-adjacent regression IN the subject_key fix itself: joining slug/subject_key/title with
+        a bare space can accidentally SPELL a real alias across the boundary between two fields that never
+        said it individually. Live: subject_key 'energy_transfer_turbulence' + title 'Energy Transfer in
+        Turbulence' joined with a space reads '...turbulence energy transfer...', which contains the
+        substring 'turbulence energy' — a genuine alias for turbulent_kinetic_energy — even though neither
+        field alone is about TKE. A mechanism/energy-cascade topic wrongly certified verified_example=
+        'turbulent_kinetic_energy' and shipped a k=(u'^2+v'^2+w'^2)/2 worked example that has nothing to do
+        with its actual content."""
+        from app.services.examples.trace_pipeline import route_adapter
+
+        a = route_adapter({
+            "title": "Energy Transfer in Turbulence",
+            "subject_key": "energy_transfer_turbulence",
+            "topic_type": "science_mechanism",
+            "course_type": "science_mechanism",
+        })
+        self.assertIsNone(a)
+
+        # a topic that GENUINELY is about turbulent kinetic energy must still route.
+        b = route_adapter({
+            "title": "Turbulent Kinetic Energy",
+            "subject_key": "turbulent_kinetic_energy",
+            "topic_type": "science_mechanism",
+        })
+        self.assertIsNotNone(b)
+        self.assertEqual(b.slug, "turbulent_kinetic_energy")
+
     def test_plan_allowed_adapter_resolves_via_subject_key(self):
         from app.services.lean_lesson_generator import _plan_allowed_adapter
 

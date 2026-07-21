@@ -59,7 +59,12 @@ def route_adapter(topic: dict[str, Any]):
     # happened to get a paraphrased title that title-only routing had never seen before). Underscores
     # normalize to spaces below the same way _canonical_concept_key's lowered-text match already does.
     subject_key = str(topic.get("subject_key") or "").replace("_", " ")
-    text = (slug + " " + subject_key + " " + str(topic.get("title") or topic.get("name") or "")).lower()
+    # Joined with " | ", NOT a bare space: a bare-space join can accidentally spell out an alias ACROSS the
+    # boundary between fields that individually never said it — e.g. subject_key '...turbulence' + title
+    # 'Energy Transfer...' joined with a space reads '...turbulence energy transfer...', which contains the
+    # substring 'turbulence energy' (a real alias for a DIFFERENT adapter) though neither field said that on
+    # its own. "|" cannot appear inside any alias, so it can never bridge a false match this way.
+    text = (slug + " | " + subject_key + " | " + str(topic.get("title") or topic.get("name") or "")).lower()
     # SAFETY: never route an intro/overview/meta topic to a computational adapter.
     ttype = str(topic.get("topic_type") or topic.get("course_type") or "").lower()
     if ttype in _NON_ROUTING_TYPES or any(m in text for m in _META_TITLE_MARKERS):
