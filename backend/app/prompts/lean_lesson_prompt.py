@@ -952,6 +952,20 @@ def build_lean_user_prompt(
             "causal target and be answerable from mechanisms explicitly taught in this lesson."
         )
 
+    _we_policy = _scope_plan.get("we_policy") if isinstance(_scope_plan, dict) else None
+    if _we_policy in ("withhold_fabricated", "not_applicable", "conceptual_mechanism"):
+        parts.append(
+            # This topic has NO verified adapter/formula behind it — the model otherwise defaults the
+            # process/method card to a generic "solve for X" template regardless of whether a calculation
+            # exists (live: a withhold_fabricated topic with no formula, no worked-example numbers, and no
+            # adapter anywhere in the lesson still got 'Identify the givens... Substitute known values...
+            # Compute outcomes...' — a calculation structure over content that has no calculation).
+            "No-calculation guard: this topic has NO verified formula or adapter. Do NOT frame the process/"
+            "method card as solving for a numeric quantity — no 'givens', no 'substitute known values', no "
+            "'compute the result'. Explain the concept, mechanism, or application in connected prose "
+            "instead. Any example must be conceptual (a traced scenario), never an invented calculation."
+        )
+
     if sibling_out_of_scope:
         parts.append(
             "Sibling topics covered SEPARATELY in this study path (do NOT re-teach or preview their "

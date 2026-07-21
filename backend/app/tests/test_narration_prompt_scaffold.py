@@ -130,5 +130,49 @@ class SciencePromptInjection(unittest.TestCase):
         self.assertEqual(enforce.science_slice_mode(), "on_enforced")
 
 
+def _fake_topic(topic_type, we_policy, science_shape=None):
+    """A minimal Topic-like object carrying a certified scope_plan (attrs read via getattr)."""
+    sp = types.SimpleNamespace(goal="learn fluid turbulence", domain="physics", topics=[])
+    plan = {"we_policy": we_policy}
+    if science_shape:
+        plan["science_shape"] = science_shape
+    return types.SimpleNamespace(
+        title="Observable Consequences of Turbulence", description="", topic_type=topic_type,
+        course_type=topic_type, study_path=sp, id="t1", purpose="", learner_outcome=None,
+        in_scope=["mixing", "drag"], out_of_scope=None, modifiers=None,
+        decomposition_metadata={"scope_plan": plan}, assumed_prerequisites=None,
+    )
+
+
+class NoCalculationGuard(unittest.TestCase):
+    """36th path review: a withhold_fabricated topic with NO verified adapter — nothing to substitute
+    values into — still got a process card framed as 'Identify the givens... Substitute known values...
+    Compute outcomes...'. No prompt rule was gating this at all; it was purely the model's own default
+    'solve for X' template. Gated on we_policy, independent of science_shape (fires for problem_solving_
+    application topics too, which carry no science_shape)."""
+
+    def test_fires_for_withhold_fabricated(self):
+        prompt = build_lean_user_prompt(_fake_topic("problem_solving_application", "withhold_fabricated"), [])
+        self.assertIn("No-calculation guard", prompt)
+
+    def test_fires_for_conceptual_mechanism(self):
+        prompt = build_lean_user_prompt(_fake_topic("science_mechanism", "conceptual_mechanism"), [])
+        self.assertIn("No-calculation guard", prompt)
+
+    def test_fires_for_not_applicable(self):
+        prompt = build_lean_user_prompt(_fake_topic("compare_distinguish", "not_applicable"), [])
+        self.assertIn("No-calculation guard", prompt)
+
+    def test_does_not_fire_for_verified_adapter_topic(self):
+        prompt = build_lean_user_prompt(_fake_topic("science_mechanism", "verified"), [])
+        self.assertNotIn("No-calculation guard", prompt)
+
+    def test_composes_with_science_shape_directive(self):
+        prompt = build_lean_user_prompt(
+            _fake_topic("science_mechanism", "conceptual_mechanism", science_shape="mechanism"), [])
+        self.assertIn("Science lesson shape: MECHANISM", prompt)
+        self.assertIn("No-calculation guard", prompt)
+
+
 if __name__ == "__main__":
     unittest.main()
