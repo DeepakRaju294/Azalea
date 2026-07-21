@@ -852,17 +852,36 @@ def _synthesize_intro_topic(goal: str | None) -> dict[str, Any]:
     }
 
 
-def _goal_requirements(goal: str | None, chunks_text: str, fn: ModelFn
-                       ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _goal_requirements(goal: str | None, chunks_text: str, fn: ModelFn, feedback: str | None = None
+                       ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
     """The REQUIREMENTS-FIRST call (curriculum-authority design): decide WHAT the path must cover BEFORE any
     topic exists, in a dedicated frame. Returns (requirements, assumed_prerequisites) — the curriculum call
     also owns the EXTERNAL prerequisites (what the course assumes vs teaches is one curriculum decision; the
     decomposition model dropped assumed_prerequisites on 4 of 5 live regens once requirements landed).
     Requirements are injected into the decomposition prompt as authoritative and checked deterministically
     afterward (an unowned core requirement flows into the B.4.1 coverage repair). Kill switch:
-    AZALEA_GOAL_REQUIREMENTS=0. Best-effort — a failed call means decomposition proceeds exactly as before."""
+    AZALEA_GOAL_REQUIREMENTS=0. Best-effort — a failed call means decomposition proceeds exactly as before.
+
+    PLAN PERSISTENCE (scope-plan #3, app/services/goal_plan_cache.py): a fresh, no-feedback call for a goal
+    already cached reuses that curriculum instead of re-rolling — the requirements call is the single
+    biggest driver of topic-count variance across identical goals. `feedback` present means the learner is
+    actively asking for something different than what shipped, so it BYPASSES the cache read (a stale
+    curriculum must never override explicit intent) but a successful call still WRITES the cache — a
+    feedback-informed result is the improved canonical curriculum going forward, not a one-off.
+
+    Third return value is the SOURCE, for the caller's decision trace: "disabled" | "cache_hit" |
+    "fresh_call" | "fresh_call_feedback" | "empty" | "failed"."""
     if os.getenv("AZALEA_GOAL_REQUIREMENTS", "") == "0":
-        return [], []
+        return [], [], "disabled"
+    has_feedback = bool(feedback and feedback.strip())
+    if not has_feedback:
+        from app.services.goal_plan_cache import lookup_cached_plan, record_cache_hit
+        cached = lookup_cached_plan(goal)
+        if cached is not None:
+            record_cache_hit(goal)
+            _log.info("goal requirements: reused cached curriculum for goal %r (%d requirements)",
+                      goal, len(cached["requirements"]))
+            return cached["requirements"], cached["assumed_prerequisites"], "cache_hit"
     try:
         payload = {"system": REQUIREMENTS_SYSTEM_PROMPT,
                    "user": build_goal_requirements_prompt(goal, chunks_text)}
@@ -886,13 +905,16 @@ def _goal_requirements(goal: str | None, chunks_text: str, fn: ModelFn
                 prereqs.append({"name": str(p["name"]).strip(),
                                 "gloss": str(p.get("gloss") or "").strip(),
                                 "required_knowledge": str(p.get("required_knowledge") or "").strip()})
+        reqs, prereqs = reqs[:8], prereqs[:3]
         if reqs:
             _log.info("goal requirements: %d requirements for goal %r: %s (prereqs: %s)", len(reqs), goal,
                       [r["requirement_id"] for r in reqs], [p["name"] for p in prereqs])
-        return reqs[:8], prereqs[:3]
+            from app.services.goal_plan_cache import store_plan
+            store_plan(goal, reqs, prereqs)
+        return reqs, prereqs, ("fresh_call_feedback" if has_feedback else "fresh_call") if reqs else "empty"
     except Exception:  # noqa: BLE001 — requirements are additive; never block decomposition
         _log.info("goal requirements call failed for goal %r — decomposing without requirements", goal)
-        return [], []
+        return [], [], "failed"
 
 
 _REQ_STOPWORDS = frozenset({
@@ -1094,7 +1116,7 @@ def generate_decomposed_topics(
     fn = model_fn or _default_model_fn
     # REQUIREMENTS FIRST (curriculum authority): decide WHAT must be covered before any topic exists, then
     # decompose AGAINST those requirements. Best-effort: [] keeps the old single-call behavior exactly.
-    requirements, req_prereqs = _goal_requirements(goal, chunks_text, fn)
+    requirements, req_prereqs, _req_source = _goal_requirements(goal, chunks_text, fn, feedback=feedback)
     payload = {"system": SYSTEM_PROMPT,
                "user": build_decomposition_prompt(goal=goal, chunks_text=chunks_text, feedback=feedback,
                                                   goal_requirements=requirements)}
@@ -1111,12 +1133,24 @@ def generate_decomposed_topics(
     path_plan.setdefault("end_capability_actions", [])
 
     # Curriculum-call outcome, recorded now that path_plan exists to hold it (the call itself ran before).
+    _req_source_reason = {
+        "cache_hit": "a PRIOR generation's curriculum for this same goal was reused instead of re-rolling "
+            "the requirements call — the single biggest source of topic-count variance across identical "
+            "goals (scope-plan #3, app/services/goal_plan_cache.py)",
+        "fresh_call": "a dedicated call decides WHAT the path must cover before any topic exists — no "
+            "cached curriculum existed for this goal, so a fresh call ran and its result was cached",
+        "fresh_call_feedback": "the learner supplied regeneration feedback, which bypasses any cached "
+            "curriculum (explicit intent must never be overridden by a stale plan) — the fresh, feedback-"
+            "informed result becomes the new cached curriculum for this goal going forward",
+        "disabled": "AZALEA_GOAL_REQUIREMENTS=0 — decomposition proceeds exactly as it did before requirements-first",
+        "empty": "the call ran but produced no usable requirements (empty/malformed response)",
+        "failed": "the call raised — decomposition proceeds without curriculum requirements",
+    }.get(_req_source, "a dedicated call decides WHAT the path must cover before any topic exists")
     record_path_decision(
         path_plan, "curriculum.requirements_call",
-        f"{len(requirements)} requirement(s), {len(req_prereqs)} external prerequisite(s)" if requirements
-        else "no requirements produced (kill switch, empty/failed call, or narrow goal)",
-        "a dedicated call decides WHAT the path must cover before any topic exists — decoupled from the "
-        "decomposition call so curriculum discovery and topic compression are no longer the same LLM turn",
+        f"{len(requirements)} requirement(s), {len(req_prereqs)} external prerequisite(s) [{_req_source}]"
+        if requirements else f"no requirements produced [{_req_source}]",
+        _req_source_reason,
         requirement_ids=[r["requirement_id"] for r in requirements] or None,
         prerequisite_names=[p["name"] for p in req_prereqs] or None)
     if _retry_outcome is not None:
