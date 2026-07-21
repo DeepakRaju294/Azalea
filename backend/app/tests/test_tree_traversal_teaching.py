@@ -2084,5 +2084,102 @@ class FoundationAdapterShieldGuard(unittest.TestCase):
         self.assertIn("Vector Calculus", intro.get("assumed_prerequisites") or [])  # legitimately external
 
 
+class CoreRequirementFoldShield(unittest.TestCase):
+    """36th review (turbulence 00:42, first regen with plan persistence live — the cache correctly reused
+    R1-R5 [cache_hit], but the decomposition call this time tagged BOTH 'Flow Types' and 'Reynolds Number'
+    content_role=foundation. The requirement-coverage check ran first and marked R1 'Flow regimes' and R2
+    'Governing quantities of turbulence' — both CORE — as covered BY those exact topics; the fold then
+    removed both anyway, leaving a 2-topic path (Energy Transfer, Observable Consequences) whose intro told
+    the learner Reynolds number and flow types were EXTERNAL prerequisites to learn elsewhere, despite being
+    the path's own central content. A requirement is only 'covered' relative to the topics that survive."""
+
+    def test_folding_both_core_owners_is_blocked(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R1", "name": "Flow regimes", "kind": "core",
+             "statement": "distinguish laminar and turbulent flow"},
+            {"requirement_id": "R2", "name": "Governing quantities", "kind": "core",
+             "statement": "explain key quantities such as Reynolds number"},
+        ], "assumed_prerequisites": [{"name": "fluid dynamics", "gloss": "g", "required_knowledge": "r"}]}
+        flow_types = {"topic_id": "t1", "capability_id": "t1", "subject_key": "flow_types",
+                     "primary_action": "understand", "content_role": "foundation",
+                     "topic_type": "concept_intuition", "title": "Flow Types", "unit_title": "u",
+                     "purpose": "p", "in_scope": ["laminar and turbulent flow distinction"], "basis": "goal"}
+        reynolds = {"topic_id": "t2", "capability_id": "t2", "subject_key": "reynolds_number",
+                   "primary_action": "understand", "content_role": "foundation",
+                   "topic_type": "concept_intuition", "title": "Reynolds Number", "unit_title": "u",
+                   "purpose": "p", "in_scope": ["reynolds number and governing quantities"], "basis": "goal"}
+        energy = {"topic_id": "t3", "capability_id": "t3", "subject_key": "energy_transfer",
+                 "primary_action": "understand", "content_role": "mechanism",
+                 "topic_type": "science_mechanism", "title": "Energy Transfer in Turbulence",
+                 "unit_title": "u", "purpose": "p", "in_scope": ["energy cascade"], "basis": "goal"}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [flow_types, reynolds, energy]}
+
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+
+        topics = generate_decomposed_topics("want to learn about fluid turbulence", "s", model_fn=fn,
+                                            coding_follow_ups=False)
+        titles = [t["title"] for t in topics]
+        self.assertIn("Flow Types", titles)
+        self.assertIn("Reynolds Number", titles)
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        assumed = intro.get("assumed_prerequisites") or []
+        self.assertNotIn("Flow Types", assumed)
+        self.assertNotIn("Reynolds Number", assumed)
+        self.assertIn("fluid dynamics", assumed)               # the genuinely external prereq still folds
+
+    def test_supporting_only_requirement_does_not_shield(self):
+        # a SUPPORTING (non-core) requirement must not block folding — only core requirements are load-bearing
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R1", "name": "Modeling", "kind": "supporting",
+             "statement": "outline turbulence modeling approaches"},
+        ], "assumed_prerequisites": []}
+        modeling = {"topic_id": "t1", "capability_id": "t1", "subject_key": "modeling",
+                   "primary_action": "understand", "content_role": "foundation",
+                   "topic_type": "concept_intuition", "title": "Modeling", "unit_title": "u",
+                   "purpose": "p", "in_scope": ["turbulence modeling approaches"], "basis": "goal"}
+        energy = {"topic_id": "t2", "capability_id": "t2", "subject_key": "energy_transfer",
+                 "primary_action": "understand", "content_role": "mechanism",
+                 "topic_type": "science_mechanism", "title": "Energy Transfer in Turbulence",
+                 "unit_title": "u", "purpose": "p", "in_scope": ["energy cascade"], "basis": "goal"}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [modeling, energy]}
+
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+
+        topics = generate_decomposed_topics("want to learn about fluid turbulence", "s", model_fn=fn,
+                                            coding_follow_ups=False)
+        titles = [t["title"] for t in topics]
+        self.assertNotIn("Modeling", titles)                   # folded normally — supporting isn't load-bearing
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        self.assertIn("Modeling", intro.get("assumed_prerequisites") or [])
+
+    def test_no_requirements_no_shield_effect(self):
+        # empty requirements (kill switch / failed call) must not change existing fold behavior at all
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reynolds = {"topic_id": "t1", "capability_id": "t1", "subject_key": "reynolds_number",
+                   "primary_action": "understand", "content_role": "foundation",
+                   "topic_type": "concept_intuition", "title": "Reynolds Number", "unit_title": "u",
+                   "purpose": "p", "in_scope": ["basics"], "basis": "goal"}
+        energy = {"topic_id": "t2", "capability_id": "t2", "subject_key": "energy_transfer",
+                 "primary_action": "understand", "content_role": "mechanism",
+                 "topic_type": "science_mechanism", "title": "Energy Transfer in Turbulence",
+                 "unit_title": "u", "purpose": "p", "in_scope": ["energy cascade"], "basis": "goal"}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [reynolds, energy]}
+
+        def fn(payload):
+            return {"requirements": []} if "learning requirements" in payload["user"] else plan
+
+        topics = generate_decomposed_topics("want to learn about fluid turbulence", "s", model_fn=fn,
+                                            coding_follow_ups=False)
+        titles = [t["title"] for t in topics]
+        self.assertNotIn("Reynolds Number", titles)             # folds normally, exactly as before this fix
+
+
 if __name__ == "__main__":
     unittest.main()

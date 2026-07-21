@@ -1313,6 +1313,33 @@ def generate_decomposed_topics(
             "(formula, calculation, interpretation), so this is neither external prerequisite material "
             "(it would tell the learner to 'go learn X first' right before X is taught from scratch) nor "
             "a needed standalone topic — dropped rather than folded or kept")
+    # CORE-REQUIREMENT SHIELD: the requirement-coverage check ran BEFORE this fold, over the FULL topic list
+    # (foundation candidates included) — if a foundation topic was what made a CORE requirement "covered",
+    # folding it away silently UN-covers that requirement with nothing left watching for it (live: the model
+    # tagged 'Flow Types' and 'Reynolds Number' foundation; the coverage check marked R1 'Flow regimes' and
+    # R2 'Governing quantities of turbulence' — both CORE — as covered BY THOSE topics; the fold then removed
+    # both, and the intro told the learner they were prerequisites to learn ELSEWHERE, on a path whose only
+    # two surviving topics never taught what Reynolds number even is). A requirement is only "covered"
+    # relative to the topics that actually SURVIVE, not the topics the model happened to propose.
+    _core_reqs = [r for r in (path_plan.get("goal_requirements") or []) if r.get("kind") == "core"]
+    if _core_reqs and foundations:
+        _survivor_ids = {id(t) for t in topics_out} - {id(t) for t in foundations}
+        _survivors = [t for t in topics_out if id(t) in _survivor_ids]
+        _load_bearing = [
+            f for f in foundations
+            if any(_requirement_covered_by_topics(r, [f]) and not _requirement_covered_by_topics(r, _survivors)
+                   for r in _core_reqs)
+        ]
+        if _load_bearing:
+            _keep_ids = {id(t) for t in _load_bearing}
+            foundations = [t for t in foundations if id(t) not in _keep_ids]
+            record_path_decision(
+                path_plan, "topics.foundation_kept_core_requirement",
+                f"kept {[str(t.get('title')) for t in _load_bearing]} — not folded",
+                "the model tagged these content_role=foundation, but removing them would leave a CORE "
+                "curriculum requirement with no remaining topic that teaches it — kept as taught topics "
+                "rather than demoted to unaught, misleading prerequisites")
+
     dropped_prereqs: list[str] = []
     if foundations and real_concepts:
         dropped_prereqs = [str(t.get("title") or _subject_phrase(str(t.get("subject_key") or ""))).strip()
