@@ -2181,5 +2181,77 @@ class CoreRequirementFoldShield(unittest.TestCase):
         self.assertNotIn("Reynolds Number", titles)             # folds normally, exactly as before this fix
 
 
+class RedundantWithSynthesizedCoverageGuard(unittest.TestCase):
+    """42nd review (turbulence 02:19): the model tagged 'Understanding Reynolds Number' content_role=foundation.
+    Its own identity ({reynolds, number}) is too short to pass the coverage check's >=3-token overlap against
+    R2's longer phrasing ('explain key quantities such as Reynolds number and their physical significance in
+    characterizing turbulence') — a DOCUMENTED limitation of _requirement_covered_by_topics. R2 reads as
+    unowned, B.4.1 synthesizes 'Governing quantities of turbulence' straight from R2's text, and the CORE-
+    REQUIREMENT SHIELD sees R2 already covered by that survivor — so it never protects the foundation topic
+    either. Net live result: the intro told the learner Reynolds number was an EXTERNAL prerequisite to learn
+    elsewhere, one card away from a topic that taught it fresh. This guard catches the topic-vs-topic
+    duplication directly (not by broadening the general requirement-coverage heuristic, which regressed
+    family surveys when tried before)."""
+
+    def test_foundation_dropped_when_synthesized_sibling_covers_same_concept(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R2", "name": "Governing quantities of turbulence", "kind": "core",
+             "statement": "explain key quantities such as Reynolds number and their physical significance "
+                          "in characterizing turbulence"},
+        ], "assumed_prerequisites": [{"name": "fluid dynamics", "gloss": "g", "required_knowledge": "r"}]}
+        reynolds = {"topic_id": "t1", "capability_id": "t1", "subject_key": "reynolds_number",
+                   "primary_action": "understand", "content_role": "foundation",
+                   "topic_type": "concept_intuition", "title": "Understanding Reynolds Number", "unit_title": "u",
+                   "purpose": "p", "in_scope": ["basics"], "basis": "goal"}
+        energy = {"topic_id": "t2", "capability_id": "t2", "subject_key": "energy_transfer",
+                 "primary_action": "understand", "content_role": "mechanism",
+                 "topic_type": "science_mechanism", "title": "Energy Transfer in Turbulence",
+                 "unit_title": "u", "purpose": "p", "in_scope": ["energy cascade"], "basis": "goal"}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [reynolds, energy]}
+
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+
+        topics = generate_decomposed_topics("want to learn about fluid turbulence", "s", model_fn=fn,
+                                            coding_follow_ups=False)
+        titles = [t["title"] for t in topics]
+        self.assertNotIn("Understanding Reynolds Number", titles)   # dropped, not left as a redundant topic
+        self.assertTrue(any("quantities" in t.lower() and "turbulence" in t.lower() for t in titles),
+                        f"expected a synthesized coverage topic for R2, got {titles}")
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        assumed = intro.get("assumed_prerequisites") or []
+        self.assertNotIn("Understanding Reynolds Number", assumed)   # never sent to a separate path
+        self.assertIn("fluid dynamics", assumed)                    # the genuinely external prereq still folds
+
+    def test_unrelated_foundation_unaffected_by_synthesis(self):
+        # a synthesized topic for one capability must not accidentally catch an unrelated foundation topic
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R2", "name": "Governing quantities of turbulence", "kind": "core",
+             "statement": "explain key quantities such as Reynolds number and their physical significance "
+                          "in characterizing turbulence"},
+        ], "assumed_prerequisites": []}
+        unrelated = {"topic_id": "t1", "capability_id": "t1", "subject_key": "vector_calculus",
+                    "primary_action": "understand", "content_role": "foundation",
+                    "topic_type": "concept_intuition", "title": "Vector Calculus", "unit_title": "u",
+                    "purpose": "p", "in_scope": ["basics"], "basis": "goal"}
+        energy = {"topic_id": "t2", "capability_id": "t2", "subject_key": "energy_transfer",
+                 "primary_action": "understand", "content_role": "mechanism",
+                 "topic_type": "science_mechanism", "title": "Energy Transfer in Turbulence",
+                 "unit_title": "u", "purpose": "p", "in_scope": ["energy cascade"], "basis": "goal"}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [unrelated, energy]}
+
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+
+        topics = generate_decomposed_topics("want to learn about fluid turbulence", "s", model_fn=fn,
+                                            coding_follow_ups=False)
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        self.assertIn("Vector Calculus", intro.get("assumed_prerequisites") or [])   # legitimately external
+
+
 if __name__ == "__main__":
     unittest.main()

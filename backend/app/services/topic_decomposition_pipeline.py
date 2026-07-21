@@ -1314,6 +1314,41 @@ def generate_decomposed_topics(
             "(formula, calculation, interpretation), so this is neither external prerequisite material "
             "(it would tell the learner to 'go learn X first' right before X is taught from scratch) nor "
             "a needed standalone topic — dropped rather than folded or kept")
+    # REDUNDANT-WITH-SYNTHESIZED-COVERAGE: validate_topic_decomposition's B.4.1 repair (which ran BEFORE this
+    # fold) synthesizes a standalone topic straight from a core requirement's own text whenever nothing in the
+    # model's plan covers it — including a foundation topic whose identity is too SHORT to pass the coverage
+    # check's token-overlap threshold (documented limitation on _requirement_covered_by_topics: 'Understanding
+    # Reynolds Number' shares only {reynolds, number} with R2's longer phrasing, one token short of ≥3). The
+    # requirement then looks "unowned", B.4.1 synthesizes 'Governing quantities of turbulence' to cover it, and
+    # the CORE-REQUIREMENT SHIELD below sees R2 already covered by that SURVIVOR — so it never protects the
+    # foundation topic either. Net result: the same concept both gets folded into "go learn this externally"
+    # AND taught fresh by the synthesized sibling (live: exactly this Reynolds-number pair). Catch it directly
+    # — topic vs topic, not the general topic-vs-requirement heuristic that regressed family surveys when
+    # broadened — by checking each foundation topic's own (short) identity against each synthesized topic's
+    # full identity (which embeds the requirement's full text as its in_scope, so the overlap is reliable).
+    _synthesized_survivor_ids = {id(t) for t in foundations}
+    _synthesized_survivors = [t for t in topics_out
+                              if id(t) not in _synthesized_survivor_ids
+                              and str(t.get("basis") or "") == "goal_requirement"]
+    if _synthesized_survivors:
+        _redundant_by_synthesis = [
+            f for f in foundations
+            if _requirement_covered_by_topics(
+                {"name": f.get("title"), "statement": f.get("subject_key") or ""}, _synthesized_survivors)
+        ]
+        if _redundant_by_synthesis:
+            drop_ids = {id(t) for t in _redundant_by_synthesis}
+            topics_out = [t for t in topics_out if id(t) not in drop_ids]
+            foundations = [t for t in foundations if id(t) not in drop_ids]
+            record_path_decision(
+                path_plan, "topics.foundation_dropped_redundant_with_synthesized_coverage",
+                f"dropped {[str(t.get('title')) for t in _redundant_by_synthesis]}",
+                "the model tagged these content_role=foundation, but a required-capability coverage-repair "
+                "topic was synthesized for the exact same concept (the requirement's own text this topic "
+                "was built from overlaps this foundation topic's identity) — folding it as an EXTERNAL "
+                "prerequisite while a synthesized sibling teaches the same concept in the path would tell "
+                "the learner to go learn it elsewhere right before teaching it fresh; dropped rather than "
+                "folded or kept, since the synthesized topic already owns it")
     # CORE-REQUIREMENT SHIELD: the requirement-coverage check ran BEFORE this fold, over the FULL topic list
     # (foundation candidates included) — if a foundation topic was what made a CORE requirement "covered",
     # folding it away silently UN-covers that requirement with nothing left watching for it (live: the model
