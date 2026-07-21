@@ -38,6 +38,15 @@ class UnitDirective(unittest.TestCase):
         self.assertIsNone(contracts.process_scaffold_directive("coding"))
         self.assertIsNone(contracts.process_scaffold_directive("mixed"))
 
+    def test_directive_forbids_frame_labels_on_other_cards(self):
+        """41st path review: a topic's BACKGROUND card carried 'Principle / Apply / Interpret' headers
+        (the science process scaffold) while its PROCESS card fell back to the old loop framing — the
+        frames leaked onto the wrong card. The directive only ever said what the process card should
+        look like; nothing told the model to keep the frames OFF every other card."""
+        d = contracts.process_scaffold_directive("science")
+        self.assertIn("belong ONLY on the process/method card", d)
+        self.assertIn("background/purpose card", d)
+
 
 class PromptInjection(unittest.TestCase):
     def setUp(self):

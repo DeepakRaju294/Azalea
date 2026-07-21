@@ -79,7 +79,10 @@ def process_scaffold_directive(domain: str | None) -> str | None:
         f"PROCESS/METHOD CARD FRAMES ({nd}) — THIS OVERRIDES any 'Starting state / Repeated action / State update "
         "/ Stopping condition / Output rule' framing described anywhere else in these instructions. For the "
         f"process/method card use EXACTLY these frames as the main bullets, in order: {frames}. This is a {nd} "
-        "method, not a running program — never use loop/state framing for it under any circumstances."
+        "method, not a running program — never use loop/state framing for it under any circumstances. These "
+        f"frame labels ({frames}) belong ONLY on the process/method card — do not use them as headers on the "
+        "background/purpose card, the key-terms card, the edge-case card, or any other card in this lesson; "
+        "every other card keeps its own normal framing."
     )
 
 
