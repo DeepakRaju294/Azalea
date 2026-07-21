@@ -688,6 +688,15 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
             return exact_goal, mechanism, overlap, order
 
         selected_goal_core = max(teaching_topics, key=_goal_core_score)
+        _score = _goal_core_score(selected_goal_core)
+        record_topic_decision(
+            selected_goal_core, "goal_core.selected", "role -> goal_core, depth -> deep",
+            "no topic's canonical identity matched the goal's own key exactly, so the central topic is "
+            "chosen deterministically: exact-key match, then science_mechanism/mechanism-role type, then "
+            "title/goal token overlap, then earliest order — this OVERRIDES whatever role the main "
+            "certification pass assigned above" if not _score[0] else
+            "this topic's canonical identity matches the goal's own key exactly",
+            exact_goal_key_match=bool(_score[0]), mechanism_type_bonus=_score[1], goal_token_overlap=_score[2])
         for item in teaching_topics:
             meta = item.get("decomposition_metadata") or {}
             plan = meta.get("scope_plan") or {}
