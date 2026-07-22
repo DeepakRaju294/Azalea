@@ -61,6 +61,14 @@ class MixedDelimiterAndInlineSymbol(unittest.TestCase):
         # A single inline symbol \(\mu\) is NOT an equation — moving it to a subpoint strands "Mean ( )".
         self.assertIsNone(_expand_math_point(r"Mean (\(\mu\)) is the average of the values"))
 
+    def test_bold_wrapped_bare_symbol_stays_inline(self):
+        # live: "\(\mathbf{F}\)" is 14 chars — long enough to slip past a pure character-count floor — but it's
+        # still just a variable name, not an equation. Splitting it out stranded "ensuring that is continuously
+        # differentiable" with no subject, because the "F" it needed got severed into its own orphaned bullet.
+        self.assertIsNone(_expand_math_point(
+            r"Conditions for valid use include ensuring that \(\mathbf{F}\) is continuously differentiable"))
+        self.assertIsNone(_expand_math_point(r"The vector field is \(\mathbf{F}\) here"))
+
     def test_real_equation_still_splits(self):
         out = _expand_math_point(r"The z-score uses \(z = \frac{x-\mu}{\sigma}\) to standardize")
         self.assertIsNotNone(out)

@@ -185,6 +185,27 @@ def _expand_main_point(point: str) -> list[str]:
     return [point]
 
 
+# A bold/hatted/vector-wrapped single letter ("\(\mathbf{F}\)") is exactly as bare as "\(x\)" — it names a
+# variable, nothing else — but the wrapper commands push its raw character count past a pure-length check (
+# "\(\mathbf{F}\)" is 14 chars, the length floor _expand_math_point used to gate on, so it slipped through and
+# got severed into its own subpoint, stranding the sentence that named it: "ensuring that is continuously
+# differentiable" with the "F" it needed torn out into an orphaned "  - \(\mathbf{F}\)" bullet). Detect bareness
+# semantically (strip delimiters + one known wrapper, check what's left is just a short identifier) instead of
+# by length, so any single-letter symbol is caught regardless of which wrapper commands inflate its length.
+_MATH_DELIM_STRIP_RE = re.compile(r"^(?:\\\[|\\\(|\$\$)\s*|\s*(?:\\\]|\\\)|\$\$)$")
+_SYMBOL_WRAPPER_RE = re.compile(
+    r"^\\(?:mathbf|boldsymbol|text|hat|vec|bar|overline|mathrm)\{(.*)\}$")
+_BARE_IDENTIFIER_RE = re.compile(r"^[A-Za-z](?:_\{?[A-Za-z0-9]+\}?)?$")
+
+
+def _is_bare_symbol(equation: str) -> bool:
+    inner = _MATH_DELIM_STRIP_RE.sub("", equation.strip())
+    wrapped = _SYMBOL_WRAPPER_RE.match(inner)
+    if wrapped:
+        inner = wrapped.group(1)
+    return bool(_BARE_IDENTIFIER_RE.match(inner))
+
+
 def _expand_math_point(point: str) -> list[str] | None:
     """Move an equation embedded in prose into a subpoint."""
     text = point.strip()
@@ -206,7 +227,10 @@ def _expand_math_point(point: str) -> list[str] | None:
     equation = match.group(1).strip()
     # Only a genuine EQUATION belongs on its own subpoint — never a bare inline symbol like \(\mu\) or \(x\)
     # (extracting those leaves stranded prose such as "Mean ( ):"). An equation has a relation or structure.
-    if not re.search(r"[=<>≤≥≈]|\\frac|\\sum|\\int|\\prod|\\sqrt|\\cdot|[+\-*/^]", equation) and len(equation) < 14:
+    if _is_bare_symbol(equation) or (
+        not re.search(r"[=<>≤≥≈]|\\frac|\\sum|\\int|\\prod|\\sqrt|\\cdot|[+\-*/^]", equation)
+        and len(equation) < 14
+    ):
         return None
     before = text[:match.start()].strip(" ,;:")
     after = text[match.end():].strip(" ,;:.")
