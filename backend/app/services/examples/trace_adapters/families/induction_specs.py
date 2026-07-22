@@ -79,6 +79,38 @@ SUM_I_TIMES_I_PLUS_1 = InductionSpec(
     priority=105,
 )
 
+# ADAPTER_TAXONOMY_SPEC.md §6 T13 backlog. Note: most of the listed items (direct/contrapositive/contradiction/
+# set-equality/loop-invariant/algorithm-correctness proofs) are DIFFERENT proof strategies with a different
+# stage structure (assume-and-derive, not base-case+inductive-step) — they do not fit this engine as data rows
+# and are deliberately NOT added here. These two stay within the engine's proven summation-identity shape.
+SUM_POWERS_OF_TWO = InductionSpec(
+    slug="induction_sum_powers_of_two",
+    title="proof that 1 + 2 + 4 + ... + 2^(n-1) = 2^n - 1",
+    problem_template="Prove by induction that the sum of the first n powers of two (1 + 2 + 4 + ... + "
+                     "2^(n-1)) is 2^n - 1 (check n={N}).",
+    f=lambda i: 2 ** (i - 1),
+    g=lambda n: 2 ** n - 1,
+    f_str="2^(i-1)", g_str="2^n - 1",
+    aliases=["induction sum of powers of two", "prove sum of powers of two by induction",
+             "sum of powers of two by induction", "geometric series induction proof"],
+    not_aliases=["squares", "cubes", "odd", "even"],
+    priority=105,
+)
+
+SUM_MULTIPLES_OF_THREE = InductionSpec(
+    slug="induction_sum_multiples_of_three",
+    title="proof that 3 + 6 + 9 + ... + 3n = 3n(n+1)/2",
+    problem_template="Prove by induction that the sum of the first n multiples of three (3 + 6 + 9 + ... "
+                     "+ 3n) is 3n(n+1)/2 (check n={N}).",
+    f=lambda i: 3 * i,
+    g=lambda n: 3 * n * (n + 1) // 2,
+    f_str="3i", g_str="3n(n+1)/2",
+    aliases=["induction sum of multiples of three", "prove sum of first n multiples of three by induction",
+             "sum of multiples of three by induction"],
+    not_aliases=["squares", "cubes", "odd", "even", "powers"],
+    priority=105,
+)
+
 
 ALL_SPECS = [SUM_FIRST_N, SUM_FIRST_N_SQUARES, SUM_FIRST_N_CUBES, SUM_ODD_NUMBERS,
-             SUM_EVEN_NUMBERS, SUM_I_TIMES_I_PLUS_1]
+             SUM_EVEN_NUMBERS, SUM_I_TIMES_I_PLUS_1, SUM_POWERS_OF_TWO, SUM_MULTIPLES_OF_THREE]
