@@ -68,6 +68,15 @@ RULES:
 - Cover the subject's standard conceptual progression the way a textbook chapter sequence would: what it is and
   its distinctions/regimes, the governing quantities or criteria AND their physical meaning, the central
   mechanism(s), observable consequences/applications, and — only when genuinely core — how it is modeled.
+- Do NOT make a separate requirement whose entire content is "explain/define what the goal subject is and why
+  it matters" — every study path automatically opens with a dedicated orientation topic that already frames
+  the area and states its importance, so a bare definitional requirement produces a topic that duplicates the
+  opener while adding nothing (live failure: a synthesized "Definition of BST Traversal" topic whose only
+  content was "BST traversal visits nodes... it matters for searching/inserting/deleting" — restating the
+  opener, then padded with an edge case and practice question that belonged to the traversal methods
+  themselves). A definitional requirement is only legitimate when the definition itself needs SUBSTANTIVE,
+  checkable teaching beyond a one-paragraph orientation (e.g. a precise mathematical definition with edge
+  cases the learner must apply, not just a plain-language restatement).
 - Requirements define WHAT must be learned, not lesson titles, card counts, or ordering.
 - A narrow single-technique goal may genuinely need only 2-3 requirements; do not pad.
 - FAMILY SURVEYS: when the goal surveys a FAMILY of techniques (sorting algorithms, tree/graph traversals,

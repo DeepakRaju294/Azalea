@@ -1304,6 +1304,17 @@ class ZeroMemberFamilyExpansion(unittest.TestCase):
         self.assertIn('NOT "data structures"', p)
         self.assertIn("is a PREREQUISITE, not a requirement", p)
 
+    def test_requirements_prompt_forbids_bare_definitional_requirement(self):
+        """47th path review: B.4.1 synthesized a 'Definition of BST Traversal' topic straight from a core
+        requirement whose entire content was "explain what BST traversal is and its importance" — pure
+        restatement of what the auto-generated intro topic already covers by design. The topic's only other
+        cards (an edge case, a practice question testing in-order traversal specifically) didn't even match
+        its own declared scope."""
+        from app.prompts.topic_decomposition_prompt import build_goal_requirements_prompt
+        p = build_goal_requirements_prompt("learn bst traversal", "s")
+        self.assertIn("Do NOT make a separate requirement whose entire content is", p)
+        self.assertIn("Definition of BST Traversal", p)
+
 
 class PrereqDirectionalBlocking(unittest.TestCase):
     """32nd-review fixes: the greedy 'bst' alias keyed goal 'bst traversal' as binary_search_tree, and raw
