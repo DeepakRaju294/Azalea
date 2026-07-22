@@ -108,5 +108,40 @@ SOLVE_3X3 = RowReduceSpec(
     edge_cases=_LINEAR_SYSTEM_EDGE_CASES,
 )
 
+# ADAPTER_TAXONOMY_SPEC.md §6 T15 backlog: "EE: nodal_analysis, mesh_analysis" — both reduce to exactly this
+# engine's shape once KCL/KVL has produced the equations (an unknown-per-node or unknown-per-mesh linear
+# system), so they are pure data: same elimination + Cramer oracle, EE variable names/problem framing only.
+NODAL_ANALYSIS = RowReduceSpec(
+    slug="nodal_analysis",
+    title="nodal analysis by Kirchhoff's Current Law",
+    problem_template="Apply Kirchhoff's Current Law (KCL) at each node to solve for the unknown node "
+                     "voltages: {system}.",
+    n=3,
+    setup=_make_system,
+    var_names=["V1", "V2", "V3"],
+    family="electrical_engineering",
+    aliases=["nodal analysis", "node voltage analysis", "kirchhoff's current law", "kirchhoffs current law",
+             "kcl analysis", "node equations", "solving for node voltages"],
+    not_aliases=["differential", "inequality", "mesh"],
+    priority=57,
+    edge_cases=_LINEAR_SYSTEM_EDGE_CASES,
+)
 
-ALL_SPECS = [SOLVE_2X2, GAUSSIAN_ELIMINATION, SOLVE_3X3, ROW_ECHELON_FORM]
+MESH_ANALYSIS = RowReduceSpec(
+    slug="mesh_analysis",
+    title="mesh analysis by Kirchhoff's Voltage Law",
+    problem_template="Apply Kirchhoff's Voltage Law (KVL) around each mesh to solve for the unknown mesh "
+                     "currents: {system}.",
+    n=3,
+    setup=_make_system,
+    var_names=["I1", "I2", "I3"],
+    family="electrical_engineering",
+    aliases=["mesh analysis", "mesh current analysis", "kirchhoff's voltage law", "kirchhoffs voltage law",
+             "kvl analysis", "loop analysis", "loop current analysis", "solving for mesh currents"],
+    not_aliases=["differential", "inequality", "nodal"],
+    priority=57,
+    edge_cases=_LINEAR_SYSTEM_EDGE_CASES,
+)
+
+
+ALL_SPECS = [SOLVE_2X2, GAUSSIAN_ELIMINATION, SOLVE_3X3, ROW_ECHELON_FORM, NODAL_ANALYSIS, MESH_ANALYSIS]
