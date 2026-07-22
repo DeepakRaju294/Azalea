@@ -35,6 +35,23 @@ class LatexDelimiterRepair(unittest.TestCase):
     def test_trailing_orphan_backslash(self):
         self.assertEqual(fix("ends with a stray slash \\"), "ends with a stray slash")
 
+    def test_unclosed_inline_math_with_trailing_linebreak_gets_closed(self):
+        # live: a Stokes' theorem bullet opened "\(" and ended with a bare "\\" (LaTeX line-break) with no "\)"
+        # anywhere — KaTeX never terminates the span. Strip the noise, close the delimiter that was left open.
+        self.assertEqual(
+            fix(r"  - \(\int_C \mathbf{F} \cdot d\mathbf{r} = \int_S (\nabla \times \mathbf{F}) \cdot d\mathbf{S}\\"),
+            r"  - \(\int_C \mathbf{F} \cdot d\mathbf{r} = \int_S (\nabla \times \mathbf{F}) \cdot d\mathbf{S}\)")
+
+    def test_doubled_backslash_before_command_collapsed(self):
+        # live: "\\\\ int_C" (a doubled backslash + stray space in front of a bare command name) instead of the
+        # intended "\int_C" — no legitimate bullet prose contains a literal doubled backslash.
+        self.assertEqual(fix(r"  - \\ int_C F \cdot dr"), r"  - \int_C F \cdot dr")
+        self.assertEqual(fix(r"  - \\ nabla \times F"), r"  - \nabla \times F")
+
+    def test_balanced_trailing_linebreak_is_a_noop(self):
+        # a bullet that's already properly closed must not gain a spurious extra "\)"
+        self.assertEqual(fix(r"  - \(x^2\)"), r"  - \(x^2\)")
+
 
 if __name__ == "__main__":
     unittest.main()

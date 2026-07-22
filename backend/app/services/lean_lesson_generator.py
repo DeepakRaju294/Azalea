@@ -494,6 +494,17 @@ def _clean_subpoint_text(text: str) -> str:
 _DOUBLED_MATH_DELIM_RE = re.compile(r"\\{2,}([()\[\]])")
 _ORPHAN_BACKSLASH_RE = re.compile(r"(?:(?<=\s)|^)\\(?=\s|$)")
 
+# Two more corruption shapes observed on vector-calculus content (live: a Stokes' theorem bullet), where a
+# single leading backslash before a command grew an extra backslash: (1) "\\\\ int_C" — the doubled backslash
+# swallowed the space that should sit between "\" and "int_C", so the command reads as a bare word with a
+# meaningless "\\" line-break token in front; (2) a bullet opens "\\(" and ends with a bare trailing "\\" and NO
+# "\\)" anywhere — the closing delimiter was dropped and replaced by a stray line-break token. No legitimate
+# bullet prose contains a literal doubled backslash, so both are unambiguous noise, not a content risk.
+_DOUBLED_BACKSLASH_COMMAND_RE = re.compile(
+    r"\\{2}\s+(frac|sqrt|sum|prod|int|oint|iint|iiint|binom|overline|vec|hat|bar|"
+    r"nabla|cdot|times|partial|infty|leq|geq|neq|approx)(?![a-zA-Z])")
+_TRAILING_LINEBREAK_RE = re.compile(r"\\{2}[.\s]*$")
+
 
 def _repair_latex_delimiters(text: str) -> str:
     """Clean orphaned/doubled inline-math delimiters in one bullet, PRESERVING its "  - " subpoint indent (that
@@ -507,6 +518,13 @@ def _repair_latex_delimiters(text: str) -> str:
     body = body.replace("$\\(", "\\(").replace("\\)$", "\\)")
     body = body.replace("$\\[", "\\[").replace("\\]$", "\\]")
     body = _DOUBLED_MATH_DELIM_RE.sub(r"\\\1", body)     # "\\)" -> "\)"
+    body = _DOUBLED_BACKSLASH_COMMAND_RE.sub(r"\\\1", body)  # "\\\\ int_C" -> "\int_C"
+    m = _TRAILING_LINEBREAK_RE.search(body)              # trailing bare "\\" -> strip, close an unbalanced \(
+    if m:
+        stripped = body[:m.start()].rstrip()
+        if stripped.count("\\(") > stripped.count("\\)"):
+            stripped += "\\)"
+        body = stripped
     body = _ORPHAN_BACKSLASH_RE.sub("", body)            # " \ " -> " "
     body = re.sub(r"[ \t]{2,}", " ", body).strip()
     return prefix + body
@@ -514,9 +532,16 @@ def _repair_latex_delimiters(text: str) -> str:
 
 # LaTeX commands that MUST sit inside a math delimiter to render; the model sometimes emits them bare in a bullet
 # ("z = \\frac{x - mean}{\\text{std dev}}"), so KaTeX never runs and the raw source shows. We wrap the offending
-# command + its balanced braces in \(…\).
+# command + its balanced braces in \(…\). Vector-calculus operators (nabla/cdot/times/partial/oint/iint/iiint)
+# added after a live Stokes'-theorem path showed "\\(\\nabla\\) \\times \\mathbf{F}" — nabla got wrapped by some
+# earlier pass but "\times \mathbf{F}" right next to it stayed bare and rendered as literal source, because none
+# of these operators were in the command list at all. Boundary uses a negative lookahead, not \b, because \b
+# does not fire between "int" and the literal "_" that starts its subscript ("\\int_C") — \b would silently skip
+# every subscripted command, which is the normal way these are written.
 _MATH_SPAN_RE = re.compile(r"\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^$\n]*?\$")
-_BARE_LATEX_CMD_RE = re.compile(r"\\(?:frac|sqrt|sum|prod|int|binom|begin|overline|vec|hat|bar)\b")
+_BARE_LATEX_CMD_RE = re.compile(
+    r"\\(?:frac|sqrt|sum|prod|int|oint|iint|iiint|binom|begin|overline|vec|hat|bar|"
+    r"nabla|cdot|times|partial|infty|leq|geq|neq|approx)(?![a-zA-Z])")
 
 
 def _latex_expr_extent(s: str, start: int) -> int:

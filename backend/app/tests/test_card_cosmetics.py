@@ -38,6 +38,19 @@ class BareLatexWrapping(unittest.TestCase):
     def test_no_latex_command_is_noop(self):
         self.assertEqual(_wrap_bare_latex("just some prose with a \\ stray"), "just some prose with a \\ stray")
 
+    def test_bare_vector_calculus_operators_get_wrapped(self):
+        # live: "\(\nabla\) \times \mathbf{F}" — nabla alone was delimited but "\times" right next to it stayed
+        # bare and rendered as literal source, since none of these operators were in the command list.
+        self.assertEqual(_wrap_bare_latex("\\(\\nabla\\) \\times \\mathbf{F}"),
+                         "\\(\\nabla\\) \\(\\times\\) \\mathbf{F}")
+        self.assertEqual(_wrap_bare_latex("A \\cdot B"), "A \\(\\cdot\\) B")
+
+    def test_subscripted_bare_command_still_wrapped(self):
+        # \b does not fire between "int" and its subscript "_C" (both \w) — a naive \b boundary would silently
+        # skip every subscripted command, which is the normal way integrals over a named curve are written.
+        self.assertEqual(_wrap_bare_latex("\\int_C \\mathbf{F} \\cdot d\\mathbf{r}"),
+                         "\\(\\int\\)_C \\mathbf{F} \\(\\cdot\\) d\\mathbf{r}")
+
 
 from app.services.lean_lesson_generator import _polish_card_cosmetics
 
