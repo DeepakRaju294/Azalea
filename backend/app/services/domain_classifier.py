@@ -127,6 +127,14 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
         "kinematics", "thermodynamics", "wave", "optics", "quantum", "friction", "projectile", "torque",
         # engineering folded in (mechanical/civil) rather than a separate domain
         "engineering", "mechanical", "civil engineering", "structural", "stress", "strain", "fluid",
+        # electromagnetism (live miss: "electromagnetic induction" had ZERO physics/EE keyword hits — its
+        # only match was "induction", registered solely under math for mathematical induction — so a bare
+        # physics topic on EM induction defaulted to math with a trivial score of 1). Bare "induction" is
+        # deliberately NOT added here: it is genuinely ambiguous (mathematical vs electromagnetic induction),
+        # so the fix is unambiguous EM-specific vocabulary that never collides with a math-induction goal.
+        "electromagnetic", "electromagnetism", "electromagnetic induction", "magnetic", "magnetism", "magnet",
+        "magnetic field", "magnetic flux", "faraday's law", "faraday", "lenz's law", "lenz",
+        "electromotive force", "solenoid",
     ),
     "chemistry": (
         "chemistry", "chemical", "reaction", "molecule", "atom", "mole", "molar", "molarity", "stoichiometry",
@@ -220,7 +228,14 @@ def _fine_scores(text: str) -> dict[str, float]:
     scores["coding"] += _STRONG_WEIGHT * _count(text, _LANGUAGES, word_boundary=False)
     scores["math"] += _STRONG_WEIGHT * _count(text, _MATH_NOTATION, word_boundary=False)
     scores["physics"] += _STRONG_WEIGHT * _count(text, _PHYS_UNITS, word_boundary=False)
-    scores["electrical_engineering"] += _STRONG_WEIGHT * _count(text, _EE_UNITS, word_boundary=False)
+    # word_boundary=True here (unlike the other _UNITS calls): _EE_UNITS' space-free single-word entries
+    # ("ohm", "watt", "hertz", "farad") need it to avoid a plain-substring collision — "farad" (the
+    # capacitance unit) otherwise matches inside "faraday" (the scientist), which tied a bare "Faraday's
+    # law" goal between physics and electrical_engineering and dropped it to `ambiguous` (confidence 0.0)
+    # even after the physics keyword fix below made "faraday"/"faraday's law" match physics cleanly. The
+    # space-containing entries (" volt", " amp") are unaffected — _count only applies the regex path to
+    # alnum, space-free entries; anything with a space always falls through to its existing substring check.
+    scores["electrical_engineering"] += _STRONG_WEIGHT * _count(text, _EE_UNITS, word_boundary=True)
     scores["chemistry"] += _STRONG_WEIGHT * _count(text, _CHEM_UNITS, word_boundary=False)
     return scores
 

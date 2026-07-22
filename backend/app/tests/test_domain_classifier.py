@@ -33,9 +33,28 @@ class DomainClassifierFixtures(unittest.TestCase):
             "Teach me about plate tectonics and earthquakes.": "earth_science",
             "Teach me the cardiovascular system and its physiology.": "medicine",
             "Teach me Spanish verb conjugation and grammar.": "language_learning",
+            # live miss: "electromagnetic induction" had ZERO physics/EE keyword hits — its only match was
+            # bare "induction" (registered solely under math, for mathematical induction), so it defaulted
+            # to math with a trivial score of 1. Bare "induction" deliberately stays math-only (genuinely
+            # ambiguous); the fix is unambiguous EM vocabulary instead.
+            "electromagnetic induction": "physics",
+            "learn about electromagnetic induction": "physics",
+            "learn mathematical induction": "math",             # must NOT regress — still unambiguously math
+            "Teach me about magnetic flux and Faraday's law.": "physics",
         }
         for goal, expected in cases.items():
             self.assertEqual(classify_domain(goal).domain, expected, goal)
+
+    def test_faraday_does_not_collide_with_the_farad_unit(self):
+        # "farad" (the capacitance unit, an EE strong-signal) is a literal substring of "faraday" (the
+        # scientist) — a plain-substring match tied physics against electrical_engineering for any goal
+        # naming Faraday, dropping confidence to 0 and the status to `ambiguous`.
+        sig = classify_domain("Teach me about Faraday's law of induction.")
+        self.assertEqual(sig.domain, "physics", sig.scores)
+        self.assertEqual(sig.classification_status, "classified")
+        # a genuine farad/EE goal must still classify correctly
+        sig2 = classify_domain("Teach me about capacitors measured in farads.")
+        self.assertEqual(sig2.domain, "electrical_engineering", sig2.scores)
 
     def test_gate_family_mapping(self):
         self.assertEqual(classify_domain("Teach me Newton's second law.").gate_family, "science")
