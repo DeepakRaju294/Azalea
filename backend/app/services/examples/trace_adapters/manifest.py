@@ -240,7 +240,9 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "type": "T8b", "family": "proof", "status": "pilot", "verification_level": "trace_verified",
         "coding": False, "canonical_solution": None,
         "routing_aliases": ["induction", "proof by induction", "mathematical induction", "prove that"],
-        "negative_guards": [], "fixtures": ["base_case", "inductive_step"]},
+        "negative_guards": ["electromagnetic", "magnetic", "faraday", "lenz", "electromotive", "flux",
+                            "solenoid", "ac circuit", "induced current", "induced emf", "induction motor"],
+        "fixtures": ["base_case", "inductive_step"]},
     "arithmetic_eval": {
         "type": "T7", "family": "formula", "status": "production", "verification_level": "trace_verified",
         "coding": True, "canonical_solution": "arithmetic_eval",
@@ -429,7 +431,14 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
     "dfs_iter": {"any": ["depth-first", "depth first"], "word": ["dfs"], "not": _IS_TREE, "priority": 120},
     "n_queens": {"any": ["n-queens", "n queens", "nqueens", "eight queens", "queens problem"], "priority": 110},
     "topological_sort": {"any": ["topological sort", "topological ordering", "topological_sort", "topo sort", "kahn"], "priority": 108},
+    # bare "induction" collides with ELECTROMAGNETIC induction (Faraday/Lenz/AC-circuit topics) — without this
+    # guard "Electromagnetic Induction in AC Circuits" matched on the substring "induction" alone and shipped a
+    # "Prove by mathematical induction that 1+2+4+...+2^(n-1)=2^n-1" trace as its VERIFIED worked example, i.e.
+    # a math summation proof presented as electromagnetism content. Same collision class as the domain classifier's
+    # "induction" keyword bug (see domain_classifier.py _KEYWORDS["physics"]) — fixed here in the routing layer too.
     "induction_proof": {"any": ["induction", "prove that", "proof by induction", "mathematical induction"],
+                        "not": ["electromagnetic", "magnetic", "faraday", "lenz", "electromotive", "flux",
+                                "solenoid", "ac circuit", "induced current", "induced emf", "induction motor"],
                         "priority": 100},
     "sieve_of_eratosthenes": {"any": ["sieve", "eratosthenes"], "priority": 90},
     "euclid_gcd": {"any": ["euclid", "euclidean", "gcd", "greatest common divisor"], "priority": 80},

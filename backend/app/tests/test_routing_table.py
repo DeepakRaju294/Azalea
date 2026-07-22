@@ -38,6 +38,18 @@ class RoutingTable(unittest.TestCase):
         self.assertEqual(match_routing_slug("run bfs"), "bfs")
         self.assertIsNone(match_routing_slug("subfscription"))               # 'bfs' inside a word must not match
 
+    def test_induction_proof_does_not_collide_with_electromagnetic_induction(self):
+        # bare "induction" is a math-proof alias; without a guard it also matched EM-induction topic titles
+        # and shipped a "prove by mathematical induction" trace as the verified example for an AC-circuits
+        # topic (live bug). EM-flavored titles must defer instead of claiming the proof adapter.
+        self.assertIsNone(match_routing_slug("electromagnetic induction in ac circuits"))
+        self.assertIsNone(match_routing_slug("applying faraday's law of induction"))
+        self.assertIsNone(match_routing_slug("lenz's law and induced current"))
+        self.assertIsNone(match_routing_slug("induction motor"))
+        # a genuine math-induction proof still routes correctly
+        self.assertEqual(match_routing_slug("prove by mathematical induction that 1+2+...+n=n(n+1)/2"),
+                         "induction_proof")
+
     def test_meta_and_intro_topics_defer(self):
         self.assertIsNone(tp.route_adapter({"title": "Introduction to Binary Search"}))
         self.assertIsNone(tp.route_adapter({"title": "Merge Sort", "topic_type": "study_path_introduction"}))
