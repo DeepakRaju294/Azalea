@@ -1046,6 +1046,36 @@ class TreeTraversalFamilyExpansion(unittest.TestCase):
         out = _expand_canonical_family(topics, "learn binary search")
         self.assertEqual(len(out), 1)
 
+    def test_data_structure_operation_members_still_find_a_template(self):
+        """Live crash: KeyError 'estimated_minutes' in create_topic_from_generated_data. Root cause: the
+        model typed every real member data_structure_operation (a valid, common alternative to
+        algorithm_walkthrough for this exact content), but the template lookup only ever searched for
+        algorithm_walkthrough — found none, template stayed None, and the freshly-injected Level-Order
+        topic's dict.update() never set estimated_minutes at all (dict(None) => {}), since it only sets
+        the fields it explicitly lists. The injected member must clone a real template's fields regardless
+        of which of the two valid walkthrough-shaped types the model chose."""
+        from app.services.topic_generator import _expand_canonical_family
+
+        def op(title):
+            return {"title": title, "course_type": "data_structure_operation",
+                    "topic_type": "data_structure_operation", "description": "d",
+                    "estimated_minutes": 12}
+
+        topics = [op("In-Order Traversal"), op("Pre-Order Traversal"), op("Post-Order Traversal")]
+        out = _expand_canonical_family(topics, "Want to learn about bst traversal")
+        injected = next(t for t in out if "Level-Order" in t["title"])
+        self.assertEqual(injected.get("estimated_minutes"), 12)   # inherited from the cloned template
+
+    def test_normalize_estimated_minutes_handles_missing_value(self):
+        # create_topic_from_generated_data (study_paths.py) now calls this on topic_data.get(...) instead of
+        # a hard [...] lookup — the live crash site — so None (a missing key) must resolve to a sane default.
+        from app.services.topic_generator import normalize_estimated_minutes
+        self.assertEqual(normalize_estimated_minutes(None), 10)
+        self.assertEqual(normalize_estimated_minutes(12), 12)
+        self.assertEqual(normalize_estimated_minutes(1), 5)     # clamped to the floor
+        self.assertEqual(normalize_estimated_minutes(999), 25)  # clamped to the ceiling
+        self.assertEqual(normalize_estimated_minutes("not a number"), 10)
+
     def test_family_ordering_pairs_walkthrough_with_its_implementation(self):
         # Live scramble: walkthroughs first, then implementations with one stranded out of order. The
         # consolidation pass must interleave: In-Order WT -> Implementing In-Order -> Pre-Order WT -> ...

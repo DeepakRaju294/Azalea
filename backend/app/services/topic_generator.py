@@ -1091,7 +1091,15 @@ def _expand_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> 
     present = {slug for t in topics if _ttype(t) in _MEMBER_TEACHING_TYPES
                for slug in [_slug(t)] if slug}
     member_slugs = {slug for _, slug in fam["members"]}
-    template = next((t for t in topics if _ttype(t) == "algorithm_walkthrough"), None)
+    # The template only needs to be walkthrough-SHAPED (conceptual trace, not code) — algorithm_walkthrough
+    # and data_structure_operation are both valid model choices for identical "trace this operation" content
+    # (live: the model consistently typed the traversal members data_structure_operation, never algorithm_
+    # walkthrough, so the old algorithm_walkthrough-only lookup found NO template — template stayed None, a
+    # freshly-injected member's dict.update() then never set estimated_minutes at all, since dict(None) was
+    # never reached and the update only sets the fields it explicitly lists — and create_topic_from_
+    # generated_data's hard topic_data["estimated_minutes"] lookup crashed the whole path with a KeyError).
+    template = next((t for t in topics if _ttype(t) in ("algorithm_walkthrough", "data_structure_operation")),
+                    None)
     result = list(topics)
     if not (present & member_slugs):
         # ZERO members (requirements-first live regression): the model folded the WHOLE family into one

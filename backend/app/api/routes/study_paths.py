@@ -45,7 +45,7 @@ from app.services.lesson_generator import (
 )
 from app.services.lean_lesson_generator import build_lean_lesson_from_topic_and_chunks
 from app.services.legacy_v2_visual_bridge import attach_v2_visuals_to_legacy_lesson
-from app.services.topic_generator import generate_topics_from_chunks
+from app.services.topic_generator import generate_topics_from_chunks, normalize_estimated_minutes
 from app.services.scope_shadow import maybe_log_shadow
 from app.services.prereq_links_shadow import maybe_log_prereq_links_shadow
 from app.services.domain_classifier import classify_domain, gate_family_of
@@ -274,7 +274,13 @@ def create_topic_from_generated_data(
             topic_data.get("topic_type_reason") or topic_data.get("course_type_reason")
         ),
         order_index=topic_data["order_index"],
-        estimated_minutes=topic_data["estimated_minutes"],
+        # .get(), not a hard [...] lookup: a deterministically-injected topic dict (e.g. a canonical family
+        # member cloned from an empty template) can legitimately omit this field — live crash, KeyError
+        # 'estimated_minutes', on a path whose real member topics were all typed data_structure_operation
+        # rather than algorithm_walkthrough, so _expand_canonical_family's template lookup found nothing to
+        # clone estimated_minutes FROM in the first place. Every other field on this call already tolerates
+        # a missing key; this is the one that didn't.
+        estimated_minutes=normalize_estimated_minutes(topic_data.get("estimated_minutes")),
         course_type=topic_data.get("topic_type") or topic_data.get("course_type"),
         secondary_course_types=topic_data.get("secondary_course_types") or [],
         knowledge_level=topic_data.get("knowledge_level"),
