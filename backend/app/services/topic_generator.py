@@ -297,8 +297,20 @@ def _canonical_concept_key(value: Any, topic_type: str = "") -> str:
 
 
 def _topic_facet(topic: dict[str, Any]) -> str:
+    """Live: 'Applications of Stokes' Theorem' (problem_solving_application) shares '_canonical_concept_key'
+    with bare 'Stokes' Theorem' — '_subject_tokens' strips "applications"/"of" as generic framing, so both
+    titles reduce to the same key. With facet also uniformly 'core', the identity-dedup pass in
+    `_certify_path_scope` (same key + same facet + `_same_concept_evidence` agrees) treated the applications
+    topic as a duplicate of the theorem-statement topic and silently absorbed/dropped it — the R4 (Applications)
+    curriculum requirement then had no surviving topic to own it. `problem_solving_application` topics are a
+    genuinely different facet of the same concept (the STUDY_PATH_SCOPE_SPEC's own facet vocabulary names
+    'application' as a first-class facet, distinct from 'core'), so give them their own bucket here too."""
     ttype = str(topic.get("course_type") or topic.get("topic_type") or "").strip().lower()
-    return "implementation" if ttype == "coding_implementation" else "core"
+    if ttype == "coding_implementation":
+        return "implementation"
+    if ttype == "problem_solving_application":
+        return "application"
+    return "core"
 
 
 def _source_within_prereq(prereq: str, source: str) -> bool:

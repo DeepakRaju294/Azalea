@@ -1981,6 +1981,31 @@ class RequirementReconciliation(unittest.TestCase):
         trace = topic.get("_decision_trace") or topic.get("decision_trace") or []
         self.assertFalse(any(e.get("stage") == "requirement.broad_claim_flagged" for e in trace))
 
+    def test_problem_solving_application_does_not_collide_with_bare_theorem_identity(self):
+        # live: "Applications of Stokes' Theorem" (problem_solving_application) and bare "Stokes' Theorem"
+        # (math_formula_method) both reduced to canonical_concept_key='stok_theorem' ("applications"/"of" are
+        # stripped as generic framing) — with facet uniformly 'core' too, _certify_path_scope's identity dedup
+        # treated the applications topic as a duplicate of the theorem-statement topic and silently dropped
+        # it, so the Applications curriculum requirement had no surviving topic. Regen showed this happening
+        # roughly every other generation for the exact same goal.
+        from app.services.topic_generator import _canonical_concept_key, _topic_facet, _certify_path_scope
+
+        theorem = {"title": "Stokes' Theorem", "course_type": "math_formula_method",
+                   "topic_type": "math_formula_method", "out_of_scope": [],
+                   "in_scope": ["the integral form of Stokes' theorem"]}
+        apps = {"title": "Applications of Stokes' Theorem", "course_type": "problem_solving_application",
+                "topic_type": "problem_solving_application", "out_of_scope": [],
+                "in_scope": ["applications in fluid dynamics", "applications in electromagnetism"]}
+        # the key collision itself is real and expected — the fix is in facet, not in the key
+        self.assertEqual(_canonical_concept_key(theorem["title"]), _canonical_concept_key(apps["title"]))
+        self.assertEqual(_topic_facet(theorem), "core")
+        self.assertEqual(_topic_facet(apps), "application")
+
+        out = _certify_path_scope([theorem, apps], "Want to learn about stokes theorem")
+        titles = {t["title"] for t in out}
+        self.assertIn("Applications of Stokes' Theorem", titles, "applications topic must survive certification")
+        self.assertIn("Stokes' Theorem", titles)
+
     def test_scope_out_backfill_skips_own_content_rephrased(self):
         from app.services.topic_generator import _certify_path_scope
         energy = {"title": "Energy Transfer in Turbulent Flows", "course_type": "science_mechanism",
