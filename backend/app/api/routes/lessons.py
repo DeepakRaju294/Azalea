@@ -238,6 +238,25 @@ def _finalize_lesson_cards(lesson_json: dict, v2_topic: dict) -> None:
     gate_legacy_visuals(lesson_json)
     audit_worked_examples(lesson_json, v2_topic, regenerate=None, max_regenerations=2)
     _audit_required_cards(lesson_json, v2_topic)
+    # Re-run the prereq/key-term dedup AFTER backfill, not just at the lean stage: a thin components_terms
+    # card (e.g. one term) survives the lean stage's own dedup fine, but _audit_required_cards' backfill can
+    # still judge it insufficient and regenerate it via a FRESH single-card LLM call that has no idea what
+    # the intro's prerequisites are — live: the lean stage correctly dropped 'Binary Search Tree (BST)' as
+    # prereq-duplicate, backfill fired anyway and regenerated a components_terms card that put it right back.
+    if str(v2_topic.get("topic_type") or "") == "study_path_introduction":
+        try:
+            from app.services.lean_lesson_generator import _strip_prereq_named_intro_key_terms
+            import types
+
+            _pseudo_topic = types.SimpleNamespace(
+                topic_type="study_path_introduction",
+                assumed_prerequisites=list(v2_topic.get("assumed_prerequisites") or []),
+            )
+            cards = lesson_json.get("lesson_cards")
+            if isinstance(cards, list):
+                lesson_json["lesson_cards"] = _strip_prereq_named_intro_key_terms(cards, _pseudo_topic)
+        except Exception:  # noqa: BLE001 — the guard must never break a delivered lesson
+            pass
     # LAST — so no audit/backfill above re-adds a fabricated example the certified plan withholds.
     enforce_example_plan(lesson_json, v2_topic)
 
@@ -321,6 +340,9 @@ def apply_deferred_worked_example(topic: Topic, lesson_json: dict) -> bool:
             "path_domain": str(getattr(getattr(topic, "study_path", None), "domain", None) or "").lower(),
             # the certified scope plan (incl. we_policy) — read by enforce_example_plan at finalize.
             "decomposition_metadata": dict(getattr(topic, "decomposition_metadata", None) or {}),
+            # the intro's own assumed prerequisites — read by _finalize_lesson_cards' post-backfill dedup so
+            # a freshly-regenerated components_terms card can't reintroduce a prereq-named term.
+            "assumed_prerequisites": list(getattr(topic, "assumed_prerequisites", None) or []),
         }
         applied = apply_llm_solved_worked_example(lesson_json, v2_topic)
         _finalize_lesson_cards(lesson_json, v2_topic)
@@ -377,6 +399,9 @@ def enrich_legacy_lesson_with_v2_visuals(
             "path_domain": str(getattr(getattr(topic, "study_path", None), "domain", None) or "").lower(),
             # the certified scope plan (incl. we_policy) — read by enforce_example_plan at finalize.
             "decomposition_metadata": dict(getattr(topic, "decomposition_metadata", None) or {}),
+            # the intro's own assumed prerequisites — read by _finalize_lesson_cards' post-backfill dedup so
+            # a freshly-regenerated components_terms card can't reintroduce a prereq-named term.
+            "assumed_prerequisites": list(getattr(topic, "assumed_prerequisites", None) or []),
         }
         # Missing-adapter demand: if this is a computational topic with NO adapter, record it (best-effort) so
         # the most-requested unsupported concepts surface as the priority queue for which adapter to build next.
