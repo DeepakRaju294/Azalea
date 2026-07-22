@@ -498,6 +498,22 @@ class StripPrereqNamedIntroKeyTerms(unittest.TestCase):
         self.assertNotIn("Binary Search Tree (BST)", pts)
         self.assertIn("Traversal", pts)                    # a genuinely path-specific term survives
 
+    def test_acronym_first_header_still_matches(self):
+        # 46th path review: live had the REVERSE order, "BST (Binary Search Tree)" — _norm_gloss_key drops
+        # whichever side is parenthesized, so acronym-first left only "bst", which never matched the prereq
+        # "binary search trees" on its own.
+        intro = _Topic("i", "Introduction to BST Traversal", 0, prereqs=["binary search trees"],
+                       glosses={"binary search trees": "an ordered binary tree"},
+                       ctype="study_path_introduction")
+        cards = [{"card_type": "definition", "blueprint_key": "components_terms", "title": "Key Terms", "points": [
+            "BST (Binary Search Tree)", "  - A data structure that maintains sorted order.",
+            "Node", "  - An element of a BST containing a value and child references.",
+        ]}]
+        out = _strip_prereq_named_intro_key_terms(cards, intro)
+        pts = out[0]["points"]
+        self.assertNotIn("BST (Binary Search Tree)", pts)
+        self.assertIn("Node", pts)
+
     def test_card_dropped_when_nothing_survives(self):
         intro = _Topic("i", "Intro", 0, prereqs=["binary search trees"],
                        glosses={"binary search trees": "g"}, ctype="study_path_introduction")

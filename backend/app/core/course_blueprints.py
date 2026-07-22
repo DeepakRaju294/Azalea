@@ -210,9 +210,13 @@ EXAMPLE_TYPE_DEFINITIONS: dict[str, dict[str, str]] = {
         "teaching_goal": "develop active reasoning ability",
     },
     "side_by_side_contrast_example": {
-        "purpose": "Show two similar ideas under the same setup so differences become obvious.",
+        "purpose": "Show every idea being compared under the same setup so differences become obvious. When "
+                  "there are MORE than two (a family survey), cover them ALL together in one holistic view — "
+                  "never split into adjacent two-at-a-time pairs ('A vs B', then 'B vs C'), which never "
+                  "compares A against C at all and reads as an arbitrary chain.",
         "best_for": "compare/distinguish topics",
-        "structure": "shared setup -> behavior/result under idea A -> behavior/result under idea B -> comparison takeaway",
+        "structure": "shared setup -> behavior/result under EACH idea being compared (all of them, not just "
+                    "two) -> comparison takeaway covering every idea",
         "teaching_goal": "clarify distinctions and prevent confusion",
     },
     "classification_example": {
@@ -417,7 +421,12 @@ EXAMPLE_CARD_RULES: dict[str, dict[str, dict[str, Any]]] = {
     TopicType.COMPARE_DISTINGUISH.value: {
         "comparison": {
             "example_type": "side_by_side_contrast_example",
-            "purpose": "Use the same setup to show how two ideas behave differently.",
+            "purpose": "Use the same setup to show how the compared ideas behave differently. When there "
+                      "are MORE than two (a family survey — e.g. all four tree traversal orders, every "
+                      "sorting algorithm taught), every comparison card must address ALL of them together "
+                      "(one holistic table or unified summary), never a chain of adjacent two-at-a-time "
+                      "pairs — a learner reading 'A vs B' then 'B vs C' never sees A compared against C "
+                      "at all, and the pairing looks arbitrary.",
         },
     },
     TopicType.PROBLEM_SOLVING_APPLICATION.value: {
@@ -1220,7 +1229,12 @@ TOPIC_BLUEPRINTS: dict[str, Blueprint] = {
         ),
         "optional_cards": [],
         "preferred_question_types": ["multiple_choice", "short_answer"],
-        "avoid": ["Do not compare ideas before both have been introduced."],
+        "avoid": [
+            "Do not compare ideas before both have been introduced.",
+            "When comparing MORE than two ideas (a family survey), never split the comparison into adjacent "
+            "two-at-a-time pairs ('A vs B', then 'B vs C', then 'C vs D') — every comparison card must cover "
+            "ALL of them together, so every pair of ideas is actually compared, not just consecutive ones.",
+        ],
         "combination_rules": [],
     },
     TopicType.PROBLEM_SOLVING_APPLICATION.value: {

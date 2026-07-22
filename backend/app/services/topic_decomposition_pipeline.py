@@ -495,24 +495,34 @@ def _is_goal_umbrella_subject(subject_key: str, gw: set[str]) -> bool:
     return False
 
 
+_UMBRELLA_MEMBER_TYPES = frozenset({"coding_implementation", "algorithm_walkthrough", "data_structure_operation"})
+
+
 def _drop_umbrella_coding_topics(topics_out: list[dict[str, Any]], goal: str | None) -> list[str]:
-    """Drop a coding_implementation whose subject is the GOAL ITSELF when the path already has >=2 more
-    specific implementations (live failure: the model emitted 'Implementing BST Traversal' alongside the
-    per-traversal 'Implementing Inorder/Postorder/Preorder Traversal' — the umbrella re-implements what the
-    members already cover). Never drops the only implementation. Mutates topics_out; returns dropped titles."""
+    """Drop a walkthrough/operation/coding_implementation topic whose subject is the GOAL ITSELF when the path
+    already has >=2 more specific member topics (live failure: the model emitted 'Implementing BST Traversal'
+    alongside the per-traversal 'Implementing Inorder/Postorder/Preorder Traversal' — the umbrella
+    re-implements what the members already cover). Originally coding_implementation-only; broadened after a
+    live miss where the model's redundant pair was a WALKTHROUGH ('Binary Search Tree Traversal',
+    algorithm_walkthrough) plus its coding companion — the coding-only check correctly flagged the coding
+    half but had no way to also drop its walkthrough twin, so the walkthrough survived alone, still
+    duplicating the intro's own orientation content and the per-technique topics that follow it. All three
+    member-teaching types are now pooled for the umbrella check AND the >=2-other-members safety count, so an
+    umbrella pair (or singleton) of any of these types is dropped together. Never drops down to <2 remaining
+    members. Mutates topics_out; returns dropped titles."""
     gw = _goal_significant_words(goal)
     if not gw:
         return []
-    coding = [t for t in topics_out
-              if str(t.get("topic_type") or t.get("course_type") or "").strip() == "coding_implementation"]
-    umbrellas = [t for t in coding
+    members = [t for t in topics_out
+              if str(t.get("topic_type") or t.get("course_type") or "").strip() in _UMBRELLA_MEMBER_TYPES]
+    umbrellas = [t for t in members
                  if _is_goal_umbrella_subject(str(t.get("subject_key") or t.get("title") or ""), gw)]
-    if not umbrellas or len(coding) - len(umbrellas) < 2:
+    if not umbrellas or len(members) - len(umbrellas) < 2:
         return []
     drop_ids = {id(t) for t in umbrellas}
     dropped = [str(t.get("title") or "") for t in umbrellas]
     topics_out[:] = [t for t in topics_out if id(t) not in drop_ids]
-    _log.info("topic_decomposition: dropped umbrella goal-subject coding topic(s): %s", dropped)
+    _log.info("topic_decomposition: dropped umbrella goal-subject topic(s): %s", dropped)
     return dropped
 
 

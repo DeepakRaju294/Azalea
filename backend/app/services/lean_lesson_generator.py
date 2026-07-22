@@ -4054,6 +4054,21 @@ def _strip_prereq_named_intro_key_terms(cards: list[dict[str, Any]], topic: Topi
     prereqs.discard("")
     if not prereqs:
         return cards
+
+    def _identity_candidates(header: str) -> set[str]:
+        # _norm_gloss_key always DROPS parenthetical content — right for an inline-notation aside
+        # ("Prior Probability (P(A|B))") but wrong when the header is "Acronym (Full Name)" ("BST (Binary
+        # Search Tree)"): dropping the parens there keeps only "bst", which never matches a prereq phrased
+        # as "binary search trees" (live: the reverse order, "Binary Search Tree (BST)", DOES match, since
+        # the acronym is what gets dropped there — this direction was the gap). Check both the drop-parens
+        # form AND the parenthetical's own content as candidates.
+        candidates = {_norm_gloss_key(header)}
+        m = re.search(r"\(([^)]*)\)", header)
+        if m:
+            candidates.add(_norm_gloss_key(m.group(1)))
+        candidates.discard("")
+        return candidates
+
     result: list[dict[str, Any]] = []
     for card in cards:
         if _is_prereq_card(card) or _lean_card_key(card) not in _KEY_TERM_CARD_KEYS:
@@ -4076,8 +4091,7 @@ def _strip_prereq_named_intro_key_terms(cards: list[dict[str, Any]], topic: Topi
             j = i + 1
             while j < len(pts) and (str(pts[j])[:1].isspace() or str(pts[j]).lstrip().startswith("-")):
                 j += 1
-            term = _norm_gloss_key(_key_term_header(p))
-            if term in prereqs:
+            if _identity_candidates(_key_term_header(p)) & prereqs:
                 i = j; continue                          # the prereq card already covers this — drop the dupe
             kept.extend(pts[i:j]); kept_headers += 1; i = j
         if kept_headers == 0:

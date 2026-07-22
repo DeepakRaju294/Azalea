@@ -329,6 +329,50 @@ class NoPrereqTopicOverlap(unittest.TestCase):
         self.assertEqual(getattr(ad, "slug", None), "tree_inorder", title)
 
 
+class UmbrellaWalkthroughDropped(unittest.TestCase):
+    """46th path review: the model's redundant umbrella pair was a WALKTHROUGH ('Binary Search Tree
+    Traversal', algorithm_walkthrough) plus its coding companion, both subject_key='binary_search_tree_
+    traversal' — _drop_umbrella_coding_topics only ever checked coding_implementation, so the walkthrough
+    half survived alone, duplicating both the intro's own orientation content and the per-technique topics
+    that follow it (its own coding companion, correctly caught by the coding-only check, got dropped)."""
+
+    @staticmethod
+    def _member(title, subj, ttype="data_structure_operation"):
+        return {"topic_id": subj, "capability_id": subj, "subject_key": subj,
+                "primary_action": "trace", "content_role": "operation", "topic_type": ttype,
+                "title": title, "unit_title": title, "purpose": "p", "in_scope": ["a traversal method"],
+                "basis": "goal"}
+
+    def test_umbrella_walkthrough_and_its_coding_companion_both_dropped(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        umbrella_wt = self._member("Binary Search Tree Traversal", "binary_search_tree_traversal",
+                                   ttype="algorithm_walkthrough")
+        umbrella_wt["content_role"] = "calculation"
+        umbrella_impl = self._member("Implementing Binary Search Tree Traversal",
+                                     "binary_search_tree_traversal", ttype="coding_implementation")
+        umbrella_impl["content_role"] = "implementation"
+        topics_in = [umbrella_wt, umbrella_impl,
+                    self._member("In-Order Traversal", "order_traversal"),
+                    self._member("Pre-Order Traversal", "pre_order_traversal"),
+                    self._member("Post-Order Traversal", "post_order_traversal"),
+                    self._member("Level-Order Traversal", "level_order_traversal")]
+        plan = {"path_plan": {"end_capability_actions": ["trace"], "required_capabilities": []},
+                "topics": topics_in}
+
+        def fn(payload):
+            return ({"requirements": [], "assumed_prerequisites": []}
+                    if "learning requirements" in payload["user"] else plan)
+
+        topics = generate_decomposed_topics("Want to learn about bst traversal", "s", model_fn=fn,
+                                            coding_follow_ups=True)
+        titles = [t["title"] for t in topics]
+        self.assertNotIn("Binary Search Tree Traversal", titles)             # walkthrough umbrella dropped
+        self.assertNotIn("Implementing Binary Search Tree Traversal", titles)  # its coding companion too
+        for name in ("In-Order Traversal", "Pre-Order Traversal", "Post-Order Traversal",
+                     "Level-Order Traversal"):
+            self.assertIn(name, titles)                                      # real members untouched
+
+
 class CanonicalTreeCodeSelfContained(unittest.TestCase):
     """The displayed canonical must say what .val/.left/.right ARE (the live lessons referenced node.val on a
     class the panel never defined) and must still parse. Product decision: the in/pre/post traversal
