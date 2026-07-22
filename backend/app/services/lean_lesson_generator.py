@@ -4037,6 +4037,56 @@ def _dedupe_intro_key_terms_against_scope(cards: list[dict[str, Any]], topic: To
     return result
 
 
+def _strip_prereq_named_intro_key_terms(cards: list[dict[str, Any]], topic: Topic) -> list[dict[str, Any]]:
+    """The intro's key-terms card must not re-define a concept its OWN prerequisites card already named as
+    external, assumed knowledge (45th path review live: the prereq card said 'Binary search trees — what to
+    learn: be able to create and manipulate binary search trees' while the SAME intro's key-terms card also
+    defined 'Binary Search Tree (BST): A data structure where...' — telling the learner in one breath that BST
+    is something they should already know, and in the next, teaching it as new vocabulary). Distinct from
+    `_strip_prerequisite_key_terms` (skips the intro entirely — that one only guards BODY topics) and from
+    `_dedupe_intro_key_terms_against_scope` (matches against sibling TAUGHT topics, not the prereq list).
+    Intro-only; a term already relocated by `_relocate_prereq_defs_from_key_terms` is naturally gone by the
+    time this runs, so this only catches the case where the prereq ALREADY had its own gloss (from
+    decomposition) and so never triggered that relocation."""
+    if _topic_type_key(topic) != "study_path_introduction":
+        return cards
+    prereqs = {_norm_gloss_key(str(p)) for p in (getattr(topic, "assumed_prerequisites", None) or [])}
+    prereqs.discard("")
+    if not prereqs:
+        return cards
+    result: list[dict[str, Any]] = []
+    for card in cards:
+        if _is_prereq_card(card) or _lean_card_key(card) not in _KEY_TERM_CARD_KEYS:
+            result.append(card)
+            continue
+        field = "points" if isinstance(card.get("points"), list) else ("bullets" if isinstance(card.get("bullets"), list) else None)
+        if field is None:
+            result.append(card)
+            continue
+        pts = card[field]
+        kept: list[Any] = []
+        kept_headers = 0
+        i = 0
+        while i < len(pts):
+            p = str(pts[i])
+            is_header = (bool(p.strip()) and not p[:1].isspace() and not p.lstrip().startswith("-")
+                        and not p.lstrip().startswith(("$", "\\")))
+            if not is_header:
+                kept.append(pts[i]); i += 1; continue
+            j = i + 1
+            while j < len(pts) and (str(pts[j])[:1].isspace() or str(pts[j]).lstrip().startswith("-")):
+                j += 1
+            term = _norm_gloss_key(_key_term_header(p))
+            if term in prereqs:
+                i = j; continue                          # the prereq card already covers this — drop the dupe
+            kept.extend(pts[i:j]); kept_headers += 1; i = j
+        if kept_headers == 0:
+            continue                                     # nothing left → drop the empty key-terms card
+        card[field] = kept
+        result.append(card)
+    return result
+
+
 def _default_prereq_brief_fn(prereqs: list[str], goal: str) -> list[dict[str, str]]:
     from app.services.llm_client import generate_prereq_briefs
     return generate_prereq_briefs(prereqs, goal)
@@ -4722,6 +4772,12 @@ def _normalize_lean_card_order(
     # terms, not vocabulary the topic will teach in depth (e.g. prior/posterior probability belong to the Bayes
     # topic, not the intro). No-op off-intro or when siblings carry no in_scope.
     normalized = _dedupe_intro_key_terms_against_scope(normalized, topic)
+
+    # …drop an intro key-term that NAMES one of this same intro's own assumed prerequisites (e.g. 'Binary
+    # Search Tree' defined as a key term while the prereq card also names 'binary search trees' as external,
+    # assumed knowledge) — the concept is already covered by the prereq card's link, so the key-terms card
+    # must not re-teach it as new path vocabulary too.
+    normalized = _strip_prereq_named_intro_key_terms(normalized, topic)
 
     # …and drop elementary intro key-terms ("Probability", "Event") the prerequisites already cover, so the intro
     # key-terms and prerequisites cards stop overlapping on foundational material.

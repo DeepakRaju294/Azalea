@@ -259,6 +259,18 @@ def _is_circular_prereq(name: str, goal: str | None) -> bool:
     distinctive word appears in the goal (light stemming so 'combinatorics'≈'combinatorial'), it's circular.
     A prereq from a DIFFERENT subject ('basic probability', 'binary search trees') keeps a distinctive word
     the goal lacks and passes."""
+    # A prereq that IS a comparison/analysis of multiple techniques is circular by construction, regardless
+    # of whether its distinctive words happen to overlap the goal's own wording: a genuine external
+    # prerequisite names ONE prior concept, never a meta-level comparison — comparing this path's own
+    # techniques is a SYNTHESIS of what the path teaches (often its own compare_distinguish topic), not
+    # something learned beforehand. Live: goal 'bst traversal' with prereq 'comparison with other traversal
+    # methods' — no word overlaps the goal directly ("comparison"/"other"/"methods" all pass the ordinary
+    # goal-word check below), so it read as "a prereq from a different subject" and survived, telling the
+    # learner to already be able to "describe at least three tree traversal techniques" before starting the
+    # very path that teaches them — while the path ALSO had its own real 'Comparing Tree Traversal Orders'
+    # topic the prereq never matched (differently phrased, missed by the exact-title taught-topic guard).
+    if re.search(r"\b(comparison|compare|comparing|contrast|contrasting)\b", str(name or "").lower()):
+        return True
     goal_words = set(re.findall(r"[a-z]+", str(goal or "").lower()))
     if not goal_words:
         return False

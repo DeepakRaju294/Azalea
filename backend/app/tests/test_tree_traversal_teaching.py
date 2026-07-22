@@ -853,6 +853,22 @@ class FamilyComparisonTopic(unittest.TestCase):
                    "topic_type": "compare_distinguish"}]
         self.assertEqual(len(_ensure_family_comparison_topic(topics, "learn mst algorithms")), 3)
 
+    def test_comparison_scope_covers_all_members_together_not_adjacent_pairs(self):
+        """45th path review: with 4 members the OLD zip(names, names[1:]) produced 'In-Order vs Pre-Order',
+        'Pre-Order vs Post-Order', 'Post-Order vs Level-Order' — In-Order was never compared against
+        Post-Order or Level-Order at all, and the pairing looked arbitrary (just list order). in_scope must
+        name every member together in ONE commitment, matching the topic's own purpose text."""
+        from app.services.topic_generator import _ensure_family_comparison_topic
+        topics = [self._wt("In-Order Traversal"), self._wt("Pre-Order Traversal"),
+                  self._wt("Post-Order Traversal"), self._wt("Level-Order Traversal")]
+        out = _ensure_family_comparison_topic(topics, "Want to learn about bst traversal")
+        scope = out[-1]["in_scope"]
+        self.assertEqual(len(scope), 1)
+        for name in ("In-Order Traversal", "Pre-Order Traversal", "Post-Order Traversal",
+                     "Level-Order Traversal"):
+            self.assertIn(name, scope[0])
+        self.assertNotIn(" vs ", scope[0])
+
     def test_single_member_and_unrelated_goal_get_none(self):
         from app.services.topic_generator import _ensure_family_comparison_topic
         self.assertEqual(len(_ensure_family_comparison_topic(

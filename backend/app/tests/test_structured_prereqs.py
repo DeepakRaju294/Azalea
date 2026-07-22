@@ -114,7 +114,7 @@ class UmbrellaPrereqGuard(unittest.TestCase):
                          ["graph theory", "priority queues"])
 from app.services.lean_lesson_generator import (
     _assumed_prereq_glosses, _emit_prereq_interactive_links, _ground_prereq_card,
-    _relocate_prereq_defs_from_key_terms,
+    _relocate_prereq_defs_from_key_terms, _strip_prereq_named_intro_key_terms,
 )
 
 _FLAG = "AZALEA_PREREQ_LINKS"
@@ -335,6 +335,16 @@ class CircularPrereqGuard(unittest.TestCase):
         self.assertFalse(_is_circular_prereq("binary search trees", "learn BST traversal algorithms"))
         self.assertFalse(_is_circular_prereq("derivatives", "learn integration by parts"))
 
+    def test_comparison_of_techniques_is_circular(self):
+        # 45th path review: goal 'bst traversal' + prereq 'comparison with other traversal methods' shared no
+        # words with the goal directly, so it read as "a different subject" and survived — telling the learner
+        # to already "describe at least three tree traversal techniques" before the path that teaches them.
+        for name in ("comparison with other traversal methods", "Comparing Traversal Techniques",
+                     "contrast between sorting algorithms", "traversal method comparison"):
+            self.assertTrue(_is_circular_prereq(name, "want to learn about bst traversal"), name)
+        # a genuine different-subject prereq must still pass even though it names 'trees' etc.
+        self.assertFalse(_is_circular_prereq("binary search trees", "want to learn about bst traversal"))
+
     def test_llm_emitted_circular_prereq_is_dropped(self):
         resp = {
             "path_plan": {
@@ -468,6 +478,42 @@ class GroundHarvestsGlossFromKeyTerms(unittest.TestCase):
                                             "  - What it is: probability of A given B has occurred"])
         kt = next(c for c in out if c["card_type"] == "definition")["points"]
         self.assertNotIn("Conditional Probability", kt)                 # relocated out of key terms
+
+
+class StripPrereqNamedIntroKeyTerms(unittest.TestCase):
+    """45th path review: the intro's prereq card named 'binary search trees' as external, assumed knowledge
+    while the SAME intro's key-terms card also defined 'Binary Search Tree (BST): A data structure where...'
+    — one card telling the learner they should already know it, the other re-teaching it as new vocabulary."""
+
+    def test_key_term_matching_a_prereq_name_is_dropped(self):
+        intro = _Topic("i", "Introduction to BST Traversal", 0, prereqs=["binary search trees"],
+                       glosses={"binary search trees": "an ordered binary tree"},
+                       ctype="study_path_introduction")
+        cards = [{"card_type": "definition", "blueprint_key": "components_terms", "title": "Key Terms", "points": [
+            "Binary Search Tree (BST)", "  - A tree where left children are smaller, right children larger.",
+            "Traversal", "  - The process of visiting each node in a specific order.",
+        ]}]
+        out = _strip_prereq_named_intro_key_terms(cards, intro)
+        pts = out[0]["points"]
+        self.assertNotIn("Binary Search Tree (BST)", pts)
+        self.assertIn("Traversal", pts)                    # a genuinely path-specific term survives
+
+    def test_card_dropped_when_nothing_survives(self):
+        intro = _Topic("i", "Intro", 0, prereqs=["binary search trees"],
+                       glosses={"binary search trees": "g"}, ctype="study_path_introduction")
+        cards = [{"card_type": "definition", "blueprint_key": "components_terms", "title": "Key Terms",
+                 "points": ["Binary Search Trees", "  - the only term in the card"]}]
+        out = _strip_prereq_named_intro_key_terms(cards, intro)
+        self.assertFalse(any(c.get("blueprint_key") == "components_terms" for c in out))
+
+    def test_noop_off_intro_and_with_no_prereqs(self):
+        body = _Topic("t", "In-Order Traversal", 1, ctype="algorithm_walkthrough")
+        cards = [{"card_type": "definition", "blueprint_key": "components_terms", "title": "Key Terms",
+                 "points": ["Binary Search Tree", "  - x"]}]
+        self.assertEqual(_strip_prereq_named_intro_key_terms(cards, body), cards)   # off-intro: no-op
+
+        intro_no_prereqs = _Topic("i", "Intro", 0, ctype="study_path_introduction")
+        self.assertEqual(_strip_prereq_named_intro_key_terms(cards, intro_no_prereqs), cards)
 
 
 class PrereqBriefBackstop(unittest.TestCase):

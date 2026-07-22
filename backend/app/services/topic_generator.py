@@ -1376,7 +1376,15 @@ def _ensure_family_comparison_topic(topics: list[dict[str, Any]], goal: str | No
         "description": f"When to choose each of: {', '.join(names)}.",
         "purpose": f"Choose the right approach: compare {', '.join(names)} on how they work, cost, and fit.",
         "learner_outcome": f"The learner can pick between {display.lower()} for a given situation and say why.",
-        "in_scope": [f"{a} vs {b}" for a, b in zip(names, names[1:])] or names,
+        # ONE holistic comparison across every member together, not a chain of adjacent pairs: the old
+        # zip(names, names[1:]) produced "A vs B", "B vs C", "C vs D" — a first-time learner reading a
+        # 'Comparing X' topic never saw A compared against C or D at all (live: In-Order vs Post-Order and
+        # In-Order vs Level-Order were never covered), and the pairing read as arbitrary since it tracked
+        # list order, not any real relationship between members. Mirrors the topic's own purpose text
+        # ("compare A, B, C, D on how they work, cost, and fit"), which already frames this as one
+        # comparison, not several two-way ones.
+        "in_scope": [f"{', '.join(names[:-1])} and {names[-1]}: how they work, relative cost, and when to "
+                    f"use each"] if len(names) > 1 else names,
         "out_of_scope": [], "prerequisite_topics": [], "source_refs": [],
         "order_index": max((int(t.get("order_index") or 0) for t in topics), default=0) + 1,
         # create_topic_from_generated_data reads this with a HARD key lookup; every model-emitted topic gets
