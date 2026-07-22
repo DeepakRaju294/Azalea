@@ -2006,6 +2006,28 @@ class RequirementReconciliation(unittest.TestCase):
         self.assertIn("Applications of Stokes' Theorem", titles, "applications topic must survive certification")
         self.assertIn("Stokes' Theorem", titles)
 
+    def test_concept_intuition_does_not_collide_with_bare_theorem_identity(self):
+        # live (55th BST_PATH_REVIEW round): same bug class as the applications case, different trigger —
+        # here the collision came through a SHARED subject_key (not a title-tokenization accident), and
+        # 'Physical Meaning of Stokes' Theorem' (concept_intuition) was absorbed into the math_formula_method
+        # theorem-statement topic, dropping the R3 (Physical interpretation) curriculum requirement's only
+        # dedicated topic.
+        from app.services.topic_generator import _topic_facet, _certify_path_scope
+
+        theorem = {"title": "Mathematical Statement of Stokes' Theorem", "course_type": "math_formula_method",
+                   "topic_type": "math_formula_method", "subject_key": "stokes_theorem",
+                   "out_of_scope": [], "in_scope": ["the integral form of Stokes' theorem"]}
+        meaning = {"title": "Physical Meaning of Stokes' Theorem", "course_type": "concept_intuition",
+                   "topic_type": "concept_intuition", "subject_key": "stokes_theorem",
+                   "out_of_scope": [], "in_scope": ["circulation and flux through a surface"]}
+        self.assertEqual(_topic_facet(theorem), "core")
+        self.assertEqual(_topic_facet(meaning), "interpretation")
+
+        out = _certify_path_scope([theorem, meaning], "Want to learn about stokes theorem")
+        titles = {t["title"] for t in out}
+        self.assertIn("Physical Meaning of Stokes' Theorem", titles, "meaning topic must survive certification")
+        self.assertIn("Mathematical Statement of Stokes' Theorem", titles)
+
     def test_scope_out_backfill_skips_own_content_rephrased(self):
         from app.services.topic_generator import _certify_path_scope
         energy = {"title": "Energy Transfer in Turbulent Flows", "course_type": "science_mechanism",

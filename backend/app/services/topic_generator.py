@@ -304,12 +304,22 @@ def _topic_facet(topic: dict[str, Any]) -> str:
     topic as a duplicate of the theorem-statement topic and silently absorbed/dropped it — the R4 (Applications)
     curriculum requirement then had no surviving topic to own it. `problem_solving_application` topics are a
     genuinely different facet of the same concept (the STUDY_PATH_SCOPE_SPEC's own facet vocabulary names
-    'application' as a first-class facet, distinct from 'core'), so give them their own bucket here too."""
+    'application' as a first-class facet, distinct from 'core'), so give them their own bucket here too.
+
+    Live (same session, same bug class): 'Physical Meaning of Stokes' Theorem' (concept_intuition) shares
+    identity with the math_formula_method 'core' topic via a shared subject_key (not the title this time — the
+    titles' own tokens differ, but the model gave both topics the same subject_key), and got absorbed the same
+    way — dropping the R3 (Physical interpretation) curriculum requirement's only dedicated topic.
+    concept_intuition is BY DESIGN the intuitive/interpretive angle on a concept, not the same content restated
+    (round 41's turbulence review documented this same non-WE-centric, distinctly-facetted role) — give it its
+    own facet too, so it can coexist with a 'core' derivation/formula topic on the identical subject."""
     ttype = str(topic.get("course_type") or topic.get("topic_type") or "").strip().lower()
     if ttype == "coding_implementation":
         return "implementation"
     if ttype == "problem_solving_application":
         return "application"
+    if ttype == "concept_intuition":
+        return "interpretation"
     return "core"
 
 
