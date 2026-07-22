@@ -2482,6 +2482,14 @@ def generate_prereq_briefs(prereqs: list[str], goal: str) -> list[dict[str, str]
         '"required_knowledge": one SPECIFIC line stating what the learner must be able to do/know about it '
         'to follow this study path (e.g. "be able to apply the multiplication rule to count outcomes", '
         'never vague like "understand it well"; <= 20 words). '
+        "A prerequisite is knowledge from an EARLIER, SIMPLER subject the learner already has BEFORE "
+        "starting this path — required_knowledge must never describe a skill more advanced than the path's "
+        "own goal, or one that itself needs substantial specialized background (e.g. for a study path "
+        "goal of 'learn fluid turbulence', required_knowledge must never be 'apply the Navier-Stokes "
+        "equations to simulate turbulent flows' — that IS advanced turbulence content, not a simpler prior "
+        "subject, and would tell a beginner they must already be an expert to start). If a concept name "
+        "cannot honestly be described at a level SIMPLER than the goal, write required_knowledge at the "
+        "most basic, general level the name allows rather than reaching for an advanced technique. "
         "Copy each name back EXACTLY as given. Return JSON "
         '{"briefs":[{"name":...,"gloss":...,"required_knowledge":...}]}.'
     )
