@@ -1934,6 +1934,53 @@ class RequirementReconciliation(unittest.TestCase):
                      "in_scope": ["laminar vs turbulent", "critical thresholds"]}
         self.assertFalse(_requirement_covered_by_topics(req, [unrelated]))
 
+    def test_broad_claim_flagged_when_one_topic_semantically_owns_three_core_requirements(self):
+        # live (BST_PATH_REVIEW 53rd round): a Stokes'-theorem topic's own scope_in sprawled to cover
+        # derivation AND conditions AND applications at once, so the semantic-ownership check silently
+        # credited it for 3 separate core requirements while its actual cards barely touched two of them.
+        # Purely additive telemetry: does not change ownership, just flags the pattern on the topic's trace.
+        from app.services.topic_decomposition_pipeline import _enforce_requirement_coverage
+
+        topic = {
+            "title": "Stokes' Theorem Derivation", "subject_key": "stokes_theorem",
+            "in_scope": ["the integral form of Stokes' theorem", "requirements for differentiability",
+                         "types of surfaces considered", "usage in fluid dynamics",
+                         "application in electromagnetism"],
+            "covers_requirements": [],
+        }
+        requirements = [
+            {"requirement_id": "R2", "kind": "core", "name": "Conditions for application",
+             "statement": "identify the conditions under which Stokes' theorem applies, including the "
+                          "need for differentiability and the types of surfaces considered"},
+            {"requirement_id": "R4", "kind": "core", "name": "Applications of Stokes' theorem",
+             "statement": "describe various applications of Stokes' theorem in fields such as fluid "
+                          "dynamics and electromagnetism"},
+            {"requirement_id": "R6", "kind": "core", "name": "Surface orientation",
+             "statement": "explain how the orientation of the surface and its boundary curve must agree "
+                          "for the theorem to hold, considering the types of surfaces considered"},
+        ]
+        path_plan: dict = {}
+        _enforce_requirement_coverage(path_plan, [topic], requirements)
+
+        trace = topic.get("_decision_trace") or topic.get("decision_trace") or []
+        flagged = [e for e in trace if e.get("stage") == "requirement.broad_claim_flagged"]
+        self.assertEqual(len(flagged), 1, trace)
+        self.assertEqual(sorted(flagged[0]["detail"]["requirement_ids"]), ["R2", "R4", "R6"])
+
+    def test_broad_claim_not_flagged_for_a_single_requirement(self):
+        from app.services.topic_decomposition_pipeline import _enforce_requirement_coverage
+
+        topic = {"title": "Applying Stokes' Theorem", "subject_key": "stokes_theorem_applications",
+                 "in_scope": ["fluid dynamics applications of Stokes' theorem"], "covers_requirements": []}
+        requirements = [{"requirement_id": "R4", "kind": "core", "name": "Applications of Stokes' theorem",
+                         "statement": "describe various applications of Stokes' theorem in fields such as "
+                                      "fluid dynamics"}]
+        path_plan: dict = {}
+        _enforce_requirement_coverage(path_plan, [topic], requirements)
+
+        trace = topic.get("_decision_trace") or topic.get("decision_trace") or []
+        self.assertFalse(any(e.get("stage") == "requirement.broad_claim_flagged" for e in trace))
+
     def test_scope_out_backfill_skips_own_content_rephrased(self):
         from app.services.topic_generator import _certify_path_scope
         energy = {"title": "Energy Transfer in Turbulent Flows", "course_type": "science_mechanism",

@@ -984,16 +984,24 @@ def _requirement_covered_by_topics(req: dict[str, Any], raw_topics: list[dict[st
     assembled yet at this point in the pipeline, so an in-list uniqueness check is not a reliable guard.
     Fixing the Reynolds-class miss needs real semantic matching (a concept-contract layer), not a token
     heuristic broad enough to also catch it safely."""
+    return bool(_topics_matching_requirement(req, raw_topics))
+
+
+def _topics_matching_requirement(req: dict[str, Any], raw_topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The topics whose title/subject_key/in_scope pass the semantic-overlap threshold for `req` — every topic
+    that would make `_requirement_covered_by_topics` return True, not just whether one exists (needed to
+    attribute WHICH topic is being credited, for the broad-claim telemetry below)."""
     rt = _req_tokens(f"{req.get('name') or ''} {req.get('statement') or ''}")
     if not rt:
-        return False
+        return []
+    matches = []
     for t in raw_topics:
         tt = _req_tokens(" ".join([str(t.get("title") or ""), str(t.get("subject_key") or ""),
                                    *[str(s) for s in (t.get("in_scope") or [])]]))
         overlap = rt & tt
         if len(overlap) >= 3 or (len(rt) <= 3 and len(overlap) >= 2):
-            return True
-    return False
+            matches.append(t)
+    return matches
 
 
 def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[dict[str, Any]],
@@ -1011,6 +1019,19 @@ def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[di
     caps = path_plan.setdefault("required_capabilities", [])
     cap_ids = {str(c.get("capability_id")) for c in caps if isinstance(c, dict)}
     unowned: list[str] = []
+    # Broad-claim telemetry only (BST_PATH_REVIEW 53rd round): tracks, per topic, every CORE requirement it
+    # ends up credited for owning here — a topic whose scope_in claims to semantically carry several separate
+    # core requirements at once is suspicious (declared/scope_in is a signal, not proof of delivered depth;
+    # live: one 'Stokes' Theorem Derivation' topic's scope_in independently satisfied 3 of 5 core requirements
+    # — conditions, applications, and part of physical interpretation — while its actual cards barely touched
+    # two of them). Purely additive: no behavior changes, just makes the pattern visible in explain_path.py
+    # instead of requiring the manual card-by-card audit this round took to find it.
+    core_owner_reqs: dict[int, tuple[dict[str, Any], list[str]]] = {}
+
+    def _note_core_ownership(topic: dict[str, Any], rid: str) -> None:
+        entry = core_owner_reqs.setdefault(id(topic), (topic, []))
+        entry[1].append(rid)
+
     for r in requirements:
         rid = r["requirement_id"]
         declaring = declared.get(rid) or []
@@ -1021,11 +1042,16 @@ def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[di
                                       "declared this requirement via covers_requirements, and its own "
                                       "title/scope semantically carries the requirement's content",
                                       requirement=r.get("name") or rid)
+                if r.get("kind") == "core":
+                    _note_core_ownership(dt, rid)
         elif _requirement_covered_by_topics(r, raw_topics):
             # covers the forgot-the-ID case AND the declared-but-by-the-wrong-topic case — some topic's
             # scope genuinely carries the content, so never synthesize a duplicate on top of it
             r["owned"] = "semantic"
             _log.info("goal requirements: %s covered semantically by an existing topic's scope", rid)
+            if r.get("kind") == "core":
+                for mt in _topics_matching_requirement(r, raw_topics):
+                    _note_core_ownership(mt, rid)
         else:
             if declaring:
                 _log.info("goal requirements: %s DECLARED by %r but the topic's scope does not carry it — "
@@ -1084,6 +1110,17 @@ def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[di
         "the B.4.1 coverage repair synthesizes a topic for it",
         declared=owned_by["declared"] or None, semantic=owned_by["semantic"] or None,
         unowned=owned_by[False] or None)
+    for topic, rids in core_owner_reqs.values():
+        distinct = sorted(set(rids))
+        if len(distinct) >= 3:
+            record_topic_decision(
+                topic, "requirement.broad_claim_flagged",
+                f"scope_in independently satisfied {len(distinct)} core requirements at once",
+                "a single topic's scope_in claiming this many separate core requirements is suspicious — "
+                "declared scope/covers_requirements is a signal, not proof of delivered depth; check whether "
+                "this topic's actual lesson cards substantively address every requirement listed, or whether "
+                "some deserve their own dedicated topic",
+                requirement_ids=distinct)
     if unowned:
         _log.info("goal requirements: %s unowned by any topic — appended as required capabilities "
                   "(coverage repair will synthesize topics)", unowned)
