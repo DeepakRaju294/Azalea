@@ -273,13 +273,16 @@ def create_topic_from_generated_data(
         course_type_reason=(
             topic_data.get("topic_type_reason") or topic_data.get("course_type_reason")
         ),
-        order_index=topic_data["order_index"],
-        # .get(), not a hard [...] lookup: a deterministically-injected topic dict (e.g. a canonical family
-        # member cloned from an empty template) can legitimately omit this field — live crash, KeyError
-        # 'estimated_minutes', on a path whose real member topics were all typed data_structure_operation
-        # rather than algorithm_walkthrough, so _expand_canonical_family's template lookup found nothing to
-        # clone estimated_minutes FROM in the first place. Every other field on this call already tolerates
-        # a missing key; this is the one that didn't.
+        # .get() with a fallback, not a hard [...] lookup, for both of these: a deterministically-injected
+        # topic dict (e.g. a canonical family member cloned from an empty template) can legitimately omit
+        # administrative fields like these — live crash, KeyError 'estimated_minutes', on a path whose real
+        # member topics were all typed data_structure_operation rather than algorithm_walkthrough, so
+        # _expand_canonical_family's template lookup found nothing to clone estimated_minutes FROM in the
+        # first place. order_index sits right beside it with the exact same hard-lookup shape — closed
+        # preemptively rather than waiting for its own live crash; a missing order_index falling back to 0
+        # is a minor sort-order cosmetic issue at worst, never a crash. Every OTHER field on this call
+        # already tolerates a missing key; these two didn't.
+        order_index=topic_data.get("order_index", 0),
         estimated_minutes=normalize_estimated_minutes(topic_data.get("estimated_minutes")),
         course_type=topic_data.get("topic_type") or topic_data.get("course_type"),
         secondary_course_types=topic_data.get("secondary_course_types") or [],
