@@ -158,3 +158,14 @@ class DiffClass(str, Enum):               # §10 — a shadow diff is classified
     scope_improvement = "scope_improvement"
     scope_regression = "scope_regression"
     needs_review = "needs_review"
+
+
+# --- Phase 1B: adapter-backed grounding (§1.3, §6.1) ------------------------------------------------------
+
+class GroundingStatus(str, Enum):         # §6.1 — a concept's grounding either has verified evidence or
+    grounded = "grounded"                 # degrades explicitly; it never invents
+    degraded = "degraded"
+
+
+class VerifierTier(str, Enum):            # §1.5 — only "adapter" exists in this slice; others are Phase 3
+    adapter = "adapter"

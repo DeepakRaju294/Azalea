@@ -7,16 +7,17 @@ from __future__ import annotations
 
 from .enums import (
     AuditStatus, AuditType, CardinalityPolicy, CertificationStatus, ConceptRelation, DecompositionMethod,
-    DiffClass, EvidenceStatus, Facet, Grammar, MappingHealth, MappingStatus, PlannedGrammarStatus,
-    PlanningStatus, SectionType, SelectionMethod, SelectionSourceRole, SelectionStatus, Severity,
-    SourceAlignmentMode, ValidatorKind,
+    DiffClass, EvidenceStatus, Facet, Grammar, GroundingStatus, MappingHealth, MappingStatus,
+    PlannedGrammarStatus, PlanningStatus, SectionType, SelectionMethod, SelectionSourceRole, SelectionStatus,
+    Severity, SourceAlignmentMode, ValidatorKind, VerifierTier,
 )
 from .ids import (
     concept_local_id, record_id, scope_id_for, section_id_for, short_hash, stable_slug, topic_id_for,
 )
 from .models import (
-    AuditRecord, Classification, Concept, ConceptIdentity, ConceptSelectionSource, CurriculumGraph,
-    DecompositionRecord, Edge, GlossaryTerm, GoalRequirement, LessonSectionPlan, Objective,
+    AlgorithmGrounding, AuditRecord, Classification, Concept, ConceptGrounding, ConceptIdentity,
+    ConceptSelectionSource, CurriculumGraph, DecompositionRecord, Edge, GeneralConceptGrounding,
+    GlossaryTerm, GoalRequirement, GroundingArtifact, GroundingSummary, LessonSectionPlan, Objective,
     OrderingConstraints, PlannedGrounding, Prereq, RepairRecord, RequirementConceptMapping,
     RequirementPrereqMapping, ScopeIdentity, ScopeIntent, ScopeProvenance, SelectionEvidence,
     SelectionSourceRegistry, StudyPathScopePlan, ValidationReport,
@@ -42,6 +43,7 @@ __all__ = [
     "CardinalityPolicy", "Grammar", "PlannedGrammarStatus", "SelectionSourceRole", "SelectionStatus",
     "MappingHealth", "SelectionMethod", "ConceptRelation", "EvidenceStatus", "MappingStatus",
     "DecompositionMethod", "ValidatorKind", "AuditType", "Severity", "AuditStatus", "DiffClass",
+    "GroundingStatus", "VerifierTier",
     # ids
     "stable_slug", "short_hash", "scope_id_for", "concept_local_id", "topic_id_for", "section_id_for",
     "record_id",
@@ -51,6 +53,8 @@ __all__ = [
     "Prereq", "GlossaryTerm", "GoalRequirement", "ConceptSelectionSource", "PlannedGrounding",
     "ScopeProvenance", "SelectionEvidence", "SelectionSourceRegistry", "RequirementConceptMapping",
     "RequirementPrereqMapping", "DecompositionRecord", "AuditRecord", "RepairRecord", "ValidationReport",
+    "GroundingArtifact", "GroundingSummary", "AlgorithmGrounding", "GeneralConceptGrounding",
+    "ConceptGrounding",
     # selection (pure derivation + PR2 exit gate)
     "derive_mapping_status", "build_concept_mapping", "build_prereq_mapping", "aggregate_concept_selection",
     "apply_selection_status", "check_referential_integrity", "uncovered_required_requirements",

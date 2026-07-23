@@ -1,16 +1,19 @@
 """Named planning fixtures (STUDY_PATH_SCOPE_SPEC §9) exercised end-to-end through build_plan. Phase-1A covers
-the PLANNING fixtures only; the grounding/certification fixtures (partial_verification, wrong_concept_
-executable, source_conflict, algorithm_grounding, minimal_grounding, course_convention, general_grounding_
-abuse, semantic_repair, status_authorization, notation_aliases) are Phase 1B+ and are intentionally not built
-here. scope_bayes_total_prob lives in test_study_path_scope_builder.py."""
+the PLANNING fixtures only; algorithm_grounding and minimal_grounding are the Phase-1B first slice (adapter-
+evidence-only grounding) and are built below. The remaining grounding/certification fixtures (partial_
+verification, wrong_concept_executable, source_conflict, course_convention, general_grounding_abuse,
+semantic_repair, status_authorization, notation_aliases) need verifier tiers or registries that don't exist
+yet and are intentionally not built here. scope_bayes_total_prob lives in test_study_path_scope_builder.py."""
 import os
+import types
 import unittest
 
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.core import study_path_scope as sc
 from app.core.study_path_scope import (
-    ConceptDraft, DecompositionInput, Facet, GoalRequirement, PlanningStatus, PrereqDraft, SelectionMethod,
+    AlgorithmGrounding, ConceptDraft, DecompositionInput, Facet, GeneralConceptGrounding, GoalRequirement,
+    GroundingStatus, PlanningStatus, PrereqDraft, SelectionMethod,
 )
 
 
@@ -141,6 +144,47 @@ class ScopeAliasVsFacet(unittest.TestCase):
         self.assertEqual(len(plan.curriculum.concepts), 1)          # one concept, not a dup
         sections = [s.section_type.value for s in plan.curriculum.concepts[0].section_plan]
         self.assertIn("derivation", sections)
+
+
+def _topic(title, course_type, subject_key=""):
+    """Duck-typed pipeline topic — same shape scope_shadow.py assembles (title/course_type/
+    decomposition_metadata), which is all scope_grounding.ground_concept needs to route an adapter."""
+    return types.SimpleNamespace(title=title, course_type=course_type,
+                                 decomposition_metadata={"subject_key": subject_key})
+
+
+class ScopeAlgorithmGrounding(unittest.TestCase):
+    """§9 scope_algorithm_grounding (Phase 1B first slice): a concept with a verified real adapter grounds
+    via AlgorithmGrounding, adapter-evidence only — never invented."""
+    def test_bfs_concept_grounds_via_its_verified_adapter(self):
+        from app.services.scope_grounding import ground_concept
+        plan = sc.build_plan(DecompositionInput(
+            goal="graph traversal", domain="coding", requirements=[_req("r1", "bfs")],
+            concepts=[_c("bfs", "Breadth-First Search", ["r1"], topic_type="algorithm_walkthrough")]))
+        concept = plan.curriculum.concepts[0]
+        grounding = ground_concept(concept, _topic("Breadth-First Search", "algorithm_walkthrough"))
+        self.assertIsInstance(grounding, AlgorithmGrounding)
+        self.assertEqual(grounding.status, GroundingStatus.grounded)
+        self.assertEqual(grounding.adapter_slug, "bfs")
+        self.assertTrue(grounding.summary.required_artifacts_present)
+
+
+class ScopeMinimalGrounding(unittest.TestCase):
+    """§9 scope_minimal_grounding (Phase 1B first slice): a concept with no adapter match degrades
+    explicitly (§6.1 — missing facts degrade, never invent), rather than being silently skipped or
+    fabricated."""
+    def test_no_adapter_match_degrades_with_a_reason(self):
+        from app.services.scope_grounding import ground_concept
+        plan = sc.build_plan(DecompositionInput(
+            goal="history of computing", domain="coding", requirements=[_req("r1", "history")],
+            concepts=[_c("history_of_computing", "Historical Context of Computing", ["r1"],
+                         topic_type="conceptual_overview")]))
+        concept = plan.curriculum.concepts[0]
+        grounding = ground_concept(concept, _topic("Historical Context of Computing", "conceptual_overview"))
+        self.assertIsInstance(grounding, GeneralConceptGrounding)
+        self.assertEqual(grounding.status, GroundingStatus.degraded)
+        self.assertEqual(grounding.degrade_reason, "no_adapter_match")
+        self.assertFalse(grounding.summary.required_artifacts_present)
 
 
 class ScopePlanningLifecycle(unittest.TestCase):

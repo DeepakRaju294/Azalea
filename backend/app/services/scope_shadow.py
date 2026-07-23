@@ -24,15 +24,23 @@ from app.core.study_path_scope import (
     ConceptDraft, DecompositionInput, GoalRequirement, PrereqDraft, SelectionMethod, ShadowBaseline,
     ShadowMetrics, build_plan, failed_invariants, shadow_diff, stable_slug,
 )
+from app.services.scope_grounding import ground_concepts, grounding_counts
 
 _log = logging.getLogger(__name__)
 
 _FLAG = "AZALEA_STUDY_PATH_SCOPE"
+_GROUNDING_FLAG = "AZALEA_STUDY_PATH_SCOPE_GROUNDING"
 _INTRO_TYPES = {"study_path_introduction"}
 
 
 def _enabled() -> bool:
     return os.getenv(_FLAG, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _grounding_enabled() -> bool:
+    """Phase 1B grounding — checked IN ADDITION TO `_enabled()`, not instead of it, so grounding can be
+    toggled independently once Phase 1A shadow mode is already stable."""
+    return os.getenv(_GROUNDING_FLAG, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _md(topic: Any) -> dict:
@@ -99,11 +107,12 @@ def topics_to_baseline(topics: list[Any]) -> ShadowBaseline:
 
 def shadow_report(goal: str, domain: str, topics: list[Any], source_revision: str = "") -> dict[str, Any]:
     """Build the scope plan from the topics, diff it against them, and return a flat log record. Pure over its
-    inputs (no DB, no flag check) — callers gate on `_enabled()`."""
+    inputs (no DB) except for the grounding step, which reads `_grounding_enabled()` directly — callers
+    otherwise gate the whole call on `_enabled()`."""
     inp = topics_to_decomposition_input(goal, domain, topics, source_revision)
     plan = build_plan(inp)
     metrics: ShadowMetrics = shadow_diff(plan, topics_to_baseline(topics))
-    return {
+    report: dict[str, Any] = {
         "scope_id": plan.identity.scope_id,
         "planning_status": plan.identity.planning_status.value,
         "failed_invariants": failed_invariants(plan.validation),
@@ -111,6 +120,13 @@ def shadow_report(goal: str, domain: str, topics: list[Any], source_revision: st
         "diff_class": metrics.diff_class.value,
         "metrics": metrics.model_dump(),
     }
+    if _grounding_enabled():
+        # Shadow-only, same zero-effect-on-served-content contract as the rest of this module: grounding is
+        # computed for the telemetry row only, never fed back into `plan`/`metrics`/generation.
+        topics_by_key = {_concept_key(t): t for t in _concept_topics(topics)}
+        groundings = ground_concepts(plan.curriculum.concepts, topics_by_key)
+        report["grounding_summary"] = grounding_counts(groundings)
+    return report
 
 
 def _append_telemetry(report: dict[str, Any], goal: str, domain: str) -> None:

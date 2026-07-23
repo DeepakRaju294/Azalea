@@ -6,15 +6,15 @@ fields, so Phase-1A code physically cannot depend on them. The full `StudyPathSc
 validated plan. Pure — pydantic + stdlib only, no app-service imports (so tests can import it freely)."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Union
 
 from pydantic import BaseModel, Field
 
 from .enums import (
     AuditStatus, AuditType, CardinalityPolicy, CertificationStatus, ConceptRelation, DecompositionMethod,
-    EvidenceStatus, Facet, Grammar, MappingHealth, MappingStatus, PlannedGrammarStatus, PlanningStatus,
-    SectionType, SelectionMethod, SelectionSourceRole, SelectionStatus, Severity, SourceAlignmentMode,
-    ValidatorKind,
+    EvidenceStatus, Facet, Grammar, GroundingStatus, MappingHealth, MappingStatus, PlannedGrammarStatus,
+    PlanningStatus, SectionType, SelectionMethod, SelectionSourceRole, SelectionStatus, Severity,
+    SourceAlignmentMode, ValidatorKind, VerifierTier,
 )
 from .ids import concept_local_id, record_id, section_id_for, stable_slug, topic_id_for
 
@@ -168,6 +168,52 @@ class PlannedGrounding(BaseModel):
     confidence: float = 0.0
     status: PlannedGrammarStatus = PlannedGrammarStatus.proposed
     grounding_status: str = "not_started"
+
+
+class GroundingArtifact(BaseModel):
+    """One piece of adapter-sourced evidence backing a grounding claim (§1.3's minimum-viable-artifact
+    table, e.g. an algorithm's canonical adapter reference). A name + a stringified value — this slice
+    records WHICH verified artifact exists, not a re-executed trace (§4.12 executable audits are deferred)."""
+    name: str
+    value: str = ""
+
+
+class GroundingSummary(BaseModel):
+    """§1.3 — the DERIVED rollup of a grounding variant's completeness; one owner (`scope_grounding`),
+    never authored by hand."""
+    completeness: float = 0.0
+    required_artifacts_present: bool = False
+    missing_optional_artifacts: list[str] = Field(default_factory=list)
+
+
+class AlgorithmGrounding(BaseModel):
+    """Adapter-evidence-only grounding for an algorithm/procedure concept (§1.3 AlgorithmGrounding — the
+    Phase 1B first slice, §10). Populated ONLY when a verified adapter routes to this concept via the
+    existing `route_adapter` (never invented); the other 9 §1.3 variants stay unbuilt until a verifier
+    backend exists for them (sympy/code-exec/reference — deferred to Phase 3, §13)."""
+    grammar: Grammar = Grammar.algorithm
+    schema_version: int = 1
+    status: GroundingStatus = GroundingStatus.grounded
+    verifier_tier: VerifierTier = VerifierTier.adapter
+    adapter_slug: str
+    artifacts: dict[str, GroundingArtifact] = Field(default_factory=dict)
+    summary: GroundingSummary = Field(default_factory=GroundingSummary)
+
+
+class GeneralConceptGrounding(BaseModel):
+    """The mandatory degrade target (§6.1: missing facts degrade, never invent) for a concept no verifier
+    tier could ground yet. Every concept a Phase-1B `ground_concept` call can't route to a verified adapter
+    lands here, explicitly reasoned rather than silently omitted."""
+    grammar: Grammar = Grammar.general
+    schema_version: int = 1
+    status: GroundingStatus = GroundingStatus.degraded
+    degrade_reason: str = "no_adapter_match"
+    summary: GroundingSummary = Field(default_factory=GroundingSummary)
+
+
+# §1.3 names a 10-way union; only the two variants above are constructible in this slice (the rest need a
+# verifier backend that doesn't exist yet — see AlgorithmGrounding's docstring).
+ConceptGrounding = Union[AlgorithmGrounding, GeneralConceptGrounding]
 
 
 class ConceptIdentity(BaseModel):
