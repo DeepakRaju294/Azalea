@@ -343,6 +343,158 @@ PRESENT_VALUE = FormulaSpec(
                     "present value")],
     conventions={"model": "annual discounting", "units": "dollars, percent per year"})
 
+NPV_THREE_PERIOD = FormulaSpec(
+    slug="net_present_value", title="net present value of a 3-year cash flow", family="finance",
+    # priority must beat present_value (72): "net present value" contains "present value" as a substring, so
+    # both rules match that phrase — the higher-priority rule wins, and NPV (the more specific match) must.
+    aliases=["net present value", "npv", "npv of a project"], priority=73,
+    problem_template="A project costs an initial investment of ${initial} and returns cash flows of "
+                     "${cf1}, ${cf2}, ${cf3} at the end of years 1, 2, and 3. At a discount rate of "
+                     "r = {r}%, find the net present value (NPV).",
+    givens=[Given("initial", "$", 100, 1000), Given("cf1", "$", 50, 500), Given("cf2", "$", 50, 500),
+            Given("cf3", "$", 50, 500), Given("r", "%", 1, 15)],
+    outputs=[Output(
+        "npv", "NPV = cf1/(1+r/100) + cf2/(1+r/100)^2 + cf3/(1+r/100)^3 - initial",
+        "cf1/(1+r/100) + cf2/(1+r/100)**2 + cf3/(1+r/100)**3 - initial",
+        "$", "compute_npv", "net present value")],
+    conventions={"model": "each cash flow discounted back to year 0 individually, then summed"},
+    canonical_latex="NPV = \\sum_{t=1}^{3} \\frac{CF_t}{(1+r)^t} - C_0",
+    canonical_notes=[
+        "Each future cash flow is discounted separately by how many years away it is (year-1 cash flow "
+        "divided once, year-3 cash flow divided three times), then the initial investment is subtracted.",
+    ],
+    edge_cases=[
+        "NPV = 0 means the project's discounted returns exactly cover the initial investment — the break-even "
+        "case. NPV < 0 means the project destroys value at that discount rate.",
+    ])
+
+DISCOUNT_FACTOR = FormulaSpec(
+    slug="discount_factor", title="discount factor for a future cash flow", family="finance",
+    aliases=["discount factor", "compute the discount factor"], priority=51,
+    problem_template="Find the discount factor for a cash flow t = {t} years from now at discount rate "
+                     "r = {r}%.",
+    givens=[Given("r", "%", 1, 15), Given("t", "yr", 1, 10)],
+    outputs=[Output("df", "DF = 1/(1 + r/100)^t", "1/(1 + r/100)**t", "", "compute_discount_factor",
+                    "discount factor")],
+    conventions={"definition": "the multiplier that converts a future cash flow into today's dollars"},
+    canonical_latex="DF = \\frac{1}{(1+r)^t}",
+    canonical_notes=[
+        "Multiplying any future cash flow by this discount factor converts it to its present value — this is "
+        "exactly the factor present_value applies to a single cash flow.",
+    ],
+    edge_cases=[
+        "The discount factor is always between 0 and 1 for a positive rate — money in the future is always "
+        "worth LESS than the same amount today.",
+    ])
+
+CAPM_EXPECTED_RETURN = FormulaSpec(
+    slug="capm_expected_return", title="expected return via the Capital Asset Pricing Model (CAPM)",
+    family="finance",
+    aliases=["capm", "capital asset pricing model", "capm expected return"], priority=52,
+    problem_template="A stock has beta = {beta}, the risk-free rate is rf = {rf}%, and the expected market "
+                     "return is rm = {rm}%. Find the expected return using CAPM.",
+    givens=[Given("beta", "", 0.5, 2.0, integer=False), Given("rf", "%", 1, 5, integer=False),
+            Given("rm", "%", 6, 14, integer=False)],
+    outputs=[Output("re", "re = rf + beta*(rm - rf)", "rf + beta*(rm - rf)", "%", "compute_capm",
+                    "expected return")],
+    conventions={"definition": "expected return = risk-free rate + beta x (market return - risk-free rate)"},
+    canonical_latex="E[R] = R_f + \\beta(R_m - R_f)",
+    canonical_notes=[
+        "\\(\\beta\\) measures how much the stock moves relative to the market: \\(\\beta = 1\\) means it "
+        "moves with the market, \\(\\beta > 1\\) means it amplifies market moves, \\(\\beta < 1\\) means it "
+        "dampens them.",
+    ],
+    edge_cases=[
+        "If \\(\\beta = 0\\), CAPM gives expected return = risk-free rate — a beta-zero asset is (by this "
+        "model) uncorrelated with the market and earns no risk premium.",
+    ])
+
+PORTFOLIO_RETURN_TWO_ASSET = FormulaSpec(
+    slug="portfolio_return_two_asset", title="expected return of a two-asset portfolio", family="finance",
+    aliases=["portfolio return", "two asset portfolio return", "expected portfolio return"], priority=51,
+    problem_template="A portfolio puts w1 = {w1}% of its value in an asset with expected return r1 = {r1}%, "
+                     "and the rest in an asset with expected return r2 = {r2}%. Find the portfolio's "
+                     "expected return.",
+    givens=[Given("w1", "%", 10, 90), Given("r1", "%", 1, 15, integer=False),
+            Given("r2", "%", 1, 15, integer=False)],
+    outputs=[Output("rp", "rp = (w1/100)*r1 + (1 - w1/100)*r2", "(w1/100)*r1 + (1 - w1/100)*r2", "%",
+                    "compute_portfolio_return", "portfolio expected return")],
+    conventions={"definition": "portfolio return = weight-1 x return-1 + weight-2 x return-2"},
+    canonical_latex="R_p = w_1 R_1 + w_2 R_2,\\quad w_2 = 1-w_1",
+    canonical_notes=[
+        "The two weights must sum to 100% of the portfolio — the second asset automatically gets whatever "
+        "share the first one doesn't.",
+    ],
+    edge_cases=[
+        "At \\(w_1 = 100\\%\\), the portfolio return equals \\(r_1\\) exactly — the second asset is not held "
+        "at all.",
+    ])
+
+FORWARD_PRICE = FormulaSpec(
+    slug="forward_price", title="forward price under continuous compounding", family="finance",
+    aliases=["forward price", "forward contract price", "forward price continuous compounding"],
+    priority=52,
+    problem_template="A non-dividend-paying asset has spot price S = ${S}, the continuously compounded "
+                     "risk-free rate is r = {r}%, and the forward contract matures in T = {T} years. Find "
+                     "the forward price.",
+    givens=[Given("S", "$", 20, 500), Given("r", "%", 1, 10, integer=False), Given("T", "yr", 1, 5)],
+    outputs=[Output("F", "F = S * e^(r/100 * T)", "S * exp(r/100 * T)", "$", "compute_forward_price",
+                    "forward price")],
+    conventions={"model": "no-arbitrage pricing under continuous compounding, no dividends or storage costs"},
+    canonical_latex="F = S_0 e^{rT}",
+    canonical_notes=[
+        "This is the NO-ARBITRAGE price: if the actual forward price differed, a trader could lock in a "
+        "riskless profit by borrowing/lending at rate r and trading the spot asset against the forward.",
+    ],
+    edge_cases=[
+        "As T approaches 0 (the contract is about to expire), the forward price converges to the spot price "
+        "S — there is no time left for the interest-rate effect to matter.",
+    ])
+
+OPTION_PAYOFF_CALL = FormulaSpec(
+    slug="option_payoff_call", title="payoff of a European call option at expiration", family="finance",
+    aliases=["option payoff", "call option payoff", "payoff of a call option"],
+    not_aliases=["put option"],
+    priority=52,
+    problem_template="At expiration, the underlying stock price is S = ${S} and the call option's strike "
+                     "price is K = ${K}. Find the option's payoff.",
+    givens=[Given("S", "$", 10, 200), Given("K", "$", 10, 200)],
+    outputs=[Output("payoff", "payoff = max(S - K, 0)", "max(S - K, 0)", "$", "compute_call_payoff",
+                    "call option payoff")],
+    conventions={"definition": "a call option is exercised only if it is profitable to do so"},
+    canonical_latex="\\text{Payoff} = \\max(S - K,\\ 0)",
+    canonical_notes=[
+        "If \\(S > K\\), exercising the call and immediately selling at the market price nets \\(S - K\\); "
+        "if \\(S \\le K\\), the holder simply lets the option expire worthless rather than buy above market "
+        "price — the payoff can never be negative.",
+    ],
+    edge_cases=[
+        "At \\(S = K\\) exactly (\"at the money\"), the payoff is 0 — exercising is not profitable, but it "
+        "isn't a loss either.",
+    ])
+
+SHARPE_RATIO = FormulaSpec(
+    slug="sharpe_ratio", title="Sharpe ratio of a portfolio", family="finance",
+    aliases=["sharpe ratio", "compute the sharpe ratio"], priority=52,
+    problem_template="A portfolio has an expected return of rp = {rp}%, the risk-free rate is rf = {rf}%, "
+                     "and the portfolio's standard deviation of returns is sigma = {sigma}%. Find the "
+                     "Sharpe ratio.",
+    givens=[Given("rp", "%", 2, 20, integer=False), Given("rf", "%", 1, 5, integer=False),
+            Given("sigma", "%", 2, 25, integer=False)],
+    outputs=[Output("sharpe", "sharpe = (rp - rf) / sigma", "(rp - rf) / sigma", "", "compute_sharpe_ratio",
+                    "Sharpe ratio")],
+    conventions={"definition": "excess return per unit of risk (standard deviation)"},
+    canonical_latex="S = \\frac{R_p - R_f}{\\sigma_p}",
+    canonical_notes=[
+        "The numerator is the EXCESS return — how much the portfolio earned above the risk-free rate — "
+        "divided by how volatile that return was. A higher Sharpe ratio means more return per unit of risk "
+        "taken.",
+    ],
+    edge_cases=[
+        "If the portfolio's expected return equals the risk-free rate exactly, the Sharpe ratio is 0 — no "
+        "reward is being earned for the risk taken.",
+    ])
+
 PERCENT_CHANGE = FormulaSpec(
     slug="percent_change", title="percent change", family="finance",
     aliases=["percent change", "percentage change"], priority=71,
@@ -1763,6 +1915,9 @@ ALL_SPECS = [
     CROSS_PRODUCT_3D, ANGLE_BETWEEN_VECTORS, COSINE_SIMILARITY, DETERMINANT_3X3, MATRIX_TRACE,
     # more statistics
     CORRELATION, BINOMIAL_PROBABILITY,
+    # more finance
+    NPV_THREE_PERIOD, DISCOUNT_FACTOR, CAPM_EXPECTED_RETURN, PORTFOLIO_RETURN_TWO_ASSET, FORWARD_PRICE,
+    OPTION_PAYOFF_CALL, SHARPE_RATIO,
 ]
 
 # ======================================================================================================
