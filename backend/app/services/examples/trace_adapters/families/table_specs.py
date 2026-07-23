@@ -17,7 +17,7 @@ TRUTH_TABLE_AND_OR = TableSpec(
              "logic truth table"],
     not_aliases=["karnaugh", "xor", "exclusive or", "implication", "conditional", "if then", "if-then",
                  "majority", "nand", "nor", "xnor", "biconditional", "iff", "adder", "not and", "not or",
-                 "if and only if", "equivalence"],
+                 "if and only if", "equivalence", "de morgan", "demorgan"],
     priority=54,
 )
 
@@ -121,7 +121,39 @@ TRUTH_TABLE_FULL_ADDER_SUM = TableSpec(
     priority=52,
 )
 
+# ADAPTER_TAXONOMY_SPEC.md §6 T14 backlog. Note: most listed items (karnaugh_map_grouping, fsm_transition_table,
+# probability/contingency tables, decision_tree_expected_value, convolution/DFT, payoff_matrix) do NOT fit this
+# engine as-is — it hard-codes a BOOLEAN cell rule over 2^n binary assignments (_assignments/_row_str), while
+# those concepts need non-boolean cell values (probabilities, states, counts) or a non-exhaustive-binary input
+# domain (states x inputs, not bit combinations) — real engine work, not a data edit. These two stay within the
+# engine's proven boolean-truth-table shape and directly complete the digital-logic wave already started.
+TRUTH_TABLE_FULL_ADDER_CARRY = TableSpec(
+    slug="truth_table_full_adder_carry",
+    title="the carry-out bit of a full adder: (A AND B) OR (B AND Cin) OR (A AND Cin)",
+    problem_template="Build the truth table for the full-adder carry-out bit {expr}.",
+    variables=["A", "B", "Cin"],
+    expr=lambda v: bool((v["A"] and v["B"]) or (v["B"] and v["Cin"]) or (v["A"] and v["Cin"])),
+    expr_str="(A AND B) OR (B AND Cin) OR (A AND Cin)",
+    aliases=["full adder carry truth table", "full adder carry bit", "full adder carry out",
+             "full adder carry-out"],
+    not_aliases=["karnaugh", "sum"],
+    priority=52,
+)
+
+TRUTH_TABLE_DE_MORGAN_AND = TableSpec(
+    slug="truth_table_de_morgan_and",
+    title="verifying De Morgan's law: NOT(A AND B) equals (NOT A) OR (NOT B)",
+    problem_template="Build the truth table to verify De Morgan's law {expr}.",
+    variables=["A", "B"],
+    expr=lambda v: bool((not (v["A"] and v["B"])) == ((not v["A"]) or (not v["B"]))),
+    expr_str="NOT(A AND B) == (NOT A) OR (NOT B)",
+    aliases=["de morgan's law truth table", "de morgans law truth table", "verify de morgan's law",
+             "de morgan's theorem truth table"],
+    not_aliases=["karnaugh"],
+    priority=52,
+)
+
 
 ALL_SPECS = [TRUTH_TABLE_AND_OR, TRUTH_TABLE_XOR, TRUTH_TABLE_IMPLICATION, TRUTH_TABLE_MAJORITY,
              TRUTH_TABLE_NAND, TRUTH_TABLE_NOR, TRUTH_TABLE_XNOR, TRUTH_TABLE_BICONDITIONAL,
-             TRUTH_TABLE_FULL_ADDER_SUM]
+             TRUTH_TABLE_FULL_ADDER_SUM, TRUTH_TABLE_FULL_ADDER_CARRY, TRUTH_TABLE_DE_MORGAN_AND]
