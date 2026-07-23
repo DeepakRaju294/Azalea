@@ -415,8 +415,10 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
                    "strip": ["binary search tree", "binary-search tree"], "priority": 250},
     # the quadratic adapter solves via the discriminant/quadratic formula; a topic that explicitly asks for
     # "completing the square" wants that METHOD, so don't route it here (it falls to complete_the_square / legacy).
+    # Same for "factor(ing)" — that wants factor_quadratic's factor-by-inspection method, not the discriminant.
     "quadratic": {"any": ["quadratic"], "not": ["completing the square", "complete the square",
-                                                "completing square", "complete square"], "priority": 240},
+                                                "completing square", "complete square",
+                                                "factor", "factoring"], "priority": 240},
     "kinematics": {"any": ["kinematic", "constant acceleration", "uniform acceleration"], "priority": 230},
     "binary_search": {"any": ["binary search", "binary_search"], "not": _IS_TREE, "priority": 220},
     "kruskal": {"any": ["kruskal"], "priority": 210},

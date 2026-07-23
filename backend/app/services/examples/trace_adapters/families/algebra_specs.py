@@ -276,5 +276,135 @@ SIMPLIFY_FRACTION = RewriteSpec(
     preserved="the fraction keeps the same value", goal="the fraction is in lowest terms")
 
 
+# --- factor a monic quadratic:  x^2 + bx + c  ->  (x - r1)(x - r2), given integer roots r1, r2 -----------
+def _factor_term(r: int) -> str:
+    return f"(x - {r})" if r >= 0 else f"(x + {-r})"
+
+
+def _quad_render(s: dict) -> str:
+    b, c, var = s["b"], s["c"], s.get("var", "x")
+    if s["phase"] == 1:
+        return f"{_factor_term(s['r1'])}{_factor_term(s['r2'])}"
+    left = f"{var}^2"
+    if b != 0:
+        left += f" + {b}{var}" if b > 0 else f" - {abs(b)}{var}"
+    if c != 0:
+        left += f" + {c}" if c > 0 else f" - {abs(c)}"
+    return left
+
+
+def _quad_setup(rng: random.Random) -> dict:
+    # distinct integer roots so the factored form is never a repeated-root degenerate case
+    r1 = rng.randint(-9, 9)
+    r2 = rng.choice([r for r in range(-9, 10) if r != r1])
+    b, c = -(r1 + r2), r1 * r2
+    return {"r1": r1, "r2": r2, "b": b, "c": c, "phase": 0, "var": "x", "check": 5 * 5 + b * 5 + c}
+
+
+FACTOR_QUADRATIC = RewriteSpec(
+    slug="factor_quadratic", title="factoring a monic quadratic", family="algebra", task="simplify",
+    aliases=["factor the quadratic", "factoring a quadratic", "factor quadratics",
+             "factor a quadratic expression"],
+    not_aliases=["completing the square", "quadratic formula"], priority=91,
+    problem_template="Factor {eqn}.",
+    setup=_quad_setup, render=_quad_render,
+    steps=[RewriteStep(
+        "factor", "find two numbers that multiply to c and add to b", lambda s: {**s, "phase": 1},
+        lambda s: f"look for two integers that multiply to {s['c']} and add to {s['b']}: "
+                  f"{s['r1']} and {s['r2']} work")],
+    # Reports the literal PRETTY-PRINTED factor strings (e.g. "(x + 8)"), not bare signed roots — the roots
+    # themselves don't always appear literally in the sign-flipped display ("(x + 8)" never contains "-8"),
+    # and the double-negative literal form "(x - -8)" is confusing for a first-time learner despite being
+    # mathematically valid, so it is intentionally NOT used just to satisfy the entailment check. Sorted by
+    # root value (smaller first) so `answer` and the independently-recomputed `oracle` below use the SAME
+    # canonical order regardless of which order r1/r2 happened to be generated in.
+    answer=lambda s: dict(zip(("factor_1", "factor_2"),
+                              (_factor_term(r) for r in sorted((s["r1"], s["r2"]))))),
+    # independent of `answer`: recomputed via the quadratic formula (a different method than factoring by
+    # inspection), not by re-reading the stored r1/r2 fields.
+    oracle=lambda s0: dict(zip(("factor_1", "factor_2"), (_factor_term(round(rt)) for rt in sorted((
+        (-s0["b"] - (s0["b"] ** 2 - 4 * s0["c"]) ** 0.5) / 2,
+        (-s0["b"] + (s0["b"] ** 2 - 4 * s0["c"]) ** 0.5) / 2))))),
+    invariant=lambda s: (25 + s["b"] * 5 + s["c"] if s["phase"] == 0
+                         else (5 - s["r1"]) * (5 - s["r2"])) == s["check"],
+    preserved="the expression has the same value for every x", goal="the expression is written as a product")
+
+
+# --- linear inequality:  a*x + b > c  ->  x > (c-b)/a, with a always positive (no sign flip in v1) --------
+def _ineq_render(s: dict) -> str:
+    a, b, c, var, op = s["a"], s["b"], s["c"], s.get("var", "x"), s["op"]
+    if s["phase"] == 1:
+        return f"{var} {op} {s['sol_display']}"
+    left = f"{a}{var}" if a != 1 else var
+    if b != 0:
+        left += f" + {b}" if b > 0 else f" - {abs(b)}"
+    return f"{left} {op} {c}"
+
+
+def _ineq_setup(rng: random.Random) -> dict:
+    a = rng.randint(2, 8)
+    b = rng.choice([n for n in range(-9, 10) if n != 0])
+    sol = rng.randint(-6, 12)
+    op = rng.choice([">", "<", ">=", "<="])
+    c = a * sol + b
+    return {"a": a, "b": b, "c": c, "op": op, "phase": 0, "var": "x", "sol": sol,
+            "sol_display": str(sol)}
+
+
+INEQUALITY_SOLVING = RewriteSpec(
+    slug="linear_inequality", title="solving a linear inequality", family="algebra",
+    aliases=["linear inequality", "solving an inequality", "inequality solving", "solve the inequality"],
+    priority=53,
+    problem_template="Solve the inequality {eqn} for {var}.",
+    setup=_ineq_setup, render=_ineq_render,
+    steps=[
+        RewriteStep("isolate_variable_term", "move the constant to the other side",
+                    lambda s: {**s, "b": 0, "c": s["c"] - s["b"]},
+                    lambda s: f"subtract {s['b']} from both sides" if s["b"] > 0
+                              else f"add {abs(s['b'])} to both sides"),
+        RewriteStep("solve_for_variable", "divide by the (positive) coefficient",
+                    lambda s: {**s, "a": 1, "phase": 1, "sol_display": str(s["sol"])},
+                    lambda s: f"divide both sides by {s['a']} (positive, so the inequality direction does "
+                              f"NOT flip)")],
+    answer=lambda s: {"solution": f"{s.get('var', 'x')} {s['op']} {s['sol']}"},
+    # independent of `answer`: recomputed from the INITIAL a/b/c via real division, not the stored `sol` field
+    oracle=lambda s0: {"solution": f"{s0.get('var', 'x')} {s0['op']} "
+                                   f"{int(round((s0['c'] - s0['b']) / s0['a']))}"},
+    invariant=lambda s: True,
+    preserved="the solution set is preserved (dividing by a POSITIVE number never flips the inequality)",
+    goal="the variable is alone on one side")
+
+
+# --- logarithmic equation:  log_base(x) = exponent  ->  x = base^exponent --------------------------------
+def _log_render(s: dict) -> str:
+    if s["phase"] == 1:
+        return f"x = {s['base']}^{s['exponent']} = {s['base'] ** s['exponent']}"
+    return f"log_{s['base']}(x) = {s['exponent']}"
+
+
+def _log_setup(rng: random.Random) -> dict:
+    base = rng.randint(2, 5)
+    exponent = rng.randint(1, 4)
+    return {"base": base, "exponent": exponent, "phase": 0, "var": "x", "sol": base ** exponent}
+
+
+LOG_EQUATION = RewriteSpec(
+    slug="log_equation", title="solving a logarithmic equation", family="algebra",
+    aliases=["logarithmic equation", "log equation", "solve a log equation", "solving logarithms"],
+    priority=53,
+    problem_template="Solve the equation {eqn} for {var}.",
+    setup=_log_setup, render=_log_render,
+    steps=[RewriteStep(
+        "exponentiate", "rewrite the log equation in exponential form",
+        lambda s: {**s, "phase": 1},
+        lambda s: f"log_{s['base']}(x) = {s['exponent']} means x = {s['base']}^{s['exponent']}")],
+    answer=lambda s: {s.get("var", "x"): s["sol"]},
+    oracle=lambda s0: {s0.get("var", "x"): s0["base"] ** s0["exponent"]},
+    invariant=lambda s: True,
+    preserved="the logarithmic and exponential forms name the same solution",
+    goal="x is isolated in exponential form")
+
+
 ALL_SPECS = [LINEAR_EQUATION, EQUATION_BOTH_SIDES, COMBINE_LIKE_TERMS, DISTRIBUTE, ONE_STEP_EQUATION,
-             SOLVE_PROPORTION, MULTIPLICATION_EQUATION, SIMPLIFY_FRACTION]
+             SOLVE_PROPORTION, MULTIPLICATION_EQUATION, SIMPLIFY_FRACTION, FACTOR_QUADRATIC,
+             INEQUALITY_SOLVING, LOG_EQUATION]
