@@ -1404,6 +1404,135 @@ PERCENT_INCREASE = FormulaSpec(
                     "compute_new_value", "new value")],
     conventions={"definition": "new = original x (1 + percent)"})
 
+# --- vector calculus (ADAPTER_TAXONOMY_SPEC.md §6 T6 calculus backlog) --------------------------------------
+# Genuinely T6-shaped, not T7/CAS: each spec FIXES a specific function/field and gives its ALREADY-DIFFERENTIATED
+# formula (derived and verified by hand below, then cross-checked against numerical finite differences) — the
+# engine evaluates that formula numerically at a given point, exactly like every other formula-plug-in concept.
+# It teaches the VALUE of a partial derivative/curl/divergence at a point, not the differentiation PROCESS
+# itself (symbolic differentiation is T7-deferred — needs a real CAS, not this engine).
+PARTIAL_DERIVATIVE_XY = FormulaSpec(
+    slug="partial_derivative_xy", title="partial derivative of f(x,y) = x^2*y + 3*y^3", family="calculus",
+    aliases=["partial derivative", "partial derivative at a point", "compute the partial derivative",
+             "partial derivative of a multivariable function"],
+    not_aliases=["curl", "divergence", "gradient", "directional derivative"],
+    priority=53,
+    problem_template="For f(x, y) = x^2*y + 3*y^3, find the partial derivative df/dx at the point "
+                     "(x, y) = ({x}, {y}).",
+    givens=[Given("x", "", -6, 6), Given("y", "", -4, 4)],
+    outputs=[Output("fx", "df/dx = 2*x*y", "2*x*y", "", "compute_partial_derivative",
+                    "partial derivative with respect to x")],
+    conventions={"function": "f(x,y) = x^2*y + 3y^3", "rule": "differentiate w.r.t. x, holding y constant"},
+    canonical_latex="\\frac{\\partial f}{\\partial x} = 2xy",
+    canonical_notes=[
+        "\\(f(x,y) = x^2 y + 3y^3\\). Differentiating with respect to \\(x\\) treats \\(y\\) as a constant: "
+        "the power rule gives \\(2xy\\) from the \\(x^2y\\) term, and the \\(3y^3\\) term has no \\(x\\), so "
+        "it vanishes entirely.",
+    ],
+    edge_cases=[
+        "At \\(x = 0\\), \\(\\partial f/\\partial x = 0\\) regardless of \\(y\\) — the surface has zero slope "
+        "in the x-direction anywhere on the y-axis.",
+    ])
+
+GRADIENT_MAGNITUDE_XY = FormulaSpec(
+    slug="gradient_magnitude_xy", title="magnitude of the gradient of f(x,y) = x^2*y + 3*y^3",
+    family="calculus",
+    aliases=["gradient magnitude", "magnitude of the gradient", "magnitude of the gradient vector",
+             "compute the gradient magnitude"],
+    not_aliases=["curl", "divergence", "directional derivative"],
+    priority=53,
+    problem_template="For f(x, y) = x^2*y + 3*y^3, find the magnitude of the gradient vector "
+                     "grad(f) at (x, y) = ({x}, {y}).",
+    givens=[Given("x", "", -6, 6), Given("y", "", -4, 4)],
+    outputs=[Output("grad_mag", "|grad(f)| = sqrt((2*x*y)^2 + (x^2 + 9*y^2)^2)",
+                    "sqrt((2*x*y)**2 + (x**2 + 9*y**2)**2)", "", "compute_gradient_magnitude",
+                    "gradient magnitude")],
+    conventions={"function": "f(x,y) = x^2*y + 3y^3",
+                 "gradient": "grad(f) = (df/dx, df/dy) = (2xy, x^2 + 9y^2)"},
+    canonical_latex="|\\nabla f| = \\sqrt{(2xy)^2 + (x^2 + 9y^2)^2}",
+    canonical_notes=[
+        "The gradient collects both partial derivatives into one vector: "
+        "\\(\\nabla f = (\\partial f/\\partial x,\\ \\partial f/\\partial y) = (2xy,\\ x^2 + 9y^2)\\). "
+        "Its magnitude is the Euclidean length of that vector.",
+    ],
+    edge_cases=[
+        "At \\(x = 0, y = 0\\), both partial derivatives are 0, so \\(|\\nabla f| = 0\\) — the origin is a "
+        "critical point of the surface.",
+    ])
+
+DIRECTIONAL_DERIVATIVE_XY = FormulaSpec(
+    slug="directional_derivative_xy", title="directional derivative of f(x,y) = x^2*y + 3*y^3",
+    family="calculus",
+    aliases=["directional derivative", "directional derivative at a point",
+             "compute the directional derivative"],
+    not_aliases=["curl", "divergence", "gradient magnitude"],
+    priority=54,
+    problem_template="For f(x, y) = x^2*y + 3*y^3, find the directional derivative at (x, y) = ({x}, {y}) "
+                     "in the direction of the vector (a, b) = ({a}, {b}).",
+    givens=[Given("x", "", -6, 6), Given("y", "", -4, 4), Given("a", "", 1, 5), Given("b", "", 1, 5)],
+    outputs=[Output("D_u_f", "D_u f = (2*x*y*a + (x^2 + 9*y^2)*b) / sqrt(a^2 + b^2)",
+                    "(2*x*y*a + (x**2 + 9*y**2)*b) / sqrt(a**2 + b**2)", "", "compute_directional_derivative",
+                    "directional derivative")],
+    conventions={"function": "f(x,y) = x^2*y + 3y^3", "gradient": "grad(f) = (2xy, x^2 + 9y^2)",
+                 "definition": "D_u f = grad(f) . (u / |u|) — the direction vector is normalized first"},
+    canonical_latex="D_{\\mathbf{u}}f = \\nabla f \\cdot \\frac{\\mathbf{u}}{|\\mathbf{u}|}",
+    canonical_notes=[
+        "The direction vector \\((a, b)\\) is not required to already be a unit vector — dividing by "
+        "\\(\\sqrt{a^2+b^2}\\) normalizes it, since the directional derivative is only meaningful for a unit "
+        "direction.",
+    ],
+    edge_cases=[
+        "Moving in the direction of \\(\\nabla f\\) itself gives the LARGEST possible directional derivative "
+        "at that point — this is why the gradient points in the direction of steepest ascent.",
+    ])
+
+CURL_2D = FormulaSpec(
+    slug="curl_2d_vector_field", title="scalar curl of the 2D vector field F(x,y) = (x^2*y, x*y^2)",
+    family="calculus",
+    aliases=["curl of a vector field", "compute the curl", "curl in 2d", "scalar curl", "curl of F"],
+    not_aliases=["divergence", "gradient", "partial derivative"],
+    priority=53,
+    problem_template="For the vector field F(x, y) = (x^2*y, x*y^2), find the scalar curl at "
+                     "(x, y) = ({x}, {y}).",
+    givens=[Given("x", "", -5, 5), Given("y", "", -5, 5)],
+    outputs=[Output("curl_z", "curl_z = y^2 - x^2", "y**2 - x**2", "", "compute_curl", "scalar curl")],
+    conventions={"field": "F(x,y) = (P, Q) = (x^2*y, x*y^2)",
+                 "definition": "curl_z = dQ/dx - dP/dy"},
+    canonical_latex="\\text{curl}_z\\, F = \\frac{\\partial Q}{\\partial x} - \\frac{\\partial P}{\\partial y}",
+    canonical_notes=[
+        "For \\(F = (P, Q) = (x^2y,\\ xy^2)\\): \\(\\partial Q/\\partial x = y^2\\) and "
+        "\\(\\partial P/\\partial y = x^2\\), so \\(\\text{curl}_z F = y^2 - x^2\\).",
+        "A nonzero scalar curl means the field has local rotation at that point; curl = 0 means the field is "
+        "locally irrotational there.",
+    ],
+    edge_cases=[
+        "Along the line \\(y = x\\), \\(\\text{curl}_z F = x^2 - x^2 = 0\\) — the field is irrotational "
+        "exactly on that line, even though it rotates elsewhere.",
+    ])
+
+DIV_2D = FormulaSpec(
+    slug="divergence_2d_vector_field", title="divergence of the 2D vector field F(x,y) = (x^2, y^2)",
+    family="calculus",
+    aliases=["divergence of a vector field", "compute the divergence", "divergence in 2d",
+             "divergence of F", "divergence theorem setup"],
+    not_aliases=["curl", "gradient", "partial derivative"],
+    priority=53,
+    problem_template="For the vector field F(x, y) = (x^2, y^2), find the divergence at "
+                     "(x, y) = ({x}, {y}).",
+    givens=[Given("x", "", -5, 5), Given("y", "", -5, 5)],
+    outputs=[Output("div_F", "div(F) = 2*x + 2*y", "2*x + 2*y", "", "compute_divergence", "divergence")],
+    conventions={"field": "F(x,y) = (P, Q) = (x^2, y^2)", "definition": "div(F) = dP/dx + dQ/dy"},
+    canonical_latex="\\text{div}\\, F = \\frac{\\partial P}{\\partial x} + \\frac{\\partial Q}{\\partial y}",
+    canonical_notes=[
+        "For \\(F = (P, Q) = (x^2,\\ y^2)\\): \\(\\partial P/\\partial x = 2x\\) and \\(\\partial Q/\\partial "
+        "y = 2y\\), so \\(\\text{div}\\,F = 2x + 2y\\).",
+        "Positive divergence at a point means the field is a net SOURCE there (flux flows outward); negative "
+        "divergence means a net sink.",
+    ],
+    edge_cases=[
+        "At \\(x = -y\\) (e.g. the origin), \\(\\text{div}\\,F = 0\\) — the field is locally "
+        "divergence-free along that line even though it is a source or sink everywhere else.",
+    ])
+
 # --- the full concept set; ALL_SPECS drives the gate, the registry, the manifest, and routing ---------
 ALL_SPECS = [
     # physics / EE
@@ -1448,6 +1577,8 @@ ALL_SPECS = [
     FREE_FALL_VELOCITY, FREE_FALL_DISTANCE, POTENTIAL_TO_KINETIC,
     # more solids / density / percent
     SPHERE_SURFACE_AREA, DENSITY_MASS, PERCENT_INCREASE,
+    # vector calculus
+    PARTIAL_DERIVATIVE_XY, GRADIENT_MAGNITUDE_XY, DIRECTIONAL_DERIVATIVE_XY, CURL_2D, DIV_2D,
 ]
 
 # ======================================================================================================
