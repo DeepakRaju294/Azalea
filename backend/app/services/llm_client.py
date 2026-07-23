@@ -1429,6 +1429,47 @@ def generate_course_type_classification(
         raise RuntimeError("OpenAI returned invalid classification JSON") from exc
 
 
+# PREREQ_LINKS_SPEC.md v8 §3.1 — scope_rule stays plain "string" (not a JSON-schema enum), matching
+# TOPIC_TYPE_CLASSIFICATION_SCHEMA's convention: enum coercion + safe fallback happens Python-side
+# (app/services/prereq_scope_classifier.py), this stays a thin transport layer.
+PREREQ_SCOPE_CLASSIFICATION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "scope_rule": {"type": "string"},
+        "scope_rationale": {"type": "string"},
+    },
+    "required": ["scope_rule", "scope_rationale"],
+    "additionalProperties": False,
+}
+
+
+def generate_prereq_scope_classification(
+    system_prompt: str,
+    user_prompt: str,
+) -> dict[str, Any]:
+    response = _create_with_usage(
+        "prereq_scope_classification",
+        model=OPENAI_MODEL,
+        input=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        text={
+            "format": {
+                "type": "json_schema",
+                "name": "azalea_prereq_scope_classification",
+                "schema": PREREQ_SCOPE_CLASSIFICATION_SCHEMA,
+                "strict": True,
+            }
+        },
+    )
+
+    try:
+        return _loads_llm_json(response.output_text)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("OpenAI returned invalid prereq scope classification JSON") from exc
+
+
 # ---------------------------------------------------------------------------
 # Lean lesson schema (v2) — 6 card types, 11 fields per card, no visuals
 # ---------------------------------------------------------------------------
