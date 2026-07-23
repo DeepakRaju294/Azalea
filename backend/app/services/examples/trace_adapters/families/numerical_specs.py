@@ -96,4 +96,48 @@ NEWTON_COOLING_EULER = NumericalSpec(
 )
 
 
-ALL_SPECS = [NEWTON_SQRT, NEWTON_CBRT, FIXED_POINT_LINEAR, NEWTON_RECIPROCAL, NEWTON_COOLING_EULER]
+# ADAPTER_TAXONOMY_SPEC.md §6 T16 backlog. Note: bisection_root/secant_method/rk4/iterative_linear_solver all
+# need MORE than one scalar of iteration state (bisection/secant need a bracket or the previous TWO iterates; a
+# linear solver needs a whole vector) — the engine's `update(params, x) -> x_next` signature assumes `params` is
+# STATIC and `update` is a pure, replayable function of (params, x); the gate re-calls `update` independently to
+# verify each iterate, so a version that carried extra state via mutating `params` was caught and rejected (see
+# below). Real engine work, not a data edit. numerical_integration (trapezoid/simpson) is a one-shot sum, not an
+# iterate-to-convergence process, so it does not fit this engine's grammar at all regardless of state. The item
+# below stays within the proven single-scalar, pure-update shape.
+
+# ── Newton-Raphson on a GENERAL (non-closed-form) polynomial: x^3 - x - 1 = 0, root ~= 1.324718 ────────────────
+# distinct from NEWTON_SQRT/CBRT/RECIPROCAL, which are Newton's method SPECIALIZED to a target with a known
+# closed form (sqrt/cbrt/1/a) — this is the general algorithm x_{n+1} = x_n - f(x_n)/f'(x_n) on a function with
+# no simple inverse, the textbook motivating example for why Newton's method is needed at all.
+def _newton_general_update(p: dict, x: float) -> tuple:
+    fx = x ** 3 - x - 1
+    fpx = 3 * x * x - 1
+    return x - fx / fpx, f"x <- x - (x^3 - x - 1)/(3x^2 - 1), evaluated at x={x}"
+
+
+NEWTON_RAPHSON_GENERAL = NumericalSpec(
+    slug="newton_raphson_cubic",
+    title="Newton-Raphson for a root of x^3 - x - 1 = 0",
+    problem_template="Use the Newton-Raphson method to approximate a root of f(x) = x^3 - x - 1, "
+                     "starting from x0 = {x0}.",
+    setup=lambda rng: {"x0": float(rng.randint(1, 5))},
+    initial=lambda p: p["x0"],
+    update=_newton_general_update,
+    residual=lambda p, x: abs(x ** 3 - x - 1),
+    true_value=lambda p: 1.3247179572447458,
+    estimate_name="root",
+    aliases=["newton raphson method", "newton-raphson method", "newton raphson root finding",
+             "general newton's method", "newton's method for a polynomial root", "find root of x^3 - x - 1"],
+    not_aliases=["square root", "cube root", "reciprocal", "cooling", "fixed point"],
+    priority=53,
+)
+
+# Bisection method attempted and DELIBERATELY NOT shipped: it needs the current bracket [lo, hi] as state beyond
+# the single scalar x, and the engine's own gate re-calls `spec.update(params, x_prev)` independently to verify
+# each iterate — which requires `update` to be a PURE function of (params, x), replayable at any point. A version
+# that tracked the bracket by mutating `params` in place broke exactly that gate (verified: caught by
+# test_each_iterate_equals_update_of_previous/test_residual_is_non_increasing, not silently wrong) — same
+# engine-shape mismatch as secant_method/rk4/iterative_linear_solver, just less obvious until attempted.
+
+ALL_SPECS = [NEWTON_SQRT, NEWTON_CBRT, FIXED_POINT_LINEAR, NEWTON_RECIPROCAL, NEWTON_COOLING_EULER,
+             NEWTON_RAPHSON_GENERAL]
