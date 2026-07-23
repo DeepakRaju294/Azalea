@@ -589,6 +589,67 @@ COVARIANCE = FormulaSpec(
                      ("n", "n")])],
     conventions={"model": "population covariance (divide by n)"})
 
+CORRELATION = FormulaSpec(
+    slug="correlation_coefficient", title="Pearson correlation coefficient of two datasets",
+    family="statistics",
+    aliases=["correlation coefficient", "pearson correlation", "correlation of two datasets",
+             "find the correlation"],
+    priority=85,
+    problem_template="For paired data xs = {xs} and ys = {ys}, find the (population) Pearson correlation "
+                     "coefficient.",
+    givens=[], dataset=Dataset("xs", size_lo=4, size_hi=6, val_lo=1, val_hi=15),
+    dataset2=Dataset("ys", size_lo=4, size_hi=6, val_lo=1, val_hi=15),
+    outputs=[
+        Output("mean_x", "mean_x = (sum of xs)/n", "sum(xs)/n", "", "compute_mean_x", "mean of xs",
+               show=[("sum of xs", "sum(xs)"), ("n", "n")]),
+        Output("mean_y", "mean_y = (sum of ys)/n", "sum(ys)/n", "", "compute_mean_y", "mean of ys",
+               show=[("sum of ys", "sum(ys)"), ("n", "n")]),
+        Output("std_x", "std_x = sqrt((sum of squared deviations of xs)/n)",
+               "sqrt(sum((x-mean_x)**2 for x in xs)/n)", "", "compute_std_x", "standard deviation of xs"),
+        Output("std_y", "std_y = sqrt((sum of squared deviations of ys)/n)",
+               "sqrt(sum((y-mean_y)**2 for y in ys)/n)", "", "compute_std_y", "standard deviation of ys"),
+        Output("r", "r = (covariance of xs, ys) / (std_x * std_y)",
+               "(sum((x-mean_x)*(y-mean_y) for x, y in zip(xs, ys))/n) / (std_x * std_y)",
+               "", "compute_correlation", "correlation coefficient",
+               show=[("covariance of xs, ys", "sum((x-mean_x)*(y-mean_y) for x, y in zip(xs, ys))/n")])],
+    conventions={"model": "population correlation (divide by n, not n-1)",
+                 "definition": "r = covariance(x,y) / (std_dev(x) * std_dev(y))"},
+    canonical_latex="r = \\frac{\\text{cov}(x,y)}{\\sigma_x \\sigma_y}",
+    canonical_notes=[
+        "The correlation coefficient normalizes the covariance by both standard deviations, so \\(r\\) is "
+        "always between \\(-1\\) and \\(1\\) regardless of the data's original units.",
+        "\\(r = 1\\) means a perfect increasing linear relationship; \\(r = -1\\) means a perfect decreasing "
+        "one; \\(r = 0\\) means no linear relationship (there could still be a nonlinear one).",
+    ],
+    edge_cases=[
+        "If either dataset has zero variance (every value is identical), \\(r\\) is undefined — there is "
+        "nothing to correlate against a constant.",
+    ])
+
+BINOMIAL_PROBABILITY = FormulaSpec(
+    slug="binomial_probability", title="binomial probability P(X = k)", family="statistics",
+    aliases=["binomial probability", "binomial distribution probability", "probability of exactly k successes"],
+    priority=54,
+    problem_template="A binomial experiment has n = {n} independent trials, each with success probability "
+                     "p = {p}. Find the probability of exactly k = {k} successes.",
+    givens=[Given("n", "", 5, 12), Given("k", "", 1, 5), Given("p", "", 0.1, 0.9, integer=False)],
+    outputs=[Output(
+        "prob", "P(X=k) = (n! / (k!(n-k)!)) * p^k * (1-p)^(n-k)",
+        "(factorial(n) / (factorial(k) * factorial(n-k))) * p**k * (1-p)**(n-k)",
+        "", "compute_binomial_probability", "probability of exactly k successes")],
+    conventions={"formula": "P(X=k) = C(n,k) * p^k * (1-p)^(n-k)",
+                 "assumptions": "n independent trials, each with the SAME success probability p"},
+    canonical_latex="P(X=k) = \\binom{n}{k} p^k (1-p)^{n-k}",
+    canonical_notes=[
+        "\\(\\binom{n}{k} = \\frac{n!}{k!(n-k)!}\\) counts how many different orderings of k successes among "
+        "n trials are possible; each such ordering has the same probability \\(p^k(1-p)^{n-k}\\).",
+    ],
+    edge_cases=[
+        "Requires \\(k \\le n\\) — you cannot have more successes than trials.",
+        "If \\(p = 0\\), the only possible outcome is k = 0 successes; if \\(p = 1\\), the only possible "
+        "outcome is k = n successes.",
+    ])
+
 Z_SCORE = FormulaSpec(
     slug="z_score", title="z-score (standard score)", family="statistics",
     aliases=["z-score", "z score", "standard score"], priority=87,
@@ -1700,6 +1761,8 @@ ALL_SPECS = [
     PARTIAL_DERIVATIVE_XY, GRADIENT_MAGNITUDE_XY, DIRECTIONAL_DERIVATIVE_XY, CURL_2D, DIV_2D,
     # more linear algebra
     CROSS_PRODUCT_3D, ANGLE_BETWEEN_VECTORS, COSINE_SIMILARITY, DETERMINANT_3X3, MATRIX_TRACE,
+    # more statistics
+    CORRELATION, BINOMIAL_PROBABILITY,
 ]
 
 # ======================================================================================================
