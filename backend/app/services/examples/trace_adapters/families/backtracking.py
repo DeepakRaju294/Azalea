@@ -166,3 +166,175 @@ class NQueensAdapter(FamilyAdapterBase):
                           str(card.get("result", ""))]).lower()
         rv = str(step.inputs["row"])
         return [] if rv in prose else [("row_not_stated", rv)]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# SUBSETS (power set) via backtracking — ADAPTER_TAXONOMY_SPEC.md §6 T11 backlog. Distinct decision shape from
+# N-Queens: at each position the choice is binary (include or exclude the element), not "which of n rows,"
+# and there is no constraint to violate — EVERY leaf of the recursion is a valid subset, so backtracking here
+# demonstrates exhaustive exploration of a binary decision tree, not constraint-driven pruning.
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+def _subsets_events(elements: list) -> tuple[list[list], list[tuple]]:
+    """Backtracking power-set generation: at each position, include the element and recurse, then undo and
+    recurse again having excluded it. Returns (all_subsets_in_generation_order, events), where each event is
+    ("include", element, position) or ("exclude", element, position) — the "exclude" event both undoes the
+    prior include AND represents the second branch, keeping the trace within T11's step budget."""
+    n = len(elements)
+    current: list = []
+    all_subsets: list[list] = []
+    events: list[tuple] = []
+
+    def backtrack(pos: int) -> None:
+        if pos == n:
+            all_subsets.append(list(current))
+            return
+        current.append(elements[pos])
+        events.append(("include", elements[pos], pos))
+        backtrack(pos + 1)
+        current.pop()
+        events.append(("exclude", elements[pos], pos))
+        backtrack(pos + 1)
+
+    backtrack(0)
+    return all_subsets, events
+
+
+def _render_subset(xs: list) -> str:
+    """Clean, bracket/quote-free rendering of a partial or complete subset — never Python's list repr
+    (['A', 'B']), which leaked raw state into learner-facing prose (caught by
+    test_state_formatting.py::test_every_adapter_renders_prose_not_repr)."""
+    return ", ".join(xs) if xs else "(empty)"
+
+
+_SUBSETS_CONV = {"problem": "subsets", "search": "backtracking",
+                 "rule": "each element is either included or excluded", "trace_granularity": "one_decision"}
+_SUBSETS_REQ = ["include", "exclude", "completion"]
+_SUBSETS_INV = [{"id": "no_element_used_twice", "scope": "every_step",
+                 "statement": "the partial subset never contains a duplicate element"}]
+
+
+class SubsetsAdapter(FamilyAdapterBase):
+    slug = "subsets_backtracking"
+    label_convention = "ints"
+    example_spec = ExampleSpec(
+        input=InstanceShape("sequence", count=(3, 3), structure=["subsets_backtracking"]),
+        stages={
+            "include": StageSpec(
+                "include", "include the current element and recurse",
+                teaching_focus="extend the partial subset with one more element",
+                contains={"add_element": "required"},
+                state_effects=["the current element joins the partial subset"]),
+            "exclude": StageSpec(
+                "exclude", "undo the include (if any) and recurse having excluded the element",
+                teaching_focus="every element has exactly two branches — included or not — explore both",
+                contains={"remove_element": "required"},
+                state_effects=["the current element leaves the partial subset (or was never in it)"])},
+        structure="include/exclude at every position, recursively, until all positions are decided",
+        must_exercise=["include", "exclude", "completion"], must_cover=["exclude"],
+        must_avoid=["no_backtrack_needed"],
+        terminal="every element has been decided (included or excluded) along every branch — all subsets found",
+        output_shape="every subset of the input, in generation order")
+
+    def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+        for i in range(4):
+            yield {"elements": ["A", "B", "C"], "_id": f"subsets_v1_case_{i}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        ev = trace.case_evidence
+        return len(trace.steps) >= 5 and bool(ev.get("include")) and bool(ev.get("exclude"))
+
+    def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                  attempt: int = 1, seed: int = 0) -> ContractTrace:
+        elements = list(example_input["elements"])
+        all_subsets, events = _subsets_events(elements)
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        current: list = []
+        for idx, ev in enumerate(events, start=1):
+            sid = f"s{idx}"
+            kind, elem, pos = ev
+            is_last = idx == len(events)
+            # NOTE: "position" is deliberately NOT part of the chained prior/after state (only in `inputs`,
+            # as metadata about which decision this step represents) — it does not evolve monotonically the
+            # way "subset" does. An include->exclude pair at the SAME position are sibling branches, not a
+            # forward step, so a "position: pos+1" field would silently break chain continuity between them
+            # (verified live: caused a structural "prior_state != previous state_after" failure).
+            prior = {"subset": list(current), "complete": False}
+            if kind == "include":
+                current.append(elem)
+                after = {"subset": list(current), "complete": is_last}
+                reason = f"decide element {elem!r} (position {pos}): include it in the current subset"
+                evr = f"Include {elem!r}; current partial subset {_render_subset(current)}."
+                decision = f"include {elem!r}"
+                evidence.setdefault("include", []).append(sid)
+            else:                                          # exclude — undoes a prior include, tries the other branch
+                if current and current[-1] == elem:
+                    current.pop()
+                after = {"subset": list(current), "complete": is_last}
+                reason = (f"having fully explored the branch where {elem!r} is included, undo that choice and "
+                          f"explore the other branch: exclude {elem!r} (position {pos}) instead")
+                evr = f"Exclude {elem!r}; current partial subset {_render_subset(current)}."
+                decision = f"exclude {elem!r}"
+                evidence.setdefault("exclude", []).append(sid)
+            if is_last:
+                rendered_subsets = "; ".join(_render_subset(s) for s in all_subsets)
+                evr += f" Every subset has now been found: {rendered_subsets}."
+            op = kind
+            # proactively allow 1..len(all_subsets) on every step (not just the last) — the completion clause's
+            # eventual "subset 1: ..., subset 2: ..." labels (added later, in _final_answer_text) are numbers
+            # this step's own reason/evr never mentions; same defensive pattern union_find uses for its
+            # "group N:" labels (allowed_values |= set(range(n))), anticipating a downstream label set.
+            allowed = sorted(set(range(1, len(all_subsets) + 1))
+                             | {int(x) for x in re.findall(r"\d+", reason + " " + evr)})
+            steps.append(Step(
+                id=sid, operation=op, prior_state=prior, state_after=after,
+                inputs={"position": pos, "element": elem, "kind": kind},
+                decision=decision, reason=reason,
+                visual_state={"kind": "variables", "elements": elements, "subset": list(current), "position": pos},
+                visual_delta={"position": pos, "element": elem, "action": kind},
+                expected_visible_result=evr,
+                facts={"allowed_values": allowed, "required_facts": [fact("subset", str(current))],
+                       "forbidden_claims": []}))
+        if steps:
+            evidence.setdefault("completion", []).append(steps[-1].id)
+        return ContractTrace(
+            problem=f"Generate every subset of the elements {_render_subset(elements)} using backtracking "
+                   f"(include/exclude each element).",
+            conventions=dict(_SUBSETS_CONV), initial_state={"subset": [], "complete": False},
+            final_answer={"subsets": all_subsets}, steps=steps,
+            invariants=[dict(x) for x in _SUBSETS_INV], required_cases=list(_SUBSETS_REQ),
+            case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        a, b = a or {}, b or {}
+        return list(a.get("subset") or []) == list(b.get("subset") or [])
+
+    def final_answer_entails(self, state, answer):
+        # Structurally different from N-Queens: this problem ENUMERATES every result rather than finding one,
+        # so the terminal state (the last branch explored) does not itself hold the complete answer the way a
+        # single-solution search's final state does — "subset == []" alone is NOT a unique completion signal
+        # either (backtracking passes through the empty partial-subset state at several earlier points too,
+        # verified directly against the actual event sequence). `reference()` marks the TRUE last step with an
+        # explicit `complete` flag instead of trying to infer completion from subset/position alone. Full
+        # correctness of the ENUMERATED answer itself (every element of `answer["subsets"]`, no more, no
+        # fewer) is verified separately, against an independent oracle, by the dedicated gate test
+        # (test_subsets_backtracking.py) — not by this method.
+        return bool((state or {}).get("complete"))
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "no_element_used_twice":
+            subset = list((state or {}).get("subset") or [])
+            return len(subset) == len(set(subset))
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation in ("include", "exclude") else [
+            f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        ev = str(step.inputs["element"]).lower()
+        return [] if ev in prose else [("element_not_stated", ev)]

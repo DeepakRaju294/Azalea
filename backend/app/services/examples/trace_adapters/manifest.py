@@ -205,6 +205,12 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "verification_level": "trace_verified", "coding": True, "canonical_solution": "n_queens",
         "routing_aliases": ["n-queens", "n queens", "nqueens", "eight queens", "queens problem"],
         "negative_guards": [], "fixtures": ["place", "backtrack"]},
+    "subsets_backtracking": {
+        "type": "T11", "family": "backtracking", "status": "pilot",
+        "verification_level": "trace_verified", "coding": False, "canonical_solution": None,
+        "routing_aliases": ["subsets", "power set", "generate all subsets", "find all subsets",
+                            "subsets of a set", "subsets backtracking"],
+        "negative_guards": [], "fixtures": ["include", "exclude"]},
     "topological_sort": {
         "type": "T1", "family": "graph", "status": "pilot", "verification_level": "trace_verified",
         "coding": True, "canonical_solution": "topological_sort",
@@ -438,6 +444,9 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
     "bfs": {"any": ["breadth-first", "breadth first"], "word": ["bfs"], "not": _IS_TREE, "priority": 130},
     "dfs_iter": {"any": ["depth-first", "depth first"], "word": ["dfs"], "not": _IS_TREE, "priority": 120},
     "n_queens": {"any": ["n-queens", "n queens", "nqueens", "eight queens", "queens problem"], "priority": 110},
+    "subsets_backtracking": {"any": ["power set", "generate all subsets", "find all subsets",
+                                     "subsets of a set", "subsets backtracking", "subsets"],
+                             "not": ["combinations", "combination sum", "sum of subsets"], "priority": 109},
     "topological_sort": {"any": ["topological sort", "topological ordering", "topological_sort", "topo sort", "kahn"], "priority": 108},
     # bare "induction" collides with ELECTROMAGNETIC induction (Faraday/Lenz/AC-circuit topics) — without this
     # guard "Electromagnetic Induction in AC Circuits" matched on the substring "induction" alone and shipped a

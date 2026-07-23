@@ -5,8 +5,9 @@ by family); this TYPE file owns their declarations (type + routing + canonical),
 Byte-identical to the pre-migration classes (see the all-adapters golden check).
 """
 from . import declare
-from ..families.backtracking import NQueensAdapter
+from ..families.backtracking import NQueensAdapter, SubsetsAdapter
 
 N_QUEENS = declare(NQueensAdapter, "n_queens", "T11")
+SUBSETS_BACKTRACKING = declare(SubsetsAdapter, "subsets_backtracking", "T11")
 
-DECLARATIONS = [N_QUEENS]
+DECLARATIONS = [N_QUEENS, SUBSETS_BACKTRACKING]

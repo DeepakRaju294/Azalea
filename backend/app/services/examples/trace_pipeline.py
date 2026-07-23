@@ -395,6 +395,9 @@ def _final_answer_text(trace: ContractTrace) -> str:
         if "groups" in fa:                                         # union-find (disjoint sets) — no braces (guard)
             return "; ".join(f"group {i + 1}: {', '.join(map(str, g))}"
                              for i, g in enumerate(fa["groups"]))
+        if "subsets" in fa:                                        # subsets (backtracking) — no brackets (guard)
+            return "; ".join(f"subset {i + 1}: {', '.join(map(str, s)) if s else '(empty)'}"
+                             for i, s in enumerate(fa["subsets"]))
         if "gcd" in fa:                                            # Euclid GCD (program execution)
             return f"gcd = {fa['gcd']}"
         if "primes" in fa:                                         # Sieve of Eratosthenes (number theory)
