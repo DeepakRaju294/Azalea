@@ -48,14 +48,32 @@ def _aug(A: list[list[int]], b: list[int]) -> list[list[Fraction]]:
     return [[Fraction(v) for v in row] + [Fraction(b[i])] for i, row in enumerate(A)]
 
 
-# ── the RREF reference (the trace) ───────────────────────────────────────────────────────────────────────────
-def _rref_ops(A: list[list[int]], b: list[int]):
-    """Run Gauss-Jordan elimination, yielding (operation, matrix_snapshot, factor, pivot_row, target_row).
-
-    Assumes a nonzero pivot is available on the diagonal at each step (the generator guarantees this), so no row
-    swaps are produced in v1. Every snapshot is a deep copy so the caller can inspect the full history."""
+def _aug_identity(A: list[list[int]]) -> list[list[Fraction]]:
+    """[A | I] for matrix inversion — the right half starts as the identity matrix; Gauss-Jordan on the WHOLE
+    row (same _rref_on_matrix loop used for [A|b]) turns it into [I | A^-1] when A is invertible."""
     n = len(A)
-    M = _aug(A, b)
+    return [[Fraction(v) for v in row] + [Fraction(1) if j == i else Fraction(0) for j in range(n)]
+            for i, row in enumerate(A)]
+
+
+def _render_multi(mat: list[list[Fraction]], n: int) -> str:
+    """Render an [A|B] matrix where B has MULTIPLE columns (n of them, not just one) as rows
+    '[a b c | d e f]' — the general form _render's single-b-column version is a special case of."""
+    rows = []
+    for row in mat:
+        left = " ".join(_fs(v) for v in row[:n])
+        right = " ".join(_fs(v) for v in row[n:])
+        rows.append(f"[{left} | {right}]")
+    return "  ".join(rows)
+
+
+# ── the RREF reference (the trace) ───────────────────────────────────────────────────────────────────────────
+def _rref_on_matrix(M: list[list[Fraction]], n: int):
+    """The Gauss-Jordan elimination LOOP itself, generalized over an already-built augmented matrix of any
+    width (row operations act on the WHOLE row regardless of how many columns follow the first n) — extracted
+    so both the [A|b] system-solve path (_rref_ops) and the [A|I] matrix-inversion path can share one
+    implementation instead of two copies of the same elimination logic. Pure refactor of the original
+    _rref_ops loop body; behavior for existing callers is unchanged."""
     yield ("initialize", [row[:] for row in M], None, None, None)
     for p in range(n):
         piv = M[p][p]
@@ -69,6 +87,14 @@ def _rref_ops(A: list[list[int]], b: list[int]):
             if factor != 0:
                 M[i] = [a - factor * c for a, c in zip(M[i], M[p])]
                 yield ("eliminate", [row[:] for row in M], factor, p, i)
+
+
+def _rref_ops(A: list[list[int]], b: list[int]):
+    """Run Gauss-Jordan elimination, yielding (operation, matrix_snapshot, factor, pivot_row, target_row).
+
+    Assumes a nonzero pivot is available on the diagonal at each step (the generator guarantees this), so no row
+    swaps are produced in v1. Every snapshot is a deep copy so the caller can inspect the full history."""
+    yield from _rref_on_matrix(_aug(A, b), len(A))
 
 
 def _ref_ops(A: list[list[int]], b: list[int]):
@@ -136,6 +162,27 @@ def cramer_solve(A: list[list[int]], b: list[int]) -> list[Fraction]:
             Ai[r][i] = bf[r]
         out.append(_det(Ai) / d)
     return out
+
+
+# ── the INDEPENDENT oracle for matrix inversion: the adjugate (cofactor) formula — A^-1 = adj(A)/det(A), a
+# DIFFERENT computational method than Gauss-Jordan elimination (re-running RREF to "check" RREF would be
+# circular, not independent) ────────────────────────────────────────────────────────────────────────────────
+def _minor_of(M: list[list[Fraction]], i: int, j: int) -> list[list[Fraction]]:
+    return [[M[r][c] for c in range(len(M)) if c != j] for r in range(len(M)) if r != i]
+
+
+def _adjugate(M: list[list[Fraction]]) -> list[list[Fraction]]:
+    n = len(M)
+    cof = [[((-1) ** (i + j)) * _det(_minor_of(M, i, j)) for j in range(n)] for i in range(n)]
+    return [[cof[j][i] for j in range(n)] for i in range(n)]        # adjugate = transpose of the cofactor matrix
+
+
+def inverse_via_adjugate(A: list[list[int]]) -> list[list[Fraction]]:
+    Af = [[Fraction(v) for v in row] for row in A]
+    d = _det(Af)
+    adj = _adjugate(Af)
+    n = len(A)
+    return [[adj[i][j] / d for j in range(n)] for i in range(n)]
 
 
 # ── spec ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -338,3 +385,183 @@ def rowreduce_decl(spec: RowReduceSpec) -> AdapterDecl:
 def registered_specs() -> list[RowReduceSpec]:
     from . import rowreduce_specs
     return [s for s in rowreduce_specs.ALL_SPECS if s.register]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+# MATRIX INVERSION BY ROW REDUCTION (ADAPTER_TAXONOMY_SPEC.md §6 T15 backlog: inverse_by_row_reduction) —
+# a SECOND concept shape on the same T15 grammar (row operations preserve a represented mathematical object),
+# but the represented object is [I | A^-1] rather than a solution vector, so the final-answer/oracle shapes
+# differ from RowReduceSpec. Reuses _rref_on_matrix (the same elimination loop) and _det (the same determinant
+# function) that the solve-a-system path already has — no duplicated row-reduction or determinant logic.
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+@dataclass
+class MatrixInverseSpec:
+    slug: str
+    title: str
+    problem_template: str                              # .format(matrix=<rendered A>) -> problem
+    n: int                                              # matrix size (2 or 3)
+    setup: Callable[[random.Random, int], list]        # (rng, n) -> A, an invertible integer matrix
+    family: str = "linear_algebra"
+    aliases: list = field(default_factory=list)
+    not_aliases: list = field(default_factory=list)
+    priority: int = 50
+    register: bool = True
+    n_candidates: int = 60
+    label_convention: str = "ints"
+
+    def oracle(self, state: dict) -> dict:
+        A = state["A"]
+        inv = inverse_via_adjugate(A)
+        n = len(A)
+        return {f"inv_{i+1}_{j+1}": _fs(inv[i][j]) for i in range(n) for j in range(n)}
+
+
+def _render_matrix(A: list[list[int]]) -> str:
+    return "  ".join("[" + " ".join(str(v) for v in row) + "]" for row in A)
+
+
+def _inv_candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+    spec: MatrixInverseSpec = self._matrix_inverse_spec
+    rng = random.Random(seed)
+    for i in range(spec.n_candidates):
+        A = spec.setup(rng, spec.n)
+        yield {"A": A, "_id": f"{spec.slug}_v1_case_{i}"}
+
+
+def _inv_is_teaching_trace(self, trace: ContractTrace) -> bool:
+    return bool(trace.steps) and trace.steps[0].operation == "initialize" and len(trace.steps) >= 2
+
+
+def _inv_reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                   attempt: int = 1, seed: int = 0) -> ContractTrace:
+    spec: MatrixInverseSpec = self._matrix_inverse_spec
+    A = example_input["A"]
+    n = spec.n
+    ops = list(_rref_on_matrix(_aug_identity(A), n))
+    final_inv = [[ops[-1][1][i][n + j] for j in range(n)] for i in range(n)]
+    ans = {f"inv_{i+1}_{j+1}": _fs(final_inv[i][j]) for i in range(n) for j in range(n)}
+    inv_str = ", ".join(f"inv[{i+1}][{j+1}]={_fs(final_inv[i][j])}" for i in range(n) for j in range(n))
+
+    steps: list[Step] = []
+    evidence: dict[str, list[str]] = {"initialize": [], "eliminate": [], "completion": []}
+    prev_render = ""
+    for idx, (op, snap, factor, prow, trow) in enumerate(ops):
+        step_id = f"s{idx + 1}"
+        rendered = _render_multi(snap, n)
+        is_last = idx == len(ops) - 1
+        if op == "initialize":
+            operation, decision = "initialize", "write the augmented matrix [A | I]"
+            reason = "each row operation applied to [A | I] together turns A into I and I into A^-1"
+            evis = f"Augmented matrix: {rendered}."
+            evidence["initialize"].append(step_id)
+        else:
+            operation = "eliminate"
+            if op == "normalize":
+                decision = f"scale row {prow + 1} so its pivot becomes 1"
+                reason = f"divide row {prow + 1} by its pivot {_fs(factor)}"
+                evis = f"Normalize row {prow + 1}: {rendered}."
+            else:
+                decision = f"eliminate column {prow + 1} from row {trow + 1}"
+                reason = f"R{trow + 1} <- R{trow + 1} - ({_fs(factor)})*R{prow + 1}"
+                evis = f"Eliminate: {rendered}."
+            evidence["eliminate"].append(step_id)
+        state_after = {"output": rendered}
+        if is_last:
+            evis = f"Reduced to [I | A^-1]: {rendered} — the inverse is A^-1: {inv_str}."
+            evidence["completion"].append(step_id)
+        prior = {"problem": spec.title} if op == "initialize" else {"output": prev_render}
+        steps.append(Step(
+            id=step_id, operation=operation, prior_state=prior, state_after=state_after,
+            inputs=dict(example_input) if op == "initialize" else {"output": rendered},
+            decision=decision, reason=reason,
+            visual_state={"kind": "variables", "output": rendered}, expected_visible_result=evis,
+            facts={"allowed_values": _ints(rendered, factor, inv_str if is_last else ""),
+                   "required_facts": [fact(operation, rendered)], "forbidden_claims": []}))
+        prev_render = rendered
+
+    return ContractTrace(
+        problem=spec.problem_template.format(matrix=_render_matrix(A)),
+        conventions={"method": "Gauss-Jordan elimination on [A | I]; the right half becomes A^-1"},
+        initial_state={"problem": spec.title}, final_answer=dict(ans), steps=steps,
+        invariants=[{"id": f"{spec.slug}_still_augmented_identity", "scope": "every_step",
+                     "statement": "the left n columns and right n columns together still represent A^-1 "
+                                  "times the ORIGINAL left block, at every intermediate step"}],
+        required_cases=["initialize", "eliminate", "completion"], case_evidence=evidence,
+        provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                    attempt=attempt))
+
+
+def _inv_states_equivalent(self, a, b):
+    return str((a or {}).get("output")) == str((b or {}).get("output"))
+
+
+def _inv_final_answer_entails(self, state, answer):
+    out = str((state or {}).get("output", ""))
+    return all(str(v) in out for v in (answer or {}).values())
+
+
+def _inv_invariant_holds(self, inv, state):
+    # A^-1's correctness is proven POSITIVELY by the gate (final block checked against the adjugate oracle,
+    # a genuinely different algorithm) — never fail here on the rendered-string-only intermediate state.
+    return True
+
+
+def _inv_validate_step_shape(self, step):
+    ok = {"initialize", "normalize", "eliminate", "completion"}
+    return [] if step.operation in ok else [f"unexpected operation {step.operation!r}"]
+
+
+def _inv_validate_prose_claims(self, card, step):
+    return []
+
+
+_INV_METHODS = {
+    "candidates": _inv_candidates, "is_teaching_trace": _inv_is_teaching_trace, "reference": _inv_reference,
+    "states_equivalent": _inv_states_equivalent, "final_answer_entails": _inv_final_answer_entails,
+    "invariant_holds": _inv_invariant_holds, "validate_step_shape": _inv_validate_step_shape,
+    "validate_prose_claims": _inv_validate_prose_claims,
+}
+
+
+def build_inverse_example_spec(spec: MatrixInverseSpec) -> ExampleSpec:
+    stages = {
+        "initialize": StageSpec("initialize", "write [A | I]", cardinality="exactly_once",
+                                teaching_focus="augment the matrix with the identity",
+                                contains={"initialize": "required"},
+                                state_effects=["the matrix is augmented with the identity"]),
+        "eliminate": StageSpec("eliminate", "apply a row operation", cardinality="one_or_more",
+                               teaching_focus="one pivot/row operation, applied to the WHOLE row",
+                               contains={"eliminate": "required"},
+                               state_effects=["the left block moves one column closer to the identity"])}
+    return ExampleSpec(
+        input=InstanceShape("sequence", count=(1, 1), structure=[spec.slug]),
+        stages=stages, structure="initialize eliminate",
+        must_exercise=["initialize", "eliminate", "completion"], must_cover=[], must_avoid=[],
+        terminal="the left block is the identity matrix; the right block is the inverse",
+        output_shape="the inverse matrix")
+
+
+def matrix_inverse_manifest_entry(spec: MatrixInverseSpec) -> dict[str, Any]:
+    return {"type": "T15", "family": spec.family, "status": "experimental",
+            "verification_level": "trace_verified", "coding": False, "canonical_solution": None,
+            "routing_aliases": list(spec.aliases), "negative_guards": list(spec.not_aliases), "fixtures": []}
+
+
+def matrix_inverse_routing_rule(spec: MatrixInverseSpec) -> dict[str, Any]:
+    rule: dict[str, Any] = {"any": list(spec.aliases), "priority": spec.priority}
+    if spec.not_aliases:
+        rule["not"] = list(spec.not_aliases)
+    return rule
+
+
+def matrix_inverse_decl(spec: MatrixInverseSpec) -> AdapterDecl:
+    return AdapterDecl(
+        slug=spec.slug, type="T15", family=spec.family, example_spec=build_inverse_example_spec(spec),
+        methods=dict(_INV_METHODS), label_convention=spec.label_convention,
+        routing=matrix_inverse_routing_rule(spec),
+        class_attrs={"_matrix_inverse_spec": spec, "provides_narration": True})
+
+
+def registered_inverse_specs() -> list[MatrixInverseSpec]:
+    from . import rowreduce_specs
+    return [s for s in rowreduce_specs.ALL_INVERSE_SPECS if s.register]

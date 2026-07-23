@@ -67,6 +67,9 @@ class LyingFormatterIsCaught(unittest.TestCase):
                          "app.services.examples.trace_adapters.families.rowreduce_engine",
                          fromlist=["registered_specs"]).registered_specs()   # every live RowReduceSpec (T15)
                      ] + [s.slug for s in __import__(
+                         "app.services.examples.trace_adapters.families.rowreduce_engine",
+                         fromlist=["registered_inverse_specs"]).registered_inverse_specs()  # T15 MatrixInverseSpec
+                     ] + [s.slug for s in __import__(
                          "app.services.examples.trace_adapters.families.numerical_engine",
                          fromlist=["registered_specs"]).registered_specs()   # every live NumericalSpec (T16)
                      ] + [s.slug for s in __import__(

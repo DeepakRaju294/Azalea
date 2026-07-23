@@ -307,6 +307,12 @@ def _inject_formula_specs() -> None:
         for spec in mod.registered_specs():
             MANIFEST.setdefault(spec.slug, mod.manifest_entry(spec))
             ROUTING_RULES.setdefault(spec.slug, mod.routing_rule(spec))
+    # Matrix inversion (T15 second concept shape, ADAPTER_TAXONOMY_SPEC.md §6): a separate spec dataclass from
+    # RowReduceSpec (different final-answer shape — a matrix, not a solution vector), so it has its own
+    # registered_inverse_specs()/manifest_entry/routing_rule rather than being folded into the loop above.
+    for spec in rr.registered_inverse_specs():
+        MANIFEST.setdefault(spec.slug, rr.matrix_inverse_manifest_entry(spec))
+        ROUTING_RULES.setdefault(spec.slug, rr.matrix_inverse_routing_rule(spec))
 
 
 def _fill_defaults() -> None:

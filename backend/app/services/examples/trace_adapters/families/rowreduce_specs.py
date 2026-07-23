@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import random
 
-from .rowreduce_engine import RowReduceSpec, _rref_ops
+from .rowreduce_engine import MatrixInverseSpec, RowReduceSpec, _aug_identity, _rref_on_matrix, _rref_ops
 
 
 def _no_zero_pivot(A: list[list[int]], b: list[int]) -> bool:
@@ -145,3 +145,72 @@ MESH_ANALYSIS = RowReduceSpec(
 
 
 ALL_SPECS = [SOLVE_2X2, GAUSSIAN_ELIMINATION, SOLVE_3X3, ROW_ECHELON_FORM, NODAL_ANALYSIS, MESH_ANALYSIS]
+
+
+# ── matrix inversion by row reduction (ADAPTER_TAXONOMY_SPEC.md §6 T15 backlog) ──────────────────────────────
+def _no_zero_pivot_inverse(A: list[list[int]]) -> bool:
+    """True iff Gauss-Jordan on [A|I] never hits a zero diagonal pivot (so v1 needs no row swaps) — the
+    inversion analogue of _no_zero_pivot above, reusing the SAME generic elimination loop via _rref_on_matrix."""
+    n = len(A)
+    try:
+        for _op, snap, _f, prow, _t in _rref_on_matrix(_aug_identity(A), n):
+            if prow is not None and snap[prow][prow] == 0:
+                return False
+    except Exception:  # noqa: BLE001
+        return False
+    return True
+
+
+def _det_int(A: list[list[int]]) -> int:
+    n = len(A)
+    if n == 2:
+        return A[0][0] * A[1][1] - A[0][1] * A[1][0]
+    total = 0
+    for c in range(n):
+        minor = [[A[r][cc] for cc in range(n) if cc != c] for r in range(1, n)]
+        total += ((-1) ** c) * A[0][c] * _det_int(minor)
+    return total
+
+
+def _make_invertible_matrix(rng: random.Random, n: int) -> list:
+    """A small-entry integer matrix that is invertible (nonzero determinant) AND hits no zero pivot during
+    Gauss-Jordan on [A|I] (rejection sampling — same shape of guard as _make_system for the solve-a-system
+    specs above)."""
+    for _ in range(400):
+        A = [[rng.randint(-3, 3) for _ in range(n)] for _ in range(n)]
+        if A[0][0] == 0 or _det_int(A) == 0:
+            continue
+        if not _no_zero_pivot_inverse(A):
+            continue
+        return A
+    # deterministic fallback: the identity matrix is always invertible and pivot-clean
+    return [[1 if i == j else 0 for j in range(n)] for i in range(n)]
+
+
+INVERSE_2X2 = MatrixInverseSpec(
+    slug="matrix_inverse_2x2",
+    title="inverting a 2x2 matrix by row reduction",
+    problem_template="Find the inverse of the matrix {matrix} using Gauss-Jordan row reduction.",
+    n=2,
+    setup=_make_invertible_matrix,
+    aliases=["matrix inverse", "inverse of a matrix", "invert the matrix", "inverse by row reduction",
+             "find the inverse matrix", "2x2 matrix inverse"],
+    not_aliases=["determinant", "solve the system", "3x3"],
+    priority=56,
+)
+
+# priority must beat matrix_inverse_2x2 (56): "3x3 matrix inverse" contains "matrix inverse" as a substring
+# (the 2x2 spec's own generic alias), same collision class as determinant_2x2/determinant_3x3 above — the
+# more SPECIFIC match must win, mirroring that pair's existing priority convention (37 > 36).
+INVERSE_3X3 = MatrixInverseSpec(
+    slug="matrix_inverse_3x3",
+    title="inverting a 3x3 matrix by row reduction",
+    problem_template="Find the inverse of the 3x3 matrix {matrix} using Gauss-Jordan row reduction.",
+    n=3,
+    setup=_make_invertible_matrix,
+    aliases=["3x3 matrix inverse", "invert a 3x3 matrix", "inverse of a 3x3 matrix"],
+    not_aliases=["determinant", "solve the system"],
+    priority=57,
+)
+
+ALL_INVERSE_SPECS = [INVERSE_2X2, INVERSE_3X3]
