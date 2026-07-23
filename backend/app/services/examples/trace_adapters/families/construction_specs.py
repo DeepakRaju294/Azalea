@@ -114,6 +114,36 @@ RUNNING_MAXIMUM = ConstructSpec(
     target="every running maximum is listed")
 
 
+# --- moving average (window size 3) -------------------------------------------------------------------
+def _movavg_setup(rng: random.Random) -> dict:
+    n = rng.randint(5, 7)
+    return {"input": [rng.randint(1, 20) for _ in range(n)], "output": [], "k": 3}
+
+
+def _movavg_step(s: dict, i: int) -> tuple:
+    k = s["k"]
+    window = s["input"][i:i + k]
+    avg = round(sum(window) / k, 2)
+    rule = f"average of {_seq(window)} = {sum(window)}/{k} = {avg}"
+    return {**s, "output": s["output"] + [avg]}, rule
+
+
+MOVING_AVERAGE = ConstructSpec(
+    slug="moving_average", title="moving average of a list (window size 3)", family="sequence",
+    aliases=["moving average", "simple moving average", "rolling average"], priority=57,
+    piece_word="moving average",
+    problem_template="Build the moving average (window size 3) of the list {input}.",
+    setup=_movavg_setup, pieces=lambda s: len(s["input"]) - s["k"] + 1, step=_movavg_step,
+    render=lambda s: _seq(s["output"]),
+    valid=lambda s: s["output"] == [round(sum(s["input"][j:j + s["k"]]) / s["k"], 2)
+                                    for j in range(len(s["output"]))],
+    answer=lambda s: {"moving_averages": _seq(s["output"])},
+    oracle=lambda s0: {"moving_averages": _seq(
+        [round(sum(s0["input"][j:j + s0["k"]]) / s0["k"], 2)
+         for j in range(len(s0["input"]) - s0["k"] + 1)])},
+    target="every window's average is listed")
+
+
 # --- straight-line depreciation schedule (finance, T8a) ----------------------------------------------
 def _deprec_setup(rng: random.Random) -> dict:
     life = rng.randint(3, 6)
@@ -528,7 +558,7 @@ DIGIT_SUM = ConstructSpec(
     target="every digit has been added")
 
 
-ALL_SPECS = [PREFIX_SUMS, RUNNING_MAXIMUM, DEPRECIATION_SCHEDULE,
+ALL_SPECS = [PREFIX_SUMS, RUNNING_MAXIMUM, MOVING_AVERAGE, DEPRECIATION_SCHEDULE,
              POLYNOMIAL_DERIVATIVE, POLYNOMIAL_INTEGRAL, FIBONACCI_SEQUENCE,
              PASCALS_TRIANGLE_ROW, POWERS_OF_TWO, BABYLONIAN_SQRT, COLLATZ_SEQUENCE, GRADIENT_DESCENT,
              PRIME_FACTORIZATION, TRIANGULAR_NUMBERS, CUMULATIVE_PRODUCT, SAVINGS_GROWTH, DIGIT_SUM]
