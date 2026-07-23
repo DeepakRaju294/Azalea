@@ -1501,6 +1501,144 @@ MOLE_FRACTION = FormulaSpec(
     outputs=[Output("x_A", "x_A = na/(na + nb)", "na/(na + nb)", "", "compute_mole_fraction", "mole fraction")],
     conventions={"definition": "mole fraction = moles of component / total moles"})
 
+SERIES_RESISTANCE = FormulaSpec(
+    slug="series_resistance", title="equivalent resistance of resistors in series", family="physics",
+    aliases=["series resistance", "resistors in series", "equivalent resistance in series"],
+    not_aliases=["parallel"], priority=53,
+    problem_template="Three resistors R1 = {R1} ohm, R2 = {R2} ohm, and R3 = {R3} ohm are connected in "
+                     "series. Find the equivalent resistance.",
+    givens=[Given("R1", "ohm", 1, 100), Given("R2", "ohm", 1, 100), Given("R3", "ohm", 1, 100)],
+    outputs=[Output("Req", "Req = R1 + R2 + R3", "R1 + R2 + R3", "ohm", "compute_series_resistance",
+                    "equivalent resistance")],
+    conventions={"rule": "resistances in series simply add"},
+    canonical_latex="R_{eq} = R_1 + R_2 + R_3",
+    canonical_notes=[
+        "In series, the SAME current flows through every resistor, so their voltage drops add up — this is "
+        "why the resistances themselves add directly.",
+    ],
+    edge_cases=[
+        "The equivalent series resistance is always GREATER than any single resistor in the chain.",
+    ])
+
+PARALLEL_RESISTANCE = FormulaSpec(
+    slug="parallel_resistance", title="equivalent resistance of two resistors in parallel", family="physics",
+    aliases=["parallel resistance", "resistors in parallel", "equivalent resistance in parallel"],
+    not_aliases=["series"], priority=53,
+    problem_template="Two resistors R1 = {R1} ohm and R2 = {R2} ohm are connected in parallel. Find the "
+                     "equivalent resistance.",
+    givens=[Given("R1", "ohm", 1, 100), Given("R2", "ohm", 1, 100)],
+    outputs=[Output("Req", "Req = (R1*R2)/(R1+R2)", "(R1*R2)/(R1+R2)", "ohm", "compute_parallel_resistance",
+                    "equivalent resistance")],
+    conventions={"rule": "reciprocal of the sum of reciprocals; for two resistors this simplifies to "
+                         "product over sum"},
+    canonical_latex="R_{eq} = \\frac{R_1 R_2}{R_1 + R_2}",
+    canonical_notes=[
+        "In parallel, both resistors share the SAME voltage, and the currents through them add — this "
+        "always makes the equivalent resistance SMALLER than either individual resistor.",
+    ],
+    edge_cases=[
+        "The equivalent parallel resistance is always LESS than the smaller of the two individual "
+        "resistors — adding a second path can only make it easier for current to flow.",
+    ])
+
+VOLTAGE_DIVIDER = FormulaSpec(
+    slug="voltage_divider", title="output voltage of a resistive voltage divider", family="physics",
+    aliases=["voltage divider", "voltage divider circuit", "voltage divider rule"], priority=54,
+    problem_template="A voltage divider has input voltage Vin = {Vin} V across two series resistors "
+                     "R1 = {R1} ohm and R2 = {R2} ohm. Find the output voltage Vout measured across R2.",
+    givens=[Given("Vin", "V", 3, 24), Given("R1", "ohm", 1, 50), Given("R2", "ohm", 1, 50)],
+    outputs=[Output("Vout", "Vout = Vin * R2/(R1+R2)", "Vin * R2/(R1+R2)", "V", "compute_voltage_divider",
+                    "output voltage")],
+    conventions={"rule": "the output voltage is the fraction of Vin dropped across R2"},
+    canonical_latex="V_{out} = V_{in}\\,\\frac{R_2}{R_1+R_2}",
+    canonical_notes=[
+        "The SAME current flows through both series resistors, so each resistor's share of the total "
+        "voltage is proportional to its own resistance out of the total.",
+    ],
+    edge_cases=[
+        "If R2 = 0, Vout = 0 — a resistor of zero resistance drops no voltage at all, so the output is "
+        "shorted to ground.",
+    ])
+
+CURRENT_DIVIDER = FormulaSpec(
+    slug="current_divider", title="branch current of a resistive current divider", family="physics",
+    aliases=["current divider", "current divider circuit", "current divider rule"], priority=54,
+    problem_template="A current divider splits an input current Iin = {Iin} A between two parallel "
+                     "resistors R1 = {R1} ohm and R2 = {R2} ohm. Find the current through R2.",
+    givens=[Given("Iin", "A", 1, 20), Given("R1", "ohm", 1, 50), Given("R2", "ohm", 1, 50)],
+    outputs=[Output("I2", "I2 = Iin * R1/(R1+R2)", "Iin * R1/(R1+R2)", "A", "compute_current_divider",
+                    "current through R2")],
+    conventions={"rule": "current divides INVERSELY to resistance — the branch current formula uses the "
+                         "OTHER resistor in the numerator"},
+    canonical_latex="I_2 = I_{in}\\,\\frac{R_1}{R_1+R_2}",
+    canonical_notes=[
+        "Unlike the voltage divider, the current-divider formula for I2 uses R1 (the OTHER resistor) in "
+        "the numerator — more current takes the path of LESS resistance, so R2's own share shrinks as R2 "
+        "grows.",
+    ],
+    edge_cases=[
+        "If R2 is much larger than R1, nearly all the current flows through R1 instead — a very large "
+        "resistance is close to an open circuit for that branch.",
+    ])
+
+IMPEDANCE_MAGNITUDE = FormulaSpec(
+    slug="impedance_magnitude", title="magnitude of impedance from resistance and reactance", family="physics",
+    aliases=["impedance magnitude", "magnitude of impedance", "compute the impedance"], priority=53,
+    problem_template="A circuit has resistance R = {R} ohm and reactance X = {X} ohm. Find the magnitude "
+                     "of its impedance.",
+    givens=[Given("R", "ohm", 1, 40), Given("X", "ohm", 1, 40)],
+    outputs=[Output("Z", "|Z| = sqrt(R^2 + X^2)", "sqrt(R**2 + X**2)", "ohm", "compute_impedance_magnitude",
+                    "impedance magnitude")],
+    conventions={"model": "impedance = resistance + j*reactance; magnitude via the Pythagorean-style formula"},
+    canonical_latex="|Z| = \\sqrt{R^2 + X^2}",
+    canonical_notes=[
+        "Impedance combines resistance (energy dissipated) and reactance (energy stored/returned by "
+        "capacitors and inductors) into one complex number; its magnitude behaves like a Pythagorean "
+        "hypotenuse because resistance and reactance are 90 degrees out of phase.",
+    ],
+    edge_cases=[
+        "If X = 0 (a purely resistive circuit), \\(|Z| = R\\) exactly — impedance reduces to plain "
+        "resistance.",
+    ])
+
+POWER_FACTOR = FormulaSpec(
+    slug="power_factor", title="power factor from resistance and reactance", family="physics",
+    aliases=["power factor", "compute the power factor", "power factor of a circuit"], priority=53,
+    problem_template="A circuit has resistance R = {R} ohm and reactance X = {X} ohm. Find the power "
+                     "factor.",
+    givens=[Given("R", "ohm", 1, 40), Given("X", "ohm", 1, 40)],
+    outputs=[Output("pf", "pf = R / sqrt(R^2 + X^2)", "R / sqrt(R**2 + X**2)", "", "compute_power_factor",
+                    "power factor")],
+    conventions={"definition": "power factor = resistance / impedance magnitude = cos(phase angle)"},
+    canonical_latex="\\text{pf} = \\frac{R}{|Z|} = \\frac{R}{\\sqrt{R^2+X^2}}",
+    canonical_notes=[
+        "The power factor is always between 0 and 1 — it measures what fraction of the apparent power "
+        "actually does useful work, rather than sloshing back and forth in the reactive components.",
+    ],
+    edge_cases=[
+        "If X = 0, pf = 1 (unity power factor) — a purely resistive circuit converts all its power to work, "
+        "none of it is reactive.",
+    ])
+
+THREE_PHASE_POWER = FormulaSpec(
+    slug="three_phase_power", title="real power in a balanced three-phase system", family="physics",
+    aliases=["three phase power", "three-phase power", "balanced three phase power"], priority=53,
+    problem_template="A balanced three-phase system has line voltage VL = {VL} V, line current IL = "
+                     "{IL} A, and power factor pf = {pf}. Find the total real power.",
+    givens=[Given("VL", "V", 100, 480), Given("IL", "A", 1, 50), Given("pf", "", 0.6, 1.0, integer=False)],
+    outputs=[Output("P", "P = sqrt(3) * VL * IL * pf", "sqrt(3) * VL * IL * pf", "W",
+                    "compute_three_phase_power", "total real power")],
+    conventions={"model": "balanced three-phase system (all three phases carry equal load)"},
+    canonical_latex="P = \\sqrt{3}\\,V_L I_L \\cos\\varphi",
+    canonical_notes=[
+        "The \\(\\sqrt{3}\\) factor comes from the 120-degree phase relationship between the three lines in "
+        "a balanced system — it is NOT simply 3x the single-phase formula.",
+    ],
+    edge_cases=[
+        "At pf = 1 (unity power factor), the formula reduces to \\(P = \\sqrt{3}\\,V_L I_L\\) exactly — all "
+        "of the apparent power is real power.",
+    ])
+
 OHMS_POWER = FormulaSpec(
     slug="ohms_power", title="power from voltage and resistance", family="physics",
     aliases=["power from voltage", "v squared over r"], priority=15,
@@ -1918,6 +2056,9 @@ ALL_SPECS = [
     # more finance
     NPV_THREE_PERIOD, DISCOUNT_FACTOR, CAPM_EXPECTED_RETURN, PORTFOLIO_RETURN_TWO_ASSET, FORWARD_PRICE,
     OPTION_PAYOFF_CALL, SHARPE_RATIO,
+    # more EE
+    SERIES_RESISTANCE, PARALLEL_RESISTANCE, VOLTAGE_DIVIDER, CURRENT_DIVIDER, IMPEDANCE_MAGNITUDE,
+    POWER_FACTOR, THREE_PHASE_POWER,
 ]
 
 # ======================================================================================================
