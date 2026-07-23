@@ -105,6 +105,35 @@ class StoreAndLookup(_CacheTestCase):
         self.assertIsNotNone(gpc.lookup_cached_plan("learn fluid turbulence"))   # self-heals on next write
 
 
+class KeyCollisionGuard(_CacheTestCase):
+    """Plan-stability fix: goal_key_for reuses _canonical_concept_key's alias-match resolution, which could
+    (in principle, via a future alias-table bug) collapse two genuinely different goals onto the same cache
+    key, causing store_plan's unconditional overwrite to silently serve one goal's curriculum for another.
+    lookup_cached_plan now compares the incoming goal against the entry's own stored source_goal and treats
+    a poor match as a miss rather than reusing it."""
+
+    def test_compatible_phrasing_still_matches(self):
+        self.assertTrue(gpc._goals_compatible("bst traversal", "bst traversal algorithms"))
+        self.assertTrue(gpc._goals_compatible("learn fluid turbulence", "I want to understand fluid turbulence"))
+
+    def test_unrelated_goals_do_not_match(self):
+        self.assertFalse(gpc._goals_compatible("bst traversal", "mst algorithms"))
+
+    def test_forced_key_collision_is_treated_as_a_miss(self):
+        # Simulate an alias-table bug that collapses two unrelated goals onto the same canonical key —
+        # goal_key_for itself is trusted to be correct today; this proves the READ-side guard catches it
+        # independently, as defense in depth.
+        orig = gpc.goal_key_for
+        gpc.goal_key_for = lambda goal: "forced_shared_key"
+        try:
+            gpc.store_plan("bst traversal", [{"requirement_id": "R1", "kind": "core",
+                                              "statement": "s", "name": "n"}], [])
+            self.assertIsNone(gpc.lookup_cached_plan("mst algorithms"))    # different goal, same forced key
+            self.assertIsNotNone(gpc.lookup_cached_plan("bst traversal"))  # same goal -> still a hit
+        finally:
+            gpc.goal_key_for = orig
+
+
 class RequirementsCallIntegration(_CacheTestCase):
     """The actual wiring point: _goal_requirements bypasses the LLM call on a cache hit, bypasses the
     cache READ on feedback, and always writes on a real (successful) call."""

@@ -1133,10 +1133,23 @@ def _expand_canonical_family(topics: list[dict[str, Any]], goal: str | None) -> 
                      if len(w) >= 4}
         fam_words |= {w for w in str(fam.get("display") or "").lower().split() if len(w) >= 4}
 
+        # A member's DISTINGUISHING vocabulary — the words in its name not shared by every other member
+        # (e.g. "in"/"pre"/"post"/"level" for tree_traversal, "kruskal"/"prim" for mst). Titling a topic
+        # with one of these names that SPECIFIC member, even if its unusual phrasing failed adapter routing
+        # (_slug(t) is None) — the old routing-failure proxy misclassified those as umbrellas and DROPPED
+        # them, duplicating an already-correct topic when the full family got re-injected in its place.
+        # Only the absence of every member's distinguishing word is real evidence of a family-wide umbrella.
+        _member_word_sets = [set(name.lower().replace("-", " ").replace("'", "").split())
+                             for name, _ in fam["members"]]
+        _common_words = set.intersection(*_member_word_sets) if len(_member_word_sets) > 1 else set()
+        _distinguishing_words: set[str] = set()
+        for ws in _member_word_sets:
+            _distinguishing_words |= (ws - _common_words)
+
         def _is_umbrella(t: dict[str, Any]) -> bool:
-            title_words = set(str(t.get("title") or "").lower().replace("-", " ").split())
+            title_words = set(str(t.get("title") or "").lower().replace("-", " ").replace("'", "").split())
             return (_ttype(t) in _MEMBER_TEACHING_TYPES and bool(fam_words & title_words)
-                    and _slug(t) is None)
+                    and not (_distinguishing_words & title_words))
 
         umbrellas = [t for t in result if _is_umbrella(t)]
         if not umbrellas:

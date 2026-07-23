@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -33,6 +34,39 @@ from typing import Any, Optional
 _log = logging.getLogger(__name__)
 
 _DEFAULT_PATH = os.path.join("telemetry", "goal_plan_cache.json")
+
+_GOAL_STOPWORDS = frozenset({
+    "a", "an", "the", "i", "want", "to", "learn", "about", "understand", "understanding", "study",
+    "how", "and", "of", "for", "in", "on", "with", "me", "my", "explain",
+})
+
+
+def _goal_tokens(goal: Optional[str]) -> set[str]:
+    """Lowercased, stemmed, stopword-stripped content tokens — same shape as the topic-decomposition
+    pipeline's own `_req_tokens`, kept as an independent copy here to avoid a cross-module import for
+    such a small helper."""
+    out: set[str] = set()
+    for w in re.findall(r"[a-z0-9]+", (goal or "").lower()):
+        if w in _GOAL_STOPWORDS or len(w) < 3:
+            continue
+        for suf in ("ies", "es", "s"):
+            if w.endswith(suf) and len(w) - len(suf) >= 3:
+                w = w[: -len(suf)] + ("y" if suf == "ies" else "")
+                break
+        out.add(w)
+    return out
+
+
+def _goals_compatible(cached_goal: Optional[str], incoming_goal: Optional[str]) -> bool:
+    """True unless the two raw goal strings look like genuinely DIFFERENT goals that happened to collapse
+    onto the same `_canonical_concept_key` (its alias-match resolution can over-collapse — e.g. a future
+    alias bug could send 'bst traversal' and 'mst algorithms' to one key). Containment-ratio, not Jaccard,
+    so a longer phrasing of the SAME goal ('bst traversal' vs 'bst traversal algorithms') still matches.
+    Missing tokens on either side (empty/punctuation-only goal) never blocks a hit — nothing to compare."""
+    a, b = _goal_tokens(cached_goal), _goal_tokens(incoming_goal)
+    if not a or not b:
+        return True
+    return len(a & b) / min(len(a), len(b)) >= 0.5
 
 
 def _enabled() -> bool:
@@ -95,6 +129,10 @@ def lookup_cached_plan(goal: Optional[str]) -> Optional[dict[str, Any]]:
             return None
         entry = _load(path).get(key)
         if not isinstance(entry, dict) or not entry.get("requirements"):
+            return None
+        if not _goals_compatible(entry.get("source_goal"), goal):
+            _log.info("goal_plan_cache: key collision guard — %r and cached %r share a key but look like "
+                      "different goals; treating as a miss", goal, entry.get("source_goal"))
             return None
         return {"requirements": entry["requirements"],
                 "assumed_prerequisites": entry.get("assumed_prerequisites") or []}

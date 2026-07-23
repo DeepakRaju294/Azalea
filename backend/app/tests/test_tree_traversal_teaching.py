@@ -1320,6 +1320,28 @@ class ZeroMemberFamilyExpansion(unittest.TestCase):
         out = _expand_canonical_family(topics, "want to learn about bst traversal")
         self.assertEqual([t["title"] for t in out], ["Hash Tables"])
 
+    def test_misrouted_specific_member_is_preserved_not_dropped(self):
+        # Plan-stability fix: the old umbrella check used "adapter routing failed" as its signal, so a
+        # genuinely SPECIFIC member topic with unusual phrasing (naming "post" but not the exact "post-order"
+        # routing phrase) was misclassified as an umbrella, DROPPED, and duplicated by the full-family
+        # injection that replaced it — silently destroying real content. The fix checks for the member's own
+        # distinguishing vocabulary in the title instead, so this topic must survive untouched.
+        from app.services.topic_generator import _expand_canonical_family
+        from app.services.examples.trace_pipeline import route_adapter
+        misrouted = {"title": "The Post Variant of Tree Node Order", "course_type": "algorithm_walkthrough",
+                     "topic_type": "algorithm_walkthrough", "unit_title": "u"}
+        # sanity: this phrasing genuinely fails adapter routing (no "post-order"/"postorder" substring) —
+        # otherwise this test isn't exercising the misrouted-member scenario it claims to.
+        self.assertIsNone(route_adapter({"title": misrouted["title"], "topic_type": misrouted["topic_type"]}))
+        umbrella = {"title": "BST Traversal Methods", "course_type": "algorithm_walkthrough",
+                    "topic_type": "algorithm_walkthrough", "unit_title": "u"}
+        out = _expand_canonical_family([misrouted, umbrella], "want to learn about bst traversal")
+        titles = [t["title"] for t in out]
+        self.assertIn("The Post Variant of Tree Node Order", titles)   # preserved, not silently dropped
+        self.assertNotIn("BST Traversal Methods", titles)              # the true umbrella is still dropped
+        for member in ("In-Order Traversal", "Pre-Order Traversal", "Level-Order Traversal"):
+            self.assertIn(member, titles)
+
     def test_umbrella_prereq_dropped_beside_specific(self):
         from app.services.topic_decomposition_pipeline import _drop_umbrella_prereqs
         self.assertEqual(_drop_umbrella_prereqs(["Data Structures", "Recursion"]), ["Recursion"])
