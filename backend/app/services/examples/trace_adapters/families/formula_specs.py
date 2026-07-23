@@ -888,6 +888,125 @@ DOT_PRODUCT_3D = FormulaSpec(
                     "dot product")],
     conventions={"formula": "component-wise product summed"})
 
+CROSS_PRODUCT_3D = FormulaSpec(
+    slug="cross_product_3d", title="cross product of two 3D vectors", family="linear_algebra",
+    aliases=["cross product", "vector product", "cross product of two vectors"],
+    not_aliases=["dot product", "scalar product"],
+    priority=54,
+    problem_template="Find the cross product a x b of a = ({ax}, {ay}, {az}) and b = ({bx}, {by}, {bz}).",
+    givens=[Given("ax", "", 1, 8), Given("ay", "", 1, 8), Given("az", "", 1, 8),
+            Given("bx", "", 1, 8), Given("by", "", 1, 8), Given("bz", "", 1, 8)],
+    outputs=[
+        Output("cx", "(a x b)_x = ay*bz - az*by", "ay*bz - az*by", "", "compute_cross_x", "x-component"),
+        Output("cy", "(a x b)_y = az*bx - ax*bz", "az*bx - ax*bz", "", "compute_cross_y", "y-component"),
+        Output("cz", "(a x b)_z = ax*by - ay*bx", "ax*by - ay*bx", "", "compute_cross_z", "z-component"),
+    ],
+    conventions={"formula": "a x b = (ay*bz - az*by, az*bx - ax*bz, ax*by - ay*bx)"},
+    canonical_latex="\\mathbf{a} \\times \\mathbf{b} = (a_yb_z - a_zb_y,\\ a_zb_x - a_xb_z,\\ a_xb_y - a_yb_x)",
+    canonical_notes=[
+        "The result is a VECTOR perpendicular to both \\(\\mathbf{a}\\) and \\(\\mathbf{b}\\) — unlike the "
+        "dot product, which returns a scalar.",
+    ],
+    edge_cases=[
+        "If \\(\\mathbf{a}\\) and \\(\\mathbf{b}\\) point in the same direction (one is a scalar multiple of "
+        "the other), the cross product is the zero vector — there is no perpendicular direction to pick.",
+    ])
+
+ANGLE_BETWEEN_VECTORS = FormulaSpec(
+    slug="angle_between_vectors", title="angle between two 3D vectors", family="linear_algebra",
+    aliases=["angle between two vectors", "find the angle between vectors", "angle between vectors"],
+    priority=53,
+    problem_template="Find the angle (in degrees) between a = ({ax}, {ay}, {az}) and b = ({bx}, {by}, {bz}).",
+    givens=[Given("ax", "", 1, 8), Given("ay", "", 1, 8), Given("az", "", 1, 8),
+            Given("bx", "", 1, 8), Given("by", "", 1, 8), Given("bz", "", 1, 8)],
+    outputs=[Output(
+        "theta",
+        "theta = acos((a.b) / (|a||b|))",
+        "degrees(acos(max(-1, min(1, (ax*bx+ay*by+az*bz) / "
+        "(sqrt(ax**2+ay**2+az**2) * sqrt(bx**2+by**2+bz**2))))))",
+        "deg", "compute_angle", "angle between the vectors")],
+    conventions={"formula": "cos(theta) = (a.b) / (|a||b|)"},
+    canonical_latex="\\theta = \\arccos\\!\\left(\\frac{\\mathbf{a}\\cdot\\mathbf{b}}"
+                    "{|\\mathbf{a}|\\,|\\mathbf{b}|}\\right)",
+    canonical_notes=[
+        "The dot product formula \\(\\mathbf{a}\\cdot\\mathbf{b} = |\\mathbf{a}||\\mathbf{b}|\\cos\\theta\\) "
+        "is solved for \\(\\theta\\) directly.",
+    ],
+    edge_cases=[
+        "If \\(\\mathbf{a}\\cdot\\mathbf{b} = 0\\), the angle is exactly 90 degrees — the vectors are "
+        "orthogonal.",
+    ])
+
+COSINE_SIMILARITY = FormulaSpec(
+    slug="cosine_similarity", title="cosine similarity of two vectors", family="linear_algebra",
+    aliases=["cosine similarity", "cosine similarity of two vectors"],
+    not_aliases=["angle between"],
+    priority=52,
+    problem_template="Find the cosine similarity of a = ({ax}, {ay}, {az}) and b = ({bx}, {by}, {bz}).",
+    givens=[Given("ax", "", 1, 8), Given("ay", "", 1, 8), Given("az", "", 1, 8),
+            Given("bx", "", 1, 8), Given("by", "", 1, 8), Given("bz", "", 1, 8)],
+    outputs=[Output(
+        "cos_sim", "cos_sim(a,b) = (a.b) / (|a||b|)",
+        "(ax*bx+ay*by+az*bz) / (sqrt(ax**2+ay**2+az**2) * sqrt(bx**2+by**2+bz**2))",
+        "", "compute_cosine_similarity", "cosine similarity")],
+    conventions={"formula": "cosine of the angle between the two vectors",
+                 "range": "always between -1 and 1"},
+    canonical_latex="\\cos\\text{-sim}(\\mathbf{a},\\mathbf{b}) = \\frac{\\mathbf{a}\\cdot\\mathbf{b}}"
+                    "{|\\mathbf{a}|\\,|\\mathbf{b}|}",
+    canonical_notes=[
+        "Cosine similarity is exactly \\(\\cos\\theta\\) from the angle-between-vectors formula — it measures "
+        "DIRECTION similarity, not magnitude, so scaling either vector never changes the result.",
+    ],
+    edge_cases=[
+        "Cosine similarity equals 1 exactly when the vectors point in the same direction, regardless of how "
+        "different their magnitudes are.",
+    ])
+
+DETERMINANT_3X3 = FormulaSpec(
+    slug="determinant_3x3", title="determinant of a 3x3 matrix", family="linear_algebra",
+    aliases=["3x3 determinant", "determinant of a 3x3 matrix", "cofactor expansion"],
+    not_aliases=["2x2"],
+    priority=37,
+    problem_template="Find the determinant of the 3x3 matrix with rows ({a11}, {a12}, {a13}), "
+                     "({a21}, {a22}, {a23}), ({a31}, {a32}, {a33}).",
+    givens=[Given("a11", "", 1, 6), Given("a12", "", 1, 6), Given("a13", "", 1, 6),
+            Given("a21", "", 1, 6), Given("a22", "", 1, 6), Given("a23", "", 1, 6),
+            Given("a31", "", 1, 6), Given("a32", "", 1, 6), Given("a33", "", 1, 6)],
+    outputs=[Output(
+        "det", "det = a11*(a22*a33 - a23*a32) - a12*(a21*a33 - a23*a31) + a13*(a21*a32 - a22*a31)",
+        "a11*(a22*a33 - a23*a32) - a12*(a21*a33 - a23*a31) + a13*(a21*a32 - a22*a31)",
+        "", "compute_determinant", "determinant")],
+    conventions={"method": "cofactor expansion along the first row"},
+    canonical_latex="\\det(M) = a_{11}(a_{22}a_{33}-a_{23}a_{32}) - a_{12}(a_{21}a_{33}-a_{23}a_{31}) "
+                    "+ a_{13}(a_{21}a_{32}-a_{22}a_{31})",
+    canonical_notes=[
+        "Each term multiplies an entry of the first row by the determinant of the 2x2 matrix left after "
+        "deleting that entry's row and column — the middle term is SUBTRACTED (alternating sign).",
+    ],
+    edge_cases=[
+        "A determinant of 0 means the matrix is singular (not invertible) — its rows are linearly dependent.",
+    ])
+
+MATRIX_TRACE = FormulaSpec(
+    slug="matrix_trace", title="trace of a 3x3 matrix", family="linear_algebra",
+    aliases=["trace of a matrix", "matrix trace", "sum of the diagonal"],
+    priority=36,
+    problem_template="Find the trace of the 3x3 matrix with rows ({a11}, {a12}, {a13}), "
+                     "({a21}, {a22}, {a23}), ({a31}, {a32}, {a33}).",
+    givens=[Given("a11", "", 1, 12), Given("a12", "", 1, 12), Given("a13", "", 1, 12),
+            Given("a21", "", 1, 12), Given("a22", "", 1, 12), Given("a23", "", 1, 12),
+            Given("a31", "", 1, 12), Given("a32", "", 1, 12), Given("a33", "", 1, 12)],
+    outputs=[Output("tr", "tr(M) = a11 + a22 + a33", "a11 + a22 + a33", "", "compute_trace", "trace")],
+    conventions={"formula": "sum of the entries on the main diagonal"},
+    canonical_latex="\\text{tr}(M) = a_{11} + a_{22} + a_{33}",
+    canonical_notes=[
+        "Only the diagonal entries matter — every off-diagonal entry (a12, a21, a13, a31, a23, a32) is "
+        "ignored entirely.",
+    ],
+    edge_cases=[
+        "The trace is defined only for SQUARE matrices — a non-square matrix has no diagonal to sum.",
+    ])
+
 # ======================================================================================================
 # STATISTICS — second wave — dataset (list-input) — family "statistics"
 # ======================================================================================================
@@ -1579,6 +1698,8 @@ ALL_SPECS = [
     SPHERE_SURFACE_AREA, DENSITY_MASS, PERCENT_INCREASE,
     # vector calculus
     PARTIAL_DERIVATIVE_XY, GRADIENT_MAGNITUDE_XY, DIRECTIONAL_DERIVATIVE_XY, CURL_2D, DIV_2D,
+    # more linear algebra
+    CROSS_PRODUCT_3D, ANGLE_BETWEEN_VECTORS, COSINE_SIMILARITY, DETERMINANT_3X3, MATRIX_TRACE,
 ]
 
 # ======================================================================================================
