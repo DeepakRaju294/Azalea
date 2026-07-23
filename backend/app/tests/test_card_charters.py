@@ -126,6 +126,41 @@ class Charters(unittest.TestCase):
         self.assertNotIn("PROCEDURE", m.exclude_slots)       # bg never touches full PROCEDURE at all
         self.assertTrue(m.scope_note)
 
+    # --- widening beyond background/definition/edge_case (Phase 2 candidate families) --------------------
+    def test_widened_families_resolve_ownership_sensibly_across_a_full_card_set(self):
+        # A realistic math_formula_method topic with cards from EVERY family CARD_CHARTER_DEFAULTS defines
+        # (not just background/definition/edge_case) — confirms the resolver generalizes correctly before
+        # actually widening AZALEA_CARD_CHARTERS in .env (a live prompt-construction flag, not test-only state).
+        prev = os.environ.pop("AZALEA_CARD_CHARTERS", None)
+        try:
+            os.environ["AZALEA_CARD_CHARTERS"] = "all"
+            topics = [_tp("m", "math_formula_method", 0)]
+            plans = {"m": ["background", "formula_breakdown", "worked_example", "edge_case", "practice"]}
+            own = resolve_ownership(topics, plans)
+            self.assertEqual(own["PROCEDURE_OVERVIEW"].card_type, "background")
+            self.assertEqual(own["PROCEDURE"].card_type, "formula_breakdown")
+            self.assertEqual(own["DERIVE"].card_type, "formula_breakdown")
+            self.assertEqual(own["INSTANCE"].card_type, "worked_example")
+            self.assertEqual(own["EDGE"].card_type, "edge_case")
+            self.assertEqual(own["PRACTICE"].card_type, "practice")
+
+            worked = resolve_card_for(topics[0], "worked_example", own)
+            self.assertIsNotNone(worked, "worked_example family must be injectable once active")
+            self.assertIn("INSTANCE", worked.include_slots)
+            self.assertEqual(worked.exclude_slots, ())      # worked_example expresses only INSTANCE
+
+            bg = resolve_card_for(topics[0], "background", own)
+            self.assertIn("PROCEDURE_OVERVIEW", bg.include_slots)
+            # background must NOT also claim the full procedure once formula_breakdown owns it
+            self.assertNotIn("PROCEDURE", bg.include_slots)
+
+            practice = resolve_card_for(topics[0], "practice", own)
+            self.assertIn("PRACTICE", practice.include_slots)
+        finally:
+            os.environ.pop("AZALEA_CARD_CHARTERS", None)
+            if prev is not None:
+                os.environ["AZALEA_CARD_CHARTERS"] = prev
+
     # --- rollout flag + gating ----------------------------------------------------------------------------
     def test_family_flag_parsing_and_gating(self):
         prev = os.environ.pop("AZALEA_CARD_CHARTERS", None)
