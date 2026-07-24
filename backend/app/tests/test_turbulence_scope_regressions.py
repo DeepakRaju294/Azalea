@@ -323,6 +323,51 @@ class SupportingBeforeGoalCoreOrdering(unittest.TestCase):
         certified = _certify_path_scope(topics, "want to learn about bst traversal algorithms")
         self.assertEqual([t["title"] for t in certified], ["In-Order Traversal", "Pre-Order Traversal"])
 
+    def test_mislabeled_application_building_blocks_still_move(self):
+        """Live regression of the guard itself: one regen tagged 'Computing Line Integrals'/'Evaluating
+        Surface Integrals' content_role='application', which the supporting-only guard didn't move — the
+        goal topic ran before its building blocks again. A topic OWNING a core requirement whose text never
+        mentions the goal concept moves regardless of its role label; a TRUE application (whose requirement
+        names the goal, like 'apply Stokes' theorem to solve problems in physics') stays after."""
+        from app.services.topic_generator import _certify_path_scope
+
+        reqs = [
+            {"requirement_id": "R3", "kind": "core", "name": "Line integrals",
+             "statement": "compute line integrals along a curve and relate them to the work done by a "
+                          "vector field."},
+            {"requirement_id": "R6", "kind": "core", "name": "Applications of Stokes' theorem",
+             "statement": "apply Stokes' theorem to solve problems in physics."},
+        ]
+        topics = [
+            {"title": "Introduction to Stokes Theorem", "subject_key": "stokes_overview",
+             "topic_type": "study_path_introduction", "course_type": "study_path_introduction",
+             "purpose": "p", "learner_outcome": "o", "in_scope": [], "out_of_scope": [],
+             "prerequisite_topics": [], "order_index": 1,
+             "decomposition_metadata": {"goal_requirements": reqs}},
+            {"title": "Understanding Stokes' Theorem", "subject_key": "stokes_theorem",
+             "topic_type": "math_formula_method", "course_type": "math_formula_method",
+             "purpose": "p", "learner_outcome": "o", "in_scope": ["statement of stokes theorem"],
+             "out_of_scope": [], "prerequisite_topics": [], "order_index": 2},
+            {"title": "Computing Line Integrals", "subject_key": "line_integrals",
+             "topic_type": "math_formula_method", "course_type": "math_formula_method",
+             "content_role": "application",                      # the mislabel
+             "purpose": "p", "learner_outcome": "o",
+             "in_scope": ["compute line integrals along a curve", "work done by a vector field"],
+             "out_of_scope": [], "prerequisite_topics": [], "order_index": 3},
+            {"title": "Physics Problems with Stokes' Theorem", "subject_key": "stokes_applications",
+             "topic_type": "problem_solving_application", "course_type": "problem_solving_application",
+             "content_role": "application",
+             "purpose": "p", "learner_outcome": "o",
+             "in_scope": ["apply stokes theorem to solve problems in physics"],
+             "out_of_scope": [], "prerequisite_topics": [], "order_index": 4},
+        ]
+        certified = _certify_path_scope(topics, "want to learn about stokes theorem")
+        titles = [t["title"] for t in certified]
+        self.assertLess(titles.index("Computing Line Integrals"),
+                        titles.index("Understanding Stokes' Theorem"))          # mislabel moved
+        self.assertGreater(titles.index("Physics Problems with Stokes' Theorem"),
+                           titles.index("Understanding Stokes' Theorem"))       # true application stays
+
     def test_coding_implementation_never_moves_before_its_walkthrough(self):
         from app.services.topic_generator import _certify_path_scope
 

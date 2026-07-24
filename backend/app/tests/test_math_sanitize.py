@@ -209,6 +209,18 @@ class SanitizeMath(unittest.TestCase):
         self.assertFalse(out.endswith("\\."))
         self.assertIn(r"\]", out)
 
+    def test_mojibake_math_operators_repaired(self):
+        # Live (line-integral process card): a mangled minus sign INSIDE a math span —
+        # "\bigg| \frac{dr}{dt} \bigg| <mojibake-minus> dt". Mangled strings are BUILT from escapes here
+        # (a raw mojibake literal in a test file is itself one wrong-encoding save away from corruption).
+        mangled_minus = chr(0x2212).encode("utf-8").decode("cp1252")
+        out = _sanitize_math_in_text(rf"\( \int F \, \frac{{dr}}{{dt}} {mangled_minus} dt \)")
+        self.assertNotIn(mangled_minus, out)
+        self.assertIn("- dt", out)
+        mangled_le = chr(0x2264).encode("utf-8").decode("cp1252")
+        out2 = _sanitize_math_in_text(f"for 0 {mangled_le} z {mangled_le} 1")
+        self.assertEqual(out2, f"for 0 {chr(0x2264)} z {chr(0x2264)} 1")
+
     def test_applies_across_card_points(self):
         cards = [{"points": [r"\text{I} = \frac{\text{V}}{\text{R}}", "plain bullet", r"$$x = y$$"]}]
         _sanitize_card_math(cards)

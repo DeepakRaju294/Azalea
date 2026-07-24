@@ -9120,6 +9120,30 @@ _BACKSLASHLESS_INT = re.compile(r"(?<![A-Za-z\\])((?:i{1,2}|o)?int)_\{([^{}]*)\}
 # first UTF-8 byte, 0xC2, survived as literal text). Unambiguous only in the exact "<letter> C2d<letter>"
 # shape: no English word or identifier looks like "C2dr"/"C2dS".
 _MOJIBAKE_DOT_PRODUCT = re.compile(r"\b([A-Za-z]) C2\s*d([A-Za-z])\b")
+# Classic UTF-8-bytes-read-as-cp1252 mojibake for the math operators the model actually emits (live,
+# two consecutive paths: a mangled minus sign INSIDE a math span; a mangled middle dot). Both the
+# mangled keys and the replacements are built at runtime from ASCII codepoints - mojibake (or even
+# plain non-ASCII) literals in source are one wrong-encoding hop away from corrupting themselves.
+def _cp1252_mangled(ch: str) -> str:
+    """The mojibake form of `ch`: its UTF-8 bytes mis-decoded as cp1252 — built at RUNTIME from the
+    intact character, because writing mojibake literals in source is itself one wrong-encoding save
+    away from corruption (and tooling layers legitimately normalize escape sequences)."""
+    try:
+        return ch.encode("utf-8").decode("cp1252")
+    except UnicodeDecodeError:  # a byte with no cp1252 mapping - mangled form never occurs
+        return ch
+
+
+_MOJIBAKE_OPERATORS: tuple[tuple[str, str], ...] = tuple(
+    (_cp1252_mangled(chr(src)), chr(repl)) for src, repl in (
+        (0x2212, 0x2D),      # minus sign -> ASCII hyphen
+        (0x22C5, 0xB7),      # dot operator -> middle dot
+        (0x00D7, 0xD7),      # multiplication sign
+        (0x00B7, 0xB7),      # middle dot
+        (0x2264, 0x2264),    # less-than-or-equal
+        (0x2265, 0x2265),    # greater-than-or-equal
+    ) if _cp1252_mangled(chr(src)) != chr(src)
+)
 # A stray "\." token (backslash-period) left after a display block ("... \,dV .\] \.") — renders as literal
 # backslash-dot; pure junk outside math spans.
 _STRAY_BACKSLASH_PERIOD = re.compile(r"\\\.")
@@ -9179,6 +9203,9 @@ def _sanitize_math_in_text(text: str) -> str:
     s = _sub_outside_math_spans(_BARE_SPACING_TOKEN, " ", s)
     s = _sub_outside_math_spans(_STRAY_BACKSLASH_PERIOD, "", s)
     s = _MOJIBAKE_DOT_PRODUCT.sub(r"\1 \\(\\cdot\\) d\2", s)
+    for _bad, _good in _MOJIBAKE_OPERATORS:
+        if _bad in s:
+            s = s.replace(_bad, _good)
     s = _sub_outside_math_spans(_BACKSLASHLESS_INT, r"\\(\\\1_{\2}\\)", s)
     if "%" in s:
         out_parts: list[str] = []

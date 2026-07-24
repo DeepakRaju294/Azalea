@@ -845,12 +845,45 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
         return str((((t.get("decomposition_metadata") or {}).get("scope_plan")) or {}).get("role") or "")
     _core_idx = next((i for i, t in enumerate(certified) if _plan_role(t) == "goal_core"), None)
     if _core_idx is not None and _goal_stems:
+        # Core requirements travel on the opener's metadata — used below to see through the model's NOISY
+        # content_role labels (live: 'Computing Line Integrals'/'Evaluating Surface Integrals' tagged
+        # role='application' on one regen, which the supporting-only guard didn't move, so the goal topic
+        # ran before its own building blocks again). A topic OWNING a core requirement whose text never
+        # mentions the goal concept is a building block regardless of its label (R3 'compute line
+        # integrals along a curve...' — no 'stokes'); a TRUE application's requirement always names the
+        # goal (R6 'apply Stokes' theorem to solve problems in physics').
+        _core_reqs_for_order: list[dict[str, Any]] = []
+        for _t in certified:
+            _gr = (_t.get("goal_requirements")
+                   or (_t.get("decomposition_metadata") or {}).get("goal_requirements") or [])
+            if _gr:
+                _core_reqs_for_order = [r for r in _gr if r.get("kind") == "core"]
+                break
+
+        def _owns_goal_disjoint_core_requirement(t: dict[str, Any]) -> bool:
+            if not _core_reqs_for_order:
+                return False
+            from app.services.topic_decomposition_pipeline import _req_tokens, _topics_matching_requirement
+            for r in _core_reqs_for_order:
+                r_stems = {x[:6] for x in _req_tokens(f"{r.get('name') or ''} {r.get('statement') or ''}")}
+                if r_stems & _goal_stems:
+                    continue                                   # requirement itself is about the goal
+                if _topics_matching_requirement(r, [t]):
+                    return True
+            return False
+
         def _movable_supporting(t: dict[str, Any]) -> bool:
             ttype = str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
-            if _plan_role(t) != "supporting" or "coding" in ttype:
+            role = _plan_role(t)
+            if "coding" in ttype:
                 return False
             title_tokens, _ = _subject_tokens(str(t.get("title") or t.get("subject_key") or ""))
-            return bool(title_tokens) and not ({x[:6] for x in title_tokens} & _goal_stems)
+            if not title_tokens or ({x[:6] for x in title_tokens} & _goal_stems):
+                return False
+            if role == "supporting":
+                return True
+            # a mislabeled 'application' moves only on the stronger requirement-ownership evidence
+            return role == "application" and _owns_goal_disjoint_core_requirement(t)
         _late_supporting = [t for t in certified[_core_idx + 1:] if _movable_supporting(t)]
         if _late_supporting:
             _core_topic = certified[_core_idx]
