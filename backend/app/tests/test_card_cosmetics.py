@@ -169,6 +169,38 @@ class DifferentialNotationCasePreserved(unittest.TestCase):
         self.assertEqual(out[2], "The queue starts empty")
 
 
+class OrphanedMathReinlining(unittest.TestCase):
+    """Recurring live defect since the combinatorics-path rounds: a math expression gets pulled out of its
+    sentence into a math-only sub-bullet, leaving the parent grammatically broken. Two shapes, both live on
+    one path: a parent ending on a dangling connector, and a parent that LOST ITS SUBJECT to the sub-bullet
+    ('Represents the flux across the surface...' / '  - \\(\\iint_S F \\cdot dS\\)')."""
+
+    def test_dangling_connector_parent_reabsorbs_math(self):
+        from app.services.lean_lesson_generator import _reinline_orphaned_math
+        pts = ["the curve C described parametrically by", r"  - \( r(t) = (t, t^2) \)"]
+        out = _reinline_orphaned_math(pts)
+        self.assertEqual(out, [r"the curve C described parametrically by \( r(t) = (t, t^2) \)"])
+
+    def test_missing_subject_parent_gets_math_prepended(self):
+        from app.services.lean_lesson_generator import _reinline_orphaned_math
+        pts = ["Represents the flux across the surface, integrated outward:",
+               r"  - \(\iint_{S} F \cdot dS\)"]
+        out = _reinline_orphaned_math(pts)
+        self.assertEqual(out, [r"\(\iint_{S} F \cdot dS\) represents the flux across the surface, "
+                               "integrated outward:"])
+
+    def test_correct_frame_colon_shape_is_untouched(self):
+        # "frame:" + math sub-bullet is the DESIRED card shape, never merged.
+        from app.services.lean_lesson_generator import _reinline_orphaned_math
+        pts = ["State the formula that applies:", r"  - \( W = \int_C F \cdot dr \)"]
+        self.assertEqual(_reinline_orphaned_math(pts), pts)
+
+    def test_prose_sub_bullet_is_untouched(self):
+        from app.services.lean_lesson_generator import _reinline_orphaned_math
+        pts = ["The theorem is used widely by", "  - physicists and engineers"]
+        self.assertEqual(_reinline_orphaned_math(pts), pts)
+
+
 class DoubledColonPunctuation(unittest.TestCase):
     def test_doubled_colon_collapsed(self):
         c = [{"card_type": "formula_breakdown", "points": ["Formula for Stokes' Theorem: :"]}]

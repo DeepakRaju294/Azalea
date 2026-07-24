@@ -192,6 +192,23 @@ class SanitizeMath(unittest.TestCase):
         out2 = _sanitize_math_in_text(r"\(F \bullet dr = 0\)")
         self.assertEqual(out2, r"\(F \cdot dr = 0\)")
 
+    def test_mojibake_dot_product_repaired(self):
+        # Live: "Evaluate the dot product F C2dr and integrate" — the middle dot's first UTF-8 byte (0xC2)
+        # survived as literal text.
+        out = _sanitize_math_in_text("Evaluate the dot product F C2dr and integrate over the limits.")
+        self.assertNotIn("C2dr", out)
+        self.assertIn(r"F \(\cdot\) dr", out)
+
+    def test_c2_in_ordinary_prose_is_untouched(self):
+        for s in ("the C2 molecule bonds", "cell C2 drives the total", "vitamin C2 daily"):
+            self.assertEqual(_sanitize_math_in_text(s), s)
+
+    def test_stray_backslash_period_stripped(self):
+        # Live: a formula card ended "... \,dV .\] \." — the trailing backslash-period is pure junk.
+        out = _sanitize_math_in_text(r"\[ \iint_{S} F \cdot dS = \iiint_{V} \nabla \cdot F \,dV .\] \.")
+        self.assertFalse(out.endswith("\\."))
+        self.assertIn(r"\]", out)
+
     def test_applies_across_card_points(self):
         cards = [{"points": [r"\text{I} = \frac{\text{V}}{\text{R}}", "plain bullet", r"$$x = y$$"]}]
         _sanitize_card_math(cards)

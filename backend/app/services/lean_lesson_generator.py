@@ -484,6 +484,52 @@ def _should_preserve_bullet_start_case(text: str) -> bool:
     return False
 
 
+# --- orphaned-math re-inlining (recurring live defect class since the CA-path rounds) ------------------
+# The model (or an upstream split) pulls an inline math expression out of its sentence into its own
+# math-only sub-bullet, leaving the parent grammatically broken. Two live shapes:
+#   (a) parent ends on a dangling connector:  "the path C described parametrically by" / "  - \(r(t)=(t,t^2)\)"
+#   (b) parent lost its SUBJECT to the sub-bullet: "Represents the flux across the surface, ..." /
+#       "  - \(\iint_S F \cdot dS\)"
+# Repair re-inlines the math where the grammar says it belongs. Deliberately narrow: the sub-bullet must be
+# MATH-ONLY (one \(...\)/\[...\] span, optional trailing punctuation), and a parent ending in ":" is the
+# CORRECT frame+sub-bullet shape ("State the formula that applies:") and is never touched.
+_MATH_ONLY_SUB_RE = re.compile(r"^(\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\])\s*[.,]?$")
+_DANGLING_CONNECTOR_RE = re.compile(
+    r"\b(?:by|as|of|into|with|to|from|for|via|using|denoted|equals|is|are|be|and|or|the|an?)\s*$",
+    re.IGNORECASE)
+_MISSING_SUBJECT_VERB_RE = re.compile(
+    r"^(Represents|Denotes|Signifies|Measures|Describes|Indicates|Gives|Shows|Equals|Computes|"
+    r"Evaluates|Captures|Defines|Yields)\b")
+
+
+def _reinline_orphaned_math(points: list[str]) -> list[str]:
+    out: list[str] = []
+    i = 0
+    while i < len(points):
+        p, nxt = points[i], (points[i + 1] if i + 1 < len(points) else None)
+        if isinstance(p, str) and isinstance(nxt, str):
+            sub = re.match(r"^\s+-\s+(.*)$", nxt)
+            inner = sub.group(1).strip() if sub else ""
+            if sub and _MATH_ONLY_SUB_RE.match(inner):
+                p_stripped = p.rstrip()
+                lead_ws = p[:len(p) - len(p.lstrip())]
+                body = p.lstrip()
+                if not p_stripped.endswith(":") and _DANGLING_CONNECTOR_RE.search(p_stripped):
+                    out.append(f"{p_stripped} {inner}")
+                    i += 2
+                    continue
+                vm = _MISSING_SUBJECT_VERB_RE.match(body)
+                if vm:
+                    verb = vm.group(1)
+                    math = inner.rstrip(".,")
+                    out.append(f"{lead_ws}{math} {verb[0].lower()}{verb[1:]}{body[len(verb):]}")
+                    i += 2
+                    continue
+        out.append(p)
+        i += 1
+    return out
+
+
 def _merge_bullet_fragments(points: list[str]) -> list[str]:
     """Merge sub-bullets that are sentence fragments back into the previous
     bullet so each rendered bullet is a complete clause/idea.
@@ -717,6 +763,7 @@ def _lean_card_to_legacy(
     ]
     points = _normalize_bullet_shape(raw_points)
     points = _merge_bullet_fragments(points)
+    points = _reinline_orphaned_math(points)
     points = _rewrite_call_stack_syntax(points)
     points = _sentence_case_bullet_starts(points)
     points = [_wrap_bare_latex(_repair_latex_delimiters(p)) for p in points]
@@ -9069,6 +9116,14 @@ _BARE_SPACING_TOKEN = re.compile(r"\\[,;!:](?=\s|$)")
 # the unambiguous brace-subscript form, so a code identifier like int_count is never touched. The whole
 # atom (command + braced subscript) is matched so the repair can wrap it in \(...\) in one substitution.
 _BACKSLASHLESS_INT = re.compile(r"(?<![A-Za-z\\])((?:i{1,2}|o)?int)_\{([^{}]*)\}")
+# Encoding-mangled dot product (live: "Evaluate the dot product F C2dr and integrate" — the middle dot's
+# first UTF-8 byte, 0xC2, survived as literal text). Unambiguous only in the exact "<letter> C2d<letter>"
+# shape: no English word or identifier looks like "C2dr"/"C2dS".
+_MOJIBAKE_DOT_PRODUCT = re.compile(r"\b([A-Za-z]) C2\s*d([A-Za-z])\b")
+# A stray "\." token (backslash-period) left after a display block ("... \,dV .\] \.") — renders as literal
+# backslash-dot; pure junk outside math spans.
+_STRAY_BACKSLASH_PERIOD = re.compile(r"\\\.")
+
 # The model sometimes invents %...% as a math delimiter (live: "In this equation, %F% represents the vector
 # field", practice "%z = x^2 + y^2% for %0 ≤ z ≤ 1%") — rendered as literal percent signs. Conservative
 # repair to \(...\): the OPENING % must be followed by a non-space non-digit (a percentage like "20% to
@@ -9122,6 +9177,8 @@ def _sanitize_math_in_text(text: str) -> str:
     # lost its backslash ("int_{S}" -> "\(\int_{S}\)" — by this point _wrap_bare_latex has already run, so a
     # bare repaired command would never get wrapped; wrap it here directly).
     s = _sub_outside_math_spans(_BARE_SPACING_TOKEN, " ", s)
+    s = _sub_outside_math_spans(_STRAY_BACKSLASH_PERIOD, "", s)
+    s = _MOJIBAKE_DOT_PRODUCT.sub(r"\1 \\(\\cdot\\) d\2", s)
     s = _sub_outside_math_spans(_BACKSLASHLESS_INT, r"\\(\\\1_{\2}\\)", s)
     if "%" in s:
         out_parts: list[str] = []
