@@ -1612,7 +1612,8 @@ class GoalRequirementsFirst(unittest.TestCase):
         fn, calls = self._fn(plan)
         topics = generate_decomposed_topics("learn fluid turbulence", "s", model_fn=fn)
         titles = [t["title"] for t in topics]
-        self.assertTrue(any("Energy cascade and dissipation" in t for t in titles), titles)
+        # titles are book-title-cased at the end of decomposition — match case-insensitively
+        self.assertTrue(any("energy cascade and dissipation" in t.lower() for t in titles), titles)
 
     def test_owned_requirements_add_nothing(self):
         from app.services.topic_decomposition_pipeline import generate_decomposed_topics
@@ -1639,10 +1640,10 @@ class GoalRequirementsFirst(unittest.TestCase):
         fn, calls = self._fn(plan)
         topics = generate_decomposed_topics("learn fluid turbulence", "s", model_fn=fn)
         titles = [t["title"] for t in topics]
-        self.assertTrue(any("Flow regimes" in t for t in titles), titles)      # R1 not carried either
+        self.assertTrue(any("flow regimes" in t.lower() for t in titles), titles)      # R1 not carried either
         # R2's claim fails verification -> synthesized (name check via requirement name)
         self.assertTrue(any("Energy cascade" not in t or True for t in titles))  # sanity no-crash
-        self.assertTrue(any("Flow regimes" in t for t in titles))
+        self.assertTrue(any("flow regimes" in t.lower() for t in titles))
 
     def test_goal_requirements_persisted_on_intro(self):
         from app.services.topic_decomposition_pipeline import generate_decomposed_topics

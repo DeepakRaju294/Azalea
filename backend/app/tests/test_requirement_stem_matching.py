@@ -89,5 +89,47 @@ class FamilySurveyRegressionGuard(unittest.TestCase):
                         "pre-order requirement must still get its own synthesized topic")
 
 
+class BookTitleCase(unittest.TestCase):
+    """Live (topic 2 on a Stokes' path): a synthesized topic inherits its requirement's name VERBATIM —
+    "The divergence theorem" shipped lowercase beside Title Case siblings. Every final topic title is now
+    book-title-cased; words already carrying an uppercase (Stokes', BST, Pre-order) are never touched."""
+
+    def test_book_title_case_rules(self):
+        from app.services.topic_decomposition_pipeline import _book_title_case
+        self.assertEqual(_book_title_case("The divergence theorem"), "The Divergence Theorem")
+        self.assertEqual(_book_title_case("introduction to stokes theorem"), "Introduction to Stokes Theorem")
+        self.assertEqual(_book_title_case("Stokes' Theorem"), "Stokes' Theorem")           # untouched
+        self.assertEqual(_book_title_case("Comparing RANS and LES Models"),
+                         "Comparing RANS and LES Models")                                   # acronyms kept
+        self.assertEqual(_book_title_case("Pre-order traversal"), "Pre-order Traversal")   # hyphen word kept
+        self.assertEqual(_book_title_case("applications of the theorem in physics"),
+                         "Applications of the Theorem in Physics")
+
+    def test_synthesized_topic_title_is_title_cased_end_to_end(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R1", "name": "Stokes' theorem statement", "kind": "core",
+             "statement": "state and interpret Stokes' theorem"},
+            {"requirement_id": "R2", "name": "the divergence theorem", "kind": "core",
+             "statement": "apply the divergence theorem and its relationship to flux"},
+        ]}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [{"topic_id": "t1", "capability_id": "t1", "subject_key": "stokes_theorem",
+                            "primary_action": "apply", "content_role": "core",
+                            "topic_type": "math_formula_method", "title": "Stokes' Theorem",
+                            "unit_title": "u", "purpose": "p",
+                            "in_scope": ["statement of stokes theorem"],
+                            "covers_requirements": ["R1"], "basis": "goal"}]}
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+        topics = generate_decomposed_topics("want to learn about stokes theorem", "s", model_fn=fn)
+        titles = [t["title"] for t in topics]
+        self.assertIn("The Divergence Theorem", titles)          # synthesized from lowercase R2 name
+        self.assertNotIn("the divergence theorem", titles)
+        for title in titles:
+            first = title.split()[0]
+            self.assertTrue(first[0].isupper() or not first[0].isalpha(), title)
+
+
 if __name__ == "__main__":
     unittest.main()

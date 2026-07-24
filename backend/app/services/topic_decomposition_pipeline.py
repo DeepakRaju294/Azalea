@@ -833,6 +833,22 @@ _INTRO_FILLER = frozenset({
 _TITLE_SMALL_WORDS = frozenset({"and", "or", "of", "the", "a", "an", "to", "for", "in", "on", "with", "by"})
 
 
+def _book_title_case(title: str) -> str:
+    """Book-style title case: capitalize every word except small connectives ("to"/"and"/"of"...), which
+    stay lowercase unless they open the title. A word already carrying ANY uppercase (Stokes', BST, RANS,
+    Pre-order, LaTeX) is left byte-for-byte alone — .capitalize() would destroy acronyms and possessives."""
+    words = str(title or "").split()
+    out: list[str] = []
+    for j, w in enumerate(words):
+        if any(c.isupper() for c in w):
+            out.append(w)
+        elif j and w.lower() in _TITLE_SMALL_WORDS:
+            out.append(w.lower())
+        else:
+            out.append(w[:1].upper() + w[1:])
+    return " ".join(out)
+
+
 def _intro_title(goal: str | None) -> str:
     """A clean, presentable intro title from a messy goal ('wANT TO LEARN ABOUT bayes...' ->
     'Introduction to Bayes Theorem ...'). Strips leading preamble words and normalizes wild casing."""
@@ -1774,12 +1790,20 @@ def generate_decomposed_topics(
     _collapse_near_duplicate_topics(topics_out)
     ordered = sorted(topics_out, key=lambda t: int(t.get("order_index") or 0))
     _disambiguate_topic_titles(ordered, goal)
+    # Book-title-case every final title (product decision): a synthesized topic inherits its requirement's
+    # name VERBATIM and requirement names are sentence-cased prose ("The divergence theorem" shipped as a
+    # topic title, lowercase, beside model-authored Title Case siblings). Words already carrying an
+    # uppercase anywhere (Stokes', BST, RANS, Pre-order) are never touched; small words stay lowercase
+    # except in first position.
+    for t in ordered:
+        if t.get("title"):
+            t["title"] = _book_title_case(str(t["title"]))
     title_by_id = {str(t.get("topic_id")): str(t.get("title") or "") for t in ordered if t.get("title")}
     # synthesized follow-ups have no title yet — give title_by_id their adapted title too
     for i, t in enumerate(ordered, start=1):
         if not t.get("title"):
             subject = str(t.get("subject_key") or "")
-            title_by_id[str(t.get("topic_id"))] = (
+            title_by_id[str(t.get("topic_id"))] = _book_title_case(
                 f"Implementing {_subject_phrase(subject)}"
                 if canonical_action(t.get("primary_action")) == "implement" else _subject_phrase(subject))
 
