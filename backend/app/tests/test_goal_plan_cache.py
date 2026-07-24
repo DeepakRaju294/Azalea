@@ -6,6 +6,7 @@ always-on cache would make those order-dependent on whatever goal string a prior
 Every test here explicitly enables the flag and points at an isolated scratch file, then restores both.
 Run: OPENAI_API_KEY=dummy python -m unittest app.tests.test_goal_plan_cache
 """
+import contextlib
 import os
 import shutil
 import tempfile
@@ -132,6 +133,111 @@ class KeyCollisionGuard(_CacheTestCase):
             self.assertIsNotNone(gpc.lookup_cached_plan("bst traversal"))  # same goal -> still a hit
         finally:
             gpc.goal_key_for = orig
+
+
+_RELEVANCE_FLAG = "AZALEA_PREREQ_RELEVANCE_CHECK"
+
+
+def _requirements_response(prereq_names):
+    return {"requirements": [{"requirement_id": "R1", "name": "n", "kind": "core", "statement": "s"}],
+            "assumed_prerequisites": [{"name": name, "gloss": "g", "required_knowledge": "r"}
+                                      for name in prereq_names]}
+
+
+class PrereqRelevanceFilterBasic(unittest.TestCase):
+    """The live bug this was built for: 'vector calculus' as a prerequisite of a Stokes'-theorem goal
+    (circular) alongside 'differential equations' (unrelated) — neither existing structural guard catches
+    either. Cache stays disabled here (default) so these tests exercise only the filter, in isolation."""
+
+    def test_flag_off_by_default_a_rejecting_classifier_is_never_consulted(self):
+        from app.services.topic_decomposition_pipeline import _goal_requirements
+        response = _requirements_response(["vector calculus", "differential equations"])
+        relevance_calls = []
+
+        def relevance_fn(payload):
+            relevance_calls.append(payload)
+            return {"relevant": False, "rationale": "circular"}
+
+        _, prereqs, _ = _goal_requirements("learn stokes theorem", "s", lambda p: response,
+                                           relevance_model_fn=relevance_fn)
+        self.assertEqual({p["name"] for p in prereqs}, {"vector calculus", "differential equations"})
+        self.assertEqual(len(relevance_calls), 0)
+
+    def test_flag_on_rejected_prereq_is_dropped_accepted_is_kept(self):
+        from app.services.topic_decomposition_pipeline import _goal_requirements
+        response = _requirements_response(["vector calculus", "line integrals"])
+
+        def relevance_fn(payload):
+            return {"relevant": payload["canonical_name"] != "vector calculus", "rationale": "x"}
+
+        with _flag_on(_RELEVANCE_FLAG):
+            _, prereqs, _ = _goal_requirements("learn stokes theorem", "s", lambda p: response,
+                                               relevance_model_fn=relevance_fn)
+        self.assertEqual({p["name"] for p in prereqs}, {"line integrals"})
+
+    def test_flag_on_one_classifier_failure_does_not_affect_other_candidates(self):
+        from app.services.topic_decomposition_pipeline import _goal_requirements
+        response = _requirements_response(["vector calculus", "line integrals", "differential equations"])
+
+        def relevance_fn(payload):
+            name = payload["canonical_name"]
+            if name == "line integrals":
+                raise RuntimeError("simulated classifier failure")
+            return {"relevant": name != "vector calculus", "rationale": "x"}
+
+        with _flag_on(_RELEVANCE_FLAG):
+            _, prereqs, _ = _goal_requirements("learn stokes theorem", "s", lambda p: response,
+                                               relevance_model_fn=relevance_fn)
+        # "vector calculus" confidently rejected -> dropped; "line integrals" failed -> kept (fail-open);
+        # "differential equations" confidently accepted -> kept.
+        self.assertEqual({p["name"] for p in prereqs}, {"line integrals", "differential equations"})
+
+    def test_flag_on_no_prereqs_is_a_no_op(self):
+        from app.services.topic_decomposition_pipeline import _goal_requirements
+        response = _requirements_response([])
+        calls = []
+
+        def relevance_fn(payload):
+            calls.append(1)
+            return {"relevant": False, "rationale": "x"}
+
+        with _flag_on(_RELEVANCE_FLAG):
+            _, prereqs, _ = _goal_requirements("learn stokes theorem", "s", lambda p: response,
+                                               relevance_model_fn=relevance_fn)
+        self.assertEqual(prereqs, [])
+        self.assertEqual(len(calls), 0)
+
+
+@contextlib.contextmanager
+def _flag_on(name):
+    prev = os.environ.get(name)
+    os.environ[name] = "1"
+    try:
+        yield
+    finally:
+        if prev is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = prev
+
+
+class PrereqRelevanceFilterCaching(_CacheTestCase):
+    """Filtering happens BEFORE store_plan — a rejected prerequisite must never reach the cache, which is
+    what made the live bug persist (the same bad 'vector calculus'/'differential equations' pair was served
+    from cache 15 times before being found)."""
+
+    def test_rejected_prereq_never_reaches_the_cache(self):
+        from app.services.topic_decomposition_pipeline import _goal_requirements
+        response = _requirements_response(["vector calculus", "line integrals"])
+
+        def relevance_fn(payload):
+            return {"relevant": payload["canonical_name"] != "vector calculus", "rationale": "x"}
+
+        with _flag_on(_RELEVANCE_FLAG):
+            _goal_requirements("learn stokes theorem", "s", lambda p: response, relevance_model_fn=relevance_fn)
+            cached = gpc.lookup_cached_plan("learn stokes theorem")
+        self.assertIsNotNone(cached)
+        self.assertEqual({p["name"] for p in cached["assumed_prerequisites"]}, {"line integrals"})
 
 
 class RequirementsCallIntegration(_CacheTestCase):

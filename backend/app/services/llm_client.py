@@ -1470,6 +1470,48 @@ def generate_prereq_scope_classification(
         raise RuntimeError("OpenAI returned invalid prereq scope classification JSON") from exc
 
 
+# Prerequisite RELEVANCE (distinct from scope classification above): is a claimed assumed_prerequisite
+# actually true/necessary for the goal, vs circular (the prerequisite IS the broader field the goal's own
+# topic belongs to) or simply unrelated. Same thin-transport convention — enum/bool coercion + safe fallback
+# stays Python-side in app/services/prereq_relevance_classifier.py.
+PREREQ_RELEVANCE_CLASSIFICATION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "relevant": {"type": "boolean"},
+        "rationale": {"type": "string"},
+    },
+    "required": ["relevant", "rationale"],
+    "additionalProperties": False,
+}
+
+
+def generate_prereq_relevance_classification(
+    system_prompt: str,
+    user_prompt: str,
+) -> dict[str, Any]:
+    response = _create_with_usage(
+        "prereq_relevance_classification",
+        model=OPENAI_MODEL,
+        input=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        text={
+            "format": {
+                "type": "json_schema",
+                "name": "azalea_prereq_relevance_classification",
+                "schema": PREREQ_RELEVANCE_CLASSIFICATION_SCHEMA,
+                "strict": True,
+            }
+        },
+    )
+
+    try:
+        return _loads_llm_json(response.output_text)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("OpenAI returned invalid prereq relevance classification JSON") from exc
+
+
 # ---------------------------------------------------------------------------
 # Lean lesson schema (v2) — 6 card types, 11 fields per card, no visuals
 # ---------------------------------------------------------------------------

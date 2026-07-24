@@ -54,6 +54,13 @@ def _prereq_scope_live_enabled() -> bool:
     return os.getenv("AZALEA_PREREQ_SCOPE_LIVE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _prereq_relevance_check_enabled() -> bool:
+    """The prerequisite-RELEVANCE filter's kill-switch (see _goal_requirements) — off by default, independent
+    of every other prereq-related flag. Distinct question from Guard 4's scope check: this asks whether a
+    claimed prerequisite is TRUE at all, not where an already-trusted one belongs."""
+    return os.getenv("AZALEA_PREREQ_RELEVANCE_CHECK", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _coerce(raw: Any) -> dict[str, Any]:
     if isinstance(raw, str):
         try:
@@ -882,7 +889,8 @@ def _synthesize_intro_topic(goal: str | None) -> dict[str, Any]:
     }
 
 
-def _goal_requirements(goal: str | None, chunks_text: str, fn: ModelFn, feedback: str | None = None
+def _goal_requirements(goal: str | None, chunks_text: str, fn: ModelFn, feedback: str | None = None,
+                       relevance_model_fn: Any = None
                        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
     """The REQUIREMENTS-FIRST call (curriculum-authority design): decide WHAT the path must cover BEFORE any
     topic exists, in a dedicated frame. Returns (requirements, assumed_prerequisites) — the curriculum call
@@ -900,7 +908,14 @@ def _goal_requirements(goal: str | None, chunks_text: str, fn: ModelFn, feedback
     feedback-informed result is the improved canonical curriculum going forward, not a one-off.
 
     Third return value is the SOURCE, for the caller's decision trace: "disabled" | "cache_hit" |
-    "fresh_call" | "fresh_call_feedback" | "empty" | "failed"."""
+    "fresh_call" | "fresh_call_feedback" | "empty" | "failed".
+
+    RELEVANCE FILTER (AZALEA_PREREQ_RELEVANCE_CHECK, off by default): before caching, each freshly-claimed
+    prerequisite is optionally checked for whether it's actually true/necessary (not just structurally
+    well-formed) — see app/services/prereq_relevance_classifier.py. Fails toward KEEPING a prerequisite on
+    any classifier error/uncertainty (the opposite safety direction from Guard 4 below, since dropping is the
+    consequential action here). A cache HIT never re-runs this filter — filtering only happens once, at the
+    point a prerequisite is first proposed, so a rejected candidate never even reaches the cache."""
     if os.getenv("AZALEA_GOAL_REQUIREMENTS", "") == "0":
         return [], [], "disabled"
     has_feedback = bool(feedback and feedback.strip())
@@ -935,6 +950,22 @@ def _goal_requirements(goal: str | None, chunks_text: str, fn: ModelFn, feedback
                 prereqs.append({"name": str(p["name"]).strip(),
                                 "gloss": str(p.get("gloss") or "").strip(),
                                 "required_knowledge": str(p.get("required_knowledge") or "").strip()})
+        if prereqs and _prereq_relevance_check_enabled() and goal and goal.strip():
+            from app.services.prereq_relevance_classifier import classify_prereq_relevance
+            kept: list[dict[str, Any]] = []
+            for p in prereqs:
+                try:
+                    relevant, rationale = classify_prereq_relevance(
+                        canonical_name=p["name"], goal=goal, gloss=p.get("gloss") or "",
+                        model_fn=relevance_model_fn)
+                except Exception as exc:  # noqa: BLE001 — a failed check must never drop a prerequisite
+                    _log.warning("prereq relevance check failed for %r: %s", p["name"], exc)
+                    relevant, rationale = True, ""
+                if relevant:
+                    kept.append(p)
+                else:
+                    _log.info("prereq relevance check: dropped %r for goal %r (%s)", p["name"], goal, rationale)
+            prereqs = kept
         reqs, prereqs = reqs[:8], prereqs[:3]
         if reqs:
             _log.info("goal requirements: %d requirements for goal %r: %s (prereqs: %s)", len(reqs), goal,
@@ -1192,16 +1223,19 @@ def generate_decomposed_topics(
     coding_follow_ups: bool = True,
     domain: str = "",
     prereq_scope_model_fn: Optional[Callable[[dict[str, Any]], Any]] = None,
+    prereq_relevance_model_fn: Optional[Callable[[dict[str, Any]], Any]] = None,
 ) -> list[dict[str, Any]]:
     """Single-call decompose -> append coding follow-ups -> validate -> adapt to legacy topics.
     Returns [] when the model produced nothing usable (caller falls back to the legacy generator).
     `coding_follow_ups=False` (non-coding domains) skips the 'Implementing X' follow-up append.
-    `domain` and `prereq_scope_model_fn` feed Guard 4 (AZALEA_PREREQ_SCOPE_LIVE) — see below; both are
-    optional and inert unless that flag is on."""
+    `domain` and `prereq_scope_model_fn` feed Guard 4 (AZALEA_PREREQ_SCOPE_LIVE) — see below; `prereq_
+    relevance_model_fn` feeds the prerequisite-relevance filter (AZALEA_PREREQ_RELEVANCE_CHECK) inside
+    _goal_requirements. All three are optional and inert unless their respective flag is on."""
     fn = model_fn or _default_model_fn
     # REQUIREMENTS FIRST (curriculum authority): decide WHAT must be covered before any topic exists, then
     # decompose AGAINST those requirements. Best-effort: [] keeps the old single-call behavior exactly.
-    requirements, req_prereqs, _req_source = _goal_requirements(goal, chunks_text, fn, feedback=feedback)
+    requirements, req_prereqs, _req_source = _goal_requirements(
+        goal, chunks_text, fn, feedback=feedback, relevance_model_fn=prereq_relevance_model_fn)
     payload = {"system": SYSTEM_PROMPT,
                "user": build_decomposition_prompt(goal=goal, chunks_text=chunks_text, feedback=feedback,
                                                   goal_requirements=requirements)}
