@@ -55,6 +55,22 @@ class SanitizeMath(unittest.TestCase):
         out = _sanitize_math_in_text(r"P(A|B) = \frac{P(B|A)P(A)}{P(B)}")
         self.assertEqual(out, r"\(P(A|B) = \frac{P(B|A)P(A)}{P(B)}\)")
 
+    def test_doubled_backslash_before_delimiter_is_collapsed(self):
+        # Live regression (Stokes' theorem "formula" card): the model over-escaped the OPENING delimiter
+        # ("\\(" instead of "\(") while the rest of the equation was correctly single-escaped. The old
+        # "already delimited, leave alone" check ("\\(" in s) was fooled — "\\(" (two backslashes) CONTAINS
+        # the substring "\(" (one backslash) — so this slipped through unrepaired and rendered as literal
+        # backslash-garbage instead of a valid delimiter.
+        s = r"\\(\int\)_S (\(\nabla\) \(\times\) \textbf{F}) \bullet d\textbf{S} = \\(\int\)_{C}"
+        out = _sanitize_math_in_text(s)
+        self.assertNotIn("\\\\(", out)   # no doubled opening delimiter survives
+        self.assertNotIn("\\\\)", out)   # no doubled closing delimiter survives
+        self.assertEqual(out, r"\(\int\)_S (\(\nabla\) \(\times\) \textbf{F}) \bullet d\textbf{S} = \(\int\)_{C}")
+
+    def test_doubled_bracket_delimiter_is_collapsed(self):
+        out = _sanitize_math_in_text(r"a display block: \\[x = y\\]")
+        self.assertEqual(out, r"a display block: \[x = y\]")
+
     def test_applies_across_card_points(self):
         cards = [{"points": [r"\text{I} = \frac{\text{V}}{\text{R}}", "plain bullet", r"$$x = y$$"]}]
         _sanitize_card_math(cards)

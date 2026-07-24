@@ -8968,6 +8968,12 @@ _FRAC_SQRT_EQN = re.compile(
 # A `\(` opening INSIDE a function-call argument list ("C(n, \(r)") — the malformed-nesting signature this
 # sanitizer itself used to produce; heal by stripping all inline delimiters and re-wrapping cleanly.
 _MALFORMED_INLINE = re.compile(r"\w\(\s*[^()]*,\s*\\\(")
+# A DOUBLED backslash immediately before a delimiter char (`\\(` `\\)` `\\[` `\\]`) — the model occasionally
+# over-escapes when writing LaTeX inside a JSON string. Left alone, this fooled the "already delimited" check
+# below: `\\(` (two literal backslashes + paren) CONTAINS the substring `\(` (one backslash + paren), so it
+# slipped through unrepaired and rendered as literal backslash-garbage instead of a valid delimiter (live: a
+# Stokes' theorem "formula" card). Collapse to a single backslash before that check runs.
+_DOUBLED_DELIM_ESCAPE = re.compile(r"\\\\(?=[()\[\]])")
 
 
 def _sanitize_math_in_text(text: str) -> str:
@@ -8975,6 +8981,7 @@ def _sanitize_math_in_text(text: str) -> str:
     optional 'LHS =' prefix) and standalone greek in inline `\\(...\\)`. Leaves bullets that are already
     delimited (grounded `$$`/`\\(` content) untouched."""
     s = str(text)
+    s = _DOUBLED_DELIM_ESCAPE.sub(lambda m: "\\", s)   # \\( \\) \\[ \\] -> \( \) \[ \] before anything else
     if _MALFORMED_INLINE.search(s):
         # Malformed nesting ("C(n, \(r) = ...\)") — strip the misplaced inline delimiters and fall through
         # so the whole equation is re-wrapped cleanly below.
