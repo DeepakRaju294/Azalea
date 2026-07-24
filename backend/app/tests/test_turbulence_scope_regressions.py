@@ -168,6 +168,45 @@ class TurbulenceScopeCoverageTests(unittest.TestCase):
         self.assertTrue(lesson["validation_report"]["requires_regeneration"])
 
 
+class PracticeCardWordingDoesNotSatisfyOwnedCoverage(unittest.TestCase):
+    """Live bug (Stokes' theorem path review, 'Fundamentals of Vector Calculus' repeat complaint): a
+    concept_intuition topic synthesized to own "gradients, curls, divergences" instead wrote its
+    background/edge_case cards entirely about Stokes' theorem itself (explicitly out of scope) — but
+    validate_owned_scope_coverage flagged only 1 of its 4 owned commitments, because the OTHER 3 "passed"
+    purely on the practice card's own question wording echoing the commitment's words ("Explain the
+    significance of curls and gradients...") — never any actual teaching content."""
+
+    def test_practice_only_mention_is_not_substantive_coverage(self):
+        from app.services.scope_validator import validate_owned_scope_coverage
+
+        cards = [
+            {"blueprint_key": "background", "title": "What is Stokes' Theorem?",
+             "points": ["Stokes' Theorem relates surface integrals to line integrals."]},
+            {"blueprint_key": "edge_case", "points": [
+                "A surface with zero curl indicates no rotation in the vector field."]},
+            {"blueprint_key": "practice",
+             "title": "Explain the Significance of Curls and Gradients in Physics",
+             "points": ["Articulate how gradients represent potential changes in a field."]},
+        ]
+        contract = {"owned_scope_content": ["gradients and their significance",
+                                            "understanding curls and divergences"]}
+        issues = validate_owned_scope_coverage(cards, contract)
+        self.assertTrue(any("gradients and their significance" in i for i in issues))
+        self.assertTrue(any("understanding curls and divergences" in i for i in issues))
+
+    def test_real_teaching_content_still_counts_as_covered(self):
+        from app.services.scope_validator import validate_owned_scope_coverage
+
+        cards = [
+            {"blueprint_key": "background", "points": ["Orientation only."]},
+            {"blueprint_key": "edge_case", "points": [
+                "The gradient's significance: it points in the direction of steepest increase."]},
+            {"blueprint_key": "practice", "points": ["Explain the significance of gradients."]},
+        ]
+        contract = {"owned_scope_content": ["gradients and their significance"]}
+        self.assertEqual(validate_owned_scope_coverage(cards, contract), [])
+
+
 class BareSiblingTitlePhraseNoise(unittest.TestCase):
     """Live bug (Stokes' theorem path review): out_of_scope_content/must_not_teach include bare SIBLING
     TOPIC TITLES (build_scope_boundaries_from_siblings appends sibling_title directly), not just real

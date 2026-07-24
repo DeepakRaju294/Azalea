@@ -277,7 +277,15 @@ def validate_owned_scope_coverage(
         if not isinstance(card, dict):
             continue
         key = str(card.get("blueprint_key") or card.get("card_type") or "").strip().lower()
-        if key in {"background", "prerequisites", "takeaway", "summary"}:
+        # "practice"/"quick_practice" is excluded for the same reason background/prerequisites are: a
+        # QUESTION about a concept is not an explanation of it. A good practice question naturally echoes
+        # the topic's own scope-commitment wording ("Explain the significance of curls and gradients..."),
+        # which used to satisfy the token-overlap check below without any card ever teaching what a curl
+        # or gradient IS — live: a concept_intuition topic synthesized for "gradients, curls, divergences"
+        # wrote its background/edge_case cards entirely about a DIFFERENT topic (Stokes' theorem itself,
+        # explicitly out of scope), and only 1 of 4 owned commitments got flagged because the other 3
+        # "passed" purely on the practice card's own prompt phrasing.
+        if key in {"background", "prerequisites", "takeaway", "summary", "practice", "quick_practice"}:
             continue
         substantive_texts.append(collect_any_text(card))
     issues: list[str] = []
