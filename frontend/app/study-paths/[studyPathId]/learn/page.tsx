@@ -7546,7 +7546,6 @@ function shouldPreserveBulletStartCase(text: string) {
   if (/^(?:def|class|if|elif|else|for|while|return|import|from|try|except|with)\b/.test(stripped)) {
     return true;
   }
-  const firstWord = stripped.split(/[\s,;:.=()[\]{}]/, 1)[0] || "";
   return firstWord.includes("_");
 }
 
