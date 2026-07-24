@@ -182,6 +182,9 @@ class TestConceptDomainSuppression(unittest.TestCase):
         self.assertEqual(called["n"], 0)
         self.assertNotIn("worked_example",
                          [str(c.get("blueprint_key")) for c in lesson["lesson_cards"]])
+        trace = topic["decomposition_metadata"]["decision_trace"]
+        self.assertEqual(trace[-1]["stage"], "worked_example.concept_domain_no_adapter_suppressed")
+        self.assertEqual(trace[-1]["decision"], "removed 1 fabricated worked-example card(s)")
 
     def test_math_domain_example_not_suppressed(self):
         # A math-domain topic keeps its worked example (the gate is concept-only).

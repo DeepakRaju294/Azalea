@@ -857,6 +857,13 @@ def solve_worked_example(
                 from . import generation_report as _gr
                 _gr.we(final_source=None, tp_reason="withheld_supported_no_trace")
                 _gr.error("adapter-supported topic withheld (no shippable trace) — not falling to fallback")
+                from app.core.decision_trace import record_lesson_decision
+                record_lesson_decision(topic, "worked_example.withheld_supported_no_trace",
+                                       "no worked example shipped — not falling back to gen_foundation/legacy",
+                                       "an adapter exists for this topic (it IS supported), but solve_"
+                                       "trace_pipeline produced no shippable trace — a supported topic must "
+                                       "never fall to a from-scratch fabricated generator, so this stays "
+                                       "withheld instead")
                 return None
     except Exception:  # noqa: BLE001 — the trace pipeline must never break legacy generation
         pass
@@ -1730,6 +1737,12 @@ def apply_llm_solved_worked_example(
                     _log.info("worked-example: suppressed fabricated example on concept-domain topic %s "
                               "(no verifying adapter)", topic.get("id"))
                     _gr.error("concept-domain topic with no adapter: suppressed fabricated worked example")
+                    from app.core.decision_trace import record_lesson_decision
+                    record_lesson_decision(topic, "worked_example.concept_domain_no_adapter_suppressed",
+                                           f"removed {removed} fabricated worked-example card(s)",
+                                           "this is a QUALITATIVE (concept-domain) topic with no adapter "
+                                           "verifying it — a from-scratch worked example would be fabricated "
+                                           "and drift off-topic, so it's stripped rather than shipped")
                 return False
 
         is_coding = str(topic.get("topic_type") or "").lower() == "coding_implementation"

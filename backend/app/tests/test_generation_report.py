@@ -119,6 +119,62 @@ class TracePreservingFallback(unittest.TestCase):
         gr.finish_and_persist()
 
 
+class DecisionTraceInstrumentation(unittest.TestCase):
+    """Phase 2 of the decision-trace improvement: the withhold/fallback branches in trace_pipeline.py
+    now also write a persisted record_lesson_decision entry, not just a generation_report field."""
+
+    def test_plan_withholds_adapter_records_decision_trace(self):
+        topic = {"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough",
+                 "decomposition_metadata": {"scope_plan": {"we_policy": "withhold"}}}
+        gr.start(topic)
+        res = tp.solve_trace_pipeline(topic, format_fn=lambda p: {"cards": []})
+        self.assertIsNone(res)
+        trace = topic["decomposition_metadata"]["decision_trace"]
+        self.assertEqual(len(trace), 1)
+        self.assertEqual(trace[0]["stage"], "worked_example.plan_withholds_adapter")
+        gr.finish_and_persist()
+
+    def test_plan_adapter_mismatch_records_decision_trace(self):
+        topic = {"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough",
+                 "decomposition_metadata": {"scope_plan": {"verified_example": "prim"}}}
+        gr.start(topic)
+        res = tp.solve_trace_pipeline(topic, format_fn=lambda p: {"cards": []})
+        self.assertIsNone(res)
+        trace = topic["decomposition_metadata"]["decision_trace"]
+        self.assertEqual(len(trace), 1)
+        self.assertEqual(trace[0]["stage"], "worked_example.plan_adapter_mismatch")
+        self.assertEqual(trace[0]["detail"]["routed_adapter"], "kruskal")
+        self.assertEqual(trace[0]["detail"]["planned_slug"], "prim")
+        gr.finish_and_persist()
+
+    def test_no_teaching_trace_records_decision_trace(self):
+        topic = {"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"}
+        gr.start(topic)
+        with mock.patch("app.services.examples.trace_pipeline.select_instance", return_value=None):
+            res = tp.solve_trace_pipeline(topic, format_fn=lambda p: {"cards": []})
+        self.assertIsNone(res)
+        trace = topic["decomposition_metadata"]["decision_trace"]
+        self.assertEqual(len(trace), 1)
+        self.assertEqual(trace[0]["stage"], "worked_example.no_teaching_trace")
+        self.assertEqual(trace[0]["detail"]["adapter"], "kruskal")
+        gr.finish_and_persist()
+
+    def test_code_trace_drift_records_decision_trace(self):
+        topic = {"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"}
+        gr.start(topic)
+        with mock.patch("app.services.examples.code_execution_check.reproduces_trace_applies",
+                        return_value=True), \
+             mock.patch("app.services.examples.code_execution_check.code_reproduces_trace",
+                        return_value=["line 3 computes a different value than the trace"]):
+            res = tp.solve_trace_pipeline(topic, format_fn=lambda p: {"cards": []}, code="def kruskal(): pass")
+        self.assertIsNone(res)
+        trace = topic["decomposition_metadata"]["decision_trace"]
+        self.assertEqual(len(trace), 1)
+        self.assertEqual(trace[0]["stage"], "worked_example.code_trace_drift")
+        self.assertEqual(trace[0]["reason"], "line 3 computes a different value than the trace")
+        gr.finish_and_persist()
+
+
 class CodingRouting(unittest.TestCase):
     def test_supported_topic_withholds_instead_of_fabricating(self):
         # SPEC §1.2: an adapter-supported topic with NO shippable trace must WITHHOLD, never fall to a
@@ -138,6 +194,8 @@ class CodingRouting(unittest.TestCase):
         self.assertIsNone(res)                 # withheld (lean base stays)
         gf.assert_not_called()                 # never gen_foundation
         legacy.assert_not_called()             # never legacy
+        trace = topic["decomposition_metadata"]["decision_trace"]
+        self.assertEqual(trace[-1]["stage"], "worked_example.withheld_supported_no_trace")
 
     def test_coding_prefers_legacy_over_gen_foundation(self):
         # When the adapter defers, a CODING topic must use the bounded legacy structural solver, NOT
@@ -245,16 +303,19 @@ class TracePipelineRecordsOutcome(unittest.TestCase):
     def test_count_mismatch_ships_trace_preserving_and_records_cause(self):
         # SPEC §1.2/§4.3.1: count_mismatch no longer withholds-to-None; it ships a trace-preserving
         # narration and records WHY the LLM path was abandoned (narration_failed_reason=count_mismatch).
-        gr.start({"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"})
+        topic = {"title": "Kruskal's Algorithm Walkthrough", "topic_type": "algorithm_walkthrough"}
+        gr.start(topic)
         bad = lambda p: {"cards": [{"title": "x", "work": ["w"], "result": "r"}]}   # wrong card count (1)
         with _force_llm_path():
-            res = tp.solve_trace_pipeline({"title": "Kruskal's Algorithm Walkthrough",
-                                           "topic_type": "algorithm_walkthrough"}, format_fn=bad)
+            res = tp.solve_trace_pipeline(topic, format_fn=bad)
         self.assertIsNotNone(res)
         we = gr.current().worked_example
         self.assertTrue(we.get("tp_shipped"))
         self.assertEqual(we.get("tp_reason"), "trace_preserving_narration")
         self.assertEqual(we.get("narration_failed_reason"), "count_mismatch")
+        trace = topic["decomposition_metadata"]["decision_trace"]
+        self.assertEqual(trace[-1]["stage"], "worked_example.trace_preserving_narration")
+        self.assertEqual(trace[-1]["detail"]["narration_failed_reason"], "count_mismatch")
         gr.finish_and_persist()
 
     def test_no_adapter_is_recorded(self):

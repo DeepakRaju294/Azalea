@@ -700,12 +700,21 @@ def solve_trace_pipeline(topic: dict[str, Any], *, format_fn: Optional[FormatFn]
         _log.info("WORKED-EXAMPLE ADAPTER: topic=%r type=%s -> plan says NO adapter (we_policy=%s) — "
                   "adapter path skipped", title, ctype, scope_plan.get("we_policy"))
         _gr.we(adapter=None, tp_attempted=False, tp_reason="plan_withholds_adapter")
+        from app.core.decision_trace import record_lesson_decision
+        record_lesson_decision(topic, "worked_example.plan_withholds_adapter", "adapter path skipped",
+                               f"the certified scope plan says no adapter should back this topic's worked "
+                               f"example (we_policy={scope_plan.get('we_policy')!r})")
         return None
     adapter = route_adapter(topic)
     if adapter is not None and planned_slug and getattr(adapter, "slug", None) != planned_slug:
         _log.info("WORKED-EXAMPLE ADAPTER: topic=%r routed %s but plan certifies %s — adapter path skipped",
                   title, getattr(adapter, "slug", None), planned_slug)
         _gr.we(adapter=None, tp_attempted=False, tp_reason="plan_adapter_mismatch")
+        from app.core.decision_trace import record_lesson_decision
+        record_lesson_decision(topic, "worked_example.plan_adapter_mismatch", "adapter path skipped",
+                               f"routing found adapter {getattr(adapter, 'slug', None)!r}, but the plan "
+                               f"certified {planned_slug!r} at plan time — the plan is authoritative",
+                               routed_adapter=getattr(adapter, "slug", None), planned_slug=planned_slug)
         return None
     if adapter is not None:                                        # deterministic path (HARD guarantee)
         _log.info("WORKED-EXAMPLE ADAPTER: topic=%r type=%s -> adapter=%s (verified trace path)",
@@ -717,6 +726,10 @@ def solve_trace_pipeline(topic: dict[str, Any], *, format_fn: Optional[FormatFn]
             _log.warning("WORKED-EXAMPLE ADAPTER: topic=%r adapter=%s -> WITHHELD (no teaching trace) — defer",
                          title, adapter.slug)
             _gr.we(tp_shipped=False, tp_reason="no_teaching_trace")
+            from app.core.decision_trace import record_lesson_decision
+            record_lesson_decision(topic, "worked_example.no_teaching_trace", "withheld — no teaching trace",
+                                   f"adapter {adapter.slug!r} routed for this topic but produced no "
+                                   f"structurally-valid teaching trace for this instance", adapter=adapter.slug)
             return None
         result = _format_validate_ship(topic, trace, adapter, fmt, code=code)
         _log.info("WORKED-EXAMPLE ADAPTER: topic=%r adapter=%s -> %s",
@@ -802,6 +815,10 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
                 _log.error("trace_pipeline: %s canonical code does not reproduce the trace (variant drift) — "
                            "withholding: %s", getattr(adapter, "slug", "?"), drift[0])
                 _gr.we(tp_shipped=False, tp_reason="code_trace_drift", tp_detail=drift[:3], verified_steps=n_steps)
+                from app.core.decision_trace import record_lesson_decision
+                record_lesson_decision(topic, "worked_example.code_trace_drift",
+                                       "withheld — canonical code does not reproduce the trace", drift[0],
+                                       adapter=getattr(adapter, "slug", None))
                 return None
     for _ in range(_MAX_FORMAT_ATTEMPTS):
         attempts += 1
@@ -888,6 +905,14 @@ def _format_validate_ship(topic, trace, adapter, fmt, *, code: Optional[str] = N
     _gr.we(**_coverage_fields(trace, det_cards))               # CP6 coverage/terminal instrumentation
     _gr.we(**_checkpoint_coverage_fields(trace, det_cards, checkpoints))   # CP6b checkpoint provenance
     _gr.we(**_prose_validation_field(det_prose))               # CP6b structured prose_validation
+    from app.core.decision_trace import record_lesson_decision
+    record_lesson_decision(topic, "worked_example.trace_preserving_narration",
+                           f"shipped deterministic narration after {attempts} LLM attempt(s)",
+                           f"the LLM formatter failed its own gate on every attempt (last reason: "
+                           f"{reason!r}) — the trace itself is ground truth, so a trace-preserving "
+                           f"deterministic narration of it ships instead of discarding it",
+                           adapter=getattr(adapter, "slug", None), narration_failed_reason=reason,
+                           detail=detail[:3] if detail else None)
     return _to_solve_result(trace, det_cards, adapter=adapter, code=code)
 
 
