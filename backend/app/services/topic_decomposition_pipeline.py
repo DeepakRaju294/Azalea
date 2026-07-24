@@ -1002,6 +1002,20 @@ def _req_tokens(text: str) -> set[str]:
     return out
 
 
+def _stem6(tokens: set[str]) -> set[str]:
+    """Crude 6-char-prefix canonicalization on top of _req_tokens' plural strip, so DERIVATIONAL variants
+    of the same word meet: 'interpret'/'interpretation' -> 'interp', 'physics'/'physical' -> 'physic',
+    'evaluate'/'evaluating' -> 'evalua'. Live miss this fixes: R5 'state and interpret Stokes' theorem in
+    the context of physics and mathematics' shared only {stokes, theorem} with the real "Stokes' Theorem
+    Interpretation" topic — 'interpret' vs 'interpretation' and 'physics' vs 'physical' each failed exact
+    equality — one token short of ownership, so a duplicate 'Stokes' theorem statement' topic was
+    synthesized ON TOP of the goal-core topic that already taught it (and the learner met the theorem's
+    statement twice). Short tokens (<=6 chars) pass through unchanged, so distinguishing prefixes like
+    'pre'/'in' in the family-survey case are untouched — verified against the documented reverted-fix trap
+    in _requirement_covered_by_topics's KNOWN LIMITATION note."""
+    return {t[:6] if len(t) > 6 else t for t in tokens}
+
+
 def _requirement_covered_by_topics(req: dict[str, Any], raw_topics: list[dict[str, Any]]) -> bool:
     """SEMANTIC ownership: a requirement is covered when a topic's title + scope actually carries its content.
     Used two ways: as the fallback when the model forgot the requirement ID (live: 'Energy Transfer in
@@ -1037,7 +1051,9 @@ def _topics_matching_requirement(req: dict[str, Any], raw_topics: list[dict[str,
     for t in raw_topics:
         tt = _req_tokens(" ".join([str(t.get("title") or ""), str(t.get("subject_key") or ""),
                                    *[str(s) for s in (t.get("in_scope") or [])]]))
-        overlap = rt & tt
+        # stem-canonicalized overlap (see _stem6): exact-token equality missed derivational variants
+        # ('interpret'/'interpretation') and synthesized duplicate topics on top of real owners.
+        overlap = _stem6(rt) & _stem6(tt)
         if len(overlap) >= 3 or (len(rt) <= 3 and len(overlap) >= 2):
             matches.append(t)
     return matches
@@ -1374,9 +1390,13 @@ def generate_decomposed_topics(
         # threshold, which requires the SHORT side to be <=3 tokens total; a synthesized topic's in_scope
         # embeds the requirement's full (long) statement, so neither side alone was ever short enough to
         # trigger that function's own short-topic exception.
+        # Stem-canonicalized (same _stem6 as the ownership check) so both passes agree on what counts as
+        # a shared token — 'evaluating'/'evaluate' variants meet, while short distinguishing prefixes
+        # ('pre'/'in') pass through unchanged and the family-survey regression stays impossible.
         _redundant_synthesized = [
             s for s in _synthesized
-            if any(len((_topic_identity_tokens(s) & _topic_identity_tokens(r)) - _cross_requirement_generic)
+            if any(len((_stem6(_topic_identity_tokens(s)) & _stem6(_topic_identity_tokens(r)))
+                       - _stem6(_cross_requirement_generic))
                    >= 2 for r in _non_synthesized)
         ]
         if _redundant_synthesized:

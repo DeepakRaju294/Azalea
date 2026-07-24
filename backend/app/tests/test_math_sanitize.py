@@ -120,6 +120,31 @@ class SanitizeMath(unittest.TestCase):
         s = "read the text explaining the theorem"
         self.assertEqual(_sanitize_math_in_text(s), s)
 
+    def test_equation_environment_marker_is_stripped(self):
+        # Live regression (goal-core background card): the model wrote a display-equation environment,
+        # _wrap_bare_latex wrapped the opener as its own math atom, and the card read
+        # "expressed as: \(\begin{equation}\)" followed by bare "=" bullets.
+        self.assertEqual(_sanitize_math_in_text(r"\(\begin{equation}\)"), "")
+        out = _sanitize_math_in_text(r"\begin{equation} x = y \end{equation}")
+        self.assertNotIn("begin", out)
+        self.assertNotIn("end{", out)
+        self.assertIn("x = y", out)
+
+    def test_junk_points_are_dropped_from_cards(self):
+        cards = [{"points": ["Mathematically, it is expressed as:", r"\(\begin{equation}\)", "=", "=",
+                             r"\(\int_C F \cdot dr\)"]}]
+        topic = {"title": "Stokes"}
+        _sanitize_card_math(cards, topic)
+        self.assertEqual(cards[0]["points"],
+                         ["Mathematically, it is expressed as:", r"\(\int_C F \cdot dr\)"])
+        counts = topic["decomposition_metadata"]["decision_trace"][-1]["detail"]["fix_counts"]
+        self.assertIn("math_junk_point_dropped", counts)
+
+    def test_legitimate_pure_math_point_is_kept(self):
+        cards = [{"points": [r"\(x = y\)", "  - \\(a + b\\)"]}]
+        _sanitize_card_math(cards)
+        self.assertEqual(cards[0]["points"], [r"\(x = y\)", "  - \\(a + b\\)"])
+
     def test_applies_across_card_points(self):
         cards = [{"points": [r"\text{I} = \frac{\text{V}}{\text{R}}", "plain bullet", r"$$x = y$$"]}]
         _sanitize_card_math(cards)

@@ -9023,6 +9023,9 @@ _STRAY_LATEX_LINEBREAK = re.compile(r"\\{2,}")
 # the doubled token arose.
 _DOUBLED_OPEN_DELIM = re.compile(r"\\\(\\\(")
 _DOUBLED_CLOSE_DELIM = re.compile(r"\\\)\\\)")
+# A \begin{...}/\end{...} environment marker — with or without a \(...\) wrapper an earlier pass may have
+# added around it. Markup only; the frontend's hand-rolled renderer has no environment support at all.
+_LATEX_ENVIRONMENT_MARKER = re.compile(r"(?:\\\()?\s*\\(?:begin|end)\s*\{[A-Za-z*]+\}\s*(?:\\\))?")
 
 
 def _sanitize_math_in_text(text: str) -> str:
@@ -9034,11 +9037,21 @@ def _sanitize_math_in_text(text: str) -> str:
     or a stray `\\`), and the old "already delimited, leave alone" short-circuit skipped both classes of bug
     whenever ANY part of the string already had a valid delimiter."""
     s = str(text)
+    # The leading indent is STRUCTURE, not junk — "  - " marks a sub-bullet, and the whitespace collapse
+    # below was silently flattening every sub-bullet into a main-level "- " line. Preserve it verbatim.
+    lead = re.match(r"[ \t]*", s).group(0)
     s = _DOUBLED_DELIM_ESCAPE.sub(lambda m: "\\", s)   # \\( \\) \\[ \\] -> \( \) \[ \] before anything else
     s = _DOUBLED_OPEN_DELIM.sub(r"\\(", s)
     s = _DOUBLED_CLOSE_DELIM.sub(r"\\)", s)
     s = _STRAY_LATEX_LINEBREAK.sub(" ", s)
+    # \begin{equation}/\end{align}-style environment markers are pure markup the frontend renderer has no
+    # concept of — strip them (keeping any content), including the already-wrapped form "\(\begin{equation}\)"
+    # that _wrap_bare_latex produces when the model emits an environment opener as its own bullet (live: a
+    # goal-core background card read 'expressed as: \(\begin{equation}\)' followed by two bare '=' bullets).
+    s = _LATEX_ENVIRONMENT_MARKER.sub("", s)
     s = re.sub(r"\s{2,}", " ", s).strip()
+    if s:
+        s = lead + s
     # \text{V} / \textbf{V} / \textit{V} / \mathbf{V} / \mathit{V} -> V (drop the unsupported command; the
     # frontend renderer supports none of this family, delimited or not).
     s = re.sub(r"\\(?:textbf|textit|mathbf|mathit|text)\s*\{([^{}]*)\}", r"\1", s)
@@ -9069,6 +9082,8 @@ def _classify_sanitize_fix(before: str) -> str:
     for the decision trace below, never consulted by the sanitizer itself. Each of these categories was
     once a live bug that went undiagnosed for a while because nothing recorded that the sanitizer had even
     touched the text, let alone which regex fired (doubled-escape and stray-linebreak both this session)."""
+    if _LATEX_ENVIRONMENT_MARKER.search(before):
+        return "latex_environment_stripped"
     if _DOUBLED_DELIM_ESCAPE.search(before):
         return "doubled_delimiter_escape"
     if _DOUBLED_OPEN_DELIM.search(before) or _DOUBLED_CLOSE_DELIM.search(before):
@@ -9081,6 +9096,16 @@ def _classify_sanitize_fix(before: str) -> str:
     if _MALFORMED_INLINE.search(before):
         return "malformed_inline_nesting"
     return "bare_latex_wrapped"
+
+
+def _is_math_junk_point(p: str) -> bool:
+    """A point with NO alphanumeric content once delimiters/whitespace are ignored — a bare '=', '+', or an
+    emptied '\\(\\)' left behind when an equation environment was shredded across bullets upstream (live: a
+    background card read 'expressed as:' followed by two bullets that were just '='). Meaningless to a
+    learner; safe to drop since any legitimate point — even a pure-math one like '\\(x = y\\)' — always
+    carries at least one letter or digit."""
+    stripped = re.sub(r"\\[()\[\]]|[\s=+\-*/^_{}().,;:|]|\\\\", "", p)
+    return not re.search(r"[A-Za-z0-9]", stripped)
 
 
 def _sanitize_card_math(cards: list[dict[str, Any]], topic: Any = None) -> None:
@@ -9097,6 +9122,9 @@ def _sanitize_card_math(cards: list[dict[str, Any]], topic: Any = None) -> None:
                     fixed = _sanitize_math_in_text(p)
                     if fixed != p:
                         fixes.append(_classify_sanitize_fix(p))
+                    if _is_math_junk_point(fixed):
+                        fixes.append("math_junk_point_dropped")
+                        continue
                     new_pts.append(fixed)
                 else:
                     new_pts.append(p)
