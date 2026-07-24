@@ -8974,21 +8974,34 @@ _MALFORMED_INLINE = re.compile(r"\w\(\s*[^()]*,\s*\\\(")
 # slipped through unrepaired and rendered as literal backslash-garbage instead of a valid delimiter (live: a
 # Stokes' theorem "formula" card). Collapse to a single backslash before that check runs.
 _DOUBLED_DELIM_ESCAPE = re.compile(r"\\\\(?=[()\[\]])")
+# A stray literal LaTeX line-break command ("\\", i.e. two real backslashes) with no delimiter char right
+# after it — after the doubled-delimiter collapse above runs, any 2+ backslashes still left are not an
+# over-escaped delimiter, they're a bare "\\" the model wrote (as if inside an align/matrix environment) that
+# has no place in flat prose (live: a Divergence Theorem card read "...vector field \\ (\(\nabla\)...").
+_STRAY_LATEX_LINEBREAK = re.compile(r"\\{2,}")
 
 
 def _sanitize_math_in_text(text: str) -> str:
-    """Make LLM-authored math render: strip unsupported `\\text{}`, and wrap bare `\\frac`/`\\sqrt` (with an
-    optional 'LHS =' prefix) and standalone greek in inline `\\(...\\)`. Leaves bullets that are already
-    delimited (grounded `$$`/`\\(` content) untouched."""
+    """Make LLM-authored math render: strip unsupported `\\text{}`/`\\textbf{}`/`\\mathbf{}`-family commands,
+    drop stray LaTeX line-break tokens, and wrap bare `\\frac`/`\\sqrt` (with an optional 'LHS =' prefix) and
+    standalone greek in inline `\\(...\\)`. The text-command strip and line-break strip run UNCONDITIONALLY,
+    even on bullets that already contain some correctly-delimited math elsewhere — a string can be a MIX of
+    valid `\\(...\\)` spans and a separate stray issue (a bare `\\textbf{F}` sitting outside any delimiter,
+    or a stray `\\`), and the old "already delimited, leave alone" short-circuit skipped both classes of bug
+    whenever ANY part of the string already had a valid delimiter."""
     s = str(text)
     s = _DOUBLED_DELIM_ESCAPE.sub(lambda m: "\\", s)   # \\( \\) \\[ \\] -> \( \) \[ \] before anything else
+    s = _STRAY_LATEX_LINEBREAK.sub(" ", s)
+    s = re.sub(r"\s{2,}", " ", s).strip()
+    # \text{V} / \textbf{V} / \textit{V} / \mathbf{V} / \mathit{V} -> V (drop the unsupported command; the
+    # frontend renderer supports none of this family, delimited or not).
+    s = re.sub(r"\\(?:text|textbf|textit|mathbf|mathit)\s*\{([^{}]*)\}", r"\1", s)
     if _MALFORMED_INLINE.search(s):
         # Malformed nesting ("C(n, \(r) = ...\)") — strip the misplaced inline delimiters and fall through
         # so the whole equation is re-wrapped cleanly below.
         s = s.replace("\\(", "").replace("\\)", "")
     elif "$$" in s or "\\(" in s or "\\[" in s:
         return s
-    s = re.sub(r"\\text\s*\{([^{}]*)\}", r"\1", s)          # \text{V} -> V (drop the unsupported command)
     if not _BARE_LATEX.search(s):
         return s
     if re.search(r"\\(?:frac|sqrt)\b", s):

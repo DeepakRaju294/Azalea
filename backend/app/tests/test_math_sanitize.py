@@ -65,11 +65,30 @@ class SanitizeMath(unittest.TestCase):
         out = _sanitize_math_in_text(s)
         self.assertNotIn("\\\\(", out)   # no doubled opening delimiter survives
         self.assertNotIn("\\\\)", out)   # no doubled closing delimiter survives
-        self.assertEqual(out, r"\(\int\)_S (\(\nabla\) \(\times\) \textbf{F}) \bullet d\textbf{S} = \(\int\)_{C}")
+        self.assertNotIn("\\textbf", out)   # unsupported command stripped (bare content kept)
+        self.assertEqual(out, r"\(\int\)_S (\(\nabla\) \(\times\) F) \bullet dS = \(\int\)_{C}")
 
     def test_doubled_bracket_delimiter_is_collapsed(self):
         out = _sanitize_math_in_text(r"a display block: \\[x = y\\]")
         self.assertEqual(out, r"a display block: \[x = y\]")
+
+    def test_stray_latex_linebreak_is_stripped_even_alongside_valid_delimiters(self):
+        # Live regression (Divergence Theorem card): the model wrote a bare "\\" (LaTeX's own line-break
+        # command, meaningless in a flat prose bullet) right before an otherwise-correctly-delimited
+        # equation. The old "already delimited, leave alone" short-circuit let the stray "\\" survive
+        # because the SAME string also contained valid "\(...\)" spans elsewhere.
+        s = r"Mathematically \\ \(\iint\)_{S} \mathbf{F} \(\cdot\) d\mathbf{S} = \(\iiint\)_{V} dV"
+        out = _sanitize_math_in_text(s)
+        self.assertNotIn("\\\\", out)
+        self.assertEqual(out, r"Mathematically \(\iint\)_{S} F \(\cdot\) dS = \(\iiint\)_{V} dV")
+
+    def test_mathbf_outside_a_delimiter_is_stripped_even_alongside_valid_delimiters(self):
+        # \mathbf{}/\textbf{} are just as unsupported as \text{}, unconditionally — a bare \mathbf{F}
+        # sitting OUTSIDE any \(...\) span (or even one nested inside a valid span) must not survive just
+        # because the rest of the same string is already properly delimited.
+        out = _sanitize_math_in_text(r"the curl \(\nabla \times \mathbf{F}\) and the field \mathbf{F} itself")
+        self.assertNotIn("\\mathbf", out)
+        self.assertEqual(out, r"the curl \(\nabla \times F\) and the field F itself")
 
     def test_applies_across_card_points(self):
         cards = [{"points": [r"\text{I} = \frac{\text{V}}{\text{R}}", "plain bullet", r"$$x = y$$"]}]
