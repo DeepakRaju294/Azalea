@@ -71,8 +71,8 @@ for layer, files in PIPELINE_LAYERS.items():
         else:
             print(f"  {f:60} no instrumentation detected")
     if layer == "lesson_generation":
-        print("  note: presence does not imply sanitizer/card-assembly coverage — only card-grounding "
-              "decisions are logged today")
+        print("  note: presence does not imply full card-assembly coverage — card-grounding AND the LaTeX "
+              "sanitizer are logged today (lesson.math_sanitized), other card-assembly passes are not")
 if scan.parse_errors:
     print(f"\n  scan errors ({len(scan.parse_errors)}):")
     for e in scan.parse_errors:

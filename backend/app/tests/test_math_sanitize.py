@@ -98,5 +98,40 @@ class SanitizeMath(unittest.TestCase):
         self.assertEqual(cards[0]["points"][2], r"$$x = y$$")
 
 
+class SanitizeMathDecisionTrace(unittest.TestCase):
+    """A repair that actually changes text is recorded to the decision trace (with topic given) — the
+    doubled-escape and stray-linebreak bugs both went undiagnosed this session precisely because nothing
+    recorded that the sanitizer had touched the text at all."""
+
+    def test_a_repair_is_recorded_with_its_fix_category(self):
+        topic = {"title": "Ohm's Law"}
+        cards = [{"points": [r"\text{I} = \frac{\text{V}}{\text{R}}"]}]
+        _sanitize_card_math(cards, topic)
+        trace = topic["decomposition_metadata"]["decision_trace"]
+        self.assertEqual(len(trace), 1)
+        self.assertEqual(trace[0]["stage"], "lesson.math_sanitized")
+        self.assertEqual(trace[0]["detail"]["fix_counts"], {"unsupported_text_command": 1})
+
+    def test_multiple_bullets_are_aggregated_into_one_entry(self):
+        topic = {"title": "Stokes' Theorem"}
+        cards = [{"points": [r"\\(\int\)_S \textbf{F}", "plain bullet", r"\frac{V}{R}"]}]
+        _sanitize_card_math(cards, topic)
+        trace = topic["decomposition_metadata"]["decision_trace"]
+        self.assertEqual(len(trace), 1)                    # one entry per call, not one per bullet
+        counts = trace[0]["detail"]["fix_counts"]
+        self.assertEqual(sum(counts.values()), 2)           # only the 2 changed bullets counted
+
+    def test_clean_text_records_nothing(self):
+        topic = {"title": "Ohm's Law"}
+        cards = [{"points": ["plain bullet", r"$$x = y$$"]}]
+        _sanitize_card_math(cards, topic)
+        self.assertNotIn("decomposition_metadata", topic)
+
+    def test_no_topic_given_skips_recording_without_raising(self):
+        cards = [{"points": [r"\text{I}"]}]
+        _sanitize_card_math(cards)   # topic omitted — must not raise
+        self.assertEqual(cards[0]["points"][0], "I")
+
+
 if __name__ == "__main__":
     unittest.main()

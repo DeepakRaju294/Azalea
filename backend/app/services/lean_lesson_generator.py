@@ -9011,12 +9011,48 @@ def _sanitize_math_in_text(text: str) -> str:
     return s
 
 
-def _sanitize_card_math(cards: list[dict[str, Any]]) -> None:
-    """Apply `_sanitize_math_in_text` to every card's point/bullet text so no card renders raw LaTeX."""
+def _classify_sanitize_fix(before: str) -> str:
+    """Best-effort diagnostic classification of WHY `_sanitize_math_in_text` changed a string — used only
+    for the decision trace below, never consulted by the sanitizer itself. Each of these categories was
+    once a live bug that went undiagnosed for a while because nothing recorded that the sanitizer had even
+    touched the text, let alone which regex fired (doubled-escape and stray-linebreak both this session)."""
+    if _DOUBLED_DELIM_ESCAPE.search(before):
+        return "doubled_delimiter_escape"
+    if _STRAY_LATEX_LINEBREAK.search(_DOUBLED_DELIM_ESCAPE.sub(lambda m: "\\", before)):
+        return "stray_latex_linebreak"
+    if re.search(r"\\(?:text|textbf|textit|mathbf|mathit)\s*\{", before):
+        return "unsupported_text_command"
+    if _MALFORMED_INLINE.search(before):
+        return "malformed_inline_nesting"
+    return "bare_latex_wrapped"
+
+
+def _sanitize_card_math(cards: list[dict[str, Any]], topic: Any = None) -> None:
+    """Apply `_sanitize_math_in_text` to every card's point/bullet text so no card renders raw LaTeX. When
+    `topic` is given, a repair that actually changed something is recorded to the decision trace (with a
+    per-category count) — silent by default (nothing to say when the text was already clean)."""
+    fixes: list[str] = []
     for card in cards:
         pts = card.get("points")
         if isinstance(pts, list):
-            card["points"] = [_sanitize_math_in_text(p) if isinstance(p, str) else p for p in pts]
+            new_pts = []
+            for p in pts:
+                if isinstance(p, str):
+                    fixed = _sanitize_math_in_text(p)
+                    if fixed != p:
+                        fixes.append(_classify_sanitize_fix(p))
+                    new_pts.append(fixed)
+                else:
+                    new_pts.append(p)
+            card["points"] = new_pts
+    if fixes and topic is not None:
+        from collections import Counter
+        record_lesson_decision(
+            topic, "lesson.math_sanitized", f"repaired {len(fixes)} card bullet(s) with raw/malformed LaTeX",
+            "LLM-authored math is sanitized before it ships so it renders instead of showing raw LaTeX "
+            "source or unsupported commands — the fix categories are recorded here so a future debugging "
+            "session doesn't have to re-diagnose which regex fired from the rendered symptom alone",
+            fix_counts=dict(Counter(fixes)))
 
 
 # A body sentence that narrates a picture ("This node-link diagram illustrates …") — noise when no visual is
@@ -9304,7 +9340,7 @@ def _convert_lean_to_legacy(
     # recursive traversal walkthroughs — live term/code contradiction).
     _ground_terms_against_canonical_code(legacy_cards, topic)
     # Make any LLM-authored math render: strip \text{}, delimit bare \frac/\sqrt/greek (grounded $$ untouched).
-    _sanitize_card_math(legacy_cards)
+    _sanitize_card_math(legacy_cards, topic)
     # Final cosmetic sweep (deterministic, best-effort): phantom "this diagram" body refs when no visual,
     # code-style // comments in non-coding worked-example work, numbered-list point prefixes, dangling
     # "the formula is —" purpose lead-ins, and a stale learning_goal left on an adapter-grounded edge card.
