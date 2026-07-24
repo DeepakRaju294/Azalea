@@ -335,6 +335,260 @@ class LineIntegralAdapter(FamilyAdapterBase):
         return [] if needle.lower() in prose else [("value_not_stated", needle)]
 
 
+# --- surface integrals (flux) ---------------------------------------------------------------------------
+# Same no-CAS structure as line integrals above: each example's integrand F(r(u,v)) . (r_u x r_v) simplifies
+# BY HAND to an expression whose iterated integral is exact. The INDEPENDENT ORACLE is a machine-side 2-D
+# midpoint quadrature over the parameter domain using the example's own field/parameterization/normal
+# lambdas — `reference()` refuses to emit a trace whose hand value the numeric integral does not confirm.
+_SURFACE_INTEGRAL_EXAMPLES: dict[str, dict[str, Any]] = {
+    "unit_square_planar_flux": {
+        "field_desc": "F(x, y, z) = (0, 0, x + y)",
+        "field": lambda x, y, z: (0.0, 0.0, x + y),
+        "surface_desc": "the unit square [0,1] x [0,1] in the xy-plane, oriented with upward normal",
+        "param_desc": "r(u, v) = (u, v, 0) for u in [0, 1], v in [0, 1]",
+        "normal_desc": "r_u x r_v = (0, 0, 1), so dS = du dv",
+        "param": lambda u, v: (u, v, 0.0),
+        "normal": lambda u, v: (0.0, 0.0, 1.0),
+        "domain": ((0.0, 1.0), (0.0, 1.0)),
+        "integrand_desc": "F(r(u, v)) . (r_u x r_v) = u + v",
+        "inner_desc": "the inner integral of (u + v) du from 0 to 1 = 1/2 + v",
+        "evaluate_desc": "the outer integral of (1/2 + v) dv from 0 to 1 = 1/2 + 1/2",
+        "value": 1.0,
+    },
+    "unit_disk_constant_flux": {
+        "field_desc": "F(x, y, z) = (0, 0, 3)",
+        "field": lambda x, y, z: (0.0, 0.0, 3.0),
+        "surface_desc": "the unit disk x^2 + y^2 <= 1 in the xy-plane, oriented with upward normal",
+        "param_desc": "r(r, theta) = (r cos theta, r sin theta, 0) for r in [0, 1], theta in [0, 2*pi]",
+        "normal_desc": "r_r x r_theta = (0, 0, r), so dS = r dr dtheta",
+        "param": lambda r, t: (r * math.cos(t), r * math.sin(t), 0.0),
+        "normal": lambda r, t: (0.0, 0.0, r),
+        "domain": ((0.0, 1.0), (0.0, 2.0 * math.pi)),
+        "integrand_desc": "F(r(r, theta)) . (r_r x r_theta) = 3r",
+        "inner_desc": "the inner integral of 3r dr from 0 to 1 = 3/2",
+        "evaluate_desc": "the outer integral of 3/2 dtheta from 0 to 2*pi = 3/2 * 2*pi = 3*pi",
+        "value": 3.0 * math.pi,
+    },
+}
+
+
+def _numeric_surface_integral(ex: dict[str, Any], n: int = 400) -> float:
+    """2-D midpoint-rule quadrature of F(r(u,v)) . N(u,v) over the example's own parameter-domain lambdas
+    — the independent oracle (N is the un-normalized cross-product normal, carrying the area element)."""
+    (a, b), (c, d) = ex["domain"]
+    hu, hv = (b - a) / n, (d - c) / n
+    total = 0.0
+    for i in range(n):
+        u = a + (i + 0.5) * hu
+        for j in range(n):
+            v = c + (j + 0.5) * hv
+            x, y, z = ex["param"](u, v)
+            fx, fy, fz = ex["field"](x, y, z)
+            nx, ny, nz = ex["normal"](u, v)
+            total += (fx * nx + fy * ny + fz * nz) * hu * hv
+    return total
+
+
+_SURFACE_CONV = {"method": "parameterize_substitute_integrate_iterated",
+                 "trace_granularity": "one_computation_phase"}
+_SURFACE_REQ = ["parameterize", "substitute", "integrate", "completion"]
+_SURFACE_INV = [{"id": "flux_matches_numeric_quadrature", "scope": "terminal_only",
+                "statement": "the hand-computed flux agrees with an independent 2-D midpoint-rule numeric "
+                             "integration of F(r(u,v)) . (r_u x r_v)"}]
+
+
+class _SurfaceIntegralCanonicalFormula:
+    """Card-grounding facts (see _StokesCanonicalFormula for why this is NOT a _formula_spec)."""
+    canonical_latex = r"\iint_{S} F \cdot dS = \iint_{D} F(r(u,v)) \cdot (r_u \times r_v) \, du \, dv"
+    canonical_notes = [
+        "S is the surface, parameterized as r(u, v) over a flat parameter domain D — the parameterization "
+        "turns the surface integral into an ordinary double integral.",
+        "The cross product r_u x r_v is the surface's normal vector, and its length carries the area "
+        "element; dotting F with it keeps only the component of the field passing THROUGH the surface.",
+        "Physically, this is the flux of F through S — how much of the field flows across the surface.",
+    ]
+    edge_cases = [
+        "If F is everywhere tangent to the surface (F . n = 0), the flux is 0 — the field slides along "
+        "the surface without crossing it.",
+        "Reversing the orientation (flipping the normal) flips the sign of the flux.",
+        "If F is zero everywhere on the surface, the flux is 0 regardless of the surface's shape or size.",
+    ]
+
+
+class SurfaceIntegralAdapter(FamilyAdapterBase):
+    slug = "surface_integral"
+    label_convention = "ints"
+    _canonical_formula = _SurfaceIntegralCanonicalFormula()
+    example_spec = ExampleSpec(
+        input=InstanceShape("field_surface_pair", count=(2, 2), structure=["surface_integral"]),
+        stages={
+            "parameterize": StageSpec(
+                "parameterize", "parameterize the surface and form its normal vector",
+                teaching_focus="the parameterization turns a surface in space into a flat (u, v) domain, "
+                               "and r_u x r_v supplies both the direction and the area element",
+                contains={"state_parameterization": "required"},
+                state_effects=["r(u, v) and the normal r_u x r_v become known"]),
+            "substitute": StageSpec(
+                "substitute", "substitute the parameterization into F and dot with the normal",
+                teaching_focus="F(r(u,v)) . (r_u x r_v) collapses the whole surface integral into an "
+                               "ordinary double integral over the parameter domain",
+                contains={"state_integrand": "required"},
+                state_effects=["the two-variable integrand becomes known"]),
+            "integrate": StageSpec(
+                "integrate", "integrate the inner variable exactly",
+                teaching_focus="an iterated integral is two one-variable integrals done in sequence — the "
+                               "inner one first",
+                contains={"state_inner_integral": "required"},
+                state_effects=["the inner-integral result becomes known"]),
+            "evaluate": StageSpec(
+                "evaluate", "integrate the outer variable and state the flux",
+                teaching_focus="the outer integral of the inner result is the total flux through the "
+                               "surface",
+                contains={"state_value": "required"},
+                state_effects=["the final flux value becomes known"])},
+        structure="parameterize, then substitute, then integrate (inner), then evaluate (outer)",
+        must_exercise=["parameterize", "substitute", "integrate", "completion"],
+        must_cover=["substitute"], must_avoid=[],
+        terminal="the flux value has been computed and confirmed against the outer-integral evaluation",
+        output_shape="the exact flux value of the surface integral")
+
+    def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+        names = list(_SURFACE_INTEGRAL_EXAMPLES)
+        if seed % len(names):
+            names.reverse()
+        for name in names:
+            yield {"example": name, "_id": f"surface_integral_v1_{name}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        ev = trace.case_evidence
+        return (len(trace.steps) >= 4 and bool(ev.get("parameterize"))
+                and bool(ev.get("substitute")) and bool(ev.get("integrate")))
+
+    def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                  attempt: int = 1, seed: int = 0) -> ContractTrace:
+        ex = _SURFACE_INTEGRAL_EXAMPLES[example_input["example"]]
+        value = _round(ex["value"])
+        # INDEPENDENT ORACLE: refuse to emit a trace the 2-D numeric integral does not confirm.
+        numeric = _numeric_surface_integral(ex)
+        if abs(numeric - ex["value"]) > 1e-4:
+            raise AssertionError(
+                f"surface_integral oracle mismatch for {example_input['example']}: hand value {ex['value']} "
+                f"vs numeric quadrature {numeric}")
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        state: dict[str, Any] = {"parameterization": None, "integrand": None, "inner_integral": None,
+                                 "flux": None, "complete": False}
+
+        # 1) parameterize
+        prior = dict(state)
+        state["parameterization"] = f"{ex['param_desc']}; {ex['normal_desc']}"
+        reason = (f"S is {ex['surface_desc']}. Parameterize it as {ex['param_desc']}; the normal is "
+                  f"{ex['normal_desc']}.")
+        evr = f"{ex['param_desc']}; {ex['normal_desc']}."
+        evidence.setdefault("parameterize", []).append("s1")
+        steps.append(Step(
+            id="s1", operation="parameterize", prior_state=prior, state_after=dict(state),
+            inputs={"surface": ex["surface_desc"]}, decision=ex["param_desc"], reason=reason,
+            visual_state={"kind": "variables", "parameterization": state["parameterization"]},
+            visual_delta={"parameterization": state["parameterization"]}, expected_visible_result=evr,
+            facts={"allowed_values": [], "required_facts": [fact("parameterization", ex["param_desc"])],
+                  "forbidden_claims": []}))
+
+        # 2) substitute
+        prior = dict(state)
+        integrand = ex["integrand_desc"].split(" = ")[-1]
+        state["integrand"] = integrand
+        reason = (f"The field is {ex['field_desc']}. Substituting the parameterization and dotting with "
+                  f"the normal: {ex['integrand_desc']}.")
+        evr = f"Integrand: {ex['integrand_desc']}."
+        evidence.setdefault("substitute", []).append("s2")
+        steps.append(Step(
+            id="s2", operation="substitute", prior_state=prior, state_after=dict(state),
+            inputs={"field": ex["field_desc"]}, decision=f"integrand = {integrand}", reason=reason,
+            visual_state={"kind": "variables", "integrand": integrand},
+            visual_delta={"integrand": integrand}, expected_visible_result=evr,
+            facts={"allowed_values": [], "required_facts": [fact("integrand", integrand)],
+                  "forbidden_claims": []}))
+
+        # 3) integrate (inner)
+        prior = dict(state)
+        inner = ex["inner_desc"].split(" = ")[-1]
+        state["inner_integral"] = inner
+        reason = (f"Work the iterated integral from the inside out: {ex['inner_desc']}, leaving a single "
+                  f"one-variable integral.")
+        evr = f"Inner integral: {inner}."
+        evidence.setdefault("integrate", []).append("s3")
+        steps.append(Step(
+            id="s3", operation="integrate", prior_state=prior, state_after=dict(state),
+            inputs={"integrand": integrand}, decision=f"inner integral = {inner}", reason=reason,
+            visual_state={"kind": "variables", "inner_integral": inner},
+            visual_delta={"inner_integral": inner}, expected_visible_result=evr,
+            facts={"allowed_values": [], "required_facts": [fact("inner_integral", inner)],
+                  "forbidden_claims": []}))
+
+        # 4) evaluate (outer)
+        prior = dict(state)
+        state["flux"] = value
+        state["complete"] = True
+        reason = f"Finish with the outer integral: {ex['evaluate_desc']} = {value}."
+        # "complete" must appear literally — see the line-integral evaluate step for why.
+        evr = f"Integration complete: the flux of F through S is {value}."
+        evidence.setdefault("completion", []).append("s4")
+        steps.append(Step(
+            id="s4", operation="evaluate", prior_state=prior, state_after=dict(state),
+            inputs={"inner_integral": inner}, decision=f"flux = {value}", reason=reason,
+            visual_state={"kind": "variables", "flux": value}, visual_delta={"flux": value},
+            expected_visible_result=evr,
+            facts={"allowed_values": [], "required_facts": [fact("flux", str(value))],
+                  "forbidden_claims": []}))
+
+        return ContractTrace(
+            problem=(f"Compute the surface integral (flux) of {ex['field_desc']} through "
+                     f"{ex['surface_desc']}."),
+            conventions=dict(_SURFACE_CONV),
+            initial_state={"parameterization": None, "integrand": None, "inner_integral": None,
+                          "flux": None, "complete": False},
+            final_answer={"flux": value}, steps=steps,
+            invariants=[dict(x) for x in _SURFACE_INV], required_cases=list(_SURFACE_REQ),
+            case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        a, b = a or {}, b or {}
+        return a.get("integrand") == b.get("integrand") and a.get("flux") == b.get("flux")
+
+    def final_answer_entails(self, state, answer):
+        s = state or {}
+        return bool(s.get("complete")) and s.get("flux") == (answer or {}).get("flux")
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "flux_matches_numeric_quadrature":
+            s = state or {}
+            if not s.get("complete"):
+                return True                      # scope: terminal_only
+            flux = s.get("flux")
+            if flux is None:
+                return False
+            # same shape as line_integral: reference() already refused any trace failing the oracle;
+            # here, confirm the terminal value is a finite number.
+            return isinstance(flux, (int, float)) and math.isfinite(flux)
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation in ("parameterize", "substitute", "integrate", "evaluate") \
+            else [f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        needle = {"parameterize": lambda: str(step.state_after.get("parameterization") or "").split(";")[0],
+                  "substitute": lambda: str(step.state_after.get("integrand") or ""),
+                  "integrate": lambda: str(step.state_after.get("inner_integral") or ""),
+                  "evaluate": lambda: str(step.state_after.get("flux"))}[step.operation]()
+        return [] if needle.lower() in prose else [("value_not_stated", needle)]
+
+
 class StokesTheoremAdapter(FamilyAdapterBase):
     slug = "stokes_theorem"
     label_convention = "ints"

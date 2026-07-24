@@ -218,6 +218,13 @@ MANIFEST: dict[str, dict[str, Any]] = {
                             "line integral computation"],
         "negative_guards": ["stokes", "surface integral", "divergence"],
         "fixtures": ["parameterize", "substitute", "integrate"]},
+    "surface_integral": {
+        "type": "T13", "family": "vector_calculus", "status": "pilot",
+        "verification_level": "trace_verified", "coding": False, "canonical_solution": None,
+        "routing_aliases": ["surface integral", "surface integrals", "computing surface integrals",
+                            "flux integral", "flux integrals"],
+        "negative_guards": ["stokes", "divergence", "line integral"],
+        "fixtures": ["parameterize", "substitute", "integrate"]},
     "stokes_theorem": {
         "type": "T13", "family": "vector_calculus", "status": "pilot",
         "verification_level": "trace_verified", "coding": False, "canonical_solution": None,
@@ -462,6 +469,8 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
     "topological_sort": {"any": ["topological sort", "topological ordering", "topological_sort", "topo sort", "kahn"], "priority": 108},
     "line_integral": {"any": ["line integral", "line integrals"],
                       "not": ["stokes", "surface integral", "divergence"], "priority": 110},
+    "surface_integral": {"any": ["surface integral", "surface integrals", "flux integral", "flux integrals"],
+                         "not": ["stokes", "divergence", "line integral"], "priority": 110},
     "stokes_theorem": {"any": ["stokes' theorem", "stokes theorem", "stokes's theorem"], "priority": 111},
     # bare "induction" collides with ELECTROMAGNETIC induction (Faraday/Lenz/AC-circuit topics) — without this
     # guard "Electromagnetic Induction in AC Circuits" matched on the substring "induction" alone and shipped a
