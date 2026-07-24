@@ -399,8 +399,15 @@ def validate_stage_rule_compliance(
         missing_content = missing_critical_stage_content(rule, combined_text)
         if len(missing_content) >= 2:
             gap_count += 1
+            # The "process" card carries the actual calculation/procedure — a content gap there means the
+            # lesson is missing real teaching substance (live: a line-integral process card with only
+            # "identify the vector field", no formula/substitution/interpretation stages at all). That's a
+            # different order of problem than a thin background/edge_case card, so it's promoted to an
+            # ERROR (see build_report's requires_regeneration allowlist) instead of only counting toward
+            # the aggregate stage_rule_compliance_gap threshold — scoped narrowly to keep retry volume low.
+            issue_fn = error if stage_key == "process" else warning
             issues.append(
-                warning(
+                issue_fn(
                     "stage_content_gap",
                     f"{stage_key} card may not cover required stage details.",
                     details={
@@ -820,6 +827,10 @@ def build_report(issues: list[dict[str, Any]]) -> dict[str, Any]:
                 "text_wall",
                 "visual_regeneration_still_required",
                 "stage_rule_compliance_gap",
+                # only reachable at error severity for the "process" stage (see
+                # validate_stage_rule_compliance) — background/edge_case gaps stay warning-severity and
+                # keep contributing to the aggregate stage_rule_compliance_gap threshold instead.
+                "stage_content_gap",
             }
             for issue in issues
         ),

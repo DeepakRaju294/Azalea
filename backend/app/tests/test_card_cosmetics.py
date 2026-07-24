@@ -48,8 +48,17 @@ class BareLatexWrapping(unittest.TestCase):
     def test_subscripted_bare_command_still_wrapped(self):
         # \b does not fire between "int" and its subscript "_C" (both \w) — a naive \b boundary would silently
         # skip every subscripted command, which is the normal way integrals over a named curve are written.
+        # Live rendering bug: the subscript must stay INSIDE the delimiter with its command — the frontend
+        # only positions \int's sub/sup when they're captured in the SAME \(...\) span; a stray "_C" left
+        # outside renders as literal text glued onto plain prose next to the (oversized) integral glyph.
         self.assertEqual(_wrap_bare_latex("\\int_C \\mathbf{F} \\cdot d\\mathbf{r}"),
-                         "\\(\\int\\)_C \\mathbf{F} \\(\\cdot\\) d\\mathbf{r}")
+                         "\\(\\int_C\\) \\mathbf{F} \\(\\cdot\\) d\\mathbf{r}")
+
+    def test_integral_with_superscript_and_subscript_stays_together(self):
+        self.assertEqual(_wrap_bare_latex("\\int_a^b f(x) dx"), "\\(\\int_a^b\\) f(x) dx")
+
+    def test_sum_with_braced_bounds_stays_together(self):
+        self.assertEqual(_wrap_bare_latex("\\sum_{i=1}^{n} i"), "\\(\\sum_{i=1}^{n}\\) i")
 
 
 from app.services.lean_lesson_generator import _polish_card_cosmetics

@@ -595,6 +595,29 @@ def _latex_expr_extent(s: str, start: int) -> int:
             i = k
         else:
             break
+    # A trailing subscript/superscript (\int_C, \sum_{i=1}^{n}) is part of the SAME math atom as the
+    # command — leaving it out of the wrapped span stranded it outside the delimiter as literal text
+    # (live bug: "\int_C F..." wrapped to "\(\int\)_C F..." — the integral rendered fine, but the
+    # orphaned "_C" had no math context and rendered as raw "_C" glued onto plain prose).
+    while i < len(s) and s[i] in "_^":
+        i += 1
+        if i < len(s) and s[i] == "{":
+            depth, k = 0, i
+            while k < len(s):
+                if s[k] == "{":
+                    depth += 1
+                elif s[k] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        k += 1
+                        break
+                k += 1
+            i = k
+        elif i < len(s) and s[i] == "\\":
+            m2 = re.match(r"\\[a-zA-Z]+", s[i:])
+            i += m2.end() if m2 else 1
+        elif i < len(s) and s[i].isalnum():
+            i += 1
     return i
 
 
