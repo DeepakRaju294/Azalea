@@ -83,6 +83,25 @@ class BackfillTests(unittest.TestCase):
                                             single_card_fn=lambda k, l, t: card(k)),
             [])
 
+    def test_deterministic_practice_card_registers_a_real_practice_question(self):
+        """Live gap ('Computing Line Integrals', practice_question_index None): the deterministic last-
+        resort practice card looked complete but never registered in practice_questions — the SEPARATE
+        array the app's interactive practice actually runs on — so practice silently shipped empty."""
+        lesson = {"lesson_cards": [card("code_walkthrough"), card("worked_example", ["s"])],
+                  "key_takeaways": ["Kruskal sorts edges by weight", "Union-find detects cycles"],
+                  "practice_questions": []}
+        still = backfill_missing_required_cards(
+            lesson, CODING_TOPIC,
+            worked_example_fn=lambda l, t: True,
+            single_card_fn=lambda k, l, t: None if k == "practice" else card(k))
+        self.assertNotIn("practice", still)
+        prac = next(c for c in lesson["lesson_cards"] if c["blueprint_key"] == "practice")
+        self.assertEqual(prac["practice_question_index"], 0)
+        self.assertEqual(len(lesson["practice_questions"]), 1)
+        q = lesson["practice_questions"][0]
+        self.assertEqual(q["question_type"], "short_answer")
+        self.assertIn("Kruskal sorts edges by weight", q["question_text"])
+
 
 class FailureLogTests(unittest.TestCase):
     def test_writes_jsonl_with_reason(self):

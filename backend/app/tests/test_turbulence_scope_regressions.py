@@ -264,5 +264,82 @@ class BareSiblingTitlePhraseNoise(unittest.TestCase):
         self.assertFalse(report["passed"])
 
 
+class SupportingBeforeGoalCoreOrdering(unittest.TestCase):
+    """Live UX bug (Stokes' theorem path, 18:35 regen): the model emitted the goal-core topic FIRST
+    ([Stokes' Theorem, Evaluating Surface Integrals, Computing Line Integrals, Applying the Divergence
+    Theorem]) — a first-time learner met the theorem relating line and surface integrals before either was
+    taught. _certify_path_scope now moves a supporting topic before the goal_core topic when its subject
+    shares NO vocabulary with the goal (a true building block, not a family member)."""
+
+    @staticmethod
+    def _stokes_topics():
+        return [
+            {"title": "Stokes' Theorem", "subject_key": "stokes_theorem",
+             "topic_type": "math_formula_method", "course_type": "math_formula_method",
+             "purpose": "p", "learner_outcome": "o", "in_scope": ["statement of stokes theorem"],
+             "out_of_scope": [], "prerequisite_topics": [], "order_index": 1},
+            {"title": "Evaluating Surface Integrals", "subject_key": "surface_integrals",
+             "topic_type": "math_formula_method", "course_type": "math_formula_method",
+             "purpose": "p", "learner_outcome": "o", "in_scope": ["surface integral evaluation"],
+             "out_of_scope": [], "prerequisite_topics": [], "order_index": 2},
+            {"title": "Computing Line Integrals", "subject_key": "line_integrals",
+             "topic_type": "math_formula_method", "course_type": "math_formula_method",
+             "purpose": "p", "learner_outcome": "o", "in_scope": ["line integral computation"],
+             "out_of_scope": [], "prerequisite_topics": [], "order_index": 3},
+            {"title": "Applying the Divergence Theorem", "subject_key": "divergence_theorem",
+             "topic_type": "problem_solving_application", "course_type": "problem_solving_application",
+             "content_role": "application",
+             "purpose": "p", "learner_outcome": "o", "in_scope": ["divergence theorem applications"],
+             "out_of_scope": [], "prerequisite_topics": [], "order_index": 4},
+        ]
+
+    def test_building_block_supporting_topics_move_before_the_goal_core(self):
+        from app.services.topic_generator import _certify_path_scope
+
+        certified = _certify_path_scope(self._stokes_topics(), "want to learn about stokes theorem")
+        titles = [t["title"] for t in certified]
+        self.assertLess(titles.index("Evaluating Surface Integrals"), titles.index("Stokes' Theorem"))
+        self.assertLess(titles.index("Computing Line Integrals"), titles.index("Stokes' Theorem"))
+        # the application topic stays after the goal core; order_index matches the new list order
+        self.assertGreater(titles.index("Applying the Divergence Theorem"), titles.index("Stokes' Theorem"))
+        self.assertEqual([t["order_index"] for t in certified], list(range(1, len(certified) + 1)))
+        core = next(t for t in certified if t["title"] == "Stokes' Theorem")
+        trace = (core.get("decomposition_metadata") or {}).get("decision_trace") or []
+        self.assertTrue(any(e["stage"] == "order.supporting_moved_before_goal_core" for e in trace))
+
+    def test_family_members_sharing_goal_vocabulary_do_not_move(self):
+        from app.services.topic_generator import _certify_path_scope
+
+        topics = [
+            {"title": "In-Order Traversal", "subject_key": "in_order_traversal",
+             "topic_type": "algorithm_walkthrough", "course_type": "algorithm_walkthrough",
+             "purpose": "p", "learner_outcome": "o", "in_scope": ["visit order"],
+             "out_of_scope": [], "prerequisite_topics": [], "order_index": 1},
+            {"title": "Pre-Order Traversal", "subject_key": "pre_order_traversal",
+             "topic_type": "algorithm_walkthrough", "course_type": "algorithm_walkthrough",
+             "purpose": "p", "learner_outcome": "o", "in_scope": ["root first"],
+             "out_of_scope": [], "prerequisite_topics": [], "order_index": 2},
+        ]
+        certified = _certify_path_scope(topics, "want to learn about bst traversal algorithms")
+        self.assertEqual([t["title"] for t in certified], ["In-Order Traversal", "Pre-Order Traversal"])
+
+    def test_coding_implementation_never_moves_before_its_walkthrough(self):
+        from app.services.topic_generator import _certify_path_scope
+
+        topics = [
+            {"title": "Dijkstra's Algorithm Walkthrough", "subject_key": "dijkstra",
+             "topic_type": "algorithm_walkthrough", "course_type": "algorithm_walkthrough",
+             "purpose": "p", "learner_outcome": "o", "in_scope": ["trace"],
+             "out_of_scope": [], "prerequisite_topics": [], "order_index": 1},
+            {"title": "Implementing Priority Queues", "subject_key": "priority_queue",
+             "topic_type": "coding_implementation", "course_type": "coding_implementation",
+             "purpose": "p", "learner_outcome": "o", "in_scope": ["heap code"],
+             "out_of_scope": [], "prerequisite_topics": [], "order_index": 2},
+        ]
+        certified = _certify_path_scope(topics, "learn dijkstra's algorithm")
+        self.assertEqual([t["title"] for t in certified],
+                         ["Dijkstra's Algorithm Walkthrough", "Implementing Priority Queues"])
+
+
 if __name__ == "__main__":
     unittest.main()

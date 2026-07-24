@@ -825,6 +825,51 @@ def _certify_path_scope(topics: list[dict[str, Any]], goal: str | None) -> list[
         }
         topic["decomposition_metadata"] = meta
 
+    # PEDAGOGICAL ORDER GUARD: the model sometimes emits the goal-core topic FIRST (it thinks of it as the
+    # opener) with the topics that teach its building blocks after it — live: a Stokes' theorem path ran
+    # [Stokes' Theorem (deep, formula, worked example), Evaluating Surface Integrals, Computing Line
+    # Integrals], so a first-time learner hit the theorem relating line and surface integrals before either
+    # was taught. Move a role='supporting' topic BEFORE the goal_core topic when (a) it currently comes
+    # after it, and (b) its own subject shares NO tokens with the goal — that second condition is what
+    # separates a true building block (line integrals on a Stokes path: disjoint vocabulary) from a family
+    # MEMBER ('Pre-Order Traversal' on a 'bst traversal algorithms' path shares 'traversal'), which is a
+    # peer taught in the model's chosen sequence, not a prerequisite of the goal-core member. Coding topics
+    # never move (an implementation must stay after its walkthrough). Relative order is preserved on both
+    # sides of the split.
+    _goal_tokens_all, _ = _subject_tokens(str(goal or ""))
+    # 6-char-prefix comparison, so INFLECTED forms of the goal's vocabulary still count as shared —
+    # 'Laminar vs Turbulent Flow' on a 'learn turbulence modeling' path shares 'turbul' with the goal and
+    # is family material that must NOT be moved, even though 'turbulent' != 'turbulence' token-for-token.
+    _goal_stems = {t[:6] for t in _goal_tokens_all}
+    def _plan_role(t: dict[str, Any]) -> str:
+        return str((((t.get("decomposition_metadata") or {}).get("scope_plan")) or {}).get("role") or "")
+    _core_idx = next((i for i, t in enumerate(certified) if _plan_role(t) == "goal_core"), None)
+    if _core_idx is not None and _goal_stems:
+        def _movable_supporting(t: dict[str, Any]) -> bool:
+            ttype = str(t.get("course_type") or t.get("topic_type") or "").strip().lower()
+            if _plan_role(t) != "supporting" or "coding" in ttype:
+                return False
+            title_tokens, _ = _subject_tokens(str(t.get("title") or t.get("subject_key") or ""))
+            return bool(title_tokens) and not ({x[:6] for x in title_tokens} & _goal_stems)
+        _late_supporting = [t for t in certified[_core_idx + 1:] if _movable_supporting(t)]
+        if _late_supporting:
+            _core_topic = certified[_core_idx]
+            _moved_ids = {id(t) for t in _late_supporting}
+            _reordered: list[dict[str, Any]] = []
+            for t in certified:
+                if t is _core_topic:
+                    _reordered.extend(_late_supporting)
+                if id(t) not in _moved_ids:
+                    _reordered.append(t)
+            certified = _reordered
+            record_topic_decision(
+                _core_topic, "order.supporting_moved_before_goal_core",
+                f"moved {[str(t.get('title')) for t in _late_supporting]} ahead of this topic",
+                "these supporting topics teach this goal-core topic's building blocks (their subjects share "
+                "no vocabulary with the goal itself, so they are prerequisites-in-path, not family members) "
+                "— the model emitted them AFTER the deep goal topic, which would make a first-time learner "
+                "meet the goal concept before the concepts it is defined in terms of")
+
     # Consolidate every decision recorded onto ANY certified topic across this whole function — including
     # decisions recorded on a topic from a LATER loop iteration processing a DIFFERENT topic (e.g. an
     # absorbed duplicate's note lands on the survivor, which may already be past its own decomposition_

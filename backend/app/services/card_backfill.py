@@ -110,6 +110,25 @@ def backfill_missing_required_cards(
         card = _deterministic_practice_card(lesson_json, topic)
         if card:
             _insert_at_blueprint_position(cards, card, "practice", full_sequence)
+            # The card alone is not enough: the app's interactive practice runs on the SEPARATE
+            # practice_questions array, and a synthesized card that never registered there shipped a
+            # practice card that LOOKED complete while the actual practice stayed empty (live: 'Computing
+            # Line Integrals', practice_question_index None, zero questions). Register the same prompt as
+            # a short-answer question so the learner can actually answer it.
+            questions = lesson_json.setdefault("practice_questions", [])
+            card["practice_question_index"] = len(questions)
+            questions.append({
+                "id": f"q-backfill-{len(questions) + 1}",
+                "question_type": "short_answer",
+                "question_text": "\n".join(str(p) for p in card.get("points") or []),
+                "correct_answer": "", "expected_answer": "",
+                "explanation": "Each named idea is explained on its card earlier in this lesson.",
+                "choices": [], "options": [], "skill_target": "", "concept_tested": "",
+                "related_section": "", "why_this_matters": "", "difficulty": "standard",
+                "given": [], "starter_code": "", "language": "", "test_cases": [],
+                "visual_feedback_plan": {}, "edge_cases_tested": [], "misconceptions_tested": [],
+                "metadata": {"synthesized": "deterministic_backfill"}, "rubric": {},
+            })
             log_card_failure(topic=topic, card_key="practice", stage="backfill",
                              reason="missing_required_card", action="synthesized_deterministic", detail="")
             present = {_card_key(c) for c in cards if isinstance(c, dict) and not _is_empty(c)}
