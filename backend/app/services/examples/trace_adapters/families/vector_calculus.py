@@ -94,7 +94,14 @@ class StokesTheoremAdapter(FamilyAdapterBase):
         output_shape="the matching surface_integral and line_integral values")
 
     def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
-        for name in _STOKES_EXAMPLES:
+        # select_instance (trace_pipeline.py) always returns the FIRST candidate whose trace passes
+        # is_teaching_trace — with a fixed iteration order, the second example would never ship to a real
+        # learner regardless of how many times a path is regenerated. Alternate which example comes first
+        # by seed (both always pass is_teaching_trace, so this genuinely determines what ships).
+        names = list(_STOKES_EXAMPLES)
+        if seed % len(names):
+            names.reverse()
+        for name in names:
             yield {"example": name, "_id": f"stokes_theorem_v1_{name}"}
 
     def is_teaching_trace(self, trace: ContractTrace) -> bool:
@@ -112,8 +119,12 @@ class StokesTheoremAdapter(FamilyAdapterBase):
         steps: list[Step] = []
         evidence: dict[str, list[str]] = {}
 
+        # Only genuinely learner-meaningful fields live in `state` — it's diffed and every field shown
+        # verbatim in the learner-facing Work/Result text (a deliberate platform contract,
+        # trace_pipeline.py's _apply_step_field_contract), so pure bookkeeping (a running segment counter)
+        # never belongs here; `i` in the loop below tracks that locally instead.
         state: dict[str, Any] = {"curl": None, "surface_integral": None, "boundary_partial": 0.0,
-                                 "segments_done": 0, "total_segments": len(segments), "complete": False}
+                                 "complete": False}
 
         # 1) compute_curl
         prior = dict(state)
@@ -154,7 +165,6 @@ class StokesTheoremAdapter(FamilyAdapterBase):
             prior = dict(state)
             running = _round(state["boundary_partial"] + contribution)
             state["boundary_partial"] = running
-            state["segments_done"] = i
             sid = f"s{2 + i}"
             reason = (f"Along {seg_desc}, integrating F . dr gives {_round(contribution)}. Running total: "
                      f"{running}.")
@@ -198,7 +208,7 @@ class StokesTheoremAdapter(FamilyAdapterBase):
                     f"boundary of S."),
             conventions=dict(_STOKES_CONV),
             initial_state={"curl": None, "surface_integral": None, "boundary_partial": 0.0,
-                          "segments_done": 0, "total_segments": len(segments), "complete": False},
+                          "complete": False},
             final_answer={"surface_integral": surface_integral, "line_integral": line_integral}, steps=steps,
             invariants=[dict(x) for x in _STOKES_INV], required_cases=list(_STOKES_REQ),
             case_evidence=evidence,
@@ -208,8 +218,7 @@ class StokesTheoremAdapter(FamilyAdapterBase):
     def states_equivalent(self, a, b):
         a, b = a or {}, b or {}
         return (a.get("surface_integral") == b.get("surface_integral")
-               and a.get("boundary_partial") == b.get("boundary_partial")
-               and a.get("segments_done") == b.get("segments_done"))
+               and a.get("boundary_partial") == b.get("boundary_partial"))
 
     def final_answer_entails(self, state, answer):
         s = state or {}

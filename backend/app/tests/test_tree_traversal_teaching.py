@@ -421,7 +421,10 @@ class StepFieldContract(unittest.TestCase):
         self.assertEqual(first["goal"], "visit the next node in inorder position")   # stage's primary decision
         self.assertTrue(any("→" in w and "output" in w for w in first["work"]),      # variable update w/ contents
                         first["work"])
-        self.assertTrue(first["result"].startswith("output = ["), first["result"])   # just the result
+        # bracket-free (a list-valued "output" must never leak raw Python/JSON list syntax into prose —
+        # the same "never a repr" contract test_state_formatting.py enforces elsewhere).
+        self.assertTrue(first["result"].startswith("output = "), first["result"])
+        self.assertNotIn("[", first["result"])
         self.assertNotIn("Visit", first["result"])                                   # no action prefix
         self.assertNotIn("Complete:", first["result"])                               # no explanation tail
 

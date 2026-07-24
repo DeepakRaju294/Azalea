@@ -523,7 +523,12 @@ def _prose_validation_field(prose: Any) -> dict[str, Any]:
 def _fmt_state_val(v: Any) -> str:
     if v is None:
         return "none"
-    if isinstance(v, (list, dict)):
+    if isinstance(v, (list, tuple)):
+        # Clean, bracket-free rendering — never JSON/Python list syntax leaking into learner prose (same
+        # "never a repr" precedent as families/backtracking.py's _render_subset, extended to this SHARED
+        # formatter: a live Stokes'-theorem card shipped "curl: none -> [0.0, 0.0, 2.0]").
+        return ", ".join(_fmt_state_val(x) for x in v) if v else "(empty)"
+    if isinstance(v, dict):
         return json.dumps(v)
     return str(v)
 

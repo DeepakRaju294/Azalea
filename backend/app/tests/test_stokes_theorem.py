@@ -82,6 +82,17 @@ class StokesTheoremGate(unittest.TestCase):
             self.assertIsNotNone(adapter, f"{title!r} did not route")
             self.assertEqual(adapter.slug, "stokes_theorem")
 
+    def test_both_examples_are_reachable_via_select_instance_across_seeds(self):
+        # Regression: select_instance always returns the FIRST candidate whose trace passes
+        # is_teaching_trace — with a fixed candidates() order, the second example would never ship to a
+        # real learner no matter how many times a path regenerates.
+        a = self._adapter()
+        seen = set()
+        for seed in range(4):
+            tr = tp.select_instance(a, seed=seed)
+            seen.add(round(tr.final_answer["surface_integral"], 3))
+        self.assertEqual(len(seen), 2, f"only one example was ever selected across seeds 0-3: {seen}")
+
     def test_curl_formula_topic_does_not_collide_with_stokes(self):
         # Regression guard: a title mentioning both curl and Stokes' theorem must route to the full
         # surface-vs-boundary adapter, not the unrelated 2D point-value curl formula plug-in.
