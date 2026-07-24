@@ -788,3 +788,255 @@ class StokesTheoremAdapter(FamilyAdapterBase):
         else:
             needle = str(step.state_after.get("boundary_partial"))
         return [] if needle.lower() in prose else [("value_not_stated", needle)]
+
+
+# --- divergence theorem (Gauss) -------------------------------------------------------------------------
+# Same two-sided structure as Stokes above, and the same no-CAS philosophy: every example's divergence is
+# CONSTANT, so the volume side is exactly div * volume, and each boundary piece's outward flux is worked out
+# by hand ahead of time to an exact value. The independent-oracle structure is the theorem's OWN claim: the
+# volume integral of div(F) and the total outward flux through the boundary are computed via two structurally
+# DIFFERENT methods — their agreement is the falsifiable claim a bug in either side could not fake.
+_DIVERGENCE_EXAMPLES: dict[str, dict[str, Any]] = {
+    "unit_cube_expanding_field": {
+        "field_desc": "F(x, y, z) = (x, y, z)",
+        "divergence": 3.0,
+        "divergence_work": "dF1/dx + dF2/dy + dF3/dz = 1 + 1 + 1",
+        "region_desc": "the unit cube [0,1] x [0,1] x [0,1]",
+        "volume": 1.0,
+        "boundary_desc": "the cube's six faces, each with outward normal",
+        # the three zero-flux faces travel as ONE piece: T13's trace budget is 8 steps, and 6 separate
+        # face steps (+ divergence + volume + verify = 9) would blow it — and a learner gains nothing from
+        # three consecutive "this face contributes 0" cards.
+        "boundary_pieces": [("the face x = 1 (outward normal +x, F . n = x = 1 over unit area)", 1.0),
+                            ("the face y = 1 (outward normal +y, F . n = y = 1 over unit area)", 1.0),
+                            ("the face z = 1 (outward normal +z, F . n = z = 1 over unit area)", 1.0),
+                            ("the three faces on the coordinate planes (x = 0, y = 0, z = 0): the outward "
+                             "normal is -x, -y, -z respectively, and F . n = 0 on each", 0.0)],
+    },
+    "unit_sphere_radial_field": {
+        "field_desc": "F(x, y, z) = (x, y, z)",
+        "divergence": 3.0,
+        "divergence_work": "dF1/dx + dF2/dy + dF3/dz = 1 + 1 + 1",
+        "region_desc": "the unit ball x^2 + y^2 + z^2 <= 1 (volume 4*pi/3)",
+        "volume": 4.0 * math.pi / 3.0,
+        "boundary_desc": "the unit sphere, outward normal n = (x, y, z) itself on the surface",
+        "boundary_pieces": [("the whole sphere: F . n = x^2 + y^2 + z^2 = 1 everywhere on it, so the flux "
+                             "is the sphere's surface area 4*pi", 4.0 * math.pi)],
+    },
+}
+
+_DIV_CONV = {"theorem": "divergence", "check": "volume_integral_equals_outward_flux",
+             "trace_granularity": "one_computation_phase"}
+_DIV_REQ = ["compute_divergence", "integrate_volume", "integrate_flux", "completion"]
+_DIV_INV = [{"id": "volume_equals_flux", "scope": "terminal_only",
+            "statement": "the volume integral of div(F) over the region equals the total outward flux of F "
+                         "through its boundary surface"}]
+
+
+class _DivergenceCanonicalFormula:
+    """Card-grounding facts (see _StokesCanonicalFormula for why this is NOT a _formula_spec)."""
+    canonical_latex = r"\iint_{S} F \cdot dS = \iiint_{V} (\nabla \cdot F) \, dV"
+    canonical_notes = [
+        "S is the closed boundary surface of the solid region V, oriented with OUTWARD normal — the theorem "
+        "only applies to a surface that fully encloses a volume.",
+        "The left side is the total outward flux of F through the boundary; the right side adds up the "
+        "divergence — the field's local expansion rate — throughout the interior.",
+        "F must have continuous partial derivatives on an open region containing V.",
+    ]
+    edge_cases = [
+        "If F is divergence-free (div F = 0, an incompressible flow), the net flux through ANY closed "
+        "surface is 0 — whatever flows in must flow out.",
+        "The theorem needs a CLOSED surface; an open surface with a boundary curve is Stokes'-theorem "
+        "territory, not divergence-theorem territory.",
+        "Reversing the orientation (inward normal) flips the sign of the flux side.",
+    ]
+
+
+class DivergenceTheoremAdapter(FamilyAdapterBase):
+    slug = "divergence_theorem"
+    label_convention = "ints"
+    _canonical_formula = _DivergenceCanonicalFormula()
+    example_spec = ExampleSpec(
+        input=InstanceShape("vector_field_region_pair", count=(2, 2), structure=["divergence_theorem"]),
+        stages={
+            "compute_divergence": StageSpec(
+                "compute_divergence", "compute the divergence of the vector field",
+                teaching_focus="the divergence measures the field's local expansion rate at a point",
+                contains={"state_divergence": "required"},
+                state_effects=["the divergence becomes known"]),
+            "integrate_volume": StageSpec(
+                "integrate_volume", "integrate the divergence over the solid region",
+                teaching_focus="for a constant divergence, the volume integral is just the divergence "
+                               "times the region's volume",
+                contains={"multiply_volume": "required"},
+                state_effects=["the volume-integral total becomes known"]),
+            "integrate_flux": StageSpec(
+                "integrate_flux", "compute the outward flux through one piece of the boundary surface",
+                teaching_focus="each boundary piece contributes its own exact outward flux to the running "
+                               "total",
+                contains={"accumulate_piece": "required"},
+                state_effects=["the flux running total grows by one piece's contribution"]),
+            "verify_match": StageSpec(
+                "verify_match", "confirm the volume integral equals the completed outward flux",
+                teaching_focus="the divergence theorem's own claim: the two independently-computed sides "
+                               "must agree",
+                contains={"compare": "required"},
+                state_effects=["the trace concludes with both totals confirmed equal"])},
+        structure="compute_divergence, then integrate_volume, then integrate_flux (one or more), then "
+                 "verify_match",
+        must_exercise=["compute_divergence", "integrate_volume", "integrate_flux", "completion"],
+        must_cover=["integrate_flux"], must_avoid=[],
+        terminal="the volume integral and the completed outward boundary flux have been shown to match",
+        output_shape="the matching volume_integral and flux values")
+
+    def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+        names = list(_DIVERGENCE_EXAMPLES)
+        if seed % len(names):
+            names.reverse()
+        for name in names:
+            yield {"example": name, "_id": f"divergence_theorem_v1_{name}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        ev = trace.case_evidence
+        return (len(trace.steps) >= 3 and bool(ev.get("compute_divergence"))
+                and bool(ev.get("integrate_volume")) and bool(ev.get("integrate_flux")))
+
+    def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                  attempt: int = 1, seed: int = 0) -> ContractTrace:
+        ex = _DIVERGENCE_EXAMPLES[example_input["example"]]
+        div = ex["divergence"]
+        volume = ex["volume"]
+        pieces = ex["boundary_pieces"]
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        state: dict[str, Any] = {"divergence": None, "volume_integral": None, "flux_partial": 0.0,
+                                 "complete": False}
+
+        # 1) compute_divergence
+        prior = dict(state)
+        state["divergence"] = div
+        sid = "s1"
+        reason = (f"The vector field is {ex['field_desc']}. Its divergence is {ex['divergence_work']} "
+                  f"= {_round(div)}.")
+        evr = f"div(F) = {_round(div)}."
+        evidence.setdefault("compute_divergence", []).append(sid)
+        steps.append(Step(
+            id=sid, operation="compute_divergence", prior_state=prior, state_after=dict(state),
+            inputs={"field": ex["field_desc"]}, decision=f"div(F) = {_round(div)}", reason=reason,
+            visual_state={"kind": "variables", "divergence": div}, visual_delta={"divergence": div},
+            expected_visible_result=evr,
+            facts={"allowed_values": [], "required_facts": [fact("divergence", str(_round(div)))],
+                  "forbidden_claims": []}))
+
+        # 2) integrate_volume — constant divergence over the region: div * volume
+        prior = dict(state)
+        volume_integral = _round(div * volume)
+        state["volume_integral"] = volume_integral
+        sid = "s2"
+        reason = (f"V is {ex['region_desc']}, volume {_round(volume)}. Since div(F) is constant here, the "
+                 f"volume integral of div(F) dV is just the divergence times the volume: "
+                 f"{_round(div)} * {_round(volume)} = {volume_integral}.")
+        evr = f"Volume integral of div(F) over V = {volume_integral}."
+        evidence.setdefault("integrate_volume", []).append(sid)
+        steps.append(Step(
+            id=sid, operation="integrate_volume", prior_state=prior, state_after=dict(state),
+            inputs={"divergence": div, "volume": volume}, decision=f"volume_integral = {volume_integral}",
+            reason=reason, visual_state={"kind": "variables", "volume_integral": volume_integral},
+            visual_delta={"volume_integral": volume_integral}, expected_visible_result=evr,
+            facts={"allowed_values": [],
+                  "required_facts": [fact("volume_integral", str(volume_integral))],
+                  "forbidden_claims": []}))
+
+        # 3..) integrate_flux — one step per boundary piece, accumulating the outward-flux running total
+        for i, (piece_desc, contribution) in enumerate(pieces, start=1):
+            prior = dict(state)
+            running = _round(state["flux_partial"] + contribution)
+            state["flux_partial"] = running
+            sid = f"s{2 + i}"
+            reason = (f"Through {piece_desc}, the outward flux is {_round(contribution)}. Running total: "
+                     f"{running}.")
+            evr = f"Outward-flux running total after {i}/{len(pieces)} piece(s): {running}."
+            evidence.setdefault("integrate_flux", []).append(sid)
+            steps.append(Step(
+                id=sid, operation="integrate_flux", prior_state=prior, state_after=dict(state),
+                inputs={"piece": piece_desc, "contribution": contribution},
+                decision=f"+{_round(contribution)}", reason=reason,
+                visual_state={"kind": "variables", "flux_partial": running, "pieces_done": i},
+                visual_delta={"piece": piece_desc, "contribution": _round(contribution)},
+                expected_visible_result=evr,
+                facts={"allowed_values": [],
+                      "required_facts": [fact("flux_partial", str(running))], "forbidden_claims": []}))
+
+        # final) verify_match
+        prior = dict(state)
+        flux_total = state["flux_partial"]
+        state["complete"] = True
+        sid = f"s{3 + len(pieces)}"
+        reason = (f"The volume integral ({volume_integral}) and the completed outward boundary flux "
+                 f"({flux_total}) match, confirming the divergence theorem for this example.")
+        evr = f"volume_integral = {volume_integral} = flux = {flux_total}. Confirmed."
+        evidence.setdefault("completion", []).append(sid)
+        steps.append(Step(
+            id=sid, operation="verify_match", prior_state=prior, state_after=dict(state),
+            inputs={"volume_integral": volume_integral, "flux": flux_total},
+            decision="volume_integral == flux", reason=reason,
+            visual_state={"kind": "variables", "volume_integral": volume_integral, "flux": flux_total},
+            visual_delta={"matches": abs(volume_integral - flux_total) < _TOL},
+            expected_visible_result=evr,
+            facts={"allowed_values": [],
+                  "required_facts": [fact("volume_integral", str(volume_integral)),
+                                     fact("flux", str(flux_total))],
+                  "forbidden_claims": []}))
+
+        return ContractTrace(
+            problem=(f"Verify the divergence theorem for {ex['field_desc']} over {ex['region_desc']}: show "
+                    f"that the volume integral of div(F) equals the total outward flux of F through the "
+                    f"boundary surface."),
+            conventions=dict(_DIV_CONV),
+            initial_state={"divergence": None, "volume_integral": None, "flux_partial": 0.0,
+                          "complete": False},
+            final_answer={"volume_integral": volume_integral, "flux": flux_total}, steps=steps,
+            invariants=[dict(x) for x in _DIV_INV], required_cases=list(_DIV_REQ),
+            case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        a, b = a or {}, b or {}
+        return (a.get("volume_integral") == b.get("volume_integral")
+               and a.get("flux_partial") == b.get("flux_partial"))
+
+    def final_answer_entails(self, state, answer):
+        s = state or {}
+        if not s.get("complete"):
+            return False
+        a = answer or {}
+        return (s.get("volume_integral") == a.get("volume_integral")
+               and s.get("flux_partial") == a.get("flux"))
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "volume_equals_flux":
+            s = state or {}
+            if not s.get("complete"):
+                return True                      # scope: terminal_only — only meaningful at completion
+            vol, flux = s.get("volume_integral"), s.get("flux_partial")
+            if vol is None or flux is None:
+                return False
+            return abs(vol - flux) < _TOL
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation in ("compute_divergence", "integrate_volume", "integrate_flux",
+                                        "verify_match") else [f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        if step.operation == "compute_divergence":
+            needle = str(step.state_after.get("divergence") if step.state_after.get("divergence") is None
+                         else _round(step.state_after["divergence"]))
+        elif step.operation == "integrate_volume":
+            needle = str(step.state_after.get("volume_integral"))
+        else:
+            needle = str(step.state_after.get("flux_partial"))
+        return [] if needle.lower() in prose else [("value_not_stated", needle)]

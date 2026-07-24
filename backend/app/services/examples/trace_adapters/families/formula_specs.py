@@ -1985,9 +1985,12 @@ CURL_2D = FormulaSpec(
 DIV_2D = FormulaSpec(
     slug="divergence_2d_vector_field", title="divergence of the 2D vector field F(x,y) = (x^2, y^2)",
     family="calculus",
+    # "divergence theorem setup" used to live here as an alias; the dedicated divergence_theorem adapter
+    # (full volume-vs-flux verification, priority 111) now owns every "divergence theorem" title, so this
+    # spec keeps only the point-value divergence phrasings and guards against the theorem titles.
     aliases=["divergence of a vector field", "compute the divergence", "divergence in 2d",
-             "divergence of F", "divergence theorem setup"],
-    not_aliases=["curl", "gradient", "partial derivative"],
+             "divergence of F"],
+    not_aliases=["curl", "gradient", "partial derivative", "theorem"],
     priority=53,
     problem_template="For the vector field F(x, y) = (x^2, y^2), find the divergence at "
                      "(x, y) = ({x}, {y}).",

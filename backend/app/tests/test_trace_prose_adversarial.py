@@ -60,6 +60,7 @@ class LyingFormatterIsCaught(unittest.TestCase):
                      "stokes_theorem",   # T13 hand-coded (vector calculus)
                      "line_integral",    # T13 hand-coded (vector calculus)
                      "surface_integral", # T13 hand-coded (vector calculus)
+                     "divergence_theorem",  # T13 hand-coded (vector calculus)
                      ] + [s.slug for s in __import__(
                          "app.services.examples.trace_adapters.families.induction_engine",
                          fromlist=["registered_specs"]).registered_specs()   # every live InductionSpec (T13)
