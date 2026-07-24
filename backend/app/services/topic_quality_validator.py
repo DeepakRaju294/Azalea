@@ -809,6 +809,28 @@ def quality_report_score(report: dict[str, Any]) -> int:
     return score
 
 
+# Error codes severe enough to demand regeneration. PRACTICE_FAILURE_CODES is the practice-flavored subset,
+# split out so the lean pipeline's validation retry can EXCLUDE it from its trigger: observed across live
+# paths, a practice failure fired the retry on essentially every topic and the retry NEVER fixed it (9/9
+# retries discarded) — study_path_introduction is prompt-forbidden from creating practice yet was validated
+# against it, and math topics can only emit short_answer/multiple_choice while the validator demands
+# math/math_input. The practice system is slated for a full rewrite (product decision); until then a
+# practice deficiency is recorded but must not double generation cost.
+PRACTICE_FAILURE_CODES = frozenset({"missing_practice", "practice_type_mismatch"})
+REGENERATION_ERROR_CODES = frozenset({
+    "missing_cards",
+    "blueprint_sequence_gap",
+    "generic_fallback_overuse",
+    "text_wall",
+    "visual_regeneration_still_required",
+    "stage_rule_compliance_gap",
+    # only reachable at error severity for the "process" stage (see validate_stage_rule_compliance) —
+    # background/edge_case gaps stay warning-severity and keep contributing to the aggregate
+    # stage_rule_compliance_gap threshold instead.
+    "stage_content_gap",
+}) | PRACTICE_FAILURE_CODES
+
+
 def build_report(issues: list[dict[str, Any]]) -> dict[str, Any]:
     error_count = sum(1 for issue in issues if issue.get("severity") == "error")
     warning_count = sum(1 for issue in issues if issue.get("severity") == "warning")
@@ -818,20 +840,7 @@ def build_report(issues: list[dict[str, Any]]) -> dict[str, Any]:
         "error_count": error_count,
         "warning_count": warning_count,
         "requires_regeneration": any(
-            issue.get("severity") == "error" and issue.get("code") in {
-                "missing_cards",
-                "blueprint_sequence_gap",
-                "generic_fallback_overuse",
-                "missing_practice",
-                "practice_type_mismatch",
-                "text_wall",
-                "visual_regeneration_still_required",
-                "stage_rule_compliance_gap",
-                # only reachable at error severity for the "process" stage (see
-                # validate_stage_rule_compliance) — background/edge_case gaps stay warning-severity and
-                # keep contributing to the aggregate stage_rule_compliance_gap threshold instead.
-                "stage_content_gap",
-            }
+            issue.get("severity") == "error" and issue.get("code") in REGENERATION_ERROR_CODES
             for issue in issues
         ),
     }

@@ -109,6 +109,68 @@ class RetriesOnceOnRequiresRegeneration(unittest.TestCase):
         self.assertTrue(result["validation_report"]["requires_regeneration"])   # original, even though flagged
         self.assertEqual(result, bad)
 
+    def test_practice_only_failure_does_not_trigger_a_retry(self):
+        # Measured live: practice-class failures fired the retry on ~every topic and the retry NEVER fixed
+        # them (9/9 discarded) — intro topics are prompt-forbidden from practice yet validated against it,
+        # and math topics can only emit short_answer/multiple_choice. No retry; failure stays recorded.
+        lesson = _lesson(False)
+        lesson["topic_quality_report"] = {
+            "requires_regeneration": True,
+            "issues": [{"severity": "error", "code": "missing_practice", "message": "m", "details": {}},
+                       {"severity": "error", "code": "practice_quality_regeneration_required",
+                        "message": "m", "details": {}}]}
+        lesson["validation_report"] = {"requires_regeneration": True, "issues": ["x"]}
+        calls = []
+
+        def fake_convert(lean_json, topic, chunks):
+            calls.append(1)
+            return lesson
+
+        with mock.patch.object(llg, "generate_lean_structured_lesson", return_value={"cards": []}), \
+             mock.patch.object(llg, "_convert_lean_to_legacy", side_effect=fake_convert), \
+             mock.patch.object(llg, "_assert_lesson_is_renderable", return_value=None):
+            llg.build_lean_lesson_from_topic_and_chunks(_topic(), [])
+        self.assertEqual(len(calls), 1)   # no retry
+
+    def test_non_practice_quality_error_still_triggers_a_retry(self):
+        first, second = _lesson(False), _lesson(False)
+        first["topic_quality_report"] = {
+            "requires_regeneration": True,
+            "issues": [{"severity": "error", "code": "stage_content_gap", "message": "m",
+                        "details": {"blueprint_key": "process"}}]}
+        first["validation_report"] = {"requires_regeneration": True, "issues": ["x"]}
+        calls = []
+
+        def fake_convert(lean_json, topic, chunks):
+            calls.append(1)
+            return first if len(calls) == 1 else second
+
+        with mock.patch.object(llg, "generate_lean_structured_lesson", return_value={"cards": []}), \
+             mock.patch.object(llg, "_convert_lean_to_legacy", side_effect=fake_convert), \
+             mock.patch.object(llg, "_assert_lesson_is_renderable", return_value=None):
+            llg.build_lean_lesson_from_topic_and_chunks(_topic(), [])
+        self.assertEqual(len(calls), 2)   # retried
+
+    def test_intro_topic_gets_no_sibling_derived_out_of_scope(self):
+        # An intro's job is to orient across its siblings — sibling titles as out_of_scope made every
+        # intro fail scope validation by construction, one guaranteed-wasted retry per path.
+        from app.services.topic_scope_service import build_scope_boundaries_from_siblings
+
+        class _StudyPath:
+            pass
+
+        intro = SimpleNamespace(id="i1", title="Introduction to Stokes Theorem",
+                                course_type="study_path_introduction",
+                                topic_type="study_path_introduction", prerequisite_topics=None)
+        sib = SimpleNamespace(id="t2", title="Stokes' Theorem", course_type="math_formula_method",
+                              topic_type="math_formula_method", prerequisite_topics=None)
+        sp = _StudyPath(); sp.topics = [intro, sib]
+        _, _, out_of_scope, _ = build_scope_boundaries_from_siblings(intro, sp, None)
+        self.assertEqual(out_of_scope, [])
+        # a TEACHING topic still gets its siblings excluded
+        _, _, out_of_scope_sib, _ = build_scope_boundaries_from_siblings(sib, sp, None)
+        self.assertIn("Introduction to Stokes Theorem", out_of_scope_sib)
+
     def test_decision_trace_records_which_attempt_shipped(self):
         bad, good = _lesson(True, n_issues=1), _lesson(False)
         calls = []

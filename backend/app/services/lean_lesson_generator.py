@@ -9047,6 +9047,19 @@ _BARE_SPACING_TOKEN = re.compile(r"\\[,;!:](?=\s|$)")
 # the unambiguous brace-subscript form, so a code identifier like int_count is never touched. The whole
 # atom (command + braced subscript) is matched so the repair can wrap it in \(...\) in one substitution.
 _BACKSLASHLESS_INT = re.compile(r"(?<![A-Za-z\\])((?:i{1,2}|o)?int)_\{([^{}]*)\}")
+# The model sometimes invents %...% as a math delimiter (live: "In this equation, %F% represents the vector
+# field", practice "%z = x^2 + y^2% for %0 ≤ z ≤ 1%") — rendered as literal percent signs. Conservative
+# repair to \(...\): the OPENING % must be followed by a non-space non-digit (a percentage like "20% to
+# 30%" has its % after a digit and before a space, so it can never open a match), and the content must be
+# either a short symbol token (F, dS, N) or carry a math operator.
+_PERCENT_MATH_SPAN = re.compile(r"%(?=[^\s\d%])([^%\n]{1,60})%")
+
+
+def _percent_math_repl(m: "re.Match[str]") -> str:
+    inner = m.group(1).strip()
+    mathy = (len(inner) <= 4 and re.fullmatch(r"[A-Za-z][A-Za-z0-9']*", inner)) or \
+        re.search(r"[=^_\\{}+·≤≥×]|[<>]=?|\bd[A-Za-z]\b", inner)
+    return f"\\({inner}\\)" if mathy else m.group(0)
 
 
 def _sub_outside_math_spans(pattern: Any, repl: str, s: str) -> str:
@@ -9088,6 +9101,15 @@ def _sanitize_math_in_text(text: str) -> str:
     # bare repaired command would never get wrapped; wrap it here directly).
     s = _sub_outside_math_spans(_BARE_SPACING_TOKEN, " ", s)
     s = _sub_outside_math_spans(_BACKSLASHLESS_INT, r"\\(\\\1_{\2}\\)", s)
+    if "%" in s:
+        out_parts: list[str] = []
+        last = 0
+        for m in _MATH_SPAN_RE.finditer(s):
+            out_parts.append(_PERCENT_MATH_SPAN.sub(_percent_math_repl, s[last:m.start()]))
+            out_parts.append(m.group(0))
+            last = m.end()
+        out_parts.append(_PERCENT_MATH_SPAN.sub(_percent_math_repl, s[last:]))
+        s = "".join(out_parts)
     # INSIDE a span the same lost-backslash integral just needs its backslash back (already delimited) —
     # "int_{S}" inside \(...\) can only be a broken \int; code identifiers never appear inside math spans.
     s = _MATH_SPAN_RE.sub(lambda m: _BACKSLASHLESS_INT.sub(r"\\\1_{\2}", m.group(0)), s)
@@ -9839,6 +9861,19 @@ def _generate_lean_lesson_once(
     return legacy
 
 
+def _should_retry_lesson(legacy: dict[str, Any]) -> bool:
+    """Retry only on a failure a second generation can plausibly fix: scope drift, or a quality ERROR
+    outside the practice class (see PRACTICE_FAILURE_CODES in topic_quality_validator — those fired on
+    ~every topic and never got fixed by a retry, purely doubling generation time)."""
+    if (legacy.get("scope_validation_report") or {}).get("requires_regeneration"):
+        return True
+    from app.services.topic_quality_validator import PRACTICE_FAILURE_CODES, REGENERATION_ERROR_CODES
+    quality = legacy.get("topic_quality_report") or {}
+    actionable = REGENERATION_ERROR_CODES - PRACTICE_FAILURE_CODES
+    return any(isinstance(i, dict) and i.get("severity") == "error" and i.get("code") in actionable
+               for i in (quality.get("issues") or []))
+
+
 def _lean_retry_feedback(legacy: dict[str, Any]) -> str:
     """Combine whichever of the lean pipeline's own validators flagged requires_regeneration into one
     retry prompt — the same signal build_lesson_from_topic_and_chunks (the older, non-lean pipeline) has
@@ -9871,13 +9906,15 @@ def build_lean_lesson_from_topic_and_chunks(
     chunks: list[ContentChunk],
     feedback: str | None = None,
 ) -> dict[str, Any]:
-    """Generate a lean lesson in a single LLM call, retrying ONCE if the lesson's own validators (scope
-    adherence, topic quality, comprehension-check presence) flagged requires_regeneration.
+    """Generate a lean lesson in a single LLM call, retrying ONCE if the lesson's own validators flagged a
+    failure a retry can actually fix: scope drift, or a non-practice quality error.
 
-    This is a narrower retry than the one `_example_quality_issues` used to run (removed — see below):
-    it fires only on a hard validator failure (off-scope content, missing required practice, no
-    comprehension check), not a soft quality heuristic, so it should be rare in practice rather than the
-    ~42% that made the old check not worth its cost.
+    PRACTICE-class failures (missing_practice / practice_type_mismatch / the microcheck-presence check) are
+    deliberately NOT retry triggers: measured live, they fired the retry on essentially every topic and the
+    retry NEVER fixed them (9/9 retries discarded across two full paths — a study_path_introduction is
+    prompt-forbidden from creating practice yet was validated against it, and math topics can only emit
+    short_answer/multiple_choice while the validator demands math/math_input). They stay recorded in the
+    reports; they just don't double generation time for a component slated for a full rewrite.
 
     The previous version ran an `_example_quality_issues` check and triggered
     a full second LLM call when thresholds (e.g. "fewer than 5 worked-example
@@ -9887,8 +9924,7 @@ def build_lean_lesson_from_topic_and_chunks(
     prompt's QUALITY GATES section; that specific second-pass safety net is gone.
     """
     legacy = _generate_lean_lesson_once(topic, chunks, feedback)
-    report = legacy.get("validation_report") or {}
-    if not report.get("requires_regeneration"):
+    if not _should_retry_lesson(legacy):
         return legacy
     retry_feedback = _lean_retry_feedback(legacy)
     if not retry_feedback:

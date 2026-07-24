@@ -135,6 +135,16 @@ def build_scope_boundaries_from_siblings(
     if not all_topics:
         return assumed_prerequisites, brief_refresh_prerequisites, out_of_scope_content, depth_notes
 
+    # A study_path_introduction's whole JOB is to orient across its siblings — its roadmap card literally
+    # lists every one of them. Deriving out_of_scope from sibling titles made the intro fail scope
+    # validation BY CONSTRUCTION on every single path (live: every intro card mentioning the goal concept
+    # flagged "teaches forbidden content: stokes' theorem"), which — once the validation retry landed —
+    # burned one guaranteed-wasted extra LLM generation per path. Siblings are the intro's subject matter,
+    # not exclusions.
+    _own_type = str(getattr(topic, "course_type", None) or getattr(topic, "topic_type", None) or "").lower()
+    if _own_type == "study_path_introduction":
+        return assumed_prerequisites, brief_refresh_prerequisites, out_of_scope_content, depth_notes
+
     current_topic_id = str(getattr(topic, "id", "") or "")
     prerequisite_phrases = parse_prerequisite_topics(getattr(topic, "prerequisite_topics", None))
 

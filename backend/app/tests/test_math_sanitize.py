@@ -169,6 +169,19 @@ class SanitizeMath(unittest.TestCase):
         s = "use int_count = 0 in the loop"
         self.assertEqual(_sanitize_math_in_text(s), s)
 
+    def test_percent_wrapped_math_is_converted_to_inline_spans(self):
+        # Live (surface-integral topic): the model invented %...% as a math delimiter.
+        out = _sanitize_math_in_text("In this equation, %F% represents the vector field and %dS% the element.")
+        self.assertIn(r"\(F\)", out)
+        self.assertIn(r"\(dS\)", out)
+        self.assertNotIn("%", out)
+        out2 = _sanitize_math_in_text("the surface %z = x^2 + y^2% for %0 ≤ z ≤ 1%:")
+        self.assertIn(r"\(z = x^2 + y^2\)", out2)
+
+    def test_ordinary_percentages_are_untouched(self):
+        for s in ("an increase of 20% to 30% overall", "a 5% fee and a 3% tax", "100% correct"):
+            self.assertEqual(_sanitize_math_in_text(s), s)
+
     def test_applies_across_card_points(self):
         cards = [{"points": [r"\text{I} = \frac{\text{V}}{\text{R}}", "plain bullet", r"$$x = y$$"]}]
         _sanitize_card_math(cards)
