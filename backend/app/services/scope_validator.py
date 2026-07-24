@@ -130,7 +130,14 @@ def validate_scope_adherence(
             continue
         text = collect_text(card, searchable_card_fields)
         for phrase in must_not_teach:
-            if phrase and phrase in text:
+            # Gated the same way out_of_scope already is (is_taught_as_main_content): out_of_scope_content
+            # (the source must_not_teach is derived from) includes bare SIBLING TOPIC TITLES, not just real
+            # forbidden-content descriptions — an ungated substring match meant any passing mention of a
+            # sibling's name anywhere in the card flagged it, which is nearly guaranteed on a path where
+            # every topic legitimately connects back to the same handful of concepts (live: 98% of one
+            # topic's ~475 "issues" were this false-positive class). A card whose OWN subject centrally IS
+            # the forbidden phrase (title/main_concept/learning_goal/example) still gets caught.
+            if phrase and phrase in text and is_taught_as_main_content(card, phrase):
                 issues.append(f"Card {index + 1} teaches forbidden content: {phrase}.")
         for phrase in out_of_scope:
             if phrase and phrase in text and is_taught_as_main_content(card, phrase):
@@ -158,7 +165,12 @@ def validate_scope_adherence(
                 )
 
         # Check card.points with ratio heuristic to avoid false positives.
-        # A point fails if the forbidden phrase starts the point OR dominates it (>= 30% word share).
+        # A point fails if the forbidden phrase starts the point OR dominates it (>= 30% word share) AND
+        # the card's own subject is centrally that phrase (is_taught_as_main_content) — the same gate the
+        # card-level checks use. Without it, a short out-of-scope phrase (or a bare sibling topic title,
+        # which out_of_scope_content includes) crosses the 30% ratio on almost any short point that merely
+        # references it in passing, which is unavoidable on a path where every topic legitimately connects
+        # back to the same handful of concepts.
         points_list = card.get("points") or []
         if isinstance(points_list, list):
             for point in points_list:
@@ -167,7 +179,10 @@ def validate_scope_adherence(
                 for phrase in must_not_teach:
                     normalized_phrase = normalize_scope_phrase(phrase)
                     phrase_word_count = len(normalized_phrase.split())
-                    if normalized_phrase and (
+                    # is_taught_as_main_content does its own (non-punctuation-stripped) lowercasing — pass
+                    # the raw lowered `phrase`, not `normalized_phrase`, or an apostrophe mismatch
+                    # ("stokes theorem" vs "stokes' theorem") would silently defeat every match.
+                    if normalized_phrase and is_taught_as_main_content(card, phrase) and (
                         normalized_point.startswith(normalized_phrase)
                         or (
                             phrase_word_count > 0
@@ -181,7 +196,7 @@ def validate_scope_adherence(
                 for phrase in out_of_scope:
                     normalized_phrase = normalize_scope_phrase(phrase)
                     phrase_word_count = len(normalized_phrase.split())
-                    if normalized_phrase and (
+                    if normalized_phrase and is_taught_as_main_content(card, phrase) and (
                         normalized_point.startswith(normalized_phrase)
                         or (
                             phrase_word_count > 0

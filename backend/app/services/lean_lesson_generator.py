@@ -817,6 +817,17 @@ def _lean_card_to_legacy(
         q_answer = str(lean_card.get("practice_answer") or "").strip()
         choices = [str(c).strip() for c in (lean_card.get("practice_choices") or []) if str(c).strip()]
 
+        if not q_text and points:
+            # Deterministic backstop: despite the prompt's instruction to fill practice_question/
+            # practice_answer, the model sometimes writes a real, complete question into `points` and
+            # leaves the dedicated fields null — the card reads fine to a human but practice_questions
+            # ships empty, silently breaking the app's interactive practice (live: 3 of 4 topics on one
+            # generation). Derive a fallback question from the card's own top-level points rather than
+            # shipping nothing — a real question with no stored answer still beats no question at all.
+            top_level = [p for p in points if isinstance(p, str) and not p.startswith("  ")]
+            if top_level:
+                q_text = " ".join(top_level).strip()
+
         if q_text:
             q_type = "multiple_choice" if len(choices) >= 2 else "short_answer"
             practice_question_index = len(practice_questions)
@@ -9003,6 +9014,15 @@ _DOUBLED_DELIM_ESCAPE = re.compile(r"\\\\(?=[()\[\]])")
 # over-escaped delimiter, they're a bare "\\" the model wrote (as if inside an align/matrix environment) that
 # has no place in flat prose (live: a Divergence Theorem card read "...vector field \\ (\(\nabla\)...").
 _STRAY_LATEX_LINEBREAK = re.compile(r"\\{2,}")
+# TWO consecutive real delimiter-opens (or closes) with nothing between them — never semantically valid
+# (you cannot open two inline-math spans back to back), so always safe to collapse to one. Live cause: the
+# model writes ONE unbalanced stray "\(" that never gets a matching "\)" anywhere in the string (a
+# truncated attempt to delimit the whole equation); _wrap_bare_latex, unable to tell a broken delimiter
+# from ordinary text, then wraps the bare command immediately following it — "Written as \(\int_C F..."
+# becomes "Written as \(\(\int_C\) F...". Collapsing here cleans up the artifact regardless of exactly how
+# the doubled token arose.
+_DOUBLED_OPEN_DELIM = re.compile(r"\\\(\\\(")
+_DOUBLED_CLOSE_DELIM = re.compile(r"\\\)\\\)")
 
 
 def _sanitize_math_in_text(text: str) -> str:
@@ -9015,11 +9035,20 @@ def _sanitize_math_in_text(text: str) -> str:
     whenever ANY part of the string already had a valid delimiter."""
     s = str(text)
     s = _DOUBLED_DELIM_ESCAPE.sub(lambda m: "\\", s)   # \\( \\) \\[ \\] -> \( \) \[ \] before anything else
+    s = _DOUBLED_OPEN_DELIM.sub(r"\\(", s)
+    s = _DOUBLED_CLOSE_DELIM.sub(r"\\)", s)
     s = _STRAY_LATEX_LINEBREAK.sub(" ", s)
     s = re.sub(r"\s{2,}", " ", s).strip()
     # \text{V} / \textbf{V} / \textit{V} / \mathbf{V} / \mathit{V} -> V (drop the unsupported command; the
     # frontend renderer supports none of this family, delimited or not).
-    s = re.sub(r"\\(?:text|textbf|textit|mathbf|mathit)\s*\{([^{}]*)\}", r"\1", s)
+    s = re.sub(r"\\(?:textbf|textit|mathbf|mathit|text)\s*\{([^{}]*)\}", r"\1", s)
+    # Same, but the leading backslash is MISSING — the model sometimes drops it while correctly escaping
+    # every other command in the same bullet (live: "\(\nabla\) \(\cdot\) textbf{F}" — nabla/cdot escaped,
+    # textbf{F} not), which the backslash-required pattern above lets sail through as literal "textbf{F}"
+    # text. A separate pass (not folded into the one above) so the lookbehind — needed here to stop a
+    # match starting mid-word ("subtext{") or immediately after a real command's own backslash, which the
+    # first pass already consumed — never has to reason about the backslash-present case too.
+    s = re.sub(r"(?<![A-Za-z\\])(?:textbf|textit|mathbf|mathit|text)\s*\{([^{}]*)\}", r"\1", s)
     if _MALFORMED_INLINE.search(s):
         # Malformed nesting ("C(n, \(r) = ...\)") — strip the misplaced inline delimiters and fall through
         # so the whole equation is re-wrapped cleanly below.
@@ -9042,9 +9071,12 @@ def _classify_sanitize_fix(before: str) -> str:
     touched the text, let alone which regex fired (doubled-escape and stray-linebreak both this session)."""
     if _DOUBLED_DELIM_ESCAPE.search(before):
         return "doubled_delimiter_escape"
+    if _DOUBLED_OPEN_DELIM.search(before) or _DOUBLED_CLOSE_DELIM.search(before):
+        return "doubled_open_or_close_delimiter"
     if _STRAY_LATEX_LINEBREAK.search(_DOUBLED_DELIM_ESCAPE.sub(lambda m: "\\", before)):
         return "stray_latex_linebreak"
-    if re.search(r"\\(?:text|textbf|textit|mathbf|mathit)\s*\{", before):
+    if re.search(r"\\(?:textbf|textit|mathbf|mathit|text)\s*\{", before) or re.search(
+        r"(?<![A-Za-z\\])(?:textbf|textit|mathbf|mathit|text)\s*\{", before):
         return "unsupported_text_command"
     if _MALFORMED_INLINE.search(before):
         return "malformed_inline_nesting"

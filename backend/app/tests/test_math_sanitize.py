@@ -90,6 +90,36 @@ class SanitizeMath(unittest.TestCase):
         self.assertNotIn("\\mathbf", out)
         self.assertEqual(out, r"the curl \(\nabla \times F\) and the field F itself")
 
+    def test_doubled_open_delimiter_before_a_wrapped_atom_is_collapsed(self):
+        # Live regression (Line Integrals card): the model wrote ONE unbalanced stray "\(" that never got a
+        # matching "\)" anywhere in the string (a truncated attempt to delimit the whole equation).
+        # _wrap_bare_latex, unable to tell a broken delimiter from ordinary text, then wrapped the bare
+        # \int_C immediately following it, producing "Written as \(\(\int_C\) F \cdot dr = ...".
+        s = r"Written as \(\int_C F \cdot dr = \int_S (\nabla \times F) \cdot dS where C is the boundary."
+        out = _sanitize_math_in_text(s)
+        self.assertNotIn(r"\(\(", out)
+
+    def test_doubled_close_delimiter_is_collapsed(self):
+        out = _sanitize_math_in_text(r"the result \(x = y\)\) follows")
+        self.assertNotIn(r"\)\)", out)
+
+    def test_backslash_less_textbf_is_stripped(self):
+        # Live regression (Divergence Theorem card): "\(\nabla\) \(\cdot\) textbf{F}" — nabla and cdot were
+        # correctly escaped but textbf{F} was missing its leading backslash, so the old backslash-required
+        # pattern let it sail through as literal "textbf{F}" text.
+        out = _sanitize_math_in_text(r"div textbf{F} and textbf{S} \(\cdot\) dS")
+        self.assertNotIn("textbf", out)
+        self.assertIn("F", out)
+        self.assertIn("S", out)
+
+    def test_backslash_less_command_mid_word_is_not_falsely_matched(self):
+        s = "the subtext{ignore this} stays as prose"
+        self.assertEqual(_sanitize_math_in_text(s), s)
+
+    def test_ordinary_word_text_without_braces_is_untouched(self):
+        s = "read the text explaining the theorem"
+        self.assertEqual(_sanitize_math_in_text(s), s)
+
     def test_applies_across_card_points(self):
         cards = [{"points": [r"\text{I} = \frac{\text{V}}{\text{R}}", "plain bullet", r"$$x = y$$"]}]
         _sanitize_card_math(cards)

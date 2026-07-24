@@ -168,5 +168,62 @@ class TurbulenceScopeCoverageTests(unittest.TestCase):
         self.assertTrue(lesson["validation_report"]["requires_regeneration"])
 
 
+class BareSiblingTitlePhraseNoise(unittest.TestCase):
+    """Live bug (Stokes' theorem path review): out_of_scope_content/must_not_teach include bare SIBLING
+    TOPIC TITLES (build_scope_boundaries_from_siblings appends sibling_title directly), not just real
+    forbidden-content descriptions. A passing, legitimate mention of a sibling's name — unavoidable on a
+    path where every topic connects back to the same handful of concepts — used to trip "teaches forbidden
+    content" via a bare substring/ratio match with no "is this actually central to the card" gate. Measured
+    on the real path: 98% of one topic's ~475 flagged issues were this false-positive class. Fixed: every
+    must_not_teach/out_of_scope check (card- and point-level) is now gated by is_taught_as_main_content."""
+
+    def test_passing_mention_of_a_sibling_title_is_not_flagged(self):
+        from app.services.scope_validator import validate_scope_adherence
+
+        lesson_json = {"lesson_cards": [{
+            "blueprint_key": "background",
+            "title": "What is a Line Integral?",
+            "main_concept": "Line integrals sum a vector field's effect along a curve.",
+            "points": [
+                "A line integral totals a vector field's effect along a curve.",
+                "This result underlies Stokes' Theorem, covered in a later topic.",
+            ],
+        }]}
+        contract = {"out_of_scope_content": ["Stokes' Theorem"],
+                   "must_not_teach": ["Stokes' Theorem", "how Stokes' Theorem works"]}
+        report = validate_scope_adherence(lesson_json, contract)
+        self.assertEqual(report["issues"], [])
+        self.assertTrue(report["passed"])
+
+    def test_a_card_actually_centered_on_the_forbidden_topic_is_still_flagged(self):
+        from app.services.scope_validator import validate_scope_adherence
+
+        lesson_json = {"lesson_cards": [{
+            "blueprint_key": "background",
+            "title": "What is Stokes' Theorem?",
+            "main_concept": "Stokes' Theorem relates a surface integral to a line integral.",
+            "points": ["Stokes' Theorem relates a surface integral to a line integral."],
+        }]}
+        contract = {"out_of_scope_content": ["Stokes' Theorem"], "must_not_teach": []}
+        report = validate_scope_adherence(lesson_json, contract)
+        self.assertFalse(report["passed"])
+        self.assertTrue(any("stokes' theorem" in issue for issue in report["issues"]))
+
+    def test_genuinely_forbidden_content_description_still_caught_at_point_level(self):
+        # not a title — a real content description the card's own subject is centrally about.
+        from app.services.scope_validator import validate_scope_adherence
+
+        lesson_json = {"lesson_cards": [{
+            "blueprint_key": "background",
+            "title": "Statement and proof of the divergence theorem",
+            "main_concept": "Statement and proof of the divergence theorem",
+            "points": ["Statement and proof of the divergence theorem, in full detail with derivation."],
+        }]}
+        contract = {"out_of_scope_content": ["statement and proof of the divergence theorem"],
+                   "must_not_teach": []}
+        report = validate_scope_adherence(lesson_json, contract)
+        self.assertFalse(report["passed"])
+
+
 if __name__ == "__main__":
     unittest.main()
