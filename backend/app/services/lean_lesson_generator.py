@@ -29,13 +29,14 @@ from app.core.decision_trace import record_lesson_decision
 from app.services.link_report import LINK_REPORT_KEY as _LINK_REPORT_KEY, build_link_report
 from app.services.llm_client import generate_lean_structured_lesson
 from app.services.practice_quality import validate_and_repair_practice
-from app.services.scope_validator import validate_scope_adherence
-from app.services.topic_quality_validator import validate_generated_topic
+from app.services.scope_validator import build_scope_retry_feedback, validate_scope_adherence
+from app.services.topic_quality_validator import build_quality_retry_feedback, validate_generated_topic
 from app.services.topic_scope_service import build_topic_scope_contract
 from app.services.lesson_generator import (
     build_source_chunk_ids,
     build_source_summary,
     build_lesson_source_metadata,
+    merge_feedback,
 )
 
 if TYPE_CHECKING:
@@ -9055,6 +9056,34 @@ def _sanitize_card_math(cards: list[dict[str, Any]], topic: Any = None) -> None:
             fix_counts=dict(Counter(fixes)))
 
 
+# divergence/curl/gradient are only ever defined via PARTIAL derivatives (they are multivariable-only
+# operators) — a live regression (Divergence Theorem topic, no adapter to ground/verify it) wrote ordinary
+# total-derivative notation (d/dx) for them, which is mathematically wrong notation for a first-time
+# learner to absorb. Trigger words gate the fix so a genuine single-variable derivative elsewhere (e.g.
+# dr/dt for a curve parameterization) is never touched.
+_PARTIAL_DERIV_TRIGGER = re.compile(
+    r"\b(?:divergence|curl|gradient)\b|\\nabla\s*\\cdot|\\nabla\s*\\times|\\nabla(?!\s*\\(?:times|cdot))",
+    re.I)
+_TOTAL_DERIV_FRAC = re.compile(r"\\frac\{\s*d\(?\s*([^{}]*?)\s*\)?\s*\}\{\s*d\s*([a-zA-Z])\s*\}")
+
+
+def _fix_partial_derivative_notation(cards: list[dict[str, Any]]) -> None:
+    """Rewrite a d/dx-style \\frac{d...}{d.} fraction to \\partial notation, but ONLY inside a card whose
+    text also names divergence/curl/gradient — those are the only operators this misuse has been observed
+    for, and the gate keeps a real total derivative (dr/dt, dy/dx) elsewhere from ever being touched."""
+    for card in cards:
+        pts = card.get("points")
+        if not isinstance(pts, list):
+            continue
+        card_text = " ".join(p for p in pts if isinstance(p, str))
+        if not _PARTIAL_DERIV_TRIGGER.search(card_text):
+            continue
+        card["points"] = [
+            _TOTAL_DERIV_FRAC.sub(r"\\frac{\\partial \1}{\\partial \2}", p) if isinstance(p, str) else p
+            for p in pts
+        ]
+
+
 # A body sentence that narrates a picture ("This node-link diagram illustrates …") — noise when no visual is
 # actually rendered on the card. Word list matches the visual families the model tends to reference.
 _PHANTOM_VISUAL_RE = re.compile(
@@ -9068,6 +9097,11 @@ _NUM_LIST_PREFIX = re.compile(r"^\s*\d{1,2}[.)]\s+(?=\D)")
 # "The formula for X is:" lead-in has no dash and is left alone. Only stripped when the line carries no math.
 _DANGLING_FORMULA_RE = re.compile(r"^\s*the\s+formula\b.*\s[—–-]\s", re.I)
 _HAS_MATH_RE = re.compile(r"=|\$\$|\\\(|\\frac|\\sqrt|\\sum|[A-Za-z]\s*\([^)]*\)\s*[=^]")
+# A doubled trailing punctuation glitch after a lead-in colon ("Formula for X: :", "Where:.") — the model
+# occasionally emits both its own colon AND a template-supplied one back to back. Narrow: only collapses a
+# colon immediately followed by another colon or a lone period, never touches a real ratio/time ("2:1.").
+_DOUBLED_COLON_PUNCT = re.compile(r":\s*:")
+_COLON_PERIOD = re.compile(r":\.(?!\d)")
 
 
 def _card_has_visual(card: dict[str, Any]) -> bool:
@@ -9120,6 +9154,10 @@ def _polish_card_cosmetics(cards: list[dict[str, Any]], topic: Topic, *, grounde
                 stripped = _NUM_LIST_PREFIX.sub("", s.lstrip())
                 if stripped != s.lstrip() and len(stripped.split()) <= 4:
                     s = (s[: len(s) - len(s.lstrip())]) + stripped   # preserve any leading indent
+
+                # (6) doubled trailing punctuation after a colon lead-in ("Theorem: :", "Where:.").
+                s = _DOUBLED_COLON_PUNCT.sub(":", s)
+                s = _COLON_PERIOD.sub(":", s)
 
                 if s.strip():
                     new_pts.append(s)
@@ -9341,6 +9379,9 @@ def _convert_lean_to_legacy(
     _ground_terms_against_canonical_code(legacy_cards, topic)
     # Make any LLM-authored math render: strip \text{}, delimit bare \frac/\sqrt/greek (grounded $$ untouched).
     _sanitize_card_math(legacy_cards, topic)
+    # Divergence/curl/gradient are only defined via partial derivatives — heal ordinary d/dx notation the
+    # LLM sometimes writes for them into \partial (scoped to cards that name one of those operators).
+    _fix_partial_derivative_notation(legacy_cards)
     # Final cosmetic sweep (deterministic, best-effort): phantom "this diagram" body refs when no visual,
     # code-style // comments in non-coding worked-example work, numbered-list point prefixes, dangling
     # "the formula is —" purpose lead-ins, and a stale learning_goal left on an adapter-grounded edge card.
@@ -9393,6 +9434,7 @@ def _attach_lean_validation_reports(lesson_json: dict[str, Any], topic: Topic) -
     scope_contract["allowed_card_sequence"] = []
     scope_report = validate_scope_adherence(lesson_json, scope_contract)
     quality_report = validate_generated_topic(lesson_json, course_type=course_type)
+    lesson_json["topic_quality_report"] = quality_report
 
     substantive = course_type != "study_path_introduction"
     has_check = bool(lesson_json.get("practice_questions")) or any(
@@ -9656,20 +9698,11 @@ def patch_lesson_visuals(lesson_json: dict[str, Any], topic_type: str) -> dict[s
     return updated_json
 
 
-def build_lean_lesson_from_topic_and_chunks(
+def _generate_lean_lesson_once(
     topic: Topic,
     chunks: list[ContentChunk],
-    feedback: str | None = None,
+    feedback: str | None,
 ) -> dict[str, Any]:
-    """Generate a lean lesson in a single LLM call.
-
-    The previous version ran an `_example_quality_issues` check and triggered
-    a full second LLM call when thresholds (e.g. "fewer than 5 worked-example
-    steps", "fewer than 7 traversal nodes") weren't met. In practice the
-    retry fired ~42% of the time, doubling per-topic latency and spend for a
-    quality bump that was marginal. The thresholds are now enforced by the
-    prompt's QUALITY GATES section; the second-pass safety net is gone.
-    """
     user_prompt = build_lean_user_prompt(topic=topic, chunks=chunks, feedback=feedback)
     lean_json = generate_lean_structured_lesson(
         system_prompt=build_lean_system_prompt(),
@@ -9678,6 +9711,83 @@ def build_lean_lesson_from_topic_and_chunks(
     legacy = _convert_lean_to_legacy(lean_json=lean_json, topic=topic, chunks=chunks)
     _assert_lesson_is_renderable(legacy, topic)
     return legacy
+
+
+def _lean_retry_feedback(legacy: dict[str, Any]) -> str:
+    """Combine whichever of the lean pipeline's own validators flagged requires_regeneration into one
+    retry prompt — the same signal build_lesson_from_topic_and_chunks (the older, non-lean pipeline) has
+    always retried on; the lean pipeline computed these reports but never acted on them (live bug: a
+    concept_intuition topic shipped ~100% off its certified scope, with no practice questions at all, both
+    correctly flagged in validation_report.issues and both silently ignored)."""
+    parts: list[str] = []
+    scope_report = legacy.get("scope_validation_report") or {}
+    if scope_report.get("requires_regeneration"):
+        parts.append(build_scope_retry_feedback(scope_report))
+    quality_report = legacy.get("topic_quality_report") or {}
+    if quality_report.get("requires_regeneration"):
+        parts.append(build_quality_retry_feedback(quality_report))
+    micro_report = legacy.get("microcheck_validation_report") or {}
+    if micro_report.get("requires_regeneration"):
+        micro_issues = [str(i) for i in (micro_report.get("issues") or [])]
+        parts.append("COMPREHENSION CHECK REQUIRED\n\n" +
+                     "\n".join(f"- {i}" for i in micro_issues) +
+                     "\n\nAdd a micro_check (prompt + answer) to at least one card, or practice_questions.")
+    return "\n\n---\n\n".join(p for p in parts if p and p.strip())
+
+
+def _issue_count(legacy: dict[str, Any]) -> int:
+    issues = (legacy.get("validation_report") or {}).get("issues")
+    return len(issues) if isinstance(issues, list) else 0
+
+
+def build_lean_lesson_from_topic_and_chunks(
+    topic: Topic,
+    chunks: list[ContentChunk],
+    feedback: str | None = None,
+) -> dict[str, Any]:
+    """Generate a lean lesson in a single LLM call, retrying ONCE if the lesson's own validators (scope
+    adherence, topic quality, comprehension-check presence) flagged requires_regeneration.
+
+    This is a narrower retry than the one `_example_quality_issues` used to run (removed — see below):
+    it fires only on a hard validator failure (off-scope content, missing required practice, no
+    comprehension check), not a soft quality heuristic, so it should be rare in practice rather than the
+    ~42% that made the old check not worth its cost.
+
+    The previous version ran an `_example_quality_issues` check and triggered
+    a full second LLM call when thresholds (e.g. "fewer than 5 worked-example
+    steps", "fewer than 7 traversal nodes") weren't met. In practice the
+    retry fired ~42% of the time, doubling per-topic latency and spend for a
+    quality bump that was marginal. The thresholds are now enforced by the
+    prompt's QUALITY GATES section; that specific second-pass safety net is gone.
+    """
+    legacy = _generate_lean_lesson_once(topic, chunks, feedback)
+    report = legacy.get("validation_report") or {}
+    if not report.get("requires_regeneration"):
+        return legacy
+    retry_feedback = _lean_retry_feedback(legacy)
+    if not retry_feedback:
+        return legacy
+    try:
+        retry_legacy = _generate_lean_lesson_once(
+            topic, chunks, merge_feedback(feedback, retry_feedback))
+    except Exception as exc:  # noqa: BLE001 — a failed retry must not lose an already-working original
+        logger.warning("lean lesson retry failed for topic %s: %s — keeping the original", topic.id, exc)
+        record_lesson_decision(topic, "lesson.retry_failed", "kept the original attempt",
+                               f"the validation-triggered retry itself raised ({exc}) — the first attempt, "
+                               "even though flagged, is safer to ship than nothing")
+        return legacy
+    retry_report = retry_legacy.get("validation_report") or {}
+    selected, selected_legacy = (
+        ("retry", retry_legacy) if (not retry_report.get("requires_regeneration")
+                                    or _issue_count(retry_legacy) < _issue_count(legacy))
+        else ("original", legacy))
+    record_lesson_decision(
+        topic, "lesson.validation_retry", f"kept the {selected} attempt",
+        f"the first attempt failed its own validators ({_issue_count(legacy)} issue(s): scope/quality/"
+        "comprehension-check) — retried once with that feedback; the attempt with fewer outstanding "
+        "issues (or a clean pass) ships",
+        original_issue_count=_issue_count(legacy), retry_issue_count=_issue_count(retry_legacy))
+    return selected_legacy
 
 
 def build_lean_lesson_streaming(

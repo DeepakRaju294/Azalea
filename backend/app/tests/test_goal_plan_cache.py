@@ -298,5 +298,73 @@ class RequirementsCallIntegration(_CacheTestCase):
             os.environ.pop("AZALEA_GOAL_REQUIREMENTS", None)
 
 
+class PrereqMergeNotFallback(unittest.TestCase):
+    """Live bug (Stokes' theorem path, 2026-07-24): the curriculum call's certified prerequisites were
+    silently discarded whenever the decomposition call ALSO emitted even one prereq of its own — the old
+    check only stood the curriculum list in when decomposition emitted NOTHING. When decomposition's lone
+    candidate then got dropped downstream for an unrelated reason, the path shipped with ZERO prerequisites
+    despite two good, certified ones. Fixed: the curriculum call's list is now MERGED in (deduped by name),
+    not treated as an exclusive fallback."""
+
+    def test_curriculum_prereqs_survive_alongside_decompositions_own_candidate(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R1", "name": "Stokes' theorem statement", "kind": "core",
+             "statement": "state and interpret Stokes' theorem"},
+        ], "assumed_prerequisites": [
+            {"name": "differential equations", "gloss": "equations involving derivatives"},
+            {"name": "multivariable calculus", "gloss": "calculus in several variables"},
+        ]}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": [],
+                              "assumed_prerequisites": [{"name": "vector calculus", "gloss": "g"}]},
+                "topics": [{"topic_id": "t1", "capability_id": "t1", "subject_key": "stokes_theorem",
+                            "primary_action": "apply", "content_role": "core",
+                            "topic_type": "math_formula_method", "title": "Stokes' Theorem",
+                            "unit_title": "u", "purpose": "p",
+                            "in_scope": ["statement of stokes theorem"],
+                            "covers_requirements": ["R1"], "basis": "goal"}]}
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+        topics = generate_decomposed_topics("want to learn about stokes theorem", "s", model_fn=fn)
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        names = {(p if isinstance(p, str) else p.get("name")).lower()
+                 for p in (intro.get("assumed_prerequisites") or [])}
+        # decomposition's own candidate AND both of the curriculum call's survive together — neither
+        # source silently displaces the other.
+        self.assertIn("vector calculus", names)
+        self.assertIn("differential equations", names)
+        self.assertIn("multivariable calculus", names)
+        path_trace = (intro.get("decomposition_metadata") or {}).get("path_decision_trace") or []
+        fallback = next((e for e in path_trace if e["stage"] == "curriculum.prereq_fallback"), None)
+        self.assertIsNotNone(fallback)
+        self.assertIn("merged in", fallback["decision"])   # not "used" (which implies exclusive replacement)
+
+    def test_still_used_verbatim_when_decomposition_emits_nothing(self):
+        # unchanged prior behavior: when decomposition's own list is empty, the curriculum's list is what
+        # ships (worded "used", not "merged in", since there's nothing to merge alongside).
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R1", "name": "Flow regimes", "kind": "core",
+             "statement": "distinguish laminar and turbulent flow"},
+        ], "assumed_prerequisites": [{"name": "fluid dynamics", "gloss": "g"}]}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [{"topic_id": "t1", "capability_id": "t1", "subject_key": "energy_cascade",
+                            "primary_action": "understand", "content_role": "mechanism",
+                            "topic_type": "science_mechanism", "title": "Energy Cascade", "unit_title": "u",
+                            "purpose": "p", "in_scope": ["large eddies"],
+                            "covers_requirements": ["R1"], "basis": "goal"}]}
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+        topics = generate_decomposed_topics("learn fluid turbulence", "s", model_fn=fn)
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        names = {(p if isinstance(p, str) else p.get("name")).lower()
+                 for p in (intro.get("assumed_prerequisites") or [])}
+        self.assertIn("fluid dynamics", names)
+        path_trace = (intro.get("decomposition_metadata") or {}).get("path_decision_trace") or []
+        fallback = next((e for e in path_trace if e["stage"] == "curriculum.prereq_fallback"), None)
+        self.assertIsNotNone(fallback)
+        self.assertIn("used", fallback["decision"])
+
+
 if __name__ == "__main__":
     unittest.main()

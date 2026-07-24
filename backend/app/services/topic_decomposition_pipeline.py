@@ -1284,18 +1284,33 @@ def generate_decomposed_topics(
     # validator's B.4.1 coverage repair synthesizes a topic for it — the validator now checks the plan against
     # requirements decided BEFORE the topics, not against the topic list's own claims.
     _enforce_requirement_coverage(path_plan, raw_topics, requirements)
-    # Prereq authority fallback: when the decomposition dropped assumed_prerequisites (live: 4 of 5 regens
-    # since requirements landed), the CURRICULUM call's prerequisites stand in — same structured shape
-    # (name/gloss/required_knowledge), same downstream filters (circular/umbrella/taught-overlap all apply).
-    if req_prereqs and not (path_plan.get("assumed_prerequisites") or []):
-        path_plan["assumed_prerequisites"] = req_prereqs
-        _log.info("goal requirements: decomposition emitted no assumed_prerequisites — using the "
-                  "curriculum call's: %s", [p["name"] for p in req_prereqs])
-        record_path_decision(path_plan, "curriculum.prereq_fallback",
-                             f"used the curriculum call's {len(req_prereqs)} prerequisite(s)",
-                             "the decomposition call dropped assumed_prerequisites entirely — the "
-                             "curriculum call's own list stands in rather than shipping the path with no "
-                             "named prerequisites")
+    # Prereq authority MERGE (not a fallback): the curriculum call is the dedicated authority on external
+    # prerequisites, decided in its own frame before any topic exists. Live bug: when the decomposition call
+    # ALSO emitted its own (thinner) candidate — even just one — the old "only stand in when decomposition
+    # emitted NOTHING" check never fired, so the curriculum call's certified list was silently discarded
+    # entirely. Then when that lone decomposition candidate got dropped downstream for an unrelated reason
+    # (Guard 4 keeping it as a taught topic instead of a prerequisite — 'vector calculus' on a Stokes' path),
+    # the path shipped with ZERO prerequisites despite two good, certified ones sitting right here. Merging
+    # (deduped by name) means the certified list survives regardless of what decomposition also produced —
+    # same structured shape (name/gloss/required_knowledge), same downstream filters (circular/umbrella/
+    # taught-overlap all still apply to the merged result).
+    _decomp_prereqs = path_plan.get("assumed_prerequisites") or []
+    if req_prereqs:
+        _existing_keys = {str(item.get("name") if isinstance(item, dict) else item or "").strip().lower()
+                          for item in _decomp_prereqs}
+        _merged_in = [p for p in req_prereqs if p["name"].strip().lower() not in _existing_keys]
+        if _merged_in:
+            path_plan["assumed_prerequisites"] = list(_decomp_prereqs) + _merged_in
+            _log.info("goal requirements: merging curriculum-call prerequisite(s) not already named by "
+                      "decomposition: %s", [p["name"] for p in _merged_in])
+            record_path_decision(
+                path_plan, "curriculum.prereq_fallback",
+                (f"used the curriculum call's {len(_merged_in)} prerequisite(s)" if not _decomp_prereqs
+                 else f"merged in {len(_merged_in)} curriculum-call prerequisite(s) alongside decomposition's own"),
+                "the curriculum call is the dedicated authority on external prerequisites — its list is "
+                "merged in (deduped by name) rather than only standing in when decomposition emitted "
+                "NOTHING, so a decomposition candidate that later gets dropped downstream doesn't silently "
+                "starve out the certified list too")
 
     topics = [_normalize_topic(t) for t in raw_topics]
     path_plan, topics = append_coding_follow_ups(path_plan, topics, enabled=coding_follow_ups)

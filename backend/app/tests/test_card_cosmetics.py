@@ -7,7 +7,7 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.lean_lesson_generator import (
-    _polish_card_cosmetics, _repair_latex_delimiters, _wrap_bare_latex)
+    _fix_partial_derivative_notation, _polish_card_cosmetics, _repair_latex_delimiters, _wrap_bare_latex)
 
 
 class LatexDelimiterRepair(unittest.TestCase):
@@ -143,6 +143,62 @@ class DanglingFormulaLeadIn(unittest.TestCase):
         c = [{"card_type": "purpose_context", "points": ["Understanding the formula helps solve problems."]}]
         _run(c)
         self.assertEqual(len(c[0]["points"]), 1)
+
+
+class DoubledColonPunctuation(unittest.TestCase):
+    def test_doubled_colon_collapsed(self):
+        c = [{"card_type": "formula_breakdown", "points": ["Formula for Stokes' Theorem: :"]}]
+        _run(c)
+        self.assertEqual(c[0]["points"][0], "Formula for Stokes' Theorem:")
+
+    def test_colon_period_collapsed(self):
+        c = [{"card_type": "formula_breakdown", "points": ["Where:."]}]
+        _run(c)
+        self.assertEqual(c[0]["points"][0], "Where:")
+
+    def test_ratio_and_decimal_time_untouched(self):
+        c = [{"card_type": "background", "points": ["The odds are 2:1.", "Class starts at 3:00."]}]
+        _run(c)
+        self.assertEqual(c[0]["points"], ["The odds are 2:1.", "Class starts at 3:00."])
+
+
+class PartialDerivativeNotation(unittest.TestCase):
+    """Live bug (Divergence Theorem topic, no adapter to verify it): the LLM wrote ordinary total-
+    derivative notation (d/dx) for divergence/curl/gradient, which are only ever defined via partials —
+    mathematically wrong notation for a first-time learner. Fixed with a tightly-scoped rewrite: only
+    inside a card that names one of those operators, so a real total derivative elsewhere is untouched."""
+
+    def test_divergence_formula_rewritten_to_partial(self):
+        c = [{"card_type": "process", "points": [
+            r"State the divergence, calculated as div(F) = \(\frac{dF_1}{dx}\) + \(\frac{dF_2}{dy}\)."]}]
+        _fix_partial_derivative_notation(c)
+        self.assertEqual(
+            c[0]["points"][0],
+            r"State the divergence, calculated as div(F) = \(\frac{\partial F_1}{\partial x}\) + "
+            r"\(\frac{\partial F_2}{\partial y}\).")
+
+    def test_parenthesized_numerator_rewritten(self):
+        c = [{"card_type": "practice", "points": [
+            r"Calculate the divergence: \( div F = \frac{d( y^2)}{dx} + \frac{d(2xy)}{dy} \)"]}]
+        _fix_partial_derivative_notation(c)
+        self.assertIn(r"\frac{\partial y^2}{\partial x}", c[0]["points"][0])
+        self.assertIn(r"\frac{\partial 2xy}{\partial y}", c[0]["points"][0])
+
+    def test_curl_and_gradient_also_trigger(self):
+        for word in ("curl", "gradient", "\\nabla \\times", "\\nabla \\cdot"):
+            with self.subTest(word=word):
+                c = [{"card_type": "process",
+                     "points": [f"Using {word}: \\(\\frac{{dF}}{{dx}}\\)"]}]
+                _fix_partial_derivative_notation(c)
+                self.assertIn(r"\partial", c[0]["points"][0])
+
+    def test_unrelated_total_derivative_untouched(self):
+        # A curve parameterization's dr/dt IS a genuine total derivative — no divergence/curl/gradient
+        # mention nearby, so the rewrite must never fire.
+        c = [{"card_type": "process", "points": [
+            r"Calculate the differential element: \(dr = \frac{dr}{dt} dt\)"]}]
+        _fix_partial_derivative_notation(c)
+        self.assertEqual(c[0]["points"][0], r"Calculate the differential element: \(dr = \frac{dr}{dt} dt\)")
 
 
 class GroundedEdgeLearningGoal(unittest.TestCase):
