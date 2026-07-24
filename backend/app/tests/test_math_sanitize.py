@@ -221,6 +221,21 @@ class SanitizeMath(unittest.TestCase):
         out2 = _sanitize_math_in_text(f"for 0 {mangled_le} z {mangled_le} 1")
         self.assertEqual(out2, f"for 0 {chr(0x2264)} z {chr(0x2264)} 1")
 
+    def test_unicode_integral_with_subscript_is_wrapped(self):
+        # Live (screenshot-reported): "S = <dbl-integral>_S F · dS" — the glyph rendered but "_S" shipped
+        # as literal underscore text because nothing ever wrapped it as math.
+        dbl = chr(0x222C)
+        out = _sanitize_math_in_text(f"S = {dbl}_S F dS.")
+        self.assertIn(r"\(\iint_{S}\)", out)
+        self.assertNotIn(dbl, out)
+        out2 = _sanitize_math_in_text(f"\\({dbl}_S F\\) over the surface")
+        self.assertIn(r"\iint_{S}", out2)
+
+    def test_bare_unicode_integral_without_subscript_untouched(self):
+        oint = chr(0x222E)
+        s = f"the closed-loop symbol {oint} appears in physics texts"
+        self.assertEqual(_sanitize_math_in_text(s), s)
+
     def test_applies_across_card_points(self):
         cards = [{"points": [r"\text{I} = \frac{\text{V}}{\text{R}}", "plain bullet", r"$$x = y$$"]}]
         _sanitize_card_math(cards)

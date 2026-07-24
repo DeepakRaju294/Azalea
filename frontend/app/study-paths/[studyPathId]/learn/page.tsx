@@ -6498,6 +6498,11 @@ function renderMathText(text: string): ReactNode[] {
 function normalizeMathExpression(text: string) {
   let output = String(text || "").replace(/^\s*-\s*/, "").trim();
   output = output.replace(/∫\s*\[\s*([^,\]\s]+)\s*,?\s*([^\]\s]+)\s*\]/g, "\\int_{$1}^{$2}");
+  // multi-integral glyphs BEFORE the single-integral catch-all, so their subscripts get the same
+  // positioned rendering ("∬_S" used to ship the glyph plus a literal "_S" as plain text)
+  output = output.replace(/∬/g, "\\iint");
+  output = output.replace(/∭/g, "\\iiint");
+  output = output.replace(/∮/g, "\\oint");
   output = output.replace(/∫/g, "\\int");
   output = output.replace(/√\(([^()]+)\)/g, "\\sqrt{$1}");
   output = output.replace(/√([A-Za-z0-9]+)/g, "\\sqrt{$1}");
@@ -6740,8 +6745,18 @@ function renderLatexPartsStructured(latex: string, keyPrefix: string): ReactNode
       }
     }
 
-    if (latex.startsWith("\\int", index)) {
-      index += "\\int".length;
+    // longest-first so "\iint" is never consumed as "\i" + "int"; every integral variant gets the same
+    // positioned sub/sup treatment ("\u222c_S" used to render its subscript as literal text)
+    const integralCommand = ["\\iiint", "\\iint", "\\oint", "\\int"].find((cmd) =>
+      latex.startsWith(cmd, index),
+    );
+    if (integralCommand) {
+      const integralGlyph =
+        integralCommand === "\\iiint" ? "\u222d"
+        : integralCommand === "\\iint" ? "\u222c"
+        : integralCommand === "\\oint" ? "\u222e"
+        : "\u222b";
+      index += integralCommand.length;
       const lower = readLatexScript(latex, index, "_");
       if (lower) {
         index = lower.nextIndex;
@@ -6753,7 +6768,7 @@ function renderLatexPartsStructured(latex: string, keyPrefix: string): ReactNode
       parts.push(
         <span key={key} className="mx-3 inline-flex items-center align-middle">
           <span className="relative inline-block px-1 text-[1.55em] leading-none">
-            {"\u222b"}
+            {integralGlyph}
             {upper && (
               <sup className="absolute -right-3 -top-2 text-[0.42em]">
                 {renderLatexPartsStructured(upper.value, `${key}-sup`)}
@@ -7516,6 +7531,16 @@ function shouldPreserveBulletStartCase(text: string) {
   if (!stripped) return true;
   if (/^[`$\\([{]/.test(stripped)) return true;
   if (/^[a-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?\s*(?:=|:|\+=|-=|\*=|\/=)/.test(stripped)) {
+    return true;
+  }
+  // Differential/math notation where the CASE IS THE MEANING: "dS is the differential element" must not
+  // become "DS is..." (live, screenshot-reported — dS and DS read as different symbols). Mirrors the
+  // backend guard: a known differential form, or any first word with an interior capital.
+  const firstWord = stripped.split(/[\s,;:.=()[\]{}]/, 1)[0] || "";
+  if (["dr", "ds", "dt", "dx", "dy", "dz", "dv", "da", "du", "dl", "dm", "dq"].includes(firstWord)) {
+    return true;
+  }
+  if (/^[a-z].*[A-Z]/.test(firstWord)) {
     return true;
   }
   if (/^(?:def|class|if|elif|else|for|while|return|import|from|try|except|with)\b/.test(stripped)) {

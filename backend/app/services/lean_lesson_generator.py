@@ -484,6 +484,41 @@ def _should_preserve_bullet_start_case(text: str) -> bool:
     return False
 
 
+# --- JSON-escape-eaten LaTeX restoration ----------------------------------------------------------------
+# The model writes LaTeX inside JSON strings and sometimes emits SINGLE backslashes — JSON decoding then
+# eats them as escape sequences: "\text{...}" arrives as TAB+"ext{...}", "\nabla" as NEWLINE+"abla",
+# "\frac" as FORMFEED+"rac" (live: a divergence-theorem card read 'ext{Surface integral: }' and
+# 'Abla \(\cdot\) F' — the newline was split/collapsed and sentence-casing capitalized the remnant 'abla').
+# Restoration maps CONTROL-CHAR + known-command-remnant back to the command; a plain control char with no
+# remnant after it is left for the normal newline-split handling. Also repairs the space-collapsed form
+# ("= ext{...}" — the tab already flattened to a space upstream) for the unambiguous remnants only:
+# no English word is 'abla', and 'ext{'/'imes'-with-brace-or-boundary can't be the tail of a real word
+# here because the preceding character is required to be a non-letter.
+_EATEN_LATEX_REPAIRS: tuple[tuple[Any, str], ...] = (
+    (re.compile("\t(?=ext\\s*\\{)"), "\\\\t"),                 # \text{
+    (re.compile("\t(?=imes\\b)"), "\\\\t"),                    # \times
+    (re.compile("\t(?=heta\\b)"), "\\\\t"),                    # \theta
+    (re.compile("\n(?=abla\\b)"), "\\\\n"),                    # \nabla
+    (re.compile("\n(?=eq\\b)"), "\\\\n"),                      # \neq
+    (re.compile("\x0c(?=rac\\s*\\{)"), "\\\\f"),               # \frac{
+    (re.compile("\r(?=ho\\b)"), "\\\\r"),                      # \rho
+    (re.compile("\x08(?=eta\\b)"), "\\\\b"),                   # \beta
+    (re.compile(r"(?<![A-Za-z\\])ext(?=\s*\{)"), "\\\\text"),  # tab already collapsed to space
+    (re.compile(r"(?<![A-Za-z\\])abla\b"), "\\\\nabla"),
+    (re.compile(r"(?<![A-Za-z\\])Abla\b"), "\\\\nabla"),       # sentence-casing already hit the remnant
+    (re.compile(r"\\n(?=\s|$)"), " "),                         # literal backslash-n TEXT in prose ("= \n For")
+)
+
+
+def _restore_json_eaten_latex(text: str) -> str:
+    s = str(text)
+    if not s:
+        return s
+    for pat, repl in _EATEN_LATEX_REPAIRS:
+        s = pat.sub(repl, s)
+    return s
+
+
 # --- orphaned-math re-inlining (recurring live defect class since the CA-path rounds) ------------------
 # The model (or an upstream split) pulls an inline math expression out of its sentence into its own
 # math-only sub-bullet, leaving the parent grammatically broken. Two live shapes:
@@ -757,7 +792,7 @@ def _lean_card_to_legacy(
     raw_points = [
         # Repair mixed delimiters ($\(…\)$ -> \(…\)) BEFORE _normalize_bullet_shape splits display math onto its
         # own bullet — otherwise the split extracts the inner \(…\) and leaves an orphaned "$ $" behind.
-        _repair_latex_delimiters(str(p).rstrip())
+        _repair_latex_delimiters(_restore_json_eaten_latex(str(p).rstrip()))
         for p in (lean_card.get("points") or [])
         if str(p).strip()
     ]
@@ -9116,6 +9151,13 @@ _BARE_SPACING_TOKEN = re.compile(r"\\[,;!:](?=\s|$)")
 # the unambiguous brace-subscript form, so a code identifier like int_count is never touched. The whole
 # atom (command + braced subscript) is matched so the repair can wrap it in \(...\) in one substitution.
 _BACKSLASHLESS_INT = re.compile(r"(?<![A-Za-z\\])((?:i{1,2}|o)?int)_\{([^{}]*)\}")
+# A UNICODE integral glyph with an ASCII subscript in bare prose ("S = <dbl-integral>_S F · dS" — live,
+# screenshot-reported: the glyph renders but "_S" shows as literal underscore text, because nothing ever
+# wrapped it as math). Converted to the wrapped command form the renderer positions properly. Glyphs built
+# from codepoints — non-ASCII literals in source have burned us before.
+_UNICODE_INTEGRALS = {chr(0x222B): "int", chr(0x222C): "iint", chr(0x222D): "iiint", chr(0x222E): "oint"}
+_UNICODE_INTEGRAL_SUB = re.compile(
+    "([" + "".join(_UNICODE_INTEGRALS) + "])_(\\{[^{}]*\\}|[A-Za-z0-9])")
 # Encoding-mangled dot product (live: "Evaluate the dot product F C2dr and integrate" — the middle dot's
 # first UTF-8 byte, 0xC2, survived as literal text). Unambiguous only in the exact "<letter> C2d<letter>"
 # shape: no English word or identifier looks like "C2dr"/"C2dS".
@@ -9207,6 +9249,16 @@ def _sanitize_math_in_text(text: str) -> str:
         if _bad in s:
             s = s.replace(_bad, _good)
     s = _sub_outside_math_spans(_BACKSLASHLESS_INT, r"\\(\\\1_{\2}\\)", s)
+    def _uni_int_repl(m: "re.Match[str]") -> str:
+        sub = m.group(2)
+        sub = sub if sub.startswith("{") else "{" + sub + "}"
+        return "\\(\\" + _UNICODE_INTEGRALS[m.group(1)] + "_" + sub + "\\)"
+    s = _sub_outside_math_spans(_UNICODE_INTEGRAL_SUB, _uni_int_repl, s)
+    s = _MATH_SPAN_RE.sub(
+        lambda m: _UNICODE_INTEGRAL_SUB.sub(
+            lambda mm: "\\" + _UNICODE_INTEGRALS[mm.group(1)] + "_" +
+                       (mm.group(2) if mm.group(2).startswith("{") else "{" + mm.group(2) + "}"),
+            m.group(0)), s)
     if "%" in s:
         out_parts: list[str] = []
         last = 0

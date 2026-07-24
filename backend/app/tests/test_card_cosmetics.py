@@ -169,6 +169,39 @@ class DifferentialNotationCasePreserved(unittest.TestCase):
         self.assertEqual(out[2], "The queue starts empty")
 
 
+class JsonEatenLatexRestoration(unittest.TestCase):
+    """Live (divergence-theorem card): the model wrote single-backslash LaTeX inside JSON strings, so JSON
+    decoding ATE the escapes — '\\text{...}' arrived as TAB+'ext{...}', '\\nabla' as NEWLINE+'abla' (later
+    sentence-cased to 'Abla'). Cards shipped reading 'ext{Surface integral: }' and 'Abla · F'."""
+
+    def test_control_char_remnants_restored(self):
+        from app.services.lean_lesson_generator import _restore_json_eaten_latex
+        tab, nl, ff = chr(9), chr(10), chr(12)
+        self.assertEqual(_restore_json_eaten_latex(f"= {tab}ext{{Surface integral: }}"),
+                         "= \\text{Surface integral: }")
+        self.assertEqual(_restore_json_eaten_latex(f"div is {nl}abla applied"), "div is \\nabla applied")
+        self.assertEqual(_restore_json_eaten_latex(f"use {ff}rac{{a}}{{b}} here"), "use \\frac{a}{b} here")
+
+    def test_space_collapsed_remnants_restored(self):
+        from app.services.lean_lesson_generator import _restore_json_eaten_latex
+        self.assertEqual(_restore_json_eaten_latex("= ext{Surface integral: } _S"),
+                         "= \\text{Surface integral: } _S")
+        self.assertEqual(_restore_json_eaten_latex("Abla F dV"), "\\nabla F dV")
+        self.assertEqual(_restore_json_eaten_latex("abla dotted with F"), "\\nabla dotted with F")
+
+    def test_correct_latex_and_ordinary_prose_untouched(self):
+        from app.services.lean_lesson_generator import _restore_json_eaten_latex
+        for s in (r"\text{Surface integral}", r"\nabla \cdot F", "the context{x} of the problem",
+                  "tables are helpful", "next steps follow"):
+            self.assertEqual(_restore_json_eaten_latex(s), s)
+
+    def test_literal_backslash_n_text_removed_but_nabla_safe(self):
+        from app.services.lean_lesson_generator import _restore_json_eaten_latex
+        out = _restore_json_eaten_latex("Surface Integral = \\n For scalar fields:")
+        self.assertNotIn("\\n", out)
+        self.assertEqual(_restore_json_eaten_latex(r"\nabla stays"), r"\nabla stays")
+
+
 class OrphanedMathReinlining(unittest.TestCase):
     """Recurring live defect since the combinatorics-path rounds: a math expression gets pulled out of its
     sentence into a math-only sub-bullet, leaving the parent grammatically broken. Two shapes, both live on
