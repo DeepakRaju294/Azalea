@@ -236,6 +236,18 @@ class SanitizeMath(unittest.TestCase):
         s = f"the closed-loop symbol {oint} appears in physics texts"
         self.assertEqual(_sanitize_math_in_text(s), s)
 
+    def test_trailing_unmatched_opener_debris_stripped(self):
+        # Live: "State Stokes' Theorem: \(:" — an opener with nothing after it is always broken.
+        out = _sanitize_math_in_text(r"State Stokes' Theorem: \(:")
+        self.assertEqual(out, "State Stokes' Theorem:")
+
+    def test_trailing_unmatched_close_bracket_stripped(self):
+        out = _sanitize_math_in_text(r"  - \(\int_{C}\) F \(\cdot\) dr \]")
+        self.assertFalse(out.rstrip().endswith("\\]"))
+        # a REAL display block keeps its closer
+        s = r"\[ x = y \]"
+        self.assertEqual(_sanitize_math_in_text(s), s)
+
     def test_applies_across_card_points(self):
         cards = [{"points": [r"\text{I} = \frac{\text{V}}{\text{R}}", "plain bullet", r"$$x = y$$"]}]
         _sanitize_card_math(cards)

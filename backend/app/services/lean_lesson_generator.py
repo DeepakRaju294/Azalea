@@ -506,6 +506,11 @@ _EATEN_LATEX_REPAIRS: tuple[tuple[Any, str], ...] = (
     (re.compile(r"(?<![A-Za-z\\])ext(?=\s*\{)"), "\\\\text"),  # tab already collapsed to space
     (re.compile(r"(?<![A-Za-z\\])abla\b"), "\\\\nabla"),
     (re.compile(r"(?<![A-Za-z\\])Abla\b"), "\\\\nabla"),       # sentence-casing already hit the remnant
+    # literal backslash-n TEXT glued onto math (live: "\nint_C F · dr", "\( \nF \)") — no LaTeX command is
+    # "\nint" or "\n<Capital>" (real n-commands are all-lowercase words: \nabla, \neq, \nu), so both are
+    # unambiguous. Must run BEFORE the bare-\n drop below.
+    (re.compile(r"\\nint(?![a-z])"), "\\\\int"),   # NOT \b — no boundary fires between "t" and "_C"
+    (re.compile(r"\\n(?=[A-Z])"), ""),
     (re.compile(r"\\n(?=\s|$)"), " "),                         # literal backslash-n TEXT in prose ("= \n For")
 )
 
@@ -9277,6 +9282,12 @@ def _sanitize_math_in_text(text: str) -> str:
     if "\\bullet" in s:
         s = _sub_outside_math_spans(re.compile(r"\\bullet\b"), r"\\(\\cdot\\)", s)
         s = _MATH_SPAN_RE.sub(lambda m: m.group(0).replace("\\bullet", "\\cdot"), s)
+    # Trailing delimiter DEBRIS around an equation the model half-delimited (live: a point ending
+    # "State Stokes' Theorem: \(:" — an opener with nothing after it is always broken — and a sub-bullet
+    # ending "... F \cdot dr \]" with no matching "\[" anywhere in the point).
+    s = re.sub(r"\\\(\s*:?\s*$", "", s)
+    if s.rstrip().endswith("\\]") and "\\[" not in s:
+        s = s.rstrip()[:-2]
     s = re.sub(r"\s{2,}", " ", s).strip()
     if s:
         s = lead + s

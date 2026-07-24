@@ -195,6 +195,18 @@ class JsonEatenLatexRestoration(unittest.TestCase):
                   "tables are helpful", "next steps follow"):
             self.assertEqual(_restore_json_eaten_latex(s), s)
 
+    def test_backslash_n_glued_to_math_repaired(self):
+        # Live (21:51 path): "\nint_C F · dr" and "\( \nF \)" — a literal backslash-n glued onto math.
+        # No LaTeX command is "\nint" or "\n<Capital>", so both repairs are unambiguous.
+        from app.services.lean_lesson_generator import _restore_json_eaten_latex
+        self.assertEqual(_restore_json_eaten_latex(r"Represented as \( \nint_C F \cdot dr \)"),
+                         r"Represented as \( \int_C F \cdot dr \)")
+        self.assertEqual(_restore_json_eaten_latex(r"the vector field \( \nF \) and the surface"),
+                         r"the vector field \( F \) and the surface")
+        # real all-lowercase n-commands stay
+        for s in (r"\nabla \cdot F", r"a \neq b", r"\nu is frequency"):
+            self.assertEqual(_restore_json_eaten_latex(s), s)
+
     def test_literal_backslash_n_text_removed_but_nabla_safe(self):
         from app.services.lean_lesson_generator import _restore_json_eaten_latex
         out = _restore_json_eaten_latex("Surface Integral = \\n For scalar fields:")
