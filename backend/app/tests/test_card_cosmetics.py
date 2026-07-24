@@ -225,6 +225,56 @@ class PartialDerivativeNotation(unittest.TestCase):
         self.assertEqual(c[0]["points"][0], r"Calculate the differential element: \(dr = \frac{dr}{dt} dt\)")
 
 
+class EdgeCasesBeforePractice(unittest.TestCase):
+    """Live (goal topic): the lesson ended [.., practice, Edge Cases] because the model emitted its edge
+    card LAST and grounding replaced its content in place — the learner met the check-your-understanding
+    task before the boundary facts it draws on."""
+
+    def test_trailing_edge_card_moves_before_practice(self):
+        from app.services.lean_lesson_generator import _move_trailing_edge_cases_before_practice
+        cards = [{"blueprint_key": "worked_example", "title": "Step 1"},
+                 {"blueprint_key": "practice", "title": "Practice"},
+                 {"blueprint_key": "edge_case", "title": "Edge Cases"}]
+        _move_trailing_edge_cases_before_practice(cards)
+        self.assertEqual([c["blueprint_key"] for c in cards],
+                         ["worked_example", "edge_case", "practice"])
+
+    def test_edge_already_before_practice_is_untouched(self):
+        from app.services.lean_lesson_generator import _move_trailing_edge_cases_before_practice
+        cards = [{"blueprint_key": "edge_case", "title": "E"},
+                 {"blueprint_key": "practice", "title": "P"}]
+        _move_trailing_edge_cases_before_practice(cards)
+        self.assertEqual([c["blueprint_key"] for c in cards], ["edge_case", "practice"])
+
+    def test_no_practice_card_is_a_noop(self):
+        from app.services.lean_lesson_generator import _move_trailing_edge_cases_before_practice
+        cards = [{"blueprint_key": "background"}, {"blueprint_key": "edge_case"}]
+        _move_trailing_edge_cases_before_practice(cards)
+        self.assertEqual([c["blueprint_key"] for c in cards], ["background", "edge_case"])
+
+
+class ProofProcessScaffold(unittest.TestCase):
+    """Live (proof_reasoning goal topic): the process card framed a PROOF as a loop — 'Repeated action:
+    Calculate the curl' / 'Stopping condition: Conclude when all integrals have been evaluated'. The
+    universal algorithm scaffold now has a proof-specific override, same pattern as _MATH_PROCESS_RULE."""
+
+    def test_proof_reasoning_process_rule_is_proof_shaped(self):
+        from app.core.course_stage_rules import STAGE_RULES
+        rule = STAGE_RULES["proof_reasoning"]["process"]
+        content = " ".join(rule["content"]).lower()
+        self.assertIn("justification", content)
+        self.assertIn("claim", content)
+        self.assertNotIn("repeated action", content)
+        self.assertNotIn("stopping condition", content)
+        notes = " ".join(rule["notes"])
+        self.assertIn("not an algorithm", notes.lower().replace("proof, not an algorithm", "not an algorithm"))
+
+    def test_math_formula_method_process_rule_unchanged(self):
+        from app.core.course_stage_rules import STAGE_RULES
+        content = " ".join(STAGE_RULES["math_formula_method"]["process"]["content"]).lower()
+        self.assertIn("substitute", content)
+
+
 class GroundedEdgeLearningGoal(unittest.TestCase):
     def test_stale_learning_goal_dropped_on_grounded_edge(self):
         c = [{"card_type": "edge_case", "learning_goal": "Understand what happens when r is zero.",

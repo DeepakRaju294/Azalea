@@ -5148,6 +5148,28 @@ def _drop_trace_style_edge_cases(legacy_cards: list[dict[str, Any]]) -> None:
     legacy_cards[:] = kept
 
 
+def _move_trailing_edge_cases_before_practice(legacy_cards: list[dict[str, Any]]) -> None:
+    """Blueprint order puts edge_case BEFORE practice, but a grounded edge card can end up after it: the
+    model sometimes emits its own edge card last, and `_ground_edge_case_card` replaces content IN PLACE
+    wherever that card sits (the early `_group_edge_cases_after_worked_examples` pass has already run by
+    then and never re-checks). Live: the goal topic's lesson ended [.., practice, Edge Cases] — the learner
+    met the check-your-understanding task before the boundary facts it draws on. Runs LAST, after all
+    grounding/injection. Mutates in place; preserves relative order of the moved cards."""
+    def key(card: dict[str, Any]) -> str:
+        return str(card.get("blueprint_key") or card.get("card_type") or "").lower()
+
+    first_practice = next((i for i, c in enumerate(legacy_cards)
+                           if key(c) in ("practice", "quick_practice")), None)
+    if first_practice is None:
+        return
+    trailing = [c for c in legacy_cards[first_practice + 1:] if key(c) in ("edge_case", "edge_cases")]
+    if not trailing:
+        return
+    moved_ids = {id(c) for c in trailing}
+    kept = [c for c in legacy_cards if id(c) not in moved_ids]
+    legacy_cards[:] = kept[:first_practice] + trailing + kept[first_practice:]
+
+
 def _group_edge_cases_after_worked_examples(legacy_cards: list[dict[str, Any]]) -> None:
     """Edge-case cards must come AFTER the complete worked example, never spliced
     BETWEEN its step cards. Moves any edge_case card that sits before the last
@@ -9113,6 +9135,12 @@ def _sanitize_math_in_text(text: str) -> str:
     # INSIDE a span the same lost-backslash integral just needs its backslash back (already delimited) —
     # "int_{S}" inside \(...\) can only be a broken \int; code identifiers never appear inside math spans.
     s = _MATH_SPAN_RE.sub(lambda m: _BACKSLASHLESS_INT.sub(r"\\\1_{\2}", m.group(0)), s)
+    # \bullet used as a dot-product symbol (live, ~6 places on one formula card: "\(\int_C\) F \bullet dr")
+    # — the renderer only knows \cdot, so \bullet ships as literal source. Normalize: wrapped \(\cdot\)
+    # when outside a span (the wrap pass has already run by now), plain \cdot inside one.
+    if "\\bullet" in s:
+        s = _sub_outside_math_spans(re.compile(r"\\bullet\b"), r"\\(\\cdot\\)", s)
+        s = _MATH_SPAN_RE.sub(lambda m: m.group(0).replace("\\bullet", "\\cdot"), s)
     s = re.sub(r"\s{2,}", " ", s).strip()
     if s:
         s = lead + s
@@ -9525,6 +9553,9 @@ def _convert_lean_to_legacy(
     # Key terms must not promise a data structure the canonical solution never uses ('Stack' on the
     # recursive traversal walkthroughs — live term/code contradiction).
     _ground_terms_against_canonical_code(legacy_cards, topic)
+    # Blueprint order: edge cases BEFORE practice — re-checked here because grounding replaces a model edge
+    # card in place wherever the model put it (sometimes last, after practice).
+    _move_trailing_edge_cases_before_practice(legacy_cards)
     # Make any LLM-authored math render: strip \text{}, delimit bare \frac/\sqrt/greek (grounded $$ untouched).
     _sanitize_card_math(legacy_cards, topic)
     # Divergence/curl/gradient are only defined via partial derivatives — heal ordinary d/dx notation the

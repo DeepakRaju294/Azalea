@@ -66,7 +66,8 @@ class SanitizeMath(unittest.TestCase):
         self.assertNotIn("\\\\(", out)   # no doubled opening delimiter survives
         self.assertNotIn("\\\\)", out)   # no doubled closing delimiter survives
         self.assertNotIn("\\textbf", out)   # unsupported command stripped (bare content kept)
-        self.assertEqual(out, r"\(\int\)_S (\(\nabla\) \(\times\) F) \bullet dS = \(\int\)_{C}")
+        # (\bullet is normalized to a wrapped \cdot by the later dot-product repair)
+        self.assertEqual(out, r"\(\int\)_S (\(\nabla\) \(\times\) F) \(\cdot\) dS = \(\int\)_{C}")
 
     def test_doubled_bracket_delimiter_is_collapsed(self):
         out = _sanitize_math_in_text(r"a display block: \\[x = y\\]")
@@ -181,6 +182,15 @@ class SanitizeMath(unittest.TestCase):
     def test_ordinary_percentages_are_untouched(self):
         for s in ("an increase of 20% to 30% overall", "a 5% fee and a 3% tax", "100% correct"):
             self.assertEqual(_sanitize_math_in_text(s), s)
+
+    def test_bullet_normalized_to_cdot_outside_and_inside_spans(self):
+        # Live (line-integral formula card, ~6 places): "\(\int_C\) F \bullet dr" — the renderer only
+        # knows \cdot, so \bullet shipped as literal source.
+        out = _sanitize_math_in_text(r"\(\int_C\) F \bullet dr, where F is a vector field")
+        self.assertNotIn(r"\bullet", out)
+        self.assertIn(r"\(\cdot\)", out)
+        out2 = _sanitize_math_in_text(r"\(F \bullet dr = 0\)")
+        self.assertEqual(out2, r"\(F \cdot dr = 0\)")
 
     def test_applies_across_card_points(self):
         cards = [{"points": [r"\text{I} = \frac{\text{V}}{\text{R}}", "plain bullet", r"$$x = y$$"]}]

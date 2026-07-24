@@ -2036,6 +2036,28 @@ _MATH_PROCESS_RULE = _lean_rule(
 )
 _MATH_FAMILY_LEAN_RULES = {**_UNIVERSAL_LEAN_RULES, "process": _MATH_PROCESS_RULE}
 
+# A proof is a CHAIN OF JUSTIFIED STEPS, not a loop — the universal algorithm scaffold produced live cards
+# reading "Repeated action: Calculate the curl of the vector field" / "State update: Update integral
+# values" / "Stopping condition: Conclude when all integrals have been evaluated" on a proof_reasoning
+# topic, which is nonsense framing for a proof (nothing iterates; nothing terminates).
+_PROOF_PROCESS_RULE = _lean_rule(
+    "state the givens and the exact claim to be proved — name each object precisely",
+    "name the proof strategy and why it fits (direct computation, showing both sides equal, induction, "
+    "contradiction)",
+    "each proof step in order: the action taken AND the justification that licenses it (a definition, a "
+    "previously established result, an algebraic identity)",
+    "the conclusion: restate what has been established and why the chain of steps proves the claim",
+    visual="",
+    notes=[
+        "This is a PROOF, not an algorithm. Do NOT use 'Starting state', 'Repeated action', 'State "
+        "update', 'Stopping condition', or 'Output rule' framing — a proof is a chain of justified "
+        "steps, not a loop.",
+        "Every step must state its justification — an unjustified assertion is not a proof step.",
+        "Keep the process card symbolic and general; concrete numbers belong in the worked_example.",
+    ],
+)
+_PROOF_FAMILY_LEAN_RULES = {**_UNIVERSAL_LEAN_RULES, "process": _PROOF_PROCESS_RULE}
+
 
 STAGE_RULES.update(
     {
@@ -2046,7 +2068,7 @@ STAGE_RULES.update(
         "data_structure_operation": _UNIVERSAL_LEAN_RULES,
         "coding_implementation": _UNIVERSAL_LEAN_RULES,
         "math_formula_method": _MATH_FAMILY_LEAN_RULES,
-        "proof_reasoning": _UNIVERSAL_LEAN_RULES,
+        "proof_reasoning": _PROOF_FAMILY_LEAN_RULES,
         "compare_distinguish": _UNIVERSAL_LEAN_RULES,
         "problem_solving_application": _MATH_FAMILY_LEAN_RULES,
         "science_mechanism": _UNIVERSAL_LEAN_RULES,
