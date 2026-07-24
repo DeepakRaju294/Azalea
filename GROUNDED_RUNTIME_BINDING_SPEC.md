@@ -1,6 +1,19 @@
 # Grounded Runtime Binding Spec
 
-> **Status:** Draft v0.7 — architecture approved; ready for implementation planning.
+> **Status:** Draft v0.9 — architecture approved; ready for implementation planning.
+> v0.9 scopes the gen_foundation verification obligations: in v1 provenance decides route order only and the
+> live route keeps its current internal gating; the `verified_gen_foundation` label and its tests activate
+> with an explicitly named evidence-layer migration (§4.3.2, §9, §15, §17.1). Pedagogical-fitness checks are
+> pinned to deterministic evaluators with declared parameter sources, and `sibling_novelty` consumes §2.5
+> arbitration rather than a second similarity heuristic (§6.6).
+> v0.8 closes the implementation-review blockers: convergence is classified by expression and execution
+> shape (§2.3.1), end-to-end fallback fixtures must genuinely miss registered routing (§14.1, §17.2),
+> resolution-registry authority is carried through executable/evidence artifacts (§5.2, §5.6, §5.9,
+> §12.1), evidence packages receive an immutable pre-narration digest plus delivery record (§5.9, §12.4),
+> gen_foundation
+> provenance selects a candidate but never substitutes for verification (§4.3, §9), v1 solved forms are
+> reviewed variants rather than runtime algebra (§5.3, §7.1), preparation activation is race-safe (§13.2),
+> and learner-visible solvability and pedagogical fitness are named verification gates (§5.8, §6).
 > v0.7 closes the residual review items: resolution-registry staleness now invalidates caches and
 > preparations (§12.1, §13.2, §15), Wave 1's dependency on the v1.1 vector substrate is explicit (§2.3.1),
 > the evidence-package persistence surface is named (§17.3, §19), and provenance naming is normalized (§4.3).
@@ -126,6 +139,10 @@ already executes with routing, narration, gates, and registration for free. Ther
   richer assumption/variant/conflation metadata a spec row cannot carry. If none apply for a given concept,
   author the spec row — reviewed effort must not be routed through the lower-trust tier.
 
+Catalog review enforces that admission rule. A new reviewed scalar relationship becomes a runtime contract
+only when at least one of those conditions is recorded in `review_provenance`, or when it is an explicitly
+marked runtime-routing fixture. Otherwise registration rejects it and directs the author to `FormulaSpec`.
+
 ---
 
 ## 2. Relationship to existing architecture
@@ -182,8 +199,9 @@ reviewed `expr` strings. Two parallel implementations of "substitute → compute
 recomputation" would drift. The shared substrate therefore precedes runtime binding:
 
 1. Build `RestrictedExpression`, `NumericPolicy`, canonical units, and the scalar executor.
-2. Classify every registered T6 row into a declared convergence wave by the exact expression nodes/functions
-   it requires.
+2. Classify every registered T6 row by both (a) the exact expression nodes/functions it requires and
+   (b) its execution shape: output count and dependency DAG, constants, scalar/vector inputs, sampling
+   predicates, trace-stage shape, unit/convention requirements, and presentation dependencies.
 3. **Wave 0:** shadow-compile and behavior-diff every rational-closed row expressible with the v1 node set
    (`Literal`, `Variable`, `Add`, `Subtract`, `Multiply`, `Divide`, integer `Power`, `Negate`).
 4. Move Wave-0 authored rows onto the shared substrate only after their behavior-diff suite is clean.
@@ -206,8 +224,28 @@ Wave 2  algebraic approximation   sqrt and other explicitly reviewed algebraic p
 Wave 3  transcendental            sin cos tan inverse trig log log10 exp
 ```
 
-Wave membership is derived from parsed expression requirements, not hand-waved per row. A row requiring
-several waves belongs to the highest required wave.
+Expression-wave membership is derived from parsed expression requirements, not hand-waved per row. A row
+requiring several expression waves belongs to the highest required wave. Expression closure alone does not
+make a row migratable: the convergence report also emits an `ExecutionShapeCapability` assessment.
+
+```text
+ExecutionShapeCapability {
+  output_count: int
+  output_dependency_dag: object
+  constants: [str]
+  input_shape: scalar | aligned_vector | mixed
+  custom_sampling_predicate: bool
+  trace_stage_shape: [str]
+  unit_and_convention_features: [str]
+  presentation_dependencies: [str]
+  supported_by_substrate_version: bool
+  blockers: [str]
+}
+```
+
+A row enters a migration wave only when both its expression requirements and execution shape are supported.
+A rational-only row with two ordered outputs is not Wave-0 migratable until the shared substrate supports a
+reviewed multi-output dependency DAG.
 
 Wave 1 is NOT a pure node addition after Wave 0: its `sum/len/min/max/sorted/median/paired-list` rows are the
 dataset-variant T6 rows, which need aligned-vector value types and grammar-owned vector access — both deferred
@@ -436,13 +474,16 @@ registered reviewed adapter
   -> withhold
 ```
 
-`trace_first`/`reference_backed` may outrank runtime binding because the artifact descends from executed or
-reviewed reference truth. A model-only artifact may not outrank a reviewed-contract runtime binding and may
-never receive a verified trust label. `post_generation_measurement` output is measurement unless its final
-artifact is rebuilt from and validated against the execution trace. When routes overlap, the decision trace
-records the candidate provenance, verification level, winner, and reason. The normalized category names in
-§4.3.1 are the only provenance strings used in routing, decision trace, and telemetry; gen_foundation's
-internal mode names (e.g. `post_generation_trace`) never leave that module.
+`trace_first`/`reference_backed` may nominate a higher-priority candidate because the artifact descends from
+executed or reviewed reference truth. Provenance is not itself a shipping proof. Once gen_foundation is
+migrated onto the evidence layer (§4.3.2), the candidate must produce frozen evidence and pass the
+applicable concept/scope match, replay, trace-to-teaching, problem-solvability, and narration-fidelity
+checks; a positive live provenance flag never substitutes for those checks.
+
+A model-only artifact may not outrank a reviewed-contract runtime binding and may never receive a verified
+trust label. `post_generation_measurement` output is measurement unless its final artifact is rebuilt from
+and validated against the execution trace. When routes overlap, the decision trace records the candidate
+provenance, verification vector, winner, and reason.
 
 #### 4.3.1 Live-field normalization
 
@@ -459,6 +500,22 @@ The router derives normalized provenance from fields that exist today:
 absence of both positive provenance signals is the shipping-relevant fact. The accuracy ladder's separate
 `verification_level="model_only"` vocabulary is unrelated and must not be used to infer gen_foundation
 provenance. Normalization lives at the solver/router boundary and is covered by fixtures for every row above.
+
+#### 4.3.2 V1 scope: provenance orders routes; the live route is not retrofitted
+
+Gen_foundation ships today under its own internal gating with none of this spec's evidence machinery, and no
+§17.1 implementation unit builds `EvidencePackage`/`DeliveryEvidenceRecord` wrapping for it. Therefore, in
+v1:
+
+- the normalized provenance categories decide ROUTE ORDER only;
+- a gen_foundation candidate that wins the route ships exactly as production ships it today, under
+  gen_foundation's existing internal checks — v1 must not regress a working verified route behind unbuilt
+  evidence plumbing;
+- the `verified_gen_foundation` derived label (§9), the forged-provenance withhold test, and the frozen-
+  evidence obligation on this route all activate only with the **gen_foundation evidence migration** — named
+  deferred work, scheduled no earlier than Phase 2, with its own implementation unit and behavior-diff
+  against the pre-migration route;
+- until that migration, gen_foundation output carries its existing labeling, not a §9 derived level.
 
 ---
 
@@ -510,6 +567,8 @@ ContractConceptResolution {
   scope_concept_id: str
   resolved_contract_concept_id: str
   variant: str
+  resolution_registry_version: int
+  resolution_entry_version: int
   excluded_variants: [str]
   reasoning_shape: str
   evidence: [ResolutionEvidence]
@@ -558,6 +617,9 @@ ContractResolutionEntry {
 
 The registry is the only alias mapping that can establish `resolution_validity=reviewed_match`. Heuristic
 token candidates never modify it at runtime.
+
+Both registry versions are frozen into the resolution artifact and flow into validated bindings,
+preparations, cache keys, and evidence packages.
 
 ### 5.3 `ConceptContract`
 
@@ -614,10 +676,18 @@ ContractConstraintSet {
 The distinction between source-derived and model-selected fields is mandatory. A model may propose missing
 fields, but they retain `model_inferred` authority and cannot be presented as reviewed facts.
 
+Contract constants use versioned `GroundedArtifact` records containing typed value, unit, authority,
+source/version, and validity notes. A bare model-supplied numeric constant can never enter execution.
+
 For v1, every executable relationship is contract-owned and reviewed. The binding references it; the binding
 does not provide a second expression that must be compared for semantic equivalence.
 Alternative valid definitions or relationships require separate versioned variants rather than an unresolved
 list inside one executable contract.
+
+V1 does not perform symbolic algebra to rearrange a relationship. If the requested unknown changes the solved
+form, each allowed solved form is a separate reviewed executable variant (for example
+`ohms_law_current`, `ohms_law_voltage`, and `ohms_law_resistance`). A missing solved-form variant is
+unsupported; the binding model may not derive it at runtime.
 
 ### 5.4 `BindingProposal`
 
@@ -695,6 +765,8 @@ them.
 ```text
 ValidatedBinding {
   proposal: BindingProposal
+  resolution_registry_version: int
+  resolution_entry_version: int
   relationship: RestrictedExpression
   resolved_types: { symbol: ValueType }
   resolved_units: { symbol: Unit }
@@ -714,10 +786,10 @@ ValidatedConstraintSet {
 
 `relationship` is loaded from `proposal.relationship_ref`; it is never generated by the binding model.
 
-`binding_digest` is a SHA-256 digest over canonical JSON containing the concept-contract id/version,
-relationship id, grammar id/version, normalized slot bindings, execution-affecting convention selections, and
-constraints. Presentation labels do not affect executable identity; a selected display unit does when it
-requires conversion rather than a label-only rendering.
+`binding_digest` is a SHA-256 digest over canonical JSON containing the resolution-registry/entry versions,
+concept-contract id/version, relationship id, grammar id/version, normalized slot bindings,
+execution-affecting convention selections, and constraints. Presentation labels do not affect executable
+identity; a selected display unit does when it requires conversion rather than a label-only rendering.
 
 `execution_environment_digest` covers the unit-system version, numeric-policy version, verification-plan
 version, restricted-expression canonicalization version, and reviewed primitive implementation versions.
@@ -744,7 +816,7 @@ NumericPolicy {
   policy_id: str
   version: int
   representation: rational
-  internal_precision: int
+  internal_precision: int | null  # null for exact-rational v1
   comparison_absolute_tolerance: decimal  # zero in v1
   comparison_relative_tolerance: decimal  # zero in v1
   intermediate_rounding: forbidden
@@ -779,6 +851,9 @@ V1 uses no new unit dependency:
 
 Comparison is exact for rational results. Tolerance is used only when a later reviewed primitive explicitly
 introduces approximation; no such primitive exists in the v1 grammar.
+
+The executor places reviewed limits on AST size, integer magnitude, and `Fraction` numerator/denominator bit
+length. Exceeding a bound rejects the candidate or execution.
 
 Unit execution order is fixed:
 
@@ -823,7 +898,31 @@ GeneratedInstance {
   rejected_candidate_samples: [{ candidate_id, rejection_code }]
   numeric_policy: NumericPolicy
   expected_result: TypedValue | StructuredResult
+  problem_solvability: ProblemSolvabilityResult
+  pedagogical_fitness: PedagogicalFitnessResult
   instance_digest: str
+}
+
+ProblemSolvabilityResult {
+  all_required_symbols_visible_or_reviewed: bool
+  requested_output_unambiguous: bool
+  display_unit_unambiguous: bool
+  learner_visible_recomputation_passed: bool
+  required_assumptions_visible: bool
+  unused_givens: [str]
+  passed: bool
+}
+
+PedagogicalFitnessResult {
+  scope_relevance: passed | failed
+  difficulty_fit: passed | failed
+  operation_relevance: passed | failed
+  nontriviality: passed | failed
+  visible_number_readability: passed | failed
+  single_primary_objective: passed | failed
+  prerequisite_compatibility: passed | failed
+  sibling_novelty: passed | failed
+  failures: [str]
 }
 ```
 
@@ -836,14 +935,26 @@ Generation policy sets `max_generation_attempts` and `max_rejected_samples_store
 categorical counts and at most the bounded sample records, without raw rejected values. Full rejected values
 are retained only in fixture, failure-debug, or explicitly sampled diagnostic runs.
 
+Every required free symbol must be supplied by a learner-visible given, a reviewed constant, or an explicitly
+traced prior value. Learner-visible information must deterministically reproduce the displayed result. Unused
+givens are rejected in v1; distractors require a later explicit practice policy. A stylistic `scenario_hint`
+is checked against contract assumptions and applicability conditions and is discarded or regenerated when it
+implies a conflicting regime.
+
 ### 5.9 `EvidencePackage`
 
 ```text
 EvidencePackage {
   evidence_id: str
+  evidence_schema_version: int
+  evidence_digest: str
+  created_at: datetime
+  verification_completed_at: datetime
   binding_digest: str
   execution_environment_digest: str
   instance_digest: str
+  resolution_registry_version: int
+  resolution_entry_version: int
   lesson_intent: LessonIntent
   concept_resolution: ContractConceptResolution
   concept_contract_refs: [str]
@@ -860,11 +971,32 @@ EvidencePackage {
   checkpoints: [TeachingCheckpoint]
   final_result: TypedValue | StructuredResult
   decision_evidence: [DecisionEvidence]
-  verification: VerificationVector
+  verification: VerificationVector  # narration_fidelity remains not_run in this pre-narration artifact
+}
+
+DeliveryEvidenceRecord {
+  delivery_evidence_id: str
+  evidence_id: str
+  evidence_digest: str
+  lesson_id: str
+  rendered_card_digest: str
+  card_provenance_links: [CardEvidenceLink]
+  narration_fidelity: passed | failed
+  post_sanitization_validation_digest: str
+  created_at: datetime
 }
 ```
 
-This package is immutable after successful verification. Cards are a view over it, never a second solution.
+The package is immutable after successful computational/conceptual verification. Cards are a view over it,
+never a second solution. Narration validation necessarily happens after cards and sanitization exist, so it
+is stored in a separate append-only `DeliveryEvidenceRecord`; the evidence package is never reopened merely
+to change `narration_fidelity` from `not_run`.
+
+`evidence_digest` is a SHA-256 digest over canonical serialization of every authoritative pre-narration field:
+resolution, contract/grammar versions, generated instance, problem, execution and teaching traces,
+projection, checkpoints, final result, decision evidence, and the pre-narration verification vector.
+Persistence is insert-only after verification. Regeneration creates a new evidence id/digest. A delivery
+trust label is derived only from the immutable package plus a passing delivery record.
 
 ### 5.10 Card provenance
 
@@ -943,6 +1075,8 @@ VerificationVector {
   specification_validity: passed | failed
   execution_validity: passed | failed
   conceptual_validity: reviewed_match | grounded_match | user_source_match | unresolved | failed
+  problem_solvability: passed | failed
+  pedagogical_fitness: passed | failed
   narration_fidelity: passed | failed | not_run
   test_results: [VerificationCheck]
 }
@@ -953,12 +1087,17 @@ For the v1 assurance profile:
 - resolution validity must be `reviewed_match`;
 - independent recomputation is always required;
 - expression-domain validation is always required;
+- learner-visible problem solvability is always required;
+- pedagogical fitness is always required for a delivered worked example;
 - every applicable declared boundary check is required;
 - at least one contract-owned or deterministically derived property check is required;
 - a differential check is required when a reviewed independent reference exists;
 - every skipped check records a deterministic `not_applicable_reason`.
 
 Passing one arbitrary check is not sufficient.
+
+`problem_solvability` proves the visible question contains sufficient, unambiguous information to reach the
+stored answer. `pedagogical_fitness` proves bounded instructional suitability, not factual correctness.
 
 What this vector establishes must be stated honestly: for a direct formula, "independent recomputation"
 re-runs the same expression — it catches tampering and executor bugs, not a wrong formula. AST-derived
@@ -1030,7 +1169,32 @@ Reuse the trace-to-teaching checks:
 - required cases are not omitted;
 - fidelity is evaluated on the post-sanitization text the learner will actually see (§5.10 boundary).
 
-### 6.6 Generated checks
+### 6.6 Problem solvability and pedagogical fitness
+
+- Every relationship free symbol resolves to a visible given, reviewed constant, or traced prior result.
+- The requested output, quantity meaning, and display unit are unambiguous.
+- Visible givens and assumptions independently recompute the final visible answer.
+- No necessary assumption remains only in hidden metadata.
+- The instance directly exercises the topic's owned learning delta and requested operation.
+- Difficulty matches the certified topic depth and prerequisites.
+- Values are nontrivial, readable, and not dominated by incidental conversion or rounding.
+- The example has one primary learning objective and is materially distinct from sibling examples.
+
+Failure rejects and resamples the instance when instance-specific; a persistent scope/operation mismatch
+rejects the binding route for that topic.
+
+Evaluator authority: every solvability and fitness sub-check is a DETERMINISTIC predicate over declared
+parameters — §7.1's "must not ask the model whether a result looks sensible" applies here with full force,
+because these are exactly the judgments that drift into model calls. Parameter sources are fixed:
+`difficulty_fit` and `prerequisite_compatibility` read the certified scope plan (topic depth, declared
+prerequisites); `nontriviality` and `visible_number_readability` read the generation policy's
+`quality_constraints` (value ranges, integer-size and rounding bounds); `scope_relevance` and
+`operation_relevance` read the contract's applicability conditions plus the topic's owned `scope_in`;
+`sibling_novelty` consumes the §2.5 arbitration result plus instance-digest comparison against sibling-owned
+instances — it is NOT a second similarity heuristic. A fitness check whose predicate cannot be expressed
+deterministically is dropped from the profile, not delegated to a model.
+
+### 6.7 Generated checks
 
 The model may suggest supplementary checks, but they are advisory until accepted by a reviewed verifier.
 Grammar-owned invariants remain authoritative. A binding cannot establish its own correctness by proposing an
@@ -1074,6 +1238,10 @@ Required concept-contract fields:
 - assumptions;
 - applicability conditions;
 - result interpretation.
+
+V1 supports one reviewed output relationship per executable variant. Multi-output FormulaSpec rows may use
+the shared substrate only after it declares and tests an ordered output dependency DAG; Wave-0 arithmetic
+closure alone does not imply that capability. Runtime symbolic rearrangement is prohibited.
 
 Initial metamorphic checks are grammar-declared, not universal. Examples:
 
@@ -1230,6 +1398,7 @@ verification vector for routing and UI:
 | Derived level | Minimum conditions |
 |---|---|
 | `reviewed_adapter` | Exact reviewed adapter; all trace and narration checks pass |
+| `verified_gen_foundation` | Post-migration only (§4.3.2): `trace_first` or `reference_backed` candidate; concept/scope match, replay, solvability, trace-to-teaching, and narration checks pass |
 | `reviewed_family_binding` | Runtime binding over a reviewed concept contract + reviewed grammar; all checks pass |
 | `grounded_runtime_binding` | Authoritative grounding matches validated runtime binding; execution and narration pass |
 | `user_source_grounded_binding` | Binding faithfully matches the declared user source; no independent authority claim |
@@ -1239,6 +1408,10 @@ verification vector for routing and UI:
 
 Rules:
 
+- Gen-foundation provenance only nominates `verified_gen_foundation`; the label is derived only after the
+  complete verification profile passes and a frozen evidence package exists. In v1, before the §4.3.2
+  evidence migration, gen_foundation output keeps its existing labeling and never receives a §9 derived
+  level.
 - `reviewed_family_binding` additionally requires `resolution_validity=reviewed_match`.
 - `mechanically_verified_only` must not display a generic “verified” badge.
 - In v1, `mechanically_verified_only` is diagnostic only: a determinate numeric worked example at that level
@@ -1321,6 +1494,7 @@ runtime_binding.preparation_started
 runtime_binding.preparation_ready
 runtime_binding.preparation_failed
 runtime_binding.preparation_stale
+runtime_binding.safety_revoked
 runtime_binding.cache_hit
 runtime_binding.cache_miss
 runtime_binding.gen_foundation_candidate
@@ -1365,7 +1539,8 @@ first rollout.
 A validated binding may be cached by:
 
 ```text
-(scope_concept_id, resolved_contract_concept_id, variant, concept_contract_version,
+(scope_concept_id, resolved_contract_concept_id, variant,
+ resolution_registry_version, resolution_entry_version, concept_contract_version,
  grammar_id, grammar_version, binding_digest, execution_environment_digest)
 ```
 
@@ -1440,9 +1615,15 @@ non-authoritative generation exhaust.
 
 ### 12.4 Evidence storage shape
 
-The lesson stores `evidence_id`, digests, derived trust label, and card provenance links. The immutable
+The lesson stores `evidence_id`, `evidence_digest`, `delivery_evidence_id`, derived trust label, and card
+provenance links. The immutable
 `EvidencePackage` is stored once in a dedicated backend record/object (`evidence_packages`, §17.3), not
 embedded repeatedly in lesson cards.
+
+The evidence record is append-only once `verification_completed_at` is set. Narration/card validation is
+stored in an append-only delivery record. Final enforcement rejects a missing package or delivery record,
+digest mismatch, altered card provenance/rendered-card digest, or artifacts that did not jointly pass the
+route's required verification profile.
 
 For v1, the stored package contains the generated instance, verification vector, teaching trace/checkpoints,
 and compact execution trace required for replay. Raw execution detail beyond that compact trace is retained
@@ -1471,7 +1652,7 @@ a 7-topic path) is hard-won. Runtime binding must (a) declare a per-topic latenc
 degradation to the next tier when exceeded, and (b) run at PLAN TIME where possible — topics are known at
 decomposition, so contract resolution, binding validation, and the assurance profile can run in parallel
 with lesson generation rather than inline in the solve path, with the §12.1 cache making every repeat hit
-free. Only the numeric value of the budget remains open (§19.7).
+free. Only the numeric value of the budget remains open (§19 item 5).
 
 ### Phase 0 — offline fixtures
 
@@ -1534,6 +1715,15 @@ ready --------------------> stale
 
 `PreparedRuntimeBinding` records topic id, contract/grammar versions, the resolution-registry version its
 resolution was produced under, all digests, status, timestamps, failure reason, and claimant/ownership result.
+It also records:
+
+```text
+preparation_identity_digest
+status_version
+resolution_entry_version
+safety_block_version
+superseded_by_preparation_id
+```
 
 Persistence home is a dedicated `prepared_runtime_bindings` table keyed by topic id + preparation version, not
 `decomposition_metadata`: preparation is asynchronously mutable, independently staleable, and must support
@@ -1551,6 +1741,17 @@ Rules:
 - Regeneration reuses `ready` preparation when all identities match; otherwise it creates a new preparation.
 - `failed`, timed-out, or stale preparation restores current withhold behavior.
 - Final enforcement trusts the frozen passing `EvidencePackage`, never the earlier eligibility stamp.
+- `preparation_identity_digest` covers topic/scope identity, resolution registry and entry versions,
+  contract/grammar/environment versions, and claimant intent. At most one non-superseded
+  `preparing|ready` row may exist for the same identity.
+- Status transitions use compare-and-swap on `status_version`. A worker prepared against an older registry,
+  scope plan, safety-block version, or active preparation cannot mark itself ready.
+- Selecting an active preparation and superseding the previous one is atomic. A late worker may persist
+  diagnostics but cannot reactivate an older preparation.
+- A safety incident increments `safety_block_version`, stales affected preparations/cache entries, and emits
+  `runtime_binding.safety_revoked`.
+- Retrying a failed preparation creates a new preparation version; it never mutates a failed artifact into a
+  ready one.
 
 Contract resolution, deterministic binding validation, and instance preparation may run concurrently across
 topics after decomposition. They may not race lesson persistence without the status/version checks above.
@@ -1561,7 +1762,8 @@ topics after decomposition. They may not race lesson persistence without the sta
 
 ### 14.1 Direct formula
 
-Use a concept deliberately absent from exact routing but covered by a reviewed test contract.
+Use a concept deliberately absent from exact routing but covered by a reviewed test contract. The end-to-end
+fixture must not disable or bypass exact lookup: a genuine registered-routing miss is part of acceptance.
 
 Acceptance:
 
@@ -1579,6 +1781,7 @@ Acceptance:
 - every formula, number, unit, assumption, decision, and final result in cards maps to evidence;
 - decision trace reconstructs every route and verification decision;
 - final derived level is `reviewed_family_binding`.
+- learner-visible problem solvability and pedagogical fitness pass.
 
 ### 14.2 Discounted cash flow (v1.1)
 
@@ -1612,6 +1815,8 @@ reference another contract's relationship.
 - Environment digest changes when numeric, unit, verification, parser, or primitive versions change.
 - Instance digest changes when seed, generation policy, values, numeric policy, or expected result changes.
 - Every registered T6 row receives exactly one convergence wave and explicit required-node/function set.
+- Every registered T6 row also receives an execution-shape capability report; rational-only multi-output,
+  custom-sampling, or custom-trace rows are not falsely classified as migratable.
 - Every Wave-0 row matches legacy displayed results/intermediates under §2.3.2 rather than bit-level float
   equality.
 - A `sqrt` row is classified into Wave 2 and does not block the Wave-0 gate.
@@ -1633,6 +1838,10 @@ reference another contract's relationship.
 - Unit mismatch fails specification validity.
 - Zero denominator is rejected or excluded by generated instances.
 - Same seed and binding produce identical trace and result.
+- Missing visible input, ambiguous requested output, hidden required assumption, or missing display unit fails
+  problem solvability.
+- A mathematically valid instance that is off-scope, trivial, prerequisite-incompatible, or duplicates a
+  sibling-owned operation fails pedagogical fitness.
 - Tampered final result fails independent recomputation.
 - Grammar-owned metamorphic failure rejects the binding/instance.
 - Generated supplementary invariant alone cannot authorize a binding.
@@ -1654,8 +1863,13 @@ reference another contract's relationship.
 - Failed conceptual matching never falls to legacy from-scratch calculation.
 - Repeated narration failure produces guided/withheld state.
 - Every material branch produces a decision-trace entry.
-- Gen_foundation `ground_truth_source=trace_first|reference_first` outranks runtime binding; absence of those
-  signals does not.
+- Gen_foundation `ground_truth_source=trace_first|reference_first` may outrank runtime binding; absence of
+  those signals does not. In v1 the winning candidate ships under gen_foundation's existing internal gating
+  (§4.3.2); after the evidence migration it additionally requires frozen evidence and the complete
+  applicable verification profile.
+- Post-migration only (§4.3.2): a forged positive gen_foundation provenance flag without replay/scope/
+  fidelity evidence is withheld.
+- A valid evidence id paired with a mismatched evidence digest or altered card provenance is rejected.
 - Accuracy-ladder `verification_level=model_only` is never interpreted as gen_foundation provenance.
 - Concurrent preparation uses atomic table transitions and stale versions cannot become active.
 - A resolution-registry version bump marks affected prepared bindings stale and invalidates their cache
@@ -1736,9 +1950,17 @@ Dashboards should answer:
    - Only after offline fixtures pass; compare model proposals to deterministic/reviewed expected bindings
      without affecting delivered lessons.
 
-### 17.2 Initial reviewed fixture set
+Deferred beyond these units (explicitly NOT v1 scope): the **gen_foundation evidence migration** (§4.3.2) —
+wrapping the live gen_foundation route in `EvidencePackage`/`DeliveryEvidenceRecord` so it can earn the
+`verified_gen_foundation` label. Scheduled no earlier than Phase 2, with a behavior-diff against the
+pre-migration route before cutover.
 
-Favor expression-structure diversity over domain count:
+### 17.2 Initial reviewed fixture sets
+
+Use two distinct fixture groups.
+
+**A. Shared-substrate equivalence fixtures.** These existing registered FormulaSpec rows favor
+expression-structure diversity over domain count and prove legacy/shared-substrate behavior equivalence:
 
 ```text
 Ohm's law                 I = V / R                 division
@@ -1747,6 +1969,21 @@ Simple interest           A = P (1 + r t)           nested multiplication + addi
 Density                    rho = m / V               division with physical constraints
 Potential energy          PE = m g h                multivariable multiplication
 ```
+
+These fixtures must resolve through the registered adapter route in product-like tests. They do not prove
+runtime-fallback routing.
+
+**B. Runtime-fallback routing fixtures.** Add at least three reviewed `ConceptContract` fixtures deliberately
+absent from the registered adapter/FormulaSpec manifest:
+
+- one single-output division relationship with a nonzero-domain constraint;
+- one nested add/multiply relationship with a dimensional or rate convention;
+- one integer-power relationship with a reviewed physical applicability condition.
+
+Each has a reviewed resolution-registry entry but no registered routing alias or FormulaSpec row. The
+acceptance test runs the normal router, proves both exact lookups miss, and reaches runtime binding. Fixture
+concept names are selected only after asserting they are absent from the live manifest; the test fails if
+future catalog growth registers them without updating the fixture.
 
 Affine temperature conversion is intentionally deferred until the unit system explicitly supports affine
 units; ordinary multiplicative unit conversion is insufficient.
@@ -1778,8 +2015,9 @@ Expected persistence change:
 backend/app/models/prepared_runtime_binding.py
 backend/app/models/evidence_package.py         # §12.4's immutable evidence store — the most durable
                                                # artifact in the design needs a named home, not an implied one
-backend/app/db/base.py                         # import/register both models
-database schema migration for prepared_runtime_bindings + evidence_packages
+backend/app/models/delivery_evidence.py        # post-sanitization narration/card fidelity bound to evidence
+backend/app/db/base.py                         # import/register all three models
+database schema migration for prepared_runtime_bindings + evidence_packages + delivery_evidence
 ```
 
 The repository currently has no Alembic migration tree and `Base.metadata.create_all()` does not alter
@@ -1850,7 +2088,7 @@ and continue catalog growth through the existing adapter system instead.
    plan-time execution + binding cache — is decided in §13; only the number remains open.)
 6. Which explicit database-migration mechanism will create/update `prepared_runtime_bindings` and
    `evidence_packages` in existing deployments? Blocking before the persistence units ship.
-   Recommendation: adopt Alembic once rather than a one-off guarded script — two new tables are already
+   Recommendation: adopt Alembic once rather than a one-off guarded script — three new tables are already
    required, Phase 3's contract store will add more, and an ad-hoc migration path becomes its own
    maintenance problem.
 
@@ -1860,7 +2098,7 @@ and continue catalog growth through the existing adapter system instead.
 
 - [ ] Exact adapters remain the first and exclusive source of truth when applicable.
 - [ ] Every Wave-0 T6 row and v1 runtime binding use the same restricted executor and numeric/unit substrate;
-      later-wave rows are enumerated with exact blockers.
+      later-wave or execution-shape-incompatible rows are enumerated with exact blockers.
 - [ ] Runtime contract expressions cannot reach Python `eval` or arbitrary execution.
 - [ ] `direct_formula_calculation` executes a reviewed concept contract end to end.
 - [ ] v1 supports scalar typed values only; extraction, vectors, composition, and discounted cash flow remain
@@ -1868,9 +2106,12 @@ and continue catalog growth through the existing adapter system instead.
 - [ ] Runtime proposals bind a contract-owned relationship and cannot supply formula semantics.
 - [ ] Generated instances and numeric policy make every example reproducible at displayed precision.
 - [ ] Verification dimensions are stored separately and derive an honest trust level.
+- [ ] Learner-visible problem solvability and pedagogical fitness are required shipping dimensions.
 - [ ] Concept/variant ambiguity cannot silently select a materially different formula.
 - [ ] Grammar-owned boundary, property, and metamorphic tests run.
 - [ ] Evidence packages are immutable and cards carry required provenance.
+- [ ] Evidence packages have canonical pre-narration digests; lessons bind evidence id/digest plus an
+      append-only delivery record covering rendered cards and post-sanitization narration fidelity.
 - [ ] Narration cannot change formulas, values, units, assumptions, decisions, or conclusions.
 - [ ] Failed grounding or verification never falls to a from-scratch authoritative calculation.
 - [ ] Every material route and verification decision is persisted and explainable.
@@ -1883,7 +2124,12 @@ and continue catalog growth through the existing adapter system instead.
       binding cache keep the full-path build inside its current budget (§13).
 - [ ] V1 withholds every determinate example whose resolution is not `reviewed_match` (§5.2, §6, §9).
 - [ ] Gen_foundation outranks runtime binding only with `trace_first` or `reference_backed` provenance (§4.3).
+- [ ] Positive gen_foundation provenance decides route order only in v1; the live route ships under its
+      existing gating, and the `verified_gen_foundation` label/checks activate solely with the §4.3.2
+      evidence migration (named deferred work, not a v1 obligation).
 - [ ] Contract ownership arbitration prevents sibling topics from repeating the same exercise (§2.5).
 - [ ] Prepared binding state/version checks prevent stale or raced artifacts from shipping (§13.2).
+- [ ] Runtime-fallback end-to-end fixtures genuinely miss registered routing; registered T6 fixtures are used
+      separately for substrate equivalence.
 - [ ] Structured claim rendering preserves semantic identity through backend and frontend transforms (§5.10).
 - [ ] Ships with `AZALEA_GROUNDED_RUNTIME_BINDING=shadow` as the default until Phase 2 criteria are met.
