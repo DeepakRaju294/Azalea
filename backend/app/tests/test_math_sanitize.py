@@ -145,6 +145,30 @@ class SanitizeMath(unittest.TestCase):
         _sanitize_card_math(cards)
         self.assertEqual(cards[0]["points"], [r"\(x = y\)", "  - \\(a + b\\)"])
 
+    def test_bare_spacing_tokens_outside_spans_are_dropped(self):
+        # Live (surface-integral formula card): "\(\iint_S\) \, F \(\cdot\) n \, dS" — the "\," thin-space
+        # commands sat OUTSIDE any math span and rendered as literal backslash-comma text.
+        out = _sanitize_math_in_text(r"\(\iint_S\) \, F \(\cdot\) n \, dS, where:")
+        self.assertNotIn(r"\,", out)
+
+    def test_spacing_tokens_inside_spans_are_untouched(self):
+        s = r"\(a \, b\) and prose"
+        self.assertEqual(_sanitize_math_in_text(s), s)
+
+    def test_backslashless_int_outside_a_span_is_repaired_and_wrapped(self):
+        out = _sanitize_math_in_text("the formula is int_{S} f dS")
+        self.assertIn(r"\(\int_{S}\)", out)
+
+    def test_backslashless_int_inside_a_span_gets_its_backslash_back(self):
+        # Live (goal-core formula card): "\( F \, dr = int_{S} (\nabla \times F) \, dS\)".
+        out = _sanitize_math_in_text(r"\( F \, dr = int_{S} (\nabla \times F) \, dS\)")
+        self.assertIn(r"\int_{S}", out)
+        self.assertNotIn(" int_{S}", out)
+
+    def test_code_identifier_with_int_prefix_is_untouched(self):
+        s = "use int_count = 0 in the loop"
+        self.assertEqual(_sanitize_math_in_text(s), s)
+
     def test_applies_across_card_points(self):
         cards = [{"points": [r"\text{I} = \frac{\text{V}}{\text{R}}", "plain bullet", r"$$x = y$$"]}]
         _sanitize_card_math(cards)

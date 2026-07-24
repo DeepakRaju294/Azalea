@@ -154,6 +154,21 @@ class DanglingFormulaLeadIn(unittest.TestCase):
         self.assertEqual(len(c[0]["points"]), 1)
 
 
+class DifferentialNotationCasePreserved(unittest.TestCase):
+    """Live (twice on one path): the sentence-case pass turned 'dS denotes the differential area element'
+    into 'DS denotes...' — dS and DS read as DIFFERENT symbols to a learner. Case IS the meaning in
+    differential notation; a first word with an interior capital is never ordinary prose."""
+
+    def test_differential_form_first_word_is_not_capitalized(self):
+        from app.services.lean_lesson_generator import _sentence_case_bullet_starts
+        out = _sentence_case_bullet_starts(["dS denotes the differential area element",
+                                            "dr is the differential path element",
+                                            "the queue starts empty"])
+        self.assertEqual(out[0], "dS denotes the differential area element")
+        self.assertEqual(out[1], "dr is the differential path element")
+        self.assertEqual(out[2], "The queue starts empty")
+
+
 class DoubledColonPunctuation(unittest.TestCase):
     def test_doubled_colon_collapsed(self):
         c = [{"card_type": "formula_breakdown", "points": ["Formula for Stokes' Theorem: :"]}]

@@ -366,5 +366,44 @@ class PrereqMergeNotFallback(unittest.TestCase):
         self.assertIn("used", fallback["decision"])
 
 
+class SkillFragmentPrereqFilter(unittest.TestCase):
+    """Live (Stokes' path prereq card): 'Interpret results' shipped as a PREREQUISITE with the tautological
+    gloss 'Understanding the meaning of mathematical or scientific outcomes' — an imperative skill fragment
+    shard of a requirement statement, not a concept a learner can go study. Verb-headed multi-word phrases
+    are now dropped from the prereq list; concept names (incl. gerund/adjective forms) pass."""
+
+    def test_classifier_behavior(self):
+        from app.services.topic_decomposition_pipeline import _is_skill_fragment_prereq
+        for frag in ("Interpret results", "understand the basics", "apply formulas", "be familiar with sets"):
+            self.assertTrue(_is_skill_fragment_prereq(frag), frag)
+        for concept in ("multivariable calculus", "Applied Statistics", "binary search trees",
+                        "Computing Fundamentals", "differential equations", "interpretation"):
+            self.assertFalse(_is_skill_fragment_prereq(concept), concept)
+
+    def test_fragment_prereq_dropped_end_to_end(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R1", "name": "Stokes' theorem statement", "kind": "core",
+             "statement": "state and interpret Stokes' theorem"}]}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": [],
+                              "assumed_prerequisites": [
+                                  {"name": "multivariable calculus", "gloss": "g"},
+                                  {"name": "Interpret results", "gloss": "g"}]},
+                "topics": [{"topic_id": "t1", "capability_id": "t1", "subject_key": "stokes_theorem",
+                            "primary_action": "apply", "content_role": "core",
+                            "topic_type": "math_formula_method", "title": "Stokes' Theorem",
+                            "unit_title": "u", "purpose": "p",
+                            "in_scope": ["statement of stokes theorem"],
+                            "covers_requirements": ["R1"], "basis": "goal"}]}
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+        topics = generate_decomposed_topics("want to learn about stokes theorem", "s", model_fn=fn)
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        names = {(p if isinstance(p, str) else p.get("name", "")).lower()
+                 for p in (intro.get("assumed_prerequisites") or [])}
+        self.assertIn("multivariable calculus", names)
+        self.assertNotIn("interpret results", names)
+
+
 if __name__ == "__main__":
     unittest.main()

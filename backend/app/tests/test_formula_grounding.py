@@ -43,6 +43,26 @@ class FormulaGrounding(unittest.TestCase):
         # subscript symbols in the PROSE are wrapped in inline math so B_i renders as a subscript too.
         self.assertTrue(any("\\(B_i\\)" in p for p in fc["points"]))
 
+    def test_stokes_theorem_formula_is_grounded_via_canonical_formula(self):
+        # Live: the goal-core formula card shipped "\( F \, dr = int_{S} (\nabla \times F) \, dS\)" — the
+        # line-integral side missing its integral sign, "int" missing its backslash. The hand-coded T13
+        # adapter can't carry _formula_spec (it would flip trace_pipeline's is_formula narration slotting),
+        # so grounding flows through the NARROW _canonical_formula attribute instead.
+        cards = _wrong_formula_cards("Stokes' Theorem", r"\( F \, dr = int_{S} (\nabla \times F) \, dS\)")
+        self.assertTrue(_ground_formula_card(cards, _T("Stokes' Theorem")))
+        fc = next(c for c in cards if c["blueprint_key"] == "formula_breakdown")
+        joined = " ".join(str(p) for p in fc["points"])
+        self.assertIn(r"\int_{C} F \cdot dr = \int_{S} (\nabla \times F) \cdot dS", joined)
+        self.assertNotIn("int_{S} (", joined.replace("\\int_{S}", ""))   # broken free-prose form gone
+        self.assertTrue(fc.get("_formula_grounded"))
+
+    def test_stokes_canonical_formula_does_not_change_trace_narration_slotting(self):
+        # the whole reason _canonical_formula exists as a separate attribute
+        from app.services.examples.trace_adapters import ADAPTERS
+        ad = ADAPTERS["stokes_theorem"]
+        self.assertIsNone(getattr(ad, "_formula_spec", None))
+        self.assertIsNotNone(getattr(ad, "_canonical_formula", None))
+
     def test_bayes_formula_is_corrected(self):
         cards = _wrong_formula_cards("Bayes' Theorem", "P(A|B) = P(A) + P(B)")
         self.assertTrue(_ground_formula_card(cards, _T("Bayes' Theorem")))

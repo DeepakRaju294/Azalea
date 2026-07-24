@@ -57,9 +57,35 @@ _STOKES_INV = [{"id": "surface_equals_line", "scope": "terminal_only",
                             "the boundary of S"}]
 
 
+class _StokesCanonicalFormula:
+    """Card-grounding-only formula facts (consumed by lean_lesson_generator's `_canonical_formula` fallback
+    in `_ground_formula_card`/`_ground_edge_case_card`/`_inject_grounded_cards`). Deliberately NOT a
+    `_formula_spec`: that attribute also flips trace_pipeline's is_formula narration slotting, which would
+    rewrite this adapter's verified multi-stage trace narration ("Substitute the known values...") — the
+    trace is not a one-shot formula substitution. Live motivation: the goal-core formula card shipped
+    "\\( F \\, dr = int_{S} (\\nabla \\times F) \\, dS\\)" — the line-integral side missing its integral sign
+    entirely, `int` missing its backslash — free LLM prose misquoting the ONE equation the path exists to
+    teach, directly beside the adapter-verified worked example of the correct one."""
+    canonical_latex = r"\int_{C} F \cdot dr = \int_{S} (\nabla \times F) \cdot dS"
+    canonical_notes = [
+        "C is the closed boundary curve of the surface S, traversed so that the surface stays on the "
+        "left (the right-hand rule fixes the orientation).",
+        "The left side is the line integral of the field F around the boundary; the right side is the "
+        "surface integral of the curl of F over the surface itself.",
+        "F must have continuous partial derivatives on an open region containing S.",
+    ]
+    edge_cases = [
+        "A closed surface (a sphere, a torus) has no boundary curve at all — the line-integral side is 0, "
+        "so the flux of curl(F) through any closed surface is always zero.",
+        "If F is conservative (F = \\(\\nabla f\\)), its curl is zero everywhere, so both sides vanish "
+        "over any surface.",
+    ]
+
+
 class StokesTheoremAdapter(FamilyAdapterBase):
     slug = "stokes_theorem"
     label_convention = "ints"
+    _canonical_formula = _StokesCanonicalFormula()
     example_spec = ExampleSpec(
         input=InstanceShape("vector_field_surface_pair", count=(2, 2), structure=["stokes_theorem"]),
         stages={

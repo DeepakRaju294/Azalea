@@ -266,6 +266,26 @@ def _drop_prereq_chain_redundancy(names: list[str]) -> list[str]:
     return kept
 
 
+# Imperative instructional verbs that open a SKILL FRAGMENT, not a concept name. A real prerequisite names
+# a concept the learner can go study ("multivariable calculus", "binary search trees"); a phrase like
+# "Interpret results" (live, shipped on a Stokes' path prereq card with the tautological gloss
+# "Understanding the meaning of mathematical or scientific outcomes") is a shard of a requirement statement
+# — not linkable, not studyable, pure noise to a learner deciding what to review first.
+_SKILL_FRAGMENT_VERBS = frozenset({
+    "interpret", "understand", "apply", "compute", "analyze", "analyse", "explain", "describe",
+    "evaluate", "identify", "recognize", "recognise", "solve", "calculate", "state", "derive",
+    "prove", "demonstrate", "know", "be", "use", "perform",
+})
+
+
+def _is_skill_fragment_prereq(name: str) -> bool:
+    """True when a proposed prerequisite is an imperative skill fragment ("Interpret results") rather than a
+    concept name. First word an instructional verb + at least one more word = a task, not a topic. Gerund and
+    adjective forms ("Applied Statistics", "Computing Fundamentals") don't match — only the base verb form."""
+    words = re.findall(r"[A-Za-z]+", str(name or "").lower())
+    return len(words) >= 2 and words[0] in _SKILL_FRAGMENT_VERBS
+
+
 def _is_circular_prereq(name: str, goal: str | None) -> bool:
     """True when a proposed prerequisite is really THE GOAL SUBJECT wrapped in generic words — e.g. goal
     'learn combinatorial analysis' with prereq 'Combinatorial Principles'. Such a prereq is CIRCULAR (its
@@ -1662,7 +1682,8 @@ def generate_decomposed_topics(
     # wrapping) — those must stay taught topics, never external links.
     llm_prereqs = [p for p in llm_prereqs
                    if not _goal_names_topic({"title": p, "subject_key": p}, goal)
-                   and not _is_circular_prereq(p, goal)]
+                   and not _is_circular_prereq(p, goal)
+                   and not _is_skill_fragment_prereq(p)]
     _dropped_goal_or_circular = [p for p in _prereqs_from_model if p not in llm_prereqs]
     # Drop a broad umbrella-discipline prereq ('Statistics') when a more specific one remains ('mean and
     # median') — the umbrella just vaguely restates the specific concept, which is the redundancy learners notice.

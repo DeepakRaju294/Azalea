@@ -473,6 +473,14 @@ def _should_preserve_bullet_start_case(text: str) -> bool:
     first_word = re.split(r"[\s,;:.=()[\]{}]", stripped, maxsplit=1)[0]
     if "_" in first_word:
         return True
+    # Differential/math notation where the CASE IS THE MEANING: "dS denotes the area element" must not
+    # become "DS denotes..." (live, twice on one path — dS the area element and DS read as different
+    # symbols to a learner). Two signals: a known differential form (explicit set, NOT a d? pattern —
+    # the prose word "do" must still capitalize), or any first word with an interior capital (dS, dV) —
+    # ordinary prose words never have one.
+    if first_word in {"dr", "ds", "dt", "dx", "dy", "dz", "dv", "da", "du", "dl", "dm", "dq"} or (
+            first_word[:1].islower() and any(c.isupper() for c in first_word[1:])):
+        return True
     return False
 
 
@@ -8849,7 +8857,11 @@ def _ground_formula_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
     The correct formula is right there in the adapter spec — use it. No-op for non-adapter topics."""
     try:
         adapter = _plan_allowed_adapter(topic)
-        spec = getattr(adapter, "_formula_spec", None) if adapter is not None else None
+        # _canonical_formula is the NARROW variant for hand-coded (non-T6) adapters: it feeds ONLY the card
+        # grounders, never the trace pipeline — attaching a full _formula_spec to a hand-coded adapter would
+        # flip trace_pipeline's is_formula narration slotting and garble its worked example.
+        spec = (getattr(adapter, "_formula_spec", None)
+                or getattr(adapter, "_canonical_formula", None)) if adapter is not None else None
         if spec is None:
             return False
         # Prefer isolated canonical math (renders via `$$…$$`, general notation); else the prose `conventions`
@@ -8928,7 +8940,8 @@ def _ground_edge_case_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
         adapter = _plan_allowed_adapter(topic)
         spec = None
         if adapter is not None:                            # any declarative engine that authors edge_cases
-            spec = getattr(adapter, "_formula_spec", None) or getattr(adapter, "_rowreduce_spec", None)
+            spec = (getattr(adapter, "_formula_spec", None) or getattr(adapter, "_rowreduce_spec", None)
+                    or getattr(adapter, "_canonical_formula", None))
         edges = list(getattr(spec, "edge_cases", None) or []) if spec is not None else []
         if not edges:
             return False
@@ -8948,7 +8961,8 @@ def _ground_edge_case_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
                 sib_spec = None
                 if sib_ad is not None:
                     sib_spec = (getattr(sib_ad, "_formula_spec", None)
-                                or getattr(sib_ad, "_rowreduce_spec", None))
+                                or getattr(sib_ad, "_rowreduce_spec", None)
+                                or getattr(sib_ad, "_canonical_formula", None))
                 sib_edges = list(getattr(sib_spec, "edge_cases", None) or []) if sib_spec is not None else []
                 if sib_edges == edges:                     # identical grounded CONTENT already shown earlier
                     cards[:] = [c for c in cards
@@ -9026,6 +9040,26 @@ _DOUBLED_CLOSE_DELIM = re.compile(r"\\\)\\\)")
 # A \begin{...}/\end{...} environment marker — with or without a \(...\) wrapper an earlier pass may have
 # added around it. Markup only; the frontend's hand-rolled renderer has no environment support at all.
 _LATEX_ENVIRONMENT_MARKER = re.compile(r"(?:\\\()?\s*\\(?:begin|end)\s*\{[A-Za-z*]+\}\s*(?:\\\))?")
+# A bare LaTeX thin-space/spacing command sitting OUTSIDE any math span renders as literal "\," text (live:
+# a formula card read "\(\iint_S\) \, F \(\cdot\) n \, dS"). Inside a delimited span it is left alone.
+_BARE_SPACING_TOKEN = re.compile(r"\\[,;!:](?=\s|$)")
+# An integral command that LOST its backslash ("int_{S}" renders as the literal word int) — repaired only in
+# the unambiguous brace-subscript form, so a code identifier like int_count is never touched. The whole
+# atom (command + braced subscript) is matched so the repair can wrap it in \(...\) in one substitution.
+_BACKSLASHLESS_INT = re.compile(r"(?<![A-Za-z\\])((?:i{1,2}|o)?int)_\{([^{}]*)\}")
+
+
+def _sub_outside_math_spans(pattern: Any, repl: str, s: str) -> str:
+    """Apply `pattern.sub(repl, ...)` only to the text BETWEEN math spans — content already inside
+    \\(...\\)/\\[...\\]/$$...$$ is left byte-for-byte untouched."""
+    out: list[str] = []
+    last = 0
+    for m in _MATH_SPAN_RE.finditer(s):
+        out.append(pattern.sub(repl, s[last:m.start()]))
+        out.append(m.group(0))
+        last = m.end()
+    out.append(pattern.sub(repl, s[last:]))
+    return "".join(out)
 
 
 def _sanitize_math_in_text(text: str) -> str:
@@ -9049,6 +9083,14 @@ def _sanitize_math_in_text(text: str) -> str:
     # that _wrap_bare_latex produces when the model emits an environment opener as its own bullet (live: a
     # goal-core background card read 'expressed as: \(\begin{equation}\)' followed by two bare '=' bullets).
     s = _LATEX_ENVIRONMENT_MARKER.sub("", s)
+    # Outside any math span only: drop bare spacing tokens ("\,"), and re-backslash + wrap an integral that
+    # lost its backslash ("int_{S}" -> "\(\int_{S}\)" — by this point _wrap_bare_latex has already run, so a
+    # bare repaired command would never get wrapped; wrap it here directly).
+    s = _sub_outside_math_spans(_BARE_SPACING_TOKEN, " ", s)
+    s = _sub_outside_math_spans(_BACKSLASHLESS_INT, r"\\(\\\1_{\2}\\)", s)
+    # INSIDE a span the same lost-backslash integral just needs its backslash back (already delimited) —
+    # "int_{S}" inside \(...\) can only be a broken \int; code identifiers never appear inside math spans.
+    s = _MATH_SPAN_RE.sub(lambda m: _BACKSLASHLESS_INT.sub(r"\\\1_{\2}", m.group(0)), s)
     s = re.sub(r"\s{2,}", " ", s).strip()
     if s:
         s = lead + s
@@ -9270,7 +9312,8 @@ def _inject_grounded_cards(cards: list[dict[str, Any]], topic: Topic, *, have_fo
         return
     try:
         adapter = _plan_allowed_adapter(topic)
-        spec = getattr(adapter, "_formula_spec", None) if adapter is not None else None
+        spec = (getattr(adapter, "_formula_spec", None)
+                or getattr(adapter, "_canonical_formula", None)) if adapter is not None else None
         if spec is None:
             return
         latex = getattr(spec, "canonical_latex", None)
