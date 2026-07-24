@@ -57,6 +57,7 @@ class LyingFormatterIsCaught(unittest.TestCase):
                      "arithmetic_eval", "prim", "tree_inorder", "tree_preorder", "tree_postorder",
                      "tree_levelorder", "quadratic", "kinematics", "bst_search", "longest_increasing_subsequence", "coin_change", "n_queens", "subsets_backtracking", "bellman_ford", "union_find", "euclid_gcd", "induction_proof", "floyd_warshall", "sieve_of_eratosthenes", "topological_sort",
                      "house_robber", "max_subarray", "rod_cutting", "edit_distance",   # T5 DP wave
+                     "stokes_theorem",   # T13 hand-coded (vector calculus)
                      ] + [s.slug for s in __import__(
                          "app.services.examples.trace_adapters.families.induction_engine",
                          fromlist=["registered_specs"]).registered_specs()   # every live InductionSpec (T13)

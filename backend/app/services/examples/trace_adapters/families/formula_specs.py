@@ -1959,7 +1959,10 @@ CURL_2D = FormulaSpec(
     slug="curl_2d_vector_field", title="scalar curl of the 2D vector field F(x,y) = (x^2*y, x*y^2)",
     family="calculus",
     aliases=["curl of a vector field", "compute the curl", "curl in 2d", "scalar curl", "curl of F"],
-    not_aliases=["divergence", "gradient", "partial derivative"],
+    # "stokes" guard: a title mentioning both curl and Stokes' theorem must route to the dedicated
+    # stokes_theorem adapter (a full surface-vs-boundary integral verification), not this 2D point-value
+    # curl formula plug-in — same collision class DIV_2D already guards against ("divergence theorem setup").
+    not_aliases=["divergence", "gradient", "partial derivative", "stokes"],
     priority=53,
     problem_template="For the vector field F(x, y) = (x^2*y, x*y^2), find the scalar curl at "
                      "(x, y) = ({x}, {y}).",

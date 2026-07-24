@@ -11,12 +11,15 @@ Adding an adapter = add one declaration to its `types/tN_*.py` file (+ its famil
 from .decl import hydrate as _hydrate
 from .types import (t1_traversal, t2_greedy, t3_divide_conquer, t4_search, t5_dp, t6_formula, t7_rewrite,
                     t8a_incremental, t8b_derivation, t9_relaxation, t10_stateful, t11_backtracking,
-                    t12_execution, t13_proof, t14_table, t15_rowreduce, t16_numerical)
+                    t12_execution, t13_proof, t13_vector_calculus, t14_table, t15_rowreduce, t16_numerical)
 
-# One module per TYPE; each exposes DECLARATIONS. The order here is the registration order.
+# One module per TYPE; each exposes DECLARATIONS. The order here is the registration order. t13_proof (the
+# induction engine's declarative T13 members) and t13_vector_calculus (hand-coded T13 members, e.g. Stokes'
+# theorem) are two separate files sharing one type tag — same split as t11_backtracking's hand-coded entries
+# living apart from any T11 declarative engine.
 _TYPE_MODULES = [t1_traversal, t2_greedy, t3_divide_conquer, t4_search, t5_dp, t6_formula, t7_rewrite,
                  t8a_incremental, t8b_derivation, t9_relaxation, t10_stateful, t11_backtracking,
-                 t12_execution, t13_proof, t14_table, t15_rowreduce, t16_numerical]
+                 t12_execution, t13_proof, t13_vector_calculus, t14_table, t15_rowreduce, t16_numerical]
 
 DECLARATIONS = [d for mod in _TYPE_MODULES for d in mod.DECLARATIONS]
 

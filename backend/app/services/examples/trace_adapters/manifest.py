@@ -211,6 +211,11 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "routing_aliases": ["subsets", "power set", "generate all subsets", "find all subsets",
                             "subsets of a set", "subsets backtracking"],
         "negative_guards": [], "fixtures": ["include", "exclude"]},
+    "stokes_theorem": {
+        "type": "T13", "family": "vector_calculus", "status": "pilot",
+        "verification_level": "trace_verified", "coding": False, "canonical_solution": None,
+        "routing_aliases": ["stokes theorem", "stokes' theorem", "stokes's theorem"],
+        "negative_guards": [], "fixtures": ["compute_curl", "integrate_surface", "integrate_boundary"]},
     "topological_sort": {
         "type": "T1", "family": "graph", "status": "pilot", "verification_level": "trace_verified",
         "coding": True, "canonical_solution": "topological_sort",
@@ -448,6 +453,7 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
                                      "subsets of a set", "subsets backtracking", "subsets"],
                              "not": ["combinations", "combination sum", "sum of subsets"], "priority": 109},
     "topological_sort": {"any": ["topological sort", "topological ordering", "topological_sort", "topo sort", "kahn"], "priority": 108},
+    "stokes_theorem": {"any": ["stokes' theorem", "stokes theorem", "stokes's theorem"], "priority": 111},
     # bare "induction" collides with ELECTROMAGNETIC induction (Faraday/Lenz/AC-circuit topics) — without this
     # guard "Electromagnetic Induction in AC Circuits" matched on the substring "induction" alone and shipped a
     # "Prove by mathematical induction that 1+2+4+...+2^(n-1)=2^n-1" trace as its VERIFIED worked example, i.e.
