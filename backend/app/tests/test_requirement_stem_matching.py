@@ -52,6 +52,67 @@ class InterpretationTopicOwnsStatementRequirement(unittest.TestCase):
         self.assertFalse(_requirement_covered_by_topics(req, topics))
 
 
+class NameContainmentOwnership(unittest.TestCase):
+    """Live (round 10, user: 'the divergence theorem topic feels not needed'): R4 name 'The divergence
+    theorem' vs the real topic 'Applying the Divergence Theorem' — the STATEMENT-token overlap was one
+    short ('apply' is a stopword), so a duplicate 'The Divergence Theorem' topic was synthesized, and the
+    redundancy guard couldn't drop it because 'divergence' also appears in R1 ('gradients, curls, and
+    divergences') and was classified as cross-requirement family vocabulary. A requirement whose NAME is
+    fully contained in a topic's identity is now owned by that topic."""
+
+    def test_applying_topic_owns_the_divergence_theorem_requirement(self):
+        req = {"requirement_id": "R4", "name": "The divergence theorem", "kind": "core",
+               "statement": "apply the divergence theorem and understand its relationship to Stokes' theorem."}
+        topics = [{"title": "Applying the Divergence Theorem",
+                   "subject_key": "divergence_theorem_application",
+                   "in_scope": ["divergence theorem applications in flux problems"]}]
+        self.assertTrue(_requirement_covered_by_topics(req, topics))
+
+    def test_name_containment_does_not_leak_across_family_members(self):
+        # 'Pre-order traversal' keeps its distinguishing 'pre' token — In-Order can never contain it.
+        req = {"requirement_id": "R2", "name": "Pre-order traversal", "kind": "core",
+               "statement": "describe the pre-order traversal algorithm"}
+        topics = [{"title": "In-Order Traversal", "subject_key": "in_order_traversal",
+                   "in_scope": ["visit order", "left-root-right"]}]
+        self.assertFalse(_requirement_covered_by_topics(req, topics))
+
+    def test_single_word_name_cannot_claim_by_one_shared_word(self):
+        req = {"requirement_id": "R9", "name": "Integrals", "kind": "core",
+               "statement": "master every kind of integral used in vector analysis and beyond"}
+        topics = [{"title": "Computing Line Integrals", "subject_key": "line_integrals",
+                   "in_scope": ["line integral computation"]}]
+        self.assertFalse(_requirement_covered_by_topics(req, topics))
+
+    def test_end_to_end_no_duplicate_divergence_topic(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R1", "name": "Vector calculus basics", "kind": "core",
+             "statement": "apply fundamental concepts of vector calculus, including gradients, curls, "
+                          "and divergences."},
+            {"requirement_id": "R4", "name": "The divergence theorem", "kind": "core",
+             "statement": "apply the divergence theorem and understand its relationship to Stokes' theorem."},
+        ]}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [
+                    {"topic_id": "t1", "capability_id": "t1", "subject_key": "vector_calculus",
+                     "primary_action": "understand", "content_role": "core",
+                     "topic_type": "math_formula_method", "title": "Fundamental Concepts of Vector Calculus",
+                     "unit_title": "u", "purpose": "p",
+                     "in_scope": ["gradients", "curls", "divergences"],
+                     "covers_requirements": ["R1"], "basis": "goal"},
+                    {"topic_id": "t2", "capability_id": "t2", "subject_key": "divergence_theorem_application",
+                     "primary_action": "apply", "content_role": "core",
+                     "topic_type": "math_formula_method", "title": "Applying the Divergence Theorem",
+                     "unit_title": "u", "purpose": "p",
+                     "in_scope": ["divergence theorem applications in flux problems"],
+                     "covers_requirements": ["R4"], "basis": "goal"}]}
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+        topics = generate_decomposed_topics("want to learn about stokes theorem", "s", model_fn=fn)
+        divergence_titled = [t["title"] for t in topics if "divergence" in t["title"].lower()]
+        self.assertEqual(len(divergence_titled), 1, divergence_titled)   # no synthesized duplicate
+
+
 class FamilySurveyRegressionGuard(unittest.TestCase):
     """The documented reverted-fix trap in _requirement_covered_by_topics' KNOWN LIMITATION note: a broader
     matching rule once let 'In-Order Traversal' falsely claim coverage of the 'Pre-order traversal'

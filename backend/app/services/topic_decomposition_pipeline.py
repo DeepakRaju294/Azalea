@@ -1083,14 +1083,28 @@ def _topics_matching_requirement(req: dict[str, Any], raw_topics: list[dict[str,
     rt = _req_tokens(f"{req.get('name') or ''} {req.get('statement') or ''}")
     if not rt:
         return []
+    # NAME CONTAINMENT: a requirement whose NAME's every content token appears in a topic's identity is
+    # owned by that topic, regardless of how little of the longer STATEMENT overlaps. Live miss this
+    # closes: R4 name 'The divergence theorem', statement 'apply the divergence theorem and understand its
+    # relationship to Stokes' theorem' vs the real topic 'Applying the Divergence Theorem' — statement
+    # overlap was {diverg, theore}, ONE token short ('apply' is a stopword; 'relationship'/'stokes' not in
+    # the topic's scope), so a duplicate 'The Divergence Theorem' topic was synthesized — and the
+    # redundancy guard couldn't drop it either, because 'divergence' also appears in R1's "gradients,
+    # curls, and divergences" and was therefore classified cross-requirement-generic. Requires >= 2 name
+    # tokens, so a one-word name can never claim by a single shared word; the family-survey trap stays
+    # closed because 'Pre-order traversal' keeps its distinguishing 'pre' token, which an 'In-Order
+    # Traversal' topic's identity never contains.
+    name_tokens = _stem6(_req_tokens(str(req.get("name") or "")))
     matches = []
     for t in raw_topics:
         tt = _req_tokens(" ".join([str(t.get("title") or ""), str(t.get("subject_key") or ""),
                                    *[str(s) for s in (t.get("in_scope") or [])]]))
         # stem-canonicalized overlap (see _stem6): exact-token equality missed derivational variants
         # ('interpret'/'interpretation') and synthesized duplicate topics on top of real owners.
-        overlap = _stem6(rt) & _stem6(tt)
-        if len(overlap) >= 3 or (len(rt) <= 3 and len(overlap) >= 2):
+        stems = _stem6(tt)
+        overlap = _stem6(rt) & stems
+        if (len(overlap) >= 3 or (len(rt) <= 3 and len(overlap) >= 2)
+                or (len(name_tokens) >= 2 and name_tokens <= stems)):
             matches.append(t)
     return matches
 
