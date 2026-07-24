@@ -7,6 +7,12 @@ curriculum call through certification through card grounding) and decomposition_
 coverage, prereq merging, topic drops/demotions/folds). See app/core/decision_trace.py for how these are
 recorded.
 
+Also prints an INSTRUMENTATION COVERAGE section (app/core/decision_trace_coverage.py) — which pipeline
+layers have ANY decision-trace call at all, so a reader can tell "nothing fired here" apart from "nothing
+COULD have fired here" before reading the trace itself. Each trace entry is annotated with whether its
+`stage` string still matches a call site in CURRENT source ("resolved"/"ambiguous"/"unresolved") — this is
+a claim about source right now, not proof a historical generation ran that exact file/line.
+
 Usage:
   python scripts/explain_path.py                  # latest study path
   python scripts/explain_path.py <study_path_id>   # a specific path
@@ -27,6 +33,9 @@ for cand in (".env", "backend/.env"):
                 os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 import app.db.base as base
+from app.core.decision_trace_coverage import (
+    PIPELINE_LAYERS, file_status, files_with_decision_trace_calls, resolve_stage, scan_decision_trace_call_sites,
+)
 from app.db.database import SessionLocal
 
 db = SessionLocal()
@@ -47,15 +56,54 @@ print("=" * 100)
 
 topics = sorted(sp.topics, key=lambda t: t.order_index or 0)
 
+# --- instrumentation coverage ------------------------------------------------------------------------------
+scan = scan_decision_trace_call_sites()
+counts = files_with_decision_trace_calls(scan)
+print(f"\n{'-' * 100}\nINSTRUMENTATION COVERAGE — which pipeline layers CAN log a decision at all\n{'-' * 100}")
+for layer, files in PIPELINE_LAYERS.items():
+    print(f"\n{layer}")
+    for f in files:
+        status = file_status(f, scan)
+        if status == "some instrumentation detected":
+            print(f"  {f:60} some instrumentation detected ({counts.get(f, 0)} calls)")
+        elif status == "unknown":
+            print(f"  {f:60} scan failed — instrumentation status unknown")
+        else:
+            print(f"  {f:60} no instrumentation detected")
+    if layer == "lesson_generation":
+        print("  note: presence does not imply sanitizer/card-assembly coverage — only card-grounding "
+              "decisions are logged today")
+if scan.parse_errors:
+    print(f"\n  scan errors ({len(scan.parse_errors)}):")
+    for e in scan.parse_errors:
+        print(f"    {e['file']}: {e['error']}")
+print("\nInterpretation: absence of trace entries from a file marked 'no instrumentation detected' above is "
+      "structurally inconclusive — it never fired because it CAN'T, not because nothing applied.")
+
+
+def _annotate_source(stage) -> str:
+    outcome, sites = resolve_stage(str(stage), scan)
+    if outcome == "resolved":
+        s = sites[0]
+        return f"{s.file}:{s.line} (resolved)"
+    if outcome == "ambiguous":
+        locs = ", ".join(f"{s.file}:{s.line}" for s in sites)
+        return f"ambiguous — matches {len(sites)} current call sites: {locs}"
+    return "unresolved in current source tree"
+
 
 def _print_entries(entries, indent="   "):
     for e in entries:
         print(f"{indent}[{e.get('stage')}] {e.get('decision')}")
         print(f"{indent}    why: {e.get('reason')}")
+        print(f"{indent}    source: {_annotate_source(e.get('stage'))}")
         detail = e.get("detail")
         if detail:
             print(f"{indent}    {json.dumps(detail, ensure_ascii=False)[:300]}")
 
+
+print("\n('resolved' means a matching call site exists in the CURRENT source tree — not proof this "
+      "generation actually ran that exact file/line; source can change between generation and inspection.)")
 
 # --- path-level decisions (curriculum call, thin-plan retry, coverage, prereq merging) --------------------
 intro = next((t for t in topics if (t.course_type or "") == "study_path_introduction"), None)
