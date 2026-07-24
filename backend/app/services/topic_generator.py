@@ -1866,7 +1866,7 @@ Chunk index: {chunk.chunk_index}
             # failure: a TCP congestion-control path grew an "Implementing TCP Congestion Control" coding topic).
             decomposed = generate_decomposed_topics(
                 goal=goal, chunks_text=chunks_text, feedback=feedback,
-                coding_follow_ups=(gate_family_of(domain) == "coding"))
+                coding_follow_ups=(gate_family_of(domain) == "coding"), domain=domain or "")
             if decomposed:
                 _log.info("topic_generator: used capability-graph decomposition (%d topics)", len(decomposed))
                 # Gate BEFORE marking follow-ups so the marking reflects the final (possibly remapped) types.

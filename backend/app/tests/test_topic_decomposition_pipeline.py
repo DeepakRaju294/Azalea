@@ -1,7 +1,11 @@
 """Tests for the topic-decomposition generation orchestration (injected LLM, no API call)."""
+import copy
+import os
 import unittest
 
 from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+
+_LIVE_FLAG = "AZALEA_PREREQ_SCOPE_LIVE"
 
 
 # A realistic single-call response: a BFS path with a trace topic; the coding follow-up is appended.
@@ -123,6 +127,95 @@ class PipelineTests(unittest.TestCase):
         topics = generate_decomposed_topics("g", "s", model_fn=lambda p: resp)
         prim = next(t for t in topics if t["title"] == "Prim's")   # topics[0] is now the synthesized intro
         self.assertEqual(prim["subject_key"], "prim")              # trailing 'algorithm' stripped
+
+
+class GuardFourScopeClassifier(unittest.TestCase):
+    """AZALEA_PREREQ_SCOPE_LIVE (Guard 4): the real §3.1 classifier as an additional, one-directional
+    override on the foundation-fold cascade. Off by default; per-candidate isolated; a classifier failure
+    or disagreement degrades to today's existing fold (same outcome as test_no_duplicate_and_ordered)."""
+
+    def setUp(self):
+        self._prev = os.environ.get(_LIVE_FLAG)
+
+    def tearDown(self):
+        if self._prev is None:
+            os.environ.pop(_LIVE_FLAG, None)
+        else:
+            os.environ[_LIVE_FLAG] = self._prev
+
+    def _run(self, live, scope_fn, response=FAKE_RESPONSE):
+        if live:
+            os.environ[_LIVE_FLAG] = "1"
+        else:
+            os.environ.pop(_LIVE_FLAG, None)
+        return generate_decomposed_topics(
+            "learn BFS", "source", model_fn=lambda p: response, domain="cs",
+            prereq_scope_model_fn=scope_fn)
+
+    def test_flag_off_by_default_ignores_an_in_scope_classifier(self):
+        # Even with a classifier that WOULD keep it taught, the flag being off means Guard 4 never runs.
+        fn = lambda p: {"scope_rule": "explicit_objective", "scope_rationale": "x"}
+        topics = self._run(live=False, scope_fn=fn)
+        intro = topics[0]
+        self.assertIn("Representing Graphs", intro.get("assumed_prerequisites") or [])
+        self.assertNotIn("Representing Graphs", [t["title"] for t in topics])
+        trace = (intro.get("decomposition_metadata") or {}).get("path_decision_trace") or []
+        self.assertFalse(any(e["stage"] == "topics.foundation_kept_by_scope_classifier" for e in trace))
+
+    def test_flag_on_classifier_in_scope_keeps_it_taught(self):
+        fn = lambda p: {"scope_rule": "explicit_objective", "scope_rationale": "the goal requires it"}
+        topics = self._run(live=True, scope_fn=fn)
+        self.assertIn("Representing Graphs", [t["title"] for t in topics])
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        self.assertNotIn("Representing Graphs", intro.get("assumed_prerequisites") or [])
+        trace = (intro.get("decomposition_metadata") or {}).get("path_decision_trace") or []
+        kept = [e for e in trace if e["stage"] == "topics.foundation_kept_by_scope_classifier"]
+        self.assertEqual(len(kept), 1)
+        self.assertIn("Representing Graphs", kept[0]["decision"])
+
+    def test_flag_on_classifier_fallback_is_a_no_op(self):
+        fn = lambda p: {"scope_rule": "recognition_only_fallback", "scope_rationale": ""}
+        topics = self._run(live=True, scope_fn=fn)
+        intro = topics[0]
+        self.assertIn("Representing Graphs", intro.get("assumed_prerequisites") or [])
+        self.assertNotIn("Representing Graphs", [t["title"] for t in topics])
+
+    def test_flag_on_classifier_raises_degrades_to_fold_without_propagating(self):
+        def fn(payload):
+            raise RuntimeError("simulated classifier failure")
+        topics = self._run(live=True, scope_fn=fn)   # must not raise
+        intro = topics[0]
+        self.assertIn("Representing Graphs", intro.get("assumed_prerequisites") or [])
+        self.assertNotIn("Representing Graphs", [t["title"] for t in topics])
+
+    def test_one_failing_candidate_does_not_suppress_another(self):
+        resp = copy.deepcopy(FAKE_RESPONSE)
+        resp["path_plan"]["required_capabilities"].append(
+            {"capability_id": "graph_units", "description": "Units.", "prerequisite_capability_ids": [],
+             "satisfies_end_actions": [], "ownership_mode": "standalone", "owner_topic_id": None,
+             "basis": "goal"})
+        resp["topics"].insert(1, {
+            "topic_id": "t_units", "capability_id": "graph_units", "subject_key": "graph_units",
+            "primary_action": "represent", "content_role": "foundation", "topic_type": "concept_intuition",
+            "title": "Units of Measurement", "unit_title": "Foundations", "purpose": "p",
+            "in_scope": ["units"], "practice_target": "x", "practice_format": "short_answer",
+            "practice_evidence_type": "explain_model", "expected_output": "y", "basis": "goal",
+        })
+
+        def fn(payload):
+            if payload.get("canonical_name") == "Representing Graphs":
+                raise RuntimeError("simulated failure for this one candidate")
+            return {"scope_rule": "explicit_objective", "scope_rationale": "kept"}
+
+        topics = self._run(live=True, scope_fn=fn, response=resp)
+        titles = [t["title"] for t in topics]
+        intro = topics[0]
+        # the failing candidate still folds (today's behavior) ...
+        self.assertNotIn("Representing Graphs", titles)
+        self.assertIn("Representing Graphs", intro.get("assumed_prerequisites") or [])
+        # ... but the other candidate is unaffected and stays taught
+        self.assertIn("Units of Measurement", titles)
+        self.assertNotIn("Units of Measurement", intro.get("assumed_prerequisites") or [])
 
 
 if __name__ == "__main__":

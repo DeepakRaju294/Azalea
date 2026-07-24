@@ -46,6 +46,14 @@ def _default_resolver() -> Optional[OverlapResolver]:
     return resolve_topic_overlap
 
 
+def _prereq_scope_live_enabled() -> bool:
+    """Guard 4's kill-switch (see generate_decomposed_topics) — off by default. Independent of, and layered
+    on top of, the base AZALEA_TOPIC_DECOMPOSITION flag (Guard 4 only ever runs inside this function, which
+    itself only runs under that base flag) — same two-flag-layering convention as AZALEA_PREREQ_SCOPE_
+    CLASSIFICATION on top of AZALEA_PREREQ_LINKS in prereq_links_shadow.py."""
+    return os.getenv("AZALEA_PREREQ_SCOPE_LIVE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _coerce(raw: Any) -> dict[str, Any]:
     if isinstance(raw, str):
         try:
@@ -1182,10 +1190,14 @@ def generate_decomposed_topics(
     model_fn: Optional[ModelFn] = None,
     resolve_overlap: Optional[OverlapResolver] = None,
     coding_follow_ups: bool = True,
+    domain: str = "",
+    prereq_scope_model_fn: Optional[Callable[[dict[str, Any]], Any]] = None,
 ) -> list[dict[str, Any]]:
     """Single-call decompose -> append coding follow-ups -> validate -> adapt to legacy topics.
     Returns [] when the model produced nothing usable (caller falls back to the legacy generator).
-    `coding_follow_ups=False` (non-coding domains) skips the 'Implementing X' follow-up append."""
+    `coding_follow_ups=False` (non-coding domains) skips the 'Implementing X' follow-up append.
+    `domain` and `prereq_scope_model_fn` feed Guard 4 (AZALEA_PREREQ_SCOPE_LIVE) — see below; both are
+    optional and inert unless that flag is on."""
     fn = model_fn or _default_model_fn
     # REQUIREMENTS FIRST (curriculum authority): decide WHAT must be covered before any topic exists, then
     # decompose AGAINST those requirements. Best-effort: [] keeps the old single-call behavior exactly.
@@ -1500,6 +1512,39 @@ def generate_decomposed_topics(
                 "the model tagged these content_role=foundation, but removing them would leave a CORE "
                 "curriculum requirement with no remaining topic that teaches it — kept as taught topics "
                 "rather than demoted to unaught, misleading prerequisites")
+
+    # GUARD 4 — CLASSIFIER-INFORMED KEEP (§3.1/§6.1, AZALEA_PREREQ_SCOPE_LIVE, off by default): the real scope
+    # classifier as an additional, one-directional override — it can only KEEP a foundation candidate taught
+    # (never externalize one guards 1-3 already decided to keep), so a classifier failure/timeout/disagreement
+    # degrades to exactly today's fold, never worse. Same subtractive shape as guard 3; never touches
+    # topics_out/real_concepts/guards 1-3. Per-candidate isolation: one candidate's failure must never affect
+    # another or block the fold.
+    if foundations and _prereq_scope_live_enabled():
+        from app.core.prereq_links import IN_SCOPE_RULES
+        from app.services.prereq_scope_classifier import classify_recommended_scope_rule
+
+        _kept_by_classifier: list[dict[str, Any]] = []
+        for f in list(foundations):
+            title = str(f.get("title") or f.get("subject_key") or "").strip()
+            if not title:
+                continue
+            try:
+                rule, _rationale = classify_recommended_scope_rule(
+                    canonical_name=title, goal=goal or "", domain=domain,
+                    candidate_kind="taught_foundation", model_fn=prereq_scope_model_fn)
+                if rule in IN_SCOPE_RULES:
+                    _kept_by_classifier.append(f)
+            except Exception as exc:  # noqa: BLE001 — degrades to today's fold, never blocks decomposition
+                _log.warning("topic_decomposition: scope classifier failed for %r: %s", title, exc)
+        if _kept_by_classifier:
+            _keep_ids = {id(t) for t in _kept_by_classifier}
+            foundations = [t for t in foundations if id(t) not in _keep_ids]
+            record_path_decision(
+                path_plan, "topics.foundation_kept_by_scope_classifier",
+                f"kept {[str(t.get('title')) for t in _kept_by_classifier]} — not folded",
+                "AZALEA_PREREQ_SCOPE_LIVE: the §3.1 scope classifier judged these foundation-tagged concepts "
+                "in-scope for this goal — kept taught rather than folded; one-directional (can only keep, "
+                "never externalize)")
 
     dropped_prereqs: list[str] = []
     if foundations and real_concepts:
