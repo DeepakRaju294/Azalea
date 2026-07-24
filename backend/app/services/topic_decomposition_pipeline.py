@@ -1109,6 +1109,35 @@ def _topics_matching_requirement(req: dict[str, Any], raw_topics: list[dict[str,
     return matches
 
 
+def _declared_prereq_names(path_plan: dict[str, Any]) -> list[str]:
+    """Names from path_plan.assumed_prerequisites (plain strings or {name}/{concept}/{title} dicts)."""
+    names: list[str] = []
+    for item in (path_plan.get("assumed_prerequisites") or []):
+        if isinstance(item, str):
+            name = item.strip()
+        elif isinstance(item, dict):
+            name = str(item.get("name") or item.get("concept") or item.get("title") or "").strip()
+        else:
+            continue
+        if name:
+            names.append(name)
+    return names
+
+
+def _requirement_delegated_to_prereq(req: dict[str, Any], prereq_names: list[str]) -> str | None:
+    """The declared prerequisite this requirement's concept IS, or None. A prerequisite whose every content
+    token (stemmed, >= 2 tokens) appears in the requirement's name+statement is the same concept ('vector
+    calculus' vs R1 'Vector calculus basics ... apply fundamental concepts of vector calculus'); a
+    single-token prereq can never delegate by one shared word, and an unrelated prereq ('differential
+    equations' vs R1) shares nothing."""
+    req_stems = _stem6(_req_tokens(f"{req.get('name') or ''} {req.get('statement') or ''}"))
+    for name in prereq_names:
+        p_stems = _stem6(_req_tokens(name))
+        if len(p_stems) >= 2 and p_stems <= req_stems:
+            return name
+    return None
+
+
 def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[dict[str, Any]],
                                   requirements: list[dict[str, Any]]) -> None:
     """Deterministic requirement-coverage check (the anti-self-referential validator): a core requirement no
@@ -1171,6 +1200,23 @@ def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[di
             r["owned"] = False
         if r["owned"] or r.get("kind") != "core":
             continue
+        # DELEGATION TO A DECLARED PREREQUISITE (user decision, 'Vector Calculus Basics' round): when the
+        # path already declares an external prerequisite that IS this requirement's concept ('vector
+        # calculus' prereq vs R1 'Vector calculus basics'), synthesizing a topic anyway produced a hollow
+        # 3-card concept_intuition overview that "doesn't teach anything much at all" — the prerequisite
+        # LINK (which opens a full dedicated path on the concept) serves the learner strictly better than
+        # an in-path stub. The requirement is owned by the prerequisite; nothing is synthesized.
+        _delegate = _requirement_delegated_to_prereq(r, _declared_prereq_names(path_plan))
+        if _delegate:
+            r["owned"] = "prerequisite"
+            record_path_decision(
+                path_plan, "requirement.delegated_to_prerequisite",
+                f"{rid} delegated to declared prerequisite {_delegate!r}",
+                "the path already assumes this concept as an external prerequisite — the prereq link "
+                "(a full dedicated path on the concept) teaches it strictly better than the hollow "
+                "3-card overview topic that synthesis would produce",
+                requirement=r.get("name") or rid, prerequisite=_delegate)
+            continue
         unowned.append(rid)
         cid = f"goal_req_{rid.lower()}"
         if cid in cap_ids:
@@ -1203,7 +1249,7 @@ def _enforce_requirement_coverage(path_plan: dict[str, Any], raw_topics: list[di
             "policy_reason": "unowned_goal_requirement",
         })
     path_plan["goal_requirements"] = requirements
-    owned_by = {"declared": [], "semantic": [], False: []}
+    owned_by = {"declared": [], "semantic": [], "prerequisite": [], False: []}
     for r in requirements:
         owned_by.setdefault(r["owned"], []).append(r["requirement_id"])
     record_path_decision(
@@ -1346,10 +1392,6 @@ def generate_decomposed_topics(
             "commitments named; a richer result is adopted only if it strictly expanded",
             raw_topics_before=_topics_before_retry, raw_topics_after=len(raw_topics))
 
-    # Deterministic requirement coverage: an unowned CORE requirement becomes a required capability, so the
-    # validator's B.4.1 coverage repair synthesizes a topic for it — the validator now checks the plan against
-    # requirements decided BEFORE the topics, not against the topic list's own claims.
-    _enforce_requirement_coverage(path_plan, raw_topics, requirements)
     # Prereq authority MERGE (not a fallback): the curriculum call is the dedicated authority on external
     # prerequisites, decided in its own frame before any topic exists. Live bug: when the decomposition call
     # ALSO emitted its own (thinner) candidate — even just one — the old "only stand in when decomposition
@@ -1377,6 +1419,12 @@ def generate_decomposed_topics(
                 "merged in (deduped by name) rather than only standing in when decomposition emitted "
                 "NOTHING, so a decomposition candidate that later gets dropped downstream doesn't silently "
                 "starve out the certified list too")
+
+    # Deterministic requirement coverage: an unowned CORE requirement becomes a required capability, so the
+    # validator's B.4.1 coverage repair synthesizes a topic for it — the validator now checks the plan against
+    # requirements decided BEFORE the topics, not against the topic list's own claims. Runs AFTER the prereq
+    # merge above so requirement-to-prerequisite delegation sees the FULL declared prerequisite list.
+    _enforce_requirement_coverage(path_plan, raw_topics, requirements)
 
     topics = [_normalize_topic(t) for t in raw_topics]
     path_plan, topics = append_coding_follow_ups(path_plan, topics, enabled=coding_follow_ups)
@@ -1617,9 +1665,19 @@ def generate_decomposed_topics(
     if _core_reqs and foundations:
         _survivor_ids = {id(t) for t in topics_out} - {id(t) for t in foundations}
         _survivors = [t for t in topics_out if id(t) in _survivor_ids]
+        # A requirement DELEGATED to a declared external prerequisite never makes a foundation topic
+        # load-bearing (user decision, 'Vector Calculus Basics' round): the fold turns the concept into a
+        # prerequisite LINK — a full dedicated path — which teaches it strictly better than the hollow
+        # overview topic the shield would otherwise preserve. Checked both via the ownership stamp
+        # (enforcement already delegated it) and directly against the declared prereq list (enforcement ran
+        # before this fold and only examined then-unowned requirements).
+        _prereq_names = _declared_prereq_names(path_plan)
         _load_bearing = [
             f for f in foundations
-            if any(_requirement_covered_by_topics(r, [f]) and not _requirement_covered_by_topics(r, _survivors)
+            if any(r.get("owned") != "prerequisite"
+                   and not _requirement_delegated_to_prereq(r, _prereq_names)
+                   and _requirement_covered_by_topics(r, [f])
+                   and not _requirement_covered_by_topics(r, _survivors)
                    for r in _core_reqs)
         ]
         if _load_bearing:

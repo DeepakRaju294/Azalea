@@ -272,6 +272,12 @@ EXAMPLE_TYPE_DEFINITIONS: dict[str, dict[str, str]] = {
 
 EXAMPLE_CARD_RULES: dict[str, dict[str, dict[str, Any]]] = {
     TopicType.CONCEPT_INTUITION.value: {
+        "process": {
+            "example_type": "none",
+            "purpose": "The main teaching card: what the idea IS, why it exists, how it relates to the "
+                       "adjacent concepts already taught or assumed, and where the naive picture breaks — "
+                       "explanation, not a step procedure.",
+        },
         "worked_example": {
             "example_type": "concept_application_example",
             "use_when": "An example would make the abstract idea easier to picture or apply.",
@@ -1073,9 +1079,15 @@ TOPIC_BLUEPRINTS: dict[str, Blueprint] = {
         # A concept topic is carried by its VISUAL + prose — it has NO worked example. Forcing one produced
         # an algorithm line-trace (the wrong kind of content for a concept). The visual attaches to the
         # background/components cards via visual_card_rules, so dropping the example keeps the picture.
+        # `process` here is the MAIN TEACHING card (concept-shaped, see _CONCEPT_PROCESS_RULE — core idea,
+        # why it exists, relation to adjacent concepts, where the naive picture breaks), added after live
+        # concept topics kept shipping as hollow background+edge_case+practice shells that "don't teach
+        # anything much at all" (user report) — background is hard-capped at 2-3 bullets and nothing else
+        # in the old sequence carried explanation.
         "default_card_sequence": sequence(
             "background",
             "components_terms",
+            "process",
             "edge_case",
             "practice",
         ),

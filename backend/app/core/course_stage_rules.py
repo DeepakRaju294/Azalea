@@ -2058,10 +2058,36 @@ _PROOF_PROCESS_RULE = _lean_rule(
 )
 _PROOF_FAMILY_LEAN_RULES = {**_UNIVERSAL_LEAN_RULES, "process": _PROOF_PROCESS_RULE}
 
+# A concept_intuition topic's process card is its MAIN TEACHING card — pure explanation, not a procedure.
+# Added after live concept topics kept shipping as hollow background+edge_case+practice shells (background
+# is hard-capped at 2-3 bullets; nothing else in the old blueprint carried explanation — user: "doesn't
+# teach anything much at all"). Neither the algorithm loop scaffold nor the math substitute-and-compute
+# scaffold fits an idea, so it gets its own frame set.
+_CONCEPT_PROCESS_RULE = _lean_rule(
+    "the core idea stated precisely: what the concept IS, and what its parts or aspects are",
+    "why the concept exists — the problem it solves, the question it answers, or what it lets you "
+    "predict or explain",
+    "how it relates to or differs from the adjacent concepts this path has already taught or assumed — "
+    "name the actual neighboring concepts, not 'other related ideas'",
+    "where the naive first-impression picture stops working, and the corrected mental model",
+    visual="plain-English visual_description when the concept has a natural spatial, structural, or "
+           "before/after form that helps the learner picture it",
+    notes=[
+        "This is a CONCEPT, not a procedure. Do NOT use 'Starting state', 'Repeated action', 'State "
+        "update', 'Stopping condition', or 'Output rule' framing, and do not present numbered "
+        "calculation steps — explain the idea itself.",
+        "This card may span multiple continuation cards (same blueprint_key 'process') when the concept "
+        "has several sub-ideas — do not compress three distinct notions into one 6-line card.",
+        "Every point must carry a concrete claim about THIS concept (a property, a consequence, a "
+        "contrast) — no filler like 'this is an important concept in the field'.",
+    ],
+)
+_CONCEPT_FAMILY_LEAN_RULES = {**_UNIVERSAL_LEAN_RULES, "process": _CONCEPT_PROCESS_RULE}
+
 
 STAGE_RULES.update(
     {
-        "concept_intuition": _UNIVERSAL_LEAN_RULES,
+        "concept_intuition": _CONCEPT_FAMILY_LEAN_RULES,
         "terminology_components": _UNIVERSAL_LEAN_RULES,
         "process_walkthrough": _UNIVERSAL_LEAN_RULES,
         "algorithm_walkthrough": _UNIVERSAL_LEAN_RULES,

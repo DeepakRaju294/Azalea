@@ -113,6 +113,90 @@ class NameContainmentOwnership(unittest.TestCase):
         self.assertEqual(len(divergence_titled), 1, divergence_titled)   # no synthesized duplicate
 
 
+class PrereqDelegation(unittest.TestCase):
+    """User decision ('Vector Calculus Basics' round): a requirement whose concept the path already
+    declares as an external PREREQUISITE is delegated to that prerequisite — the prereq link (a full
+    dedicated path) teaches it strictly better than the hollow 3-card concept_intuition overview that
+    synthesis would produce, and better than shield-keeping a foundation stub."""
+
+    def test_delegation_classifier(self):
+        from app.services.topic_decomposition_pipeline import _requirement_delegated_to_prereq
+        r1 = {"requirement_id": "R1", "name": "Vector calculus basics", "kind": "core",
+              "statement": "apply fundamental concepts of vector calculus, including gradients, curls, "
+                           "and divergences."}
+        self.assertEqual(_requirement_delegated_to_prereq(r1, ["vector calculus"]), "vector calculus")
+        # unrelated and single-token prereqs never delegate
+        self.assertIsNone(_requirement_delegated_to_prereq(r1, ["differential equations"]))
+        self.assertIsNone(_requirement_delegated_to_prereq(r1, ["calculus"]))
+
+    def test_delegated_requirement_synthesizes_no_topic_end_to_end(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R1", "name": "Vector calculus basics", "kind": "core",
+             "statement": "apply fundamental concepts of vector calculus, including gradients, curls, "
+                          "and divergences."},
+            {"requirement_id": "R5", "name": "Stokes' theorem statement", "kind": "core",
+             "statement": "state and interpret Stokes' theorem"},
+        ], "assumed_prerequisites": [{"name": "vector calculus", "gloss": "g"}]}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [{"topic_id": "t1", "capability_id": "t1", "subject_key": "stokes_theorem",
+                            "primary_action": "apply", "content_role": "core",
+                            "topic_type": "math_formula_method", "title": "Stokes' Theorem",
+                            "unit_title": "u", "purpose": "p",
+                            "in_scope": ["statement of stokes theorem"],
+                            "covers_requirements": ["R5"], "basis": "goal"}]}
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+        topics = generate_decomposed_topics("want to learn about stokes theorem", "s", model_fn=fn)
+        titles = [t["title"].lower() for t in topics]
+        self.assertFalse(any("vector calculus" in t for t in titles), titles)   # no synthesized stub
+        intro = next(t for t in topics if t["course_type"] == "study_path_introduction")
+        prereq_names = {(p if isinstance(p, str) else p.get("name", "")).lower()
+                        for p in (intro.get("assumed_prerequisites") or [])}
+        self.assertIn("vector calculus", prereq_names)                           # concept lives as prereq
+        path_trace = (intro.get("decomposition_metadata") or {}).get("path_decision_trace") or []
+        self.assertTrue(any(e["stage"] == "requirement.delegated_to_prerequisite" for e in path_trace))
+
+    def test_requirement_without_matching_prereq_still_synthesizes(self):
+        from app.services.topic_decomposition_pipeline import generate_decomposed_topics
+        reqs = {"requirements": [
+            {"requirement_id": "R2", "name": "Surface integrals", "kind": "core",
+             "statement": "evaluate surface integrals and their significance"}],
+            "assumed_prerequisites": [{"name": "vector calculus", "gloss": "g"}]}
+        plan = {"path_plan": {"end_capability_actions": ["understand"], "required_capabilities": []},
+                "topics": [{"topic_id": "t1", "capability_id": "t1", "subject_key": "stokes_theorem",
+                            "primary_action": "apply", "content_role": "core",
+                            "topic_type": "math_formula_method", "title": "Stokes' Theorem",
+                            "unit_title": "u", "purpose": "p", "in_scope": ["statement of stokes theorem"],
+                            "covers_requirements": [], "basis": "goal"}]}
+        def fn(payload):
+            return reqs if "learning requirements" in payload["user"] else plan
+        topics = generate_decomposed_topics("want to learn about stokes theorem", "s", model_fn=fn)
+        self.assertTrue(any("surface integral" in t["title"].lower() for t in topics))
+
+
+class ConceptProcessCard(unittest.TestCase):
+    """concept_intuition's blueprint now carries a process card as its MAIN TEACHING card — live concept
+    topics kept shipping as hollow background+edge_case+practice shells ('doesn't teach anything much at
+    all'). The rule is concept-shaped: explanation, never the algorithm loop scaffold."""
+
+    def test_blueprint_sequence_includes_process(self):
+        from app.core.course_blueprints import get_topic_blueprint
+        bp = get_topic_blueprint("concept_intuition")
+        self.assertIn("process", bp["default_card_sequence"])
+        self.assertNotIn("process", bp["optional_cards"])            # required, not skippable
+        self.assertNotIn("worked_example", bp["default_card_sequence"])   # still no worked example
+
+    def test_concept_process_rule_is_explanation_shaped(self):
+        from app.core.course_stage_rules import STAGE_RULES
+        rule = STAGE_RULES["concept_intuition"]["process"]
+        content = " ".join(rule["content"]).lower()
+        self.assertIn("why the concept exists", content)
+        self.assertIn("naive", content)
+        self.assertNotIn("repeated action", content)
+        self.assertNotIn("stopping condition", content)
+
+
 class FamilySurveyRegressionGuard(unittest.TestCase):
     """The documented reverted-fix trap in _requirement_covered_by_topics' KNOWN LIMITATION note: a broader
     matching rule once let 'In-Order Traversal' falsely claim coverage of the 'Pre-order traversal'
