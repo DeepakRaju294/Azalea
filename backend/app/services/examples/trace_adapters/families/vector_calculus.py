@@ -82,6 +82,259 @@ class _StokesCanonicalFormula:
     ]
 
 
+# --- line integrals -------------------------------------------------------------------------------------
+# Same no-CAS philosophy as Stokes above: each example's integrand F(r(t)) . r'(t) simplifies BY HAND to a
+# one-term expression with an elementary antiderivative, so every step is exact. The INDEPENDENT ORACLE is a
+# machine-side midpoint quadrature of the ORIGINAL field/parameterization lambdas (a structurally different
+# method than the hand-worked antiderivative): `reference()` refuses to emit a trace whose hand-computed
+# value the numeric integral does not confirm — a wrong antiderivative or a wrong evaluation cannot ship.
+_LINE_INTEGRAL_EXAMPLES: dict[str, dict[str, Any]] = {
+    "parabola_conservative_field": {
+        "field_desc": "F(x, y) = (y, x)",
+        "field": lambda x, y: (y, x),
+        "curve_desc": "the parabola y = x^2 from (0, 0) to (1, 1)",
+        "param_desc": "r(t) = (t, t^2) for t in [0, 1]",
+        "rprime_desc": "r'(t) = (1, 2t)",
+        "r": lambda t: (t, t * t),
+        "rprime": lambda t: (1.0, 2.0 * t),
+        "bounds": (0.0, 1.0),
+        "integrand_desc": "F(r(t)) . r'(t) = (t^2)(1) + (t)(2t) = 3t^2",
+        "antiderivative_desc": "t^3",
+        "evaluate_desc": "t^3 at t = 1 minus t^3 at t = 0 = 1 - 0",
+        "value": 1.0,
+    },
+    "quarter_circle_rotational_field": {
+        "field_desc": "F(x, y) = (-y, x)",
+        "field": lambda x, y: (-y, x),
+        "curve_desc": "the quarter of the unit circle from (1, 0) to (0, 1)",
+        "param_desc": "r(t) = (cos t, sin t) for t in [0, pi/2]",
+        "rprime_desc": "r'(t) = (-sin t, cos t)",
+        "r": lambda t: (math.cos(t), math.sin(t)),
+        "rprime": lambda t: (-math.sin(t), math.cos(t)),
+        "bounds": (0.0, math.pi / 2.0),
+        "integrand_desc": "F(r(t)) . r'(t) = (-sin t)(-sin t) + (cos t)(cos t) = sin^2 t + cos^2 t = 1",
+        "antiderivative_desc": "t",
+        "evaluate_desc": "t at t = pi/2 minus t at t = 0 = pi/2 - 0",
+        "value": math.pi / 2.0,
+    },
+}
+
+
+def _numeric_line_integral(ex: dict[str, Any], n: int = 20000) -> float:
+    """Midpoint-rule quadrature of F(r(t)) . r'(t) over the example's own lambdas — the independent oracle."""
+    a, b = ex["bounds"]
+    h = (b - a) / n
+    total = 0.0
+    for i in range(n):
+        t = a + (i + 0.5) * h
+        x, y = ex["r"](t)
+        fx, fy = ex["field"](x, y)
+        dx, dy = ex["rprime"](t)
+        total += (fx * dx + fy * dy) * h
+    return total
+
+
+_LINE_CONV = {"method": "parameterize_substitute_integrate",
+              "trace_granularity": "one_computation_phase"}
+_LINE_REQ = ["parameterize", "substitute", "integrate", "completion"]
+_LINE_INV = [{"id": "work_matches_numeric_quadrature", "scope": "terminal_only",
+             "statement": "the hand-computed work value agrees with an independent midpoint-rule numeric "
+                          "integration of F(r(t)) . r'(t)"}]
+
+
+class _LineIntegralCanonicalFormula:
+    """Card-grounding facts (see _StokesCanonicalFormula for why this is NOT a _formula_spec)."""
+    canonical_latex = r"\int_{C} F \cdot dr = \int_{a}^{b} F(r(t)) \cdot r'(t) \, dt"
+    canonical_notes = [
+        "C is the curve, parameterized as r(t) with t running from a to b — the parameterization turns "
+        "the line integral into an ordinary one-variable integral.",
+        "F(r(t)) is the field evaluated ON the curve; the dot product with r'(t) keeps only the component "
+        "of the field that acts along the direction of travel.",
+        "Physically, this is the work done by the field F on an object moving along C.",
+    ]
+    edge_cases = [
+        "If F is zero everywhere on the curve, the integral is 0 — no field, no work, whatever the path.",
+        "If F is conservative (F = \\(\\nabla f\\)), the integral depends only on the endpoints: it equals "
+        "f(end) - f(start), and around any closed loop it is 0.",
+        "A zero-length path (start = end, no loop) gives 0 — there is no distance over which to accumulate.",
+    ]
+
+
+class LineIntegralAdapter(FamilyAdapterBase):
+    slug = "line_integral"
+    label_convention = "ints"
+    _canonical_formula = _LineIntegralCanonicalFormula()
+    example_spec = ExampleSpec(
+        input=InstanceShape("field_curve_pair", count=(2, 2), structure=["line_integral"]),
+        stages={
+            "parameterize": StageSpec(
+                "parameterize", "parameterize the curve and differentiate the parameterization",
+                teaching_focus="the parameterization turns a path through space into a single variable t",
+                contains={"state_parameterization": "required"},
+                state_effects=["r(t) and r'(t) become known"]),
+            "substitute": StageSpec(
+                "substitute", "substitute the parameterization into F and form the dot product",
+                teaching_focus="F(r(t)) . r'(t) collapses the whole line integral into an ordinary "
+                               "one-variable integrand",
+                contains={"state_integrand": "required"},
+                state_effects=["the one-variable integrand becomes known"]),
+            "integrate": StageSpec(
+                "integrate", "integrate the one-variable integrand exactly",
+                teaching_focus="an elementary antiderivative finishes the problem",
+                contains={"state_antiderivative": "required"},
+                state_effects=["the antiderivative becomes known"]),
+            "evaluate": StageSpec(
+                "evaluate", "evaluate the antiderivative at the bounds",
+                teaching_focus="the difference of the antiderivative at the bounds is the work done",
+                contains={"state_value": "required"},
+                state_effects=["the final work value becomes known"])},
+        structure="parameterize, then substitute, then integrate, then evaluate",
+        must_exercise=["parameterize", "substitute", "integrate", "completion"],
+        must_cover=["substitute"], must_avoid=[],
+        terminal="the work value has been computed and confirmed against the bounds evaluation",
+        output_shape="the exact work value of the line integral")
+
+    def candidates(self, seed: int) -> Iterable[dict[str, Any]]:
+        names = list(_LINE_INTEGRAL_EXAMPLES)
+        if seed % len(names):
+            names.reverse()
+        for name in names:
+            yield {"example": name, "_id": f"line_integral_v1_{name}"}
+
+    def is_teaching_trace(self, trace: ContractTrace) -> bool:
+        ev = trace.case_evidence
+        return (len(trace.steps) >= 4 and bool(ev.get("parameterize"))
+                and bool(ev.get("substitute")) and bool(ev.get("integrate")))
+
+    def reference(self, example_input: dict[str, Any], *, candidate_id: str = "",
+                  attempt: int = 1, seed: int = 0) -> ContractTrace:
+        ex = _LINE_INTEGRAL_EXAMPLES[example_input["example"]]
+        value = _round(ex["value"])
+        # INDEPENDENT ORACLE: refuse to emit a trace the numeric integral does not confirm.
+        numeric = _numeric_line_integral(ex)
+        if abs(numeric - ex["value"]) > 1e-4:
+            raise AssertionError(
+                f"line_integral oracle mismatch for {example_input['example']}: hand value {ex['value']} "
+                f"vs numeric quadrature {numeric}")
+        a, b = ex["bounds"]
+        bounds_desc = f"t in [{_round(a)}, {_round(b)}]"
+        steps: list[Step] = []
+        evidence: dict[str, list[str]] = {}
+        state: dict[str, Any] = {"parameterization": None, "integrand": None, "antiderivative": None,
+                                 "work": None, "complete": False}
+
+        # 1) parameterize
+        prior = dict(state)
+        state["parameterization"] = f"{ex['param_desc']}; {ex['rprime_desc']}"
+        reason = (f"C is {ex['curve_desc']}. Parameterize it as {ex['param_desc']}; differentiating gives "
+                  f"{ex['rprime_desc']}.")
+        evr = f"{ex['param_desc']}; {ex['rprime_desc']}."
+        evidence.setdefault("parameterize", []).append("s1")
+        steps.append(Step(
+            id="s1", operation="parameterize", prior_state=prior, state_after=dict(state),
+            inputs={"curve": ex["curve_desc"]}, decision=ex["param_desc"], reason=reason,
+            visual_state={"kind": "variables", "parameterization": state["parameterization"]},
+            visual_delta={"parameterization": state["parameterization"]}, expected_visible_result=evr,
+            facts={"allowed_values": [], "required_facts": [fact("parameterization", ex["param_desc"])],
+                  "forbidden_claims": []}))
+
+        # 2) substitute
+        prior = dict(state)
+        integrand = ex["integrand_desc"].split(" = ")[-1]
+        state["integrand"] = integrand
+        reason = (f"The field is {ex['field_desc']}. Substituting the parameterization and taking the dot "
+                  f"product with r'(t): {ex['integrand_desc']}.")
+        evr = f"Integrand: {ex['integrand_desc']}."
+        evidence.setdefault("substitute", []).append("s2")
+        steps.append(Step(
+            id="s2", operation="substitute", prior_state=prior, state_after=dict(state),
+            inputs={"field": ex["field_desc"]}, decision=f"integrand = {integrand}", reason=reason,
+            visual_state={"kind": "variables", "integrand": integrand},
+            visual_delta={"integrand": integrand}, expected_visible_result=evr,
+            facts={"allowed_values": [], "required_facts": [fact("integrand", integrand)],
+                  "forbidden_claims": []}))
+
+        # 3) integrate
+        prior = dict(state)
+        anti = ex["antiderivative_desc"]
+        state["antiderivative"] = anti
+        reason = (f"The integrand {integrand} has the elementary antiderivative {anti}, so the line "
+                  f"integral becomes {anti} evaluated over {bounds_desc}.")
+        evr = f"Antiderivative: {anti}."
+        evidence.setdefault("integrate", []).append("s3")
+        steps.append(Step(
+            id="s3", operation="integrate", prior_state=prior, state_after=dict(state),
+            inputs={"integrand": integrand}, decision=f"antiderivative = {anti}", reason=reason,
+            visual_state={"kind": "variables", "antiderivative": anti}, visual_delta={"antiderivative": anti},
+            expected_visible_result=evr,
+            facts={"allowed_values": [], "required_facts": [fact("antiderivative", anti)],
+                  "forbidden_claims": []}))
+
+        # 4) evaluate
+        prior = dict(state)
+        state["work"] = value
+        state["complete"] = True
+        reason = f"Evaluate at the bounds: {ex['evaluate_desc']} = {value}."
+        # "complete" must appear literally: the C4 gate's completion regex does not accept the "done" in
+        # "work done", and the pipeline's own _COMPLETE_RE DOES accept it — so without this word the
+        # pipeline skips its completion tail while the gate still demands one.
+        evr = f"Integration complete: the work done by F along C is {value}."
+        evidence.setdefault("completion", []).append("s4")
+        steps.append(Step(
+            id="s4", operation="evaluate", prior_state=prior, state_after=dict(state),
+            inputs={"bounds": bounds_desc}, decision=f"work = {value}", reason=reason,
+            visual_state={"kind": "variables", "work": value}, visual_delta={"work": value},
+            expected_visible_result=evr,
+            facts={"allowed_values": [], "required_facts": [fact("work", str(value))],
+                  "forbidden_claims": []}))
+
+        return ContractTrace(
+            problem=(f"Compute the line integral of {ex['field_desc']} along {ex['curve_desc']} — the work "
+                     f"done by the field along the path."),
+            conventions=dict(_LINE_CONV),
+            initial_state={"parameterization": None, "integrand": None, "antiderivative": None,
+                          "work": None, "complete": False},
+            final_answer={"work": value}, steps=steps,
+            invariants=[dict(x) for x in _LINE_INV], required_cases=list(_LINE_REQ),
+            case_evidence=evidence,
+            provenance=self._provenance(seed=seed, candidate_id=candidate_id, example_input=example_input,
+                                        attempt=attempt))
+
+    def states_equivalent(self, a, b):
+        a, b = a or {}, b or {}
+        return a.get("integrand") == b.get("integrand") and a.get("work") == b.get("work")
+
+    def final_answer_entails(self, state, answer):
+        s = state or {}
+        return bool(s.get("complete")) and s.get("work") == (answer or {}).get("work")
+
+    def invariant_holds(self, inv, state):
+        if inv.get("id") == "work_matches_numeric_quadrature":
+            s = state or {}
+            if not s.get("complete"):
+                return True                      # scope: terminal_only
+            work = s.get("work")
+            if work is None:
+                return False
+            # the state alone can't rerun quadrature (no example handle), but reference() already refused
+            # to emit any trace failing the oracle — here, confirm the terminal value is a finite number.
+            return isinstance(work, (int, float)) and math.isfinite(work)
+        return True
+
+    def validate_step_shape(self, step):
+        return [] if step.operation in ("parameterize", "substitute", "integrate", "evaluate") \
+            else [f"unexpected operation {step.operation!r}"]
+
+    def validate_prose_claims(self, card, step):
+        prose = " ".join([str(card.get("reasoning", "")), " ".join(card.get("work") or []),
+                          str(card.get("result", ""))]).lower()
+        needle = {"parameterize": lambda: str(step.state_after.get("parameterization") or "").split(";")[0],
+                  "substitute": lambda: str(step.state_after.get("integrand") or ""),
+                  "integrate": lambda: str(step.state_after.get("antiderivative") or ""),
+                  "evaluate": lambda: str(step.state_after.get("work"))}[step.operation]()
+        return [] if needle.lower() in prose else [("value_not_stated", needle)]
+
+
 class StokesTheoremAdapter(FamilyAdapterBase):
     slug = "stokes_theorem"
     label_convention = "ints"

@@ -211,6 +211,13 @@ MANIFEST: dict[str, dict[str, Any]] = {
         "routing_aliases": ["subsets", "power set", "generate all subsets", "find all subsets",
                             "subsets of a set", "subsets backtracking"],
         "negative_guards": [], "fixtures": ["include", "exclude"]},
+    "line_integral": {
+        "type": "T13", "family": "vector_calculus", "status": "pilot",
+        "verification_level": "trace_verified", "coding": False, "canonical_solution": None,
+        "routing_aliases": ["line integral", "line integrals", "computing line integrals",
+                            "line integral computation"],
+        "negative_guards": ["stokes", "surface integral", "divergence"],
+        "fixtures": ["parameterize", "substitute", "integrate"]},
     "stokes_theorem": {
         "type": "T13", "family": "vector_calculus", "status": "pilot",
         "verification_level": "trace_verified", "coding": False, "canonical_solution": None,
@@ -453,6 +460,8 @@ ROUTING_RULES: dict[str, dict[str, Any]] = {
                                      "subsets of a set", "subsets backtracking", "subsets"],
                              "not": ["combinations", "combination sum", "sum of subsets"], "priority": 109},
     "topological_sort": {"any": ["topological sort", "topological ordering", "topological_sort", "topo sort", "kahn"], "priority": 108},
+    "line_integral": {"any": ["line integral", "line integrals"],
+                      "not": ["stokes", "surface integral", "divergence"], "priority": 110},
     "stokes_theorem": {"any": ["stokes' theorem", "stokes theorem", "stokes's theorem"], "priority": 111},
     # bare "induction" collides with ELECTROMAGNETIC induction (Faraday/Lenz/AC-circuit topics) — without this
     # guard "Electromagnetic Induction in AC Circuits" matched on the substring "induction" alone and shipped a
