@@ -128,6 +128,51 @@ class KnownAnswerFixture:
     known_answer: str
 
 
+# --- adversarial CHECKER corpus (spec §17, external-review "fixture classes") -------------------------------
+# These test reproduction_check's DECISION on hard inputs OFFLINE (no solver, no API key): a (published,
+# produced) pair with the status the checker must return. The safety-critical property is asymmetric — a false
+# REJECT (refuting/indecisive on a truly-correct answer) only costs coverage, but a false CONFIRM (confirming a
+# WRONG answer) is the failure the whole system exists to prevent. `produced_is_correct=False` marks a pair
+# whose produced value is genuinely wrong for the published quantity; if the checker CONFIRMS such a pair that
+# is a false confirmation, and a `critical`-severity one must block G0 even if aggregate numbers look fine.
+CheckStatus = str  # "confirm" | "refute" | "indecisive"
+
+
+@dataclass(frozen=True)
+class CheckerCase:
+    case_id: str
+    fixture_class: str
+    published: str
+    produced: str
+    produced_is_correct: bool
+    expected: CheckStatus
+    severity: str                 # "low" | "medium" | "high" | "critical"
+    require_unit_match: bool = True
+
+
+CHECKER_CASES: tuple[CheckerCase, ...] = (
+    CheckerCase("clean_ok", "clean_numeric", "100 V", "100 V", True, "confirm", "low"),
+    CheckerCase("clean_round", "clean_numeric", "9.98e4 Pa", "99768 Pa", True, "confirm", "low"),
+    CheckerCase("sci_form", "multiple_valid_forms", "8.99e9 N", "8.99 x 10^9 N", True, "confirm", "low"),
+    CheckerCase("pct_frac", "multiple_valid_forms", "8.33", "0.0833", True, "confirm", "low", require_unit_match=False),
+    # wrong ANSWER — must refute (a false confirm here = shipping a wrong number)
+    CheckerCase("wrong_value", "wrong_answer", "100 V", "90 V", False, "refute", "critical"),
+    CheckerCase("off_by_one", "wrong_answer", "42", "41", False, "refute", "high", require_unit_match=False),
+    # same dimensions, WRONG coefficient (the dimensional check can't catch this — reproduction must)
+    CheckerCase("wrong_coeff", "same_dims_wrong_coefficient", "9 J", "18 J", False, "refute", "critical"),
+    # wrong QUANTITY, right magnitude — must refute (1 J vs 1 W, issue 13)
+    CheckerCase("wrong_unit_power", "wrong_unit", "1 J", "1 W", False, "refute", "critical"),
+    CheckerCase("wrong_unit_freq", "wrong_unit", "1 rad/s", "1 Hz", False, "refute", "high"),
+    # unit CONVERSION the v0 checker does NOT perform — the SAFE direction is to refuse, not to guess-confirm.
+    # produced IS correct, so this is an accepted (tracked) false REJECT, never a false confirm.
+    CheckerCase("unit_conv_m_cm", "unit_conversion", "1 m", "100 cm", True, "refute", "low"),
+    # unknown unit on the produced side -> indecisive under the safe default (never a silent pass)
+    CheckerCase("unknown_unit", "ambiguous", "100 V", "100", True, "indecisive", "medium"),
+    # non-numeric produced -> indecisive
+    CheckerCase("non_numeric", "ambiguous", "100 V", "see the explanation", True, "indecisive", "low"),
+)
+
+
 # Real, hand-verified (problem, formula, published answer) triples in formula domains with NO live adapter.
 # Each answer is arithmetic-checkable from the stated inputs; the spread (EM / mechanics / finance / chem)
 # is deliberate so the go/no-go hit rate isn't measured on one narrow family.
@@ -176,3 +221,42 @@ KNOWN_ANSWER_FIXTURES: tuple[KnownAnswerFixture, ...] = (
         "One mole of an ideal gas occupies 0.025 m^3 at 300 K (R = 8.314 J/mol/K). Find the pressure.",
         "P = n * R * T / Vol", "9.98e4 Pa"),
 )
+
+
+@dataclass(frozen=True)
+class CheckerResult:
+    case: CheckerCase
+    observed: CheckStatus
+    matched_expectation: bool
+    false_confirmation: bool       # confirmed a pair whose produced value is genuinely WRONG
+
+
+def _status_of(matched: Optional[bool]) -> CheckStatus:
+    return "confirm" if matched is True else ("refute" if matched is False else "indecisive")
+
+
+def run_checker_corpus(cases: tuple[CheckerCase, ...] = CHECKER_CASES) -> dict[str, Any]:
+    """Run the adversarial corpus through reproduction_check OFFLINE and report (spec §17 / external review
+    issue 30): the confusion matrix of expected-vs-observed, per-class and per-severity tallies, and — the
+    safety gate — every FALSE CONFIRMATION (a `confirm` on a genuinely-wrong pair). `blocking` is True if any
+    CRITICAL-severity false confirmation exists; a caller (test or go/no-go) must fail when it is, regardless
+    of how good the aggregate looks."""
+    results: list[CheckerResult] = []
+    confusion: dict[tuple[str, str], int] = {}
+    for c in cases:
+        r = reproduction_check(c.published, c.produced, require_unit_match=c.require_unit_match)
+        observed = _status_of(r.matched)
+        false_conf = (observed == "confirm") and (not c.produced_is_correct)
+        results.append(CheckerResult(c, observed, observed == c.expected, false_conf))
+        confusion[(c.expected, observed)] = confusion.get((c.expected, observed), 0) + 1
+    false_confirmations = [x for x in results if x.false_confirmation]
+    critical = [x for x in false_confirmations if x.case.severity == "critical"]
+    return {
+        "results": results,
+        "confusion": confusion,
+        "total": len(results),
+        "matched": sum(1 for x in results if x.matched_expectation),
+        "false_confirmations": false_confirmations,
+        "critical_false_confirmations": critical,
+        "blocking": bool(critical),
+    }

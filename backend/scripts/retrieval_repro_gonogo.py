@@ -15,7 +15,31 @@ from __future__ import annotations
 import os
 import sys
 
-from app.services.examples.retrieval_verify import KNOWN_ANSWER_FIXTURES, reproduction_check
+from app.services.examples.retrieval_verify import (
+    KNOWN_ANSWER_FIXTURES, reproduction_check, run_checker_corpus,
+)
+
+
+def _print_checker_corpus() -> bool:
+    """Offline (no API key) adversarial-corpus report: confusion matrix + the critical-false-confirmation gate
+    (spec §17). Returns True if it BLOCKS G0 (a critical false confirmation), which no live number can override."""
+    rep = run_checker_corpus()
+    print("\n=== offline checker corpus (reproduction_check on adversarial pairs) ===")
+    print(f"{'case':<20}{'class':<28}{'expected':<12}{'observed':<12}sev")
+    print("-" * 84)
+    for x in rep["results"]:
+        flag = "  <-- FALSE CONFIRM" if x.false_confirmation else ("" if x.matched_expectation else "  <-- unexpected")
+        print(f"{x.case.case_id:<20}{x.case.fixture_class:<28}{x.case.expected:<12}{x.observed:<12}{x.case.severity}{flag}")
+    print("-" * 84)
+    print("confusion (expected -> observed):")
+    for (exp, obs), n in sorted(rep["confusion"].items()):
+        print(f"  {exp:<12} -> {obs:<12} : {n}")
+    print(f"matched_expectation {rep['matched']}/{rep['total']}   "
+          f"false_confirmations {len(rep['false_confirmations'])}   "
+          f"critical {len(rep['critical_false_confirmations'])}")
+    if rep["blocking"]:
+        print("*** G0 BLOCKED: a CRITICAL false confirmation exists — no live number overrides this. ***")
+    return bool(rep["blocking"])
 
 
 def _solve_final_answer(fx) -> str:
@@ -34,10 +58,15 @@ def _solve_final_answer(fx) -> str:
 
 
 def main() -> int:
+    # The adversarial checker corpus runs OFFLINE and gates G0 first: a critical false confirmation blocks
+    # regardless of the live reproduction rate.
+    blocked = _print_checker_corpus()
+
     key = os.getenv("OPENAI_API_KEY")
     if not key or key.strip().lower() == "dummy":
-        print("NO API KEY -- this go/no-go runs live generation. Set OPENAI_API_KEY and re-run.")
-        return 2
+        print("\nNO API KEY -- the LIVE reproduction run needs one. Set OPENAI_API_KEY and re-run for the "
+              "solver hit rate. (The offline checker corpus above already ran.)")
+        return 1 if blocked else 2
 
     matched = mismatched = indecisive = 0
     rows = []
@@ -73,8 +102,13 @@ def main() -> int:
     print(f"decision_rate     (decisive / total)          : {100 * decisive / total:.0f}%")
     print(f"precision         (correct_decisive / decisive): {100 * matched / decisive:.0f}%" if decisive else "precision: n/a")
     print(f"effective_success (correct_decisive / total)  : {100 * matched / total:.0f}%")
-    print("false_confirmation_rate: NOT MEASURABLE yet — needs negative fixtures (spec §17); the safety metric.")
-    print("NOTE: 10 clean fixtures gate PLUMBING, not architecture (issue 30). Expand corpus before G0 sign-off.")
+    print("false_confirmation on live fixtures: 0 possible here (all are KNOWN-CORRECT); the adversarial "
+          "false-confirmation gate is the offline checker corpus above.")
+    print("NOTE: these live fixtures are all clean_numeric — they gate PLUMBING. Architecture sign-off needs "
+          "the full fixture classes wired into the LIVE path (spec §17).")
+    if blocked:
+        print("\n*** OVERALL: G0 BLOCKED by the offline checker corpus (critical false confirmation). ***")
+        return 1
     return 0
 
 

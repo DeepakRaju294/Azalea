@@ -8,7 +8,8 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.examples.retrieval_verify import (
-    KNOWN_ANSWER_FIXTURES, extract_magnitude, extract_unit, reproduction_check,
+    CHECKER_CASES, CheckerCase, KNOWN_ANSWER_FIXTURES, extract_magnitude, extract_unit,
+    reproduction_check, run_checker_corpus,
 )
 
 
@@ -114,6 +115,36 @@ class Fixtures(unittest.TestCase):
 
     def test_fixture_domains_are_diverse(self):
         self.assertGreaterEqual(len({fx.domain for fx in KNOWN_ANSWER_FIXTURES}), 4)
+
+
+class CheckerCorpus(unittest.TestCase):
+    def test_every_case_observed_matches_expected(self):
+        report = run_checker_corpus()
+        wrong = [(x.case.case_id, x.case.expected, x.observed)
+                 for x in report["results"] if not x.matched_expectation]
+        self.assertEqual(wrong, [], f"checker returned unexpected status: {wrong}")
+
+    def test_no_false_confirmations_and_not_blocking(self):
+        # THE safety property: no wrong pair is ever confirmed, so nothing critical blocks.
+        report = run_checker_corpus()
+        self.assertEqual(report["false_confirmations"], [])
+        self.assertFalse(report["blocking"])
+
+    def test_corpus_spans_negative_and_multiple_classes(self):
+        classes = {c.fixture_class for c in CHECKER_CASES}
+        self.assertGreaterEqual(len(classes), 5)
+        # negatives (wrong answer / unit / coefficient) are present — a clean-only corpus proves nothing.
+        self.assertTrue({"wrong_answer", "wrong_unit", "same_dims_wrong_coefficient"} <= classes)
+        self.assertTrue(any(not c.produced_is_correct for c in CHECKER_CASES))
+
+    def test_safety_gate_actually_fires_on_a_planted_false_confirmation(self):
+        # meta-test: a pair that the checker WOULD confirm but is marked wrong must set blocking=True — proving
+        # the gate isn't vacuous. "100 V" vs "100 V" confirms; marking produced_is_correct=False makes it a
+        # (contrived) critical false confirmation.
+        planted = CheckerCase("planted", "meta", "100 V", "100 V", False, "confirm", "critical")
+        report = run_checker_corpus((planted,))
+        self.assertTrue(report["blocking"])
+        self.assertEqual(len(report["critical_false_confirmations"]), 1)
 
 
 if __name__ == "__main__":
