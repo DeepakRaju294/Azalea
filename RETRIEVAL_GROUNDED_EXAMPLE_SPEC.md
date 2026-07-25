@@ -578,7 +578,7 @@ EVERY cited record against a table, not just "find one confirm":**
 | Level | Required | Forbidden / conflict |
 |---|---|---|
 | `verified_reproduction` | `subject_kind == published_instance`; ≥1 `published_answer_reproduction`=`confirm` whose `subject_fingerprint == decision.subject_fingerprint`; all ids resolve; one run; deps exact; none revoked | **ANY reproduction record `refute` for the same subject → integrity failure / source_conflict, NEVER verified** |
-| `provisional` | none confirming | any evidence set that ALREADY earns a stronger level (unless an INTENTIONAL downgrade with a recorded reason) |
+| `provisional` | none confirming, AND nothing refuting the shipped candidate | any evidence set that already earns a stronger level (unless an INTENTIONAL downgrade with a recorded reason); **a candidate carrying a REFUTE record for its subject — a proven-wrong example is DISCARDED (§12) and never ships, not even provisionally** |
 | `guided` | no delivery-eligible confirmed evidence | — |
 
 Conflict rule (explicit): `confirm` + `refute` on the same required check for the same subject is an integrity
