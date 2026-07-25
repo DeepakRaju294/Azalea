@@ -9,6 +9,12 @@
 > review. Immediate work = §21 executable checklist (fixture expansion + G0 first). User is holding for §21
 > sign-off. Deeper types DEFERRED (§18.5). Disposition: §22 (v0.2) / §23 (v0.3) / §24 (v0.4 + reviews 4–6).
 >
+> **HARD COMPLETENESS REQUIREMENT (user):** at completion NO topic that wants an example is blocked for lack of
+> an adapter — every eligible topic gets one (verified or honestly-`provisional`); `blocked_no_adapter` == 0
+> (§1.7). **§14.5 defines the exact end-state system/env configuration** so the example producers are correctly
+> set when done (retrieval `live`, provisional `on` with the frontend dependency, concept-domain suppression
+> code REMOVED, answer-anchor demoted to a tier, runtime-binding shadow retired).
+>
 > **The ONLY remaining Phase-1A blockers** (nothing broader): (1) expand + pass G0 on the adversarial/live
 > fixtures (§17); (2) canonical-fingerprint test vectors (A56); (3) strict evidence-reference integrity
 > (A47–A49, A57); (4) freeze the §5.1 instance-only subset (`InstanceFingerprintSet`, `InstanceAssuranceDecision`,
@@ -123,6 +129,17 @@ The determinacy gate ROUTES by kind; it never exempts a topic from having an exa
   real, attributable example that counts toward Visible and Policy-Satisfied Coverage — distinct from `guided`.
 - **Non-exampleable / unsafe / unsupported-kind**: excluded from `eligible_desired` with a categorized reason;
   gets `guided` and a queue item, never a fabricated example.
+
+**HARD COMPLETENESS INVARIANT (the user's requirement): "no adapter" is NEVER a reason a wanting topic lacks an
+example.** For every `eligible_desired` topic, an example IS produced — verified when confirmable, else honestly
+`provisional` (a real, delivered example, badged under-review) — and the ONLY permitted reasons for a topic to
+lack one are the genuine exclusions above (safety / policy / rights / non-exampleable / language / outage),
+each categorized and counted. Absence of an adapter is explicitly NOT such a reason. At completion the current
+**concept-domain suppression is REMOVED** (`apply_llm_solved_worked_example` no longer strips a no-adapter
+example): qualitative no-adapter topics take the `source_attributed` branch, computational ones the
+verified/provisional branch. Telemetry carries a `blocked_no_adapter` counter whose value at completion MUST be
+0 (part of G3); a topic reaching the guided floor is a tracked, converging `coverage_gap`, never a resting
+"blocked because no adapter" state.
 
 ---
 
@@ -779,7 +796,9 @@ Every routing hop, check status, assurance derivation, and failure class is pers
 `record_lesson_decision` and surfaced by `explain_path.py`. Headline metrics: the three coverage metrics
 (Visible, Policy-Satisfied, Verified) + Provisional Exposure (§1.5); per-check confirm/refute/indecisive/unsupported counts; per-escalation-state
 distribution; pipeline/cache hit rates; **provisional aging** (median time-to-promotion, correction rate,
-expired-provisional count, learner exposures before correction); audited soundness violations (target 0).
+expired-provisional count, learner exposures before correction); audited soundness violations (target 0);
+**`blocked_no_adapter` (target 0 at completion)** — proves no wanting topic lacks an example merely for want of
+an adapter (§1.7 hard invariant).
 
 ---
 
@@ -840,7 +859,39 @@ expired-provisional count, learner exposures before correction); audited soundne
   baseline, Provisional Exposure bounded, latency within budget.
 - **Phase 3 — completeness convergence.** Operate the queue; grow source families; let the cache absorb the
   steady state. **Gate G3 (spec DONE):** Policy-Satisfied Coverage ≥ target, Provisional Exposure small and
-  strictly decreasing, `guided` rate near zero, every remaining gap an explicit queue item.
+  strictly decreasing, `guided` rate near zero, every remaining gap an explicit queue item, **and
+  `blocked_no_adapter` == 0** (no topic anywhere is missing an example because it lacked an adapter — the hard
+  completeness invariant, §1.7). The concept-domain suppression code is removed by this point.
+
+## 14.5 System & environment configuration at completion (the "correctly set" target)
+
+The env/flags do NOT all flip at once — they advance shadow→live per phase. This is the FINAL target state the
+system must be in when the spec is DONE, so the example-producing systems are correctly configured (the user's
+requirement). Retrieval flags are NEW (created during Phase 1); existing flags are noted with their end value.
+
+**Producer cascade at completion (order preserved, §3):** verified pipeline producers first, retrieval as the
+fallback on a miss.
+- `AZALEA_RETRIEVAL_GROUNDED_EXAMPLES = live` (new; off → `shadow` in Phase 1 → `live` in Phase 2). The
+  retrieve→validate→generate producer wired behind `solve_worked_example`.
+- `AZALEA_RETRIEVAL_PROVISIONAL = on` — enabled ONLY once the frontend provisional badge + source display +
+  correction behavior ship (§11 blocking dependency). This is what guarantees a producible-but-unconfirmed
+  example still ships (badged) instead of being blocked.
+- `AZALEA_RETRIEVAL_SOURCE_WHITELIST` / independence families configured (§6); retrieval infra resolved (§20).
+- **Concept-domain suppression REMOVED** in `app/services/examples/solver.py`
+  (`apply_llm_solved_worked_example`) — no longer strips a no-adapter example; the kind gate routes instead.
+  This is a CODE deletion, not a flag.
+- `AZALEA_WORKED_EXAMPLE_ANSWER_ANCHOR` stays `1`, but is now one evidence check that materializes as
+  `provisional`-with-endpoint-evidence, not a standalone shipping gate (§11).
+- `AZALEA_RUNTIME_BINDING_SHADOW` retired; its Milestone-A dimensional check is imported as the
+  `dimensional_balance` evidence check (§2). GRB Milestone C stays unbuilt (non-goal).
+- Existing verified producers unchanged and still first: `AZALEA_WORKED_EXAMPLE_TRACE_PIPELINE`,
+  `AZALEA_GEN_FOUNDATION_SHADOW/EXECUTE` as today.
+- Telemetry paths for retrieval decisions + `blocked_no_adapter` + coverage metrics configured (§13).
+
+Any change here takes effect on a backend restart; each is reversible to its prior phase value. Until Phase 2
+flips `…GROUNDED_EXAMPLES=live`, no learner-visible behavior changes (shadow-only), and the current suppression
+stays in place — it is removed in the SAME change that turns delivery on, so there is never a window where
+no-adapter topics ship unverified fabricated examples.
 
 ## 15. Minimum vertical slices (deliberately separate — issues 1, 3, 15)
 
@@ -967,6 +1018,8 @@ applicability, CAS/monotonic, tombstones), `acquisition.py` (offline state machi
 - Completeness is never bought with soundness (no relabeling unconfirmed as verified); soundness never excuses
   silent absence (an unconfirmable topic escalates and is counted as a `coverage_gap`, never dropped).
 - No `eligible_desired` topic exits the resolver without either a delivered example or a logged `coverage_gap`.
+- **No topic may be blocked from having an example because it lacks an adapter** — "no adapter" is never a
+  non-delivery reason; `blocked_no_adapter` must stay 0 (the user's hard requirement, §1.7).
 - Retrieval never introduces new execution semantics or a second arithmetic engine.
 
 ## 18.5 Deferred to named sub-gates — NOT Phase-1A (v0.4 review: stop broad revision before 1A)
