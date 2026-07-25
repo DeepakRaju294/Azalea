@@ -1,11 +1,13 @@
 # Retrieval-Grounded Example Spec
 
-> **Status:** Draft v0.4 (freeze-prep pass) — **APPROVED AS THE PHASE-1A ARCHITECTURE BASELINE** (fifth review).
-> Broad architectural revision is CLOSED; this pass applied only freeze-prep correctness fixes: enforceable
-> run/verifier identity (the one flagged genuine defect), a shared `validate_assurance_decision`, typed
-> `EvidenceIntegrityError` instead of `assert`, evidence-vs-assurance-vs-shipping policy separation, `[FREEZE
-> FOR 1A]`/`[DRAFT]`/`[DEFERRED]` tags on every §5 schema, G0 categorical hard-blocks, and the executable §21
-> checklist. Deeper abstractions remain DEFERRED to named sub-gates (§18.5).
+> **Status:** Draft v0.4 (freeze-boundary pass) — **READY TO LEAVE ARCHITECTURE REVIEW** (fifth review). The
+> exact Phase-1A freeze surface is now defined in **§5.1** (instance-only): the three policy layers are fully
+> separated (evidence / assurance / shipping — `validate_assurance_decision` no longer takes a shipping policy),
+> the frozen types are minimal and instance-scoped (`InstanceFingerprintSet`, `InstanceAssuranceDecision` with
+> `subject_kind` + `run_id`, `VerifierDependency`, frozen `InstanceAssumption` so `PublishedInstance` has no
+> draft dependency), evidence is immutable with separate `EvidenceRevocation`, and G0 reports three corpora
+> separately. Broad architecture CLOSED; deeper types DEFERRED (§18.5). Immediate work = §21 executable
+> checklist, starting with fixture expansion + G0.
 >
 > **The ONLY remaining Phase-1A blockers** (nothing broader): (1) expand + pass G0 on the adversarial/live
 > fixtures (§17); (2) canonical-fingerprint test vectors (A56); (3) strict evidence-reference integrity
@@ -229,7 +231,7 @@ class PublishedInstance:                # [FREEZE FOR 1A]
     target: "QuantitySpec"
     published_answer: "StructuredAnswer"
     comparison: "AnswerComparison"
-    assumptions: tuple[Predicate, ...]
+    assumptions: tuple["InstanceAssumption", ...]   # frozen minimal AST (§5.1), NOT the [DRAFT-1E] Predicate (issue 4)
 
 @dataclass(frozen=True)
 class RelationshipArtifact:             # [DRAFT — 1D]
@@ -331,11 +333,19 @@ class EvidenceRecord:                   # [FREEZE FOR 1A]
     check_contract_version: str        # the verifier's own contract version — evidence validity depends on the
                                        # VERIFIER, not the assurance/shipping policy (issue 8): a raw reproduction
                                        # stays valid when a shipping threshold changes; assurance is RE-DERIVED.
-    run_id: str                        # binds records to one validation run (A57)
-    revoked: bool                      # incident path can revoke (v0.4 issue 1 / §10)
+    run_id: str                        # binds records to one validation run (A57); Phase-1A = ONE run per
+                                       # decision, cross-run aggregation unsupported (5th-review issue 7)
     evidence: Mapping[str, Any]        # includes the execution context (solver/model/prompt version) — NOT the
                                        # semantic fingerprint (issue 9): a solver-version change must not change
                                        # the instance's identity, only this record's provenance.
+# EvidenceRecord is IMMUTABLE (5th-review issue 8): revocation is a SEPARATE record so the original evidence is
+# never mutated in place; validation queries the active revocation set.
+@dataclass(frozen=True)
+class EvidenceRevocation:              # [FREEZE FOR 1A]
+    evidence_id: str
+    revoked_at: str
+    reason: str
+    incident_id: str
 
 AssuranceLevel = Literal["verified_execution", "verified_reproduction", "corroborated_relationship",
                          "source_attributed", "answer_anchored", "provisional", "guided"]   # renamed, issue 6
@@ -371,7 +381,7 @@ class AssuranceDecision:                 # [FREEZE FOR 1A]
     subject_fingerprint: str             # == the EvidenceRecords' subject_fingerprint
     reusable_scope: Literal["instance", "relationship", "template", "none"]   # issue 1/19
     assurance_policy_version: str        # policy that DERIVED this level (distinct from evidence + shipping, issue 8)
-    verification_dependencies: Mapping[VerifierName, str]   # verifier_name -> version; exact binding (issue 2)
+    verification_dependencies: Mapping[VerifierName, "VerifierDependency"]   # version + check-contract (issues 2,9)
     evidence_ids: tuple[str, ...]
 
 # --- delivery (v0.3 issue 1 invariant; v0.4 issue 1 — inspect ACTUAL evidence records, not profile labels) ---
@@ -381,27 +391,49 @@ class DeliveredExample:
     assurance: AssuranceDecision
     source_refs: tuple[SourceRef, ...]
     card_payload: Mapping[str, Any]
-class EvidenceIntegrityError(RuntimeError):   # production raises this — NOT `assert` (issue 6; assert is
-    pass                                      # disabled under -O). `assert` below is spec shorthand only.
+class EvidenceIntegrityError(RuntimeError):   # evidence corruption/binding (production raises this, NOT `assert`
+    pass                                      # — disabled under -O; `assert` in this spec is shorthand only)
+class ShippingPolicyError(RuntimeError):      # a VALID assurance that policy won't let ship — a DIFFERENT job
+    pass                                      # from evidence corruption (5th-review small-point 3)
 
-def assert_delivery_scope(d: DeliveredExample, evidence_by_id: Mapping[str, "EvidenceRecord"],
-                          active_policy: "ShippingPolicy") -> None:
-    """MUST be called at every delivery boundary. FAILS CLOSED (raises EvidenceIntegrityError in production).
-    Delegates 'does the evidence actually EARN the level' to the shared validator (issue 3), then enforces
-    run/verifier binding and the fingerprint-scope rule."""
+# THREE separated policy layers (5th-review final judgment): the verifier CONTRACT decides the EvidenceRecord;
+# the ASSURANCE policy decides the AssuranceDecision (evidence -> level); the SHIPPING policy decides learner
+# visibility. `validate_assurance_decision` must NOT take a shipping policy (5th-review issue 1) — a decision
+# valid yesterday cannot become "invalid" because a shipping threshold changed.
+
+def validate_assurance_decision(assurance: "InstanceAssuranceDecision",
+                                records: "Sequence[EvidenceRecord]") -> None:
+    """[FREEZE FOR 1A] SINGLE authority on 'does this evidence set EARN this level' — evidence only, NO shipping
+    policy. Called at derivation (refuse to MINT invalid), catalog load (refuse/mark), and delivery (fail-closed)
+    — defense in depth (issue 3/7). Uses `assurance.subject_kind` to apply the right rule (e.g.
+    published_answer_reproduction -> verified_reproduction is valid ONLY for an instance). Confirms the cited
+    records confirm over `assurance.subject_fingerprint` (never indecisive). Raises EvidenceIntegrityError."""
+    ...
+
+def validate_shipping_eligibility(assurance: "InstanceAssuranceDecision", context: "ShippingContext",
+                                  policy: "ShippingPolicy") -> "ShippingDisposition":
+    """[NOT frozen for 1A — Slice 1A performs no delivery] May this (already-valid) assured artifact ship for
+    this kind/risk/rollout? Raises ShippingPolicyError only on a policy violation, never on evidence grounds."""
+    ...
+
+def assert_delivery_scope(d: "DeliveredExample", evidence_by_id: Mapping[str, "EvidenceRecord"],
+                          revocations: "Mapping[str, EvidenceRevocation]") -> None:
+    """[NOT frozen for 1A] Delivery-boundary integrity: fail-closed on missing/revoked/cross-run/verifier
+    mismatch, then delegate level-earning to validate_assurance_decision, then the fingerprint-scope rule.
+    (Shipping eligibility is a SEPARATE call.)"""
     missing = set(d.assurance.evidence_ids) - evidence_by_id.keys()
     if missing:
         raise EvidenceIntegrityError(f"missing assurance evidence: {sorted(missing)}")
     records = [evidence_by_id[eid] for eid in d.assurance.evidence_ids]
     for r in records:
-        if r.revoked:
+        if r.evidence_id in revocations:                                    # revocation is a SEPARATE record (issue 8)
             raise EvidenceIntegrityError(f"revoked evidence {r.evidence_id}")
-        if r.run_id != d.assurance.run_id:                                   # A57 (issue 1)
+        if r.run_id != d.assurance.run_id:                                  # A57; Phase-1A = one run only (issue 7)
             raise EvidenceIntegrityError(f"evidence {r.evidence_id} from another run")
-        if d.assurance.verification_dependencies.get(r.verifier_name) != r.verifier_version:   # exact (issue 2)
-            raise EvidenceIntegrityError(f"verifier {r.verifier_name} version mismatch")
-    # the evidence combination must actually earn the level — shared with assurance.py, not re-implemented (issue 3)
-    validate_assurance_decision(d.assurance, records, active_policy)
+        dep = d.assurance.verification_dependencies.get(r.verifier_name)    # exact, incl check-contract (issues 2,9)
+        if dep is None or dep.verifier_version != r.verifier_version or dep.check_contract_version != r.check_contract_version:
+            raise EvidenceIntegrityError(f"verifier {r.verifier_name} version/contract mismatch")
+    validate_assurance_decision(d.assurance, records)
     if d.fingerprints.evidence_subject == d.assurance.subject_fingerprint:
         return
     if d.assurance.reusable_scope not in ("relationship", "template"):
@@ -409,16 +441,6 @@ def assert_delivery_scope(d: DeliveredExample, evidence_by_id: Mapping[str, "Evi
     if not any(r.check == "deterministic_execution" and r.status == "confirm"
                and r.subject_fingerprint == d.fingerprints.semantic for r in records):
         raise EvidenceIntegrityError("no deterministic_execution evidence binds to THIS delivered instance")
-
-def validate_assurance_decision(assurance: AssuranceDecision, records: list["EvidenceRecord"],
-                                active_policy: "ShippingPolicy") -> None:
-    """[FREEZE FOR 1A] The SINGLE authority on 'does this evidence set earn this level' — called at derivation
-    (assurance.py refuses to MINT invalid), at catalog load (refuse/mark invalid), and at delivery (final
-    fail-closed). Defense in depth (issue 7): the same rule at all three boundaries. Confirms e.g.
-    verified_reproduction cites a `published_answer_reproduction` record with status=confirm over
-    assurance.subject_fingerprint — never an indecisive one — and that the level clears active_policy for the
-    topic's kind+risk. Raises EvidenceIntegrityError on any gap."""
-    ...
 
 ResolutionOutcome = Union["DeliveredExample", "ProvisionalExample", "GuidedFallback"]
 
@@ -455,6 +477,72 @@ class ReviewCertificate:           # [DEFERRED — HUMAN REVIEW]
     assumptions: tuple[str, ...]
     decision: Literal["approved", "corrected", "rejected"]
     notes: str
+```
+
+## 5.1 Phase-1A frozen subset (instance-only — the exact freeze boundary, 5th review)
+
+Slice 1A performs NO delivery, retrieval, or caching, so Phase 1A freezes a MINIMAL instance-only surface. The
+broad types above stay `[DRAFT]` for their sub-gates; these are what 1A implements and freezes:
+
+```python
+# instance-only assurance enum (5th-review issue 3) — 1A code CANNOT mint corroborated_relationship /
+# source_attributed for an instance simply because a global enum allows it (A54 enforced by type, not runtime).
+InstanceAssuranceLevel = Literal["verified_reproduction", "answer_anchored", "provisional", "guided"]
+# verified_execution joins in 1B/Mode B.
+
+@dataclass(frozen=True)
+class VerifierDependency:              # [FREEZE FOR 1A] bind BOTH the binary AND the meaning of "confirm" (issue 9)
+    verifier_version: str
+    check_contract_version: str
+
+@dataclass(frozen=True)
+class InstanceAssumption:              # [FREEZE FOR 1A] minimal AST-shaped assumption so PublishedInstance can
+    key: str                          # freeze WITHOUT depending on the [DRAFT-1E] applicability engine (issue 4,
+    value: "StructuredValue"          # Option C): the DATA MODEL only — no extraction, registry, or satisfiability.
+
+@dataclass(frozen=True)
+class InstanceFingerprintSet:         # [FREEZE FOR 1A] narrower than the future FingerprintSet (issue 5) — no
+    execution_contract: str           # relation_equivalence / source_snapshot fields that belong to V2/catalog.
+    answer_semantics: str
+    comparison_policy: str
+    evidence_subject: str             # see construction below (issue 6)
+    presentation: str
+    hash_version: str
+    @property
+    def semantic(self) -> str:
+        return hash_canonical({"execution_contract": self.execution_contract,
+                               "answer_semantics": self.answer_semantics}, version=self.hash_version)
+
+# evidence_subject binds instance + comparison policy + check contract (issue 6): the SAME number under exact-
+# equality vs 5%-tolerance can check differently, and the check contract defines what "confirm" MEANS.
+def make_evidence_subject(fp: InstanceFingerprintSet, check_contract_version: str) -> str:
+    return hash_canonical({"instance": fp.semantic, "comparison_policy": fp.comparison_policy,
+                           "check_contract": check_contract_version}, version=fp.hash_version)
+
+@dataclass(frozen=True)
+class InstanceAssuranceDecision:      # [FREEZE FOR 1A] the instance-scoped decision (replaces the broad one for 1A)
+    assurance_id: str
+    run_id: str
+    subject_kind: Literal["published_instance", "generated_instance"]   # validator needs kind (issue 2)
+    level: InstanceAssuranceLevel
+    profile: AssuranceProfile
+    subject_fingerprint: str
+    assurance_policy_version: str
+    verification_dependencies: Mapping[VerifierName, VerifierDependency]
+    evidence_ids: tuple[str, ...]
+```
+
+**The frozen set for Phase 1A** (nothing more): `PublishedInstance`, `AnswerComparison`, `InstanceAssumption`,
+`InstanceFingerprintSet`, `EvidenceRecord`, `EvidenceRevocation`, `VerifierDependency`,
+`InstanceAssuranceDecision`, `InstanceAssuranceLevel`, `EvidenceIntegrityError`, `validate_assurance_decision`.
+**Explicitly OUT of the 1A freeze:** `ShippingPolicy`/`validate_shipping_eligibility`, `DeliveredExample`/
+`assert_delivery_scope`, `FingerprintSet` (full), `AssuranceDecision` (broad), `ContractIdentity`,
+`RelationshipArtifact`, `IllustrativeInstance`, catalog lifecycle, `ReviewCertificate`.
+
+**Slice 1A flow (no delivery/retrieval/caching):**
+```
+fixture -> canonical instance (InstanceFingerprintSet) -> solver output -> reproduction_check
+-> EvidenceRecord -> validate_assurance_decision -> InstanceAssuranceDecision -> report
 ```
 
 ## 6. Retrieval subsystem (issues 10, 20, 21, 22)
@@ -584,9 +672,10 @@ endpoint. A trace that fails is repaired or the example is downgraded — never 
   assurance. A delivered COMPUTATIONAL instance must earn its OWN level: `verified_execution` (new inputs
   executed, the normal Mode-B outcome), `verified_reproduction` (Mode A), `answer_anchored`, or `provisional`.
   A relationship's assurance never silently becomes the card's assurance without executing the new instance.
-- **Learner-example shipping levels** are therefore {`verified_execution`, `verified_reproduction`,
-  `source_attributed` (qualitative), `answer_anchored`*, `provisional`}. `corroborated_relationship` is a
-  catalog state, not a learner-example state. Strength is ordered (`AssuranceStrength`, §5) + read alongside
+- **Learner-facing shipping levels** are {`verified_execution`, `verified_reproduction`, `source_attributed`
+  (qualitative), `provisional`, `guided`}. `answer_anchored` is NOT in this set (5th-review small-point 1) — it
+  is an internal disposition that materializes as `provisional`-with-endpoint-evidence. `corroborated_relationship`
+  is a catalog state, not a learner-example state. Strength is ordered (`AssuranceStrength`, §5) + read alongside
   the orthogonal review dims — never a flat "strongly verified" bucket (issues 4, 6).
 - **`answer_anchored` is an INTERNAL result, not a durable learner state (v0.4 issue 5).** It ships to a
   learner ONLY when a rollout policy explicitly permits below-threshold content, and when it does it is
@@ -674,6 +763,11 @@ expired-provisional count, learner exposures before correction); audited soundne
   wrong-unit fixture; a false confirmation on a wrong-published-answer fixture; any `unsupported` treated as
   `confirm`; any severe quantity-type mismatch confirmed; any missing-evidence or mismatched-fingerprint case
   accepted. (The offline `run_checker_corpus` already blocks on a critical false confirmation; G0 adds the rest.)
+  **Report THREE corpora separately, not one blended precision (5th-review issue 10):** **(A) Checker safety** —
+  classification precision + critical false-confirmation count (offline, `run_checker_corpus`); **(B) Live
+  reproduction** — decision_rate/precision/effective_success + domain breakdown (needs the solver); **(C)
+  Integrity invariants** — A47–A49, A56–A57 pass/fail. Each gates independently; a large clean (B) must never
+  dilute an (A) or (C) failure.
   **G0's claim is narrow and declared (issue 11):** *"the existing solver reproduces published answers safely
   enough for V1 to be worth integrating."* G0 authorizes building the **Phase-1A V1 shadow ONLY.** It does NOT
   establish retrieval precision, transcription quality, source independence, V2 equivalence, qualitative
@@ -896,9 +990,12 @@ and `AnswerComparison`; derived `kind`.
 **FINAL executable Phase-1A checklist (fifth review — the immediate, bounded to-do; §25):**
 1. Populate each required G0 fixture class with representative cases (§17).
 2. Define G0 hard-block fixture failures + aggregate thresholds (§14).
-3. Freeze the five 1A dataclasses: `PublishedInstance`, `AnswerComparison`, `FingerprintSet`, `EvidenceRecord`,
-   `AssuranceDecision` (all tagged `[FREEZE FOR 1A]` in §5).
-4. Add `assurance_id`, `run_id`, and exact `verifier_name`→version binding (§5 — DONE in schema).
+3. Freeze the instance-only 1A subset per §5.1 (`PublishedInstance`, `AnswerComparison`, `InstanceAssumption`,
+   `InstanceFingerprintSet`, `EvidenceRecord`, `EvidenceRevocation`, `VerifierDependency`,
+   `InstanceAssuranceDecision`, `InstanceAssuranceLevel`, `EvidenceIntegrityError`, `validate_assurance_decision`)
+   — NOT the broad `FingerprintSet`/`AssuranceDecision`/delivery/catalog types.
+4. `InstanceAssuranceDecision` carries `assurance_id` + `run_id` + `subject_kind` + `verifier_name→VerifierDependency`
+   (version AND check-contract) binding (§5.1 — DONE in schema).
 5. Define versioned canonical serialization + publish expected hash vectors (A56).
 6. Implement `validate_assurance_decision` (the shared derive/load/deliver authority, §5).
 7. Implement scope validation with typed `EvidenceIntegrityError`, not `assert` (§5).
@@ -1017,4 +1114,21 @@ Each blocker is "signed off" only with a frozen schema + executable §16 test + 
 | 9 evidence_subject construction for V1 | FIXED — solver/model/prompt version in evidence context, NOT the semantic fingerprint | §5 |
 | 10 G0 aggregate-only | FIXED — categorical hard-block rules | §14 |
 | final Phase-1A checklist | ADOPTED — executable 10-item set | §21 |
+
+**Fifth-review response — "ready to leave architecture review"; freeze-boundary corrections (§5.1):**
+| Item | Disposition | Section |
+|---|---|---|
+| 1 validate_assurance_decision took a shipping policy | FIXED — split: validate_assurance_decision (evidence only) + validate_shipping_eligibility (policy); 3 layers fully separate | §5 |
+| 2 AssuranceDecision needs subject kind | FIXED — InstanceAssuranceDecision.subject_kind | §5.1 |
+| 3 instance-only assurance enum now | FIXED — InstanceAssuranceLevel (A54 by type) | §5.1 |
+| 4 frozen PublishedInstance depends on draft Predicate | FIXED — frozen minimal InstanceAssumption (Option C) | §5.1 |
+| 5 FingerprintSet broader than 1A needs | FIXED — narrower InstanceFingerprintSet | §5.1 |
+| 6 evidence_subject must include comparison policy | FIXED — make_evidence_subject(instance + comparison + check_contract) | §5.1 |
+| 7 run_id single-run restriction | DOCUMENTED as intentional Phase-1A restriction | §5,§5.1 |
+| 8 evidence immutable, revocation separate | FIXED — dropped `revoked` bool; EvidenceRevocation record | §5 |
+| 9 deps need check-contract version too | FIXED — VerifierDependency(verifier_version, check_contract_version) | §5.1 |
+| 10 G0 blends three corpora | FIXED — report A/B/C separately | §14 |
+| answer_anchored in learner list | FIXED — removed from learner-facing set | §11 |
+| EvidenceIntegrityError doing two jobs | FIXED — split ShippingPolicyError | §5 |
+| freeze boundary | DEFINED — §5.1 in/out lists | §5.1,§21 |
 ```
