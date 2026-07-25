@@ -3696,19 +3696,35 @@ def _concepts_from_prereq_line(s: str) -> list[str]:
 
 
 def _prereq_links_from_card(card: dict[str, Any], card_text: str, taught_norm: set[str],
-                            linked_concept_ids: set[str]) -> list[dict[str, Any]]:
+                            linked_concept_ids: set[str],
+                            skip_texts: set[str] | None = None,
+                            bare_name_only: bool = False) -> list[dict[str, Any]]:
     """Turn each prerequisite named on the prereq card into an open_study_path link, so prereqs are clickable
     even when decomposition left assumed_prerequisites empty (they exist only as card prose). Concept phrases are
-    recovered from bullet prose (§_concepts_from_prereq_line) and must appear verbatim in the card."""
+    recovered from bullet prose (§_concepts_from_prereq_line) and must appear verbatim in the card. `skip_texts`
+    (normalized) are prereqs the scanner ALREADY linked — skip them so a partially-linked card is not
+    double-linked. `bare_name_only` (the ADDITIVE mode, used when the scanner already linked some prereqs)
+    links only a bullet that IS a bare concept name (whole bullet = concept) — never a sub-phrase pulled from a
+    prose sentence — so it fills in a missed grounded-name bullet without inventing garbage links."""
     from app.core.study_path_scope import stable_slug
+    skip_texts = skip_texts or set()
     out: list[dict[str, Any]] = []
     for point in (card.get("points") or card.get("bullets") or []):
         s = str(point).strip()
         if not s or s.endswith(":") or s[0].isspace() or s.lstrip().startswith("-"):
             continue  # lead-in header or sub-bullet
+        bullet_core = _norm_term(s.rstrip(".,;:").strip())
+        # Additive mode: skip a whole bullet already covered by a scanner link — either the bullet IS that
+        # prereq or it merely elaborates it ("Voltage basics" when "Voltage" is already linked).
+        if bare_name_only and any(st and st in bullet_core for st in skip_texts):
+            continue
         for concept in _concepts_from_prereq_line(s):
             concept = concept.strip().rstrip(".,;:").strip()
             if not concept or len(concept.split()) > 5 or len(concept) < 3 or concept not in card_text:
+                continue
+            if bare_name_only and _norm_term(concept) != bullet_core:   # only a whole-bullet bare concept name
+                continue
+            if _norm_term(concept) in skip_texts:              # the scanner already linked this prereq
                 continue
             cid = stable_slug(concept)
             if cid in linked_concept_ids or _norm_term(concept) in taught_norm:
@@ -4808,14 +4824,23 @@ def _emit_prereq_interactive_links(cards: list[dict[str, Any]], topic: Topic) ->
                     expl = ""
                 links.append({"text": l.text, "explanation": expl, "action": l.action.value,
                               "target": l.target, "concept_id": l.concept_id})
-            # On the INTRO's prereq card, FALL BACK to turning each LISTED prerequisite into an open_study_path
-            # link when the scanner found none — i.e. decomposition left assumed_prerequisites empty (the common
-            # case; the prereqs exist only as card prose). Gated to the intro so a body topic's own "Background"
-            # card never yields spurious prereq links. When the structured field IS populated the scanner's clean
-            # links win.
-            if (is_prereq_card and _topic_type_key(topic) == "study_path_introduction"
-                    and not any(l["action"] == LinkAction.open_study_path.value for l in links)):
-                links.extend(_prereq_links_from_card(card, text, taught_norm, linked_in_topic))
+            # On the INTRO's prereq card, turn EVERY listed prerequisite into an open_study_path link. This must
+            # run even when the scanner already produced some links: when assumed_prerequisites is PARTIALLY
+            # populated (e.g. 3 of 4 — the 4th added only to the card prose), the scanner links the structured
+            # ones and the prose-only prereq would otherwise get NO link ("the last prereq has no link").
+            # _prereq_links_from_card dedups by concept slug (the same stable_slug scheme the scanner's external
+            # prereqs use), so an already-linked prereq is never double-linked. Gated to the intro so a body
+            # topic's own "Background" card never yields spurious prereq links.
+            if is_prereq_card and _topic_type_key(topic) == "study_path_introduction":
+                if not any(l["action"] == LinkAction.open_study_path.value for l in links):
+                    # Empty structured field: recover prereqs from bullet prose (original behavior).
+                    links.extend(_prereq_links_from_card(card, text, taught_norm, linked_in_topic))
+                else:
+                    # PARTIAL: the scanner linked some prereqs; link any remaining BARE-NAME prereq bullet it
+                    # missed (a prose-only 4th prereq) without re-linking or inventing prose sub-phrase links.
+                    _already = {_norm_term(str(l.get("text", ""))) for l in links}
+                    links.extend(_prereq_links_from_card(card, text, taught_norm, linked_in_topic,
+                                                         skip_texts=_already, bare_name_only=True))
             # Merge the model's undefined-term popups AFTER the deterministic nav links, skipping any whose anchor
             # a nav link already claimed (never double-link the same phrase). Cap the card at 3 links total (§2.5).
             nav_texts = {str(l["text"]).lower() for l in links}
