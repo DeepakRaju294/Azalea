@@ -1,18 +1,18 @@
 # Retrieval-Grounded Example Spec
 
-> **Status:** Draft v0.4 (freeze-boundary pass) — **READY TO LEAVE ARCHITECTURE REVIEW** (fifth review). The
-> exact Phase-1A freeze surface is now defined in **§5.1** (instance-only): the three policy layers are fully
-> separated (evidence / assurance / shipping — `validate_assurance_decision` no longer takes a shipping policy),
-> the frozen types are minimal and instance-scoped (`InstanceFingerprintSet`, `InstanceAssuranceDecision` with
-> `subject_kind` + `run_id`, `VerifierDependency`, frozen `InstanceAssumption` so `PublishedInstance` has no
-> draft dependency), evidence is immutable with separate `EvidenceRevocation`, and G0 reports three corpora
-> separately. Broad architecture CLOSED; deeper types DEFERRED (§18.5). Immediate work = §21 executable
-> checklist, starting with fixture expansion + G0.
+> **Status:** Draft v0.4 — **SPEC APPROVED FOR IMPLEMENTATION (sixth review: "the spec is ready").** Architecture
+> review is CLOSED; further spec review is diminishing returns. The Phase-1A freeze surface is §5.1 (instance-
+> only), with the three policy layers separated, a per-level evidence policy + confluence conflict rule, an
+> instance-only `InstanceAssuranceProfile`, a minimal `verified_reproduction/provisional/guided` enum, canonical-
+> fingerprint collision rules + an equal/differ test matrix (A56), and a threshold-before-run G0 procedure. The
+> next useful information comes from the EXPANDED FIXTURES and the actual Phase-1A implementation, not more
+> review. Immediate work = §21 executable checklist (fixture expansion + G0 first). User is holding for §21
+> sign-off. Deeper types DEFERRED (§18.5). Disposition: §22 (v0.2) / §23 (v0.3) / §24 (v0.4 + reviews 4–6).
 >
 > **The ONLY remaining Phase-1A blockers** (nothing broader): (1) expand + pass G0 on the adversarial/live
 > fixtures (§17); (2) canonical-fingerprint test vectors (A56); (3) strict evidence-reference integrity
-> (A47–A49, A57); (4) freeze the instance-level schemas (`PublishedInstance`, `AnswerComparison`,
-> `FingerprintSet`, `EvidenceRecord`, `AssuranceDecision`); (5) executable A35–A40 + missing/stale-evidence
+> (A47–A49, A57); (4) freeze the §5.1 instance-only subset (`InstanceFingerprintSet`, `InstanceAssuranceDecision`,
+> …) — NOT the broad `FingerprintSet`/`AssuranceDecision`; (5) executable A35–A40 + missing/stale-evidence
 > tests. After those pass, begin Phase-1A shadow (Slice 1A: fixture → reproduction evidence → assurance →
 > report). v0.2 issues → §22; v0.3 → §23; v0.4 → §24.
 >
@@ -313,6 +313,14 @@ class FingerprintSet:                # [FREEZE FOR 1A]
 # or significant-figure rule (answer_semantics — 1.047 vs "to 2 dp = 1.05" are NOT the same instance); a changed
 # verification tolerance (comparison_policy); different assumptions/regime (execution_contract). Source provenance
 # affects `source_snapshot` ONLY, never the semantic identities.
+# COLLISION-PREVENTION rules the hash preimage MUST follow (6th-review issue 7): a SCHEMA NAMESPACE + version in
+# the preimage (e.g. {"schema":"instance-fingerprint/v1", ...}) so two different object kinds with identical
+# fields never share a hash; canonical JSON, UTF-8, Unicode NFC; sorted object keys; decimal STRINGS not binary
+# floats; canonical negative-zero; NaN/Infinity forbidden unless explicitly encoded; type-tagged StructuredValue;
+# named hash algorithm + encoding. A56 sign-off requires cross-environment test vectors AND explicit
+# must-remain-equal / must-differ classes (issue 8): equal = reordered givens, whitespace, role-renames, unit-
+# equivalent restatement, cosmetic sci-notation; differ = changed value/target/required-rounding/assumptions/
+# tolerance, absolute-vs-difference temperature, percent-vs-percentage-points.
 
 # --- evidence vs assurance vs scope (issues 1, 3, 4) ---
 EvidenceCheck = Literal["source_span_match", "source_independence", "dimensional_balance",
@@ -487,13 +495,21 @@ broad types above stay `[DRAFT]` for their sub-gates; these are what 1A implemen
 ```python
 # instance-only assurance enum (5th-review issue 3) — 1A code CANNOT mint corroborated_relationship /
 # source_attributed for an instance simply because a global enum allows it (A54 enforced by type, not runtime).
-InstanceAssuranceLevel = Literal["verified_reproduction", "answer_anchored", "provisional", "guided"]
-# verified_execution joins in 1B/Mode B.
+# MINIMAL for 1A (6th-review issue 6): answer_anchored joins when the legacy fallback is integrated — the Phase-0
+# reproduction path does not emit it; verified_execution joins in 1B/Mode B.
+InstanceAssuranceLevel = Literal["verified_reproduction", "provisional", "guided"]
 
 @dataclass(frozen=True)
 class VerifierDependency:              # [FREEZE FOR 1A] bind BOTH the binary AND the meaning of "confirm" (issue 9)
     verifier_version: str
     check_contract_version: str
+
+@dataclass(frozen=True)
+class InstanceAssuranceProfile:        # [FREEZE FOR 1A] instance-only profile (6th-review issue 5) — the broad
+    automated_strength: Literal[AssuranceStrength.GUIDED, AssuranceStrength.PROVISIONAL,   # AssuranceProfile's
+                                AssuranceStrength.REPRODUCED_INSTANCE]                     # relationship/review
+    computational_check: Literal["none", "reproduction"]                                  # states can't apply here.
+    # review dimensions join when human review is built; no invalid (published_instance + reviewed_relationship).
 
 @dataclass(frozen=True)
 class InstanceAssumption:              # [FREEZE FOR 1A] minimal AST-shaped assumption so PublishedInstance can
@@ -525,7 +541,7 @@ class InstanceAssuranceDecision:      # [FREEZE FOR 1A] the instance-scoped deci
     run_id: str
     subject_kind: Literal["published_instance", "generated_instance"]   # validator needs kind (issue 2)
     level: InstanceAssuranceLevel
-    profile: AssuranceProfile
+    profile: InstanceAssuranceProfile   # instance-only (6th-review issue 5) — no relationship/review states
     subject_fingerprint: str
     assurance_policy_version: str
     verification_dependencies: Mapping[VerifierName, VerifierDependency]
@@ -538,6 +554,24 @@ class InstanceAssuranceDecision:      # [FREEZE FOR 1A] the instance-scoped deci
 **Explicitly OUT of the 1A freeze:** `ShippingPolicy`/`validate_shipping_eligibility`, `DeliveredExample`/
 `assert_delivery_scope`, `FingerprintSet` (full), `AssuranceDecision` (broad), `ContractIdentity`,
 `RelationshipArtifact`, `IllustrativeInstance`, catalog lifecycle, `ReviewCertificate`.
+
+**Per-level evidence policy for `validate_assurance_decision` (6th-review issues 3, 4) — the validator checks
+EVERY cited record against a table, not just "find one confirm":**
+
+| Level | Required | Forbidden / conflict |
+|---|---|---|
+| `verified_reproduction` | `subject_kind == published_instance`; ≥1 `published_answer_reproduction`=`confirm` whose `subject_fingerprint == decision.subject_fingerprint`; all ids resolve; one run; deps exact; none revoked | **ANY reproduction record `refute` for the same subject → integrity failure / source_conflict, NEVER verified** |
+| `provisional` | none confirming | any evidence set that ALREADY earns a stronger level (unless an INTENTIONAL downgrade with a recorded reason) |
+| `guided` | no delivery-eligible confirmed evidence | — |
+
+Conflict rule (explicit): `confirm` + `refute` on the same required check for the same subject is an integrity
+failure — a decision never passes because it contains one confirmation while also carrying contradictory
+refutation. `provisional` may not be assigned to an artifact whose evidence earns `verified_reproduction` unless
+the downgrade is intentional and its reason recorded.
+
+**`EvidenceRevocation` freeze note (6th-review issue 2):** the SCHEMA is frozen for shape stability, but Slice
+1A implements NO revocation behavior — it validates against an EMPTY revocation set. Revocation workflow lands
+with persistence/delivery. Phase-1A safety = missing / mismatched / cross-run / incompatible-verifier evidence.
 
 **Slice 1A flow (no delivery/retrieval/caching):**
 ```
@@ -768,6 +802,10 @@ expired-provisional count, learner exposures before correction); audited soundne
   reproduction** — decision_rate/precision/effective_success + domain breakdown (needs the solver); **(C)
   Integrity invariants** — A47–A49, A56–A57 pass/fail. Each gates independently; a large clean (B) must never
   dilute an (A) or (C) failure.
+  **Thresholds are frozen BEFORE the sign-off run, not fitted to it (6th-review issue 9):** (1) exploratory run;
+  (2) fix checker bugs + finalize fixture classes; (3) FREEZE thresholds + categorical blocks; (4) run a
+  held-out / version-frozen sign-off corpus; (5) record exact code + model + prompts + fixture hashes + results
+  here. Choosing thresholds after seeing the final run (retrospective gating) is disallowed.
   **G0's claim is narrow and declared (issue 11):** *"the existing solver reproduces published answers safely
   enough for V1 to be worth integrating."* G0 authorizes building the **Phase-1A V1 shadow ONLY.** It does NOT
   establish retrieval precision, transcription quality, source independence, V2 equivalence, qualitative
@@ -778,8 +816,10 @@ expired-provisional count, learner exposures before correction); audited soundne
   shadow overhead measured independently of live latency:
   Each sub-phase has its OWN named gate (v0.4 rollout feedback) so rollback + ownership are clear:
   - **1A** fixture-fed V1 shadow, instance scope only (the only thing G0 authorizes). **G1A:** evidence
-    binding + assurance derivation correct on fixtures; `assert_delivery_scope` passes with real records.
-  - **1B** immutable source snapshots + secured retrieval. **G1B:** retrieval security + snapshot audit pass.
+    binding + assurance derivation correct; `validate_assurance_decision` passes valid fixtures and FAILS
+    A47–A49/A57. (`assert_delivery_scope` moves to **G1B** — Slice 1A performs no delivery, 6th-review issue 10.)
+  - **1B** immutable source snapshots + secured retrieval + first DELIVERY. **G1B:** retrieval security +
+    snapshot audit pass; `assert_delivery_scope` passes with real records (moved here from G1A — 1A has no delivery).
   - **1C** qualitative source-span / claim-grounding path. **G1C:** claim grounding meets a precision target.
   - **1D** relationship transcription + AST equivalence (V2). **G1D:** ZERO false-equivalence on adversarial
     fixtures.
@@ -889,7 +929,7 @@ Keeping the scopes separate prevents the largest over-certification bug.
 | A53 | review approves pedagogy but not numeric correctness | policy | cannot satisfy computational execution threshold |
 | A54 | relationship assurance supplied as learner-card assurance | construct | type failure (kind-split, 1A schema freeze) |
 | A55 | answer_anchored internal result reaches shipping | ship | materializes as provisional-with-endpoint-evidence |
-| A56 | two canonical-serialization impls hash one fixture | fingerprint | identical expected hash (test vectors) |
+| A56 | fingerprint test matrix (not one fixture) | fingerprint | must-remain-equal class (reorder/whitespace/role-rename/unit-equiv/cosmetic-sci) all hash-equal; must-differ class (value/target/rounding/assumptions/tolerance/abs-vs-diff-temp/percent-vs-points) all hash-distinct; cross-env identical |
 | A57 | evidence id belongs to another validation run | deliver | derivation/delivery fails (run_id) |
 | A58 | trace uses an unsupported operation | trace check | unsupported/escalate, never confirm (deferred to 1B/§9) |
 | A59 | cosmetic formatting change | fingerprint | presentation changes; semantic identities unchanged |
@@ -1131,4 +1171,18 @@ Each blocker is "signed off" only with a frozen schema + executable §16 test + 
 | answer_anchored in learner list | FIXED — removed from learner-facing set | §11 |
 | EvidenceIntegrityError doing two jobs | FIXED — split ShippingPolicyError | §5 |
 | freeze boundary | DEFINED — §5.1 in/out lists | §5.1,§21 |
+
+**Sixth review — "the spec is ready"; final freeze-level corrections (no architecture change):**
+| Item | Disposition | Section |
+|---|---|---|
+| 1 stale broad type names in status/checklist | FIXED — status/§21 point at §5.1 instance types | status,§21 |
+| 2 EvidenceRevocation in 1A freeze | FIXED — schema frozen for shape; 1A validates empty set, no revocation behavior | §5.1 |
+| 3 validate every record, conflict handling | FIXED — per-level table; confirm+refute same subject = integrity failure | §5.1 |
+| 4 explicit per-level evidence policy | FIXED — required/forbidden table | §5.1 |
+| 5 broad AssuranceProfile for instance | FIXED — InstanceAssuranceProfile | §5.1 |
+| 6 answer_anchored not needed in 1A | FIXED — enum narrowed to reproduction/provisional/guided | §5.1 |
+| 7 canonicalization collision rules | FIXED — schema namespace + NFC/sorted-keys/decimal-strings/no-NaN | §5 |
+| 8 A56 needs equal/differ classes | FIXED — must-remain-equal + must-differ matrix | §16 |
+| 9 G0 thresholds fitted retrospectively | FIXED — freeze thresholds before the held-out sign-off run | §14 |
+| 10 G1A still names assert_delivery_scope | FIXED — moved to G1B | §14 |
 ```
