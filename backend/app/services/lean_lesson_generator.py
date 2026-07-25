@@ -10252,17 +10252,32 @@ def _generate_lean_lesson_once(
     return legacy
 
 
-def _should_retry_lesson(legacy: dict[str, Any]) -> bool:
-    """Retry only on a failure a second generation can plausibly fix: scope drift, or a quality ERROR
-    outside the practice class (see PRACTICE_FAILURE_CODES in topic_quality_validator — those fired on
-    ~every topic and never got fixed by a retry, purely doubling generation time)."""
-    if (legacy.get("scope_validation_report") or {}).get("requires_regeneration"):
-        return True
+def _lesson_retry_triggers(legacy: dict[str, Any]) -> list[str]:
+    """The SPECIFIC validator signals that make a retry worthwhile — one human-readable trigger string per
+    firing validator, so a retry is never a mystery: we can see EXACTLY which validator (and which issue
+    codes) caused the second ~70s generation. Empty list => no retry. Retry only on a failure a second
+    generation can plausibly fix: scope drift, or a quality ERROR outside the practice class (see
+    PRACTICE_FAILURE_CODES in topic_quality_validator — those fired on ~every topic and never got fixed by a
+    retry, purely doubling generation time)."""
+    triggers: list[str] = []
+    scope = legacy.get("scope_validation_report") or {}
+    if scope.get("requires_regeneration"):
+        n = len(scope.get("issues") or [])
+        triggers.append(f"scope_validation:requires_regeneration ({n} issue(s))")
     from app.services.topic_quality_validator import PRACTICE_FAILURE_CODES, REGENERATION_ERROR_CODES
     quality = legacy.get("topic_quality_report") or {}
     actionable = REGENERATION_ERROR_CODES - PRACTICE_FAILURE_CODES
-    return any(isinstance(i, dict) and i.get("severity") == "error" and i.get("code") in actionable
-               for i in (quality.get("issues") or []))
+    codes = sorted({str(i.get("code")) for i in (quality.get("issues") or [])
+                    if isinstance(i, dict) and i.get("severity") == "error" and i.get("code") in actionable})
+    if codes:
+        triggers.append(f"topic_quality:error[{','.join(codes)}]")
+    return triggers
+
+
+def _should_retry_lesson(legacy: dict[str, Any]) -> bool:
+    """Whether the lesson's own validators flagged a retry-fixable failure. See `_lesson_retry_triggers` for
+    the SPECIFIC triggering validator(s), which the retry loop logs."""
+    return bool(_lesson_retry_triggers(legacy))
 
 
 def _lean_retry_feedback(legacy: dict[str, Any]) -> str:
@@ -10315,10 +10330,23 @@ def build_lean_lesson_from_topic_and_chunks(
     prompt's QUALITY GATES section; that specific second-pass safety net is gone.
     """
     legacy = _generate_lean_lesson_once(topic, chunks, feedback)
-    if not _should_retry_lesson(legacy):
+    triggers = _lesson_retry_triggers(legacy)
+    if not triggers:
         return legacy
+    # A retry is a full second ~70s generation — never silent. Log WHICH validator fired and WHY, both to the
+    # app log (immediate visibility) and the persisted decision trace (queryable per topic afterwards).
+    reason = "; ".join(triggers)
+    logger.info("lean lesson retry TRIGGERED — topic=%s (%r): %s",
+                getattr(topic, "id", "?"), str(getattr(topic, "title", "")), reason)
+    record_lesson_decision(
+        topic, "lesson.retry_triggered", "regenerating the lesson once",
+        f"the first attempt's own validators flagged a retry-fixable failure: {reason}",
+        triggers=triggers, original_issue_count=_issue_count(legacy))
     retry_feedback = _lean_retry_feedback(legacy)
     if not retry_feedback:
+        record_lesson_decision(topic, "lesson.retry_skipped_no_feedback", "kept the original attempt",
+                               f"validators flagged ({reason}) but produced no actionable retry feedback — "
+                               "no second generation was worth paying for")
         return legacy
     try:
         retry_legacy = _generate_lean_lesson_once(
@@ -10334,12 +10362,14 @@ def build_lean_lesson_from_topic_and_chunks(
         ("retry", retry_legacy) if (not retry_report.get("requires_regeneration")
                                     or _issue_count(retry_legacy) < _issue_count(legacy))
         else ("original", legacy))
+    logger.info("lean lesson retry RESOLVED — topic=%s: kept %s attempt (orig=%d issues, retry=%d issues)",
+                getattr(topic, "id", "?"), selected, _issue_count(legacy), _issue_count(retry_legacy))
     record_lesson_decision(
         topic, "lesson.validation_retry", f"kept the {selected} attempt",
-        f"the first attempt failed its own validators ({_issue_count(legacy)} issue(s): scope/quality/"
-        "comprehension-check) — retried once with that feedback; the attempt with fewer outstanding "
-        "issues (or a clean pass) ships",
-        original_issue_count=_issue_count(legacy), retry_issue_count=_issue_count(retry_legacy))
+        f"the first attempt failed its own validators [{reason}] — retried once with that feedback; the "
+        "attempt with fewer outstanding issues (or a clean pass) ships",
+        triggers=triggers, original_issue_count=_issue_count(legacy),
+        retry_issue_count=_issue_count(retry_legacy), kept=selected)
     return selected_legacy
 
 
