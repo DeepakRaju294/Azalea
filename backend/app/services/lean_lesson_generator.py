@@ -149,6 +149,13 @@ def _code_snippet_or_point_code(card: dict[str, Any]) -> str:
     )
 
 
+# A term-definition main bullet whose definition was split onto its own sub-bullet leaves a DANGLING separator
+# on the term ("Surface —", "Curl (∇×F) —") — the model wrote "Term — definition" and the definition became a
+# "  - " sub-bullet, orphaning the trailing dash. Strip a trailing em/en dash (or a space-preceded hyphen) that
+# ends a MAIN bullet; a real word-ending bullet is never affected (the dash must be the last visible token).
+_DANGLING_TERM_DASH_RE = re.compile(r"(?:\s*[—–]|\s+-)\s*$")
+
+
 def _normalize_bullet_shape(points: list[str]) -> list[str]:
     """Convert compressed bullets into frame + subpoint shape where safe."""
     normalized: list[str] = []
@@ -164,6 +171,7 @@ def _normalize_bullet_shape(points: list[str]) -> list[str]:
             normalized.append(f"{'  ' * sublevel}- {raw_text.lstrip()[2:].strip()}")
             continue
 
+        point = _DANGLING_TERM_DASH_RE.sub("", point).rstrip() or point
         expanded = _expand_main_point(point)
         normalized.extend(expanded)
 
