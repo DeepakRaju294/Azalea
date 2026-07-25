@@ -33,6 +33,12 @@ _MODEL_TIER_ENV = {
     "utility": "OPENAI_MODEL_UTILITY",
 }
 
+# Lightweight calls that intentionally use a fixed default model. A per-call
+# OPENAI_MODEL_CALL_<NAME> override still takes precedence when explicitly set.
+_CALL_MODEL_DEFAULT = {
+    "title": "gpt-4o",
+}
+
 # call-name -> tier. A call absent here inherits OPENAI_MODEL (the base default), never a surprise model.
 _CALL_TIER = {
     # planning / classification — low volume, mostly cached, decides path structure
@@ -73,12 +79,15 @@ _CALL_TIER = {
 
 def _model_for(call_name: str | None) -> str:
     """Resolve the model for a logical call-name. Precedence: per-call override
-    (OPENAI_MODEL_CALL_<NAME>) -> tier env (OPENAI_MODEL_PLANNING/CONTENT/UTILITY) -> OPENAI_MODEL base.
-    Any missing env var falls through to the base, so this is a no-op until a tier is explicitly set."""
+    (OPENAI_MODEL_CALL_<NAME>) -> fixed call default -> tier env
+    (OPENAI_MODEL_PLANNING/CONTENT/UTILITY) -> OPENAI_MODEL base."""
     name = call_name or ""
     override = os.getenv(f"OPENAI_MODEL_CALL_{name.upper()}")
     if override:
         return override
+    call_default = _CALL_MODEL_DEFAULT.get(name)
+    if call_default:
+        return call_default
     tier = _CALL_TIER.get(name)
     if tier:
         tiered = os.getenv(_MODEL_TIER_ENV[tier])
@@ -1346,6 +1355,18 @@ def generate_single_lesson_card(
 
     existing = [str(c.get("title") or "") for c in (lesson_json.get("lesson_cards") or [])
                 if isinstance(c, dict)]
+    rules = ["3-6 concise bullet points", "concrete and specific to THIS topic",
+             "do not duplicate the other cards", "no meta-commentary"]
+    # Carry the card-content charter's directive so a backfilled card obeys the SAME content contract as one
+    # produced by the main lean prompt (which injects the charter). Without this a backfilled components_terms
+    # card ignored the anti-code-framing rule and described physics terms as arrays/meshes/indices. Best-effort.
+    try:
+        from app.core.card_charters import charter_for
+        _ch = charter_for(str(topic.get("topic_type") or ""), key)
+        if _ch and _ch.scope_note:
+            rules.append(f"OBEY EXACTLY: {_ch.scope_note}")
+    except Exception:  # noqa: BLE001
+        pass
     user = json.dumps({
         "topic_title": topic.get("title"),
         "topic_type": topic.get("topic_type"),
@@ -1353,8 +1374,7 @@ def generate_single_lesson_card(
         "what_this_card_must_contain": intent,
         "source_summary": lesson_json.get("source_summary"),
         "other_card_titles": existing[:12],
-        "rules": ["3-6 concise bullet points", "concrete and specific to THIS topic",
-                  "do not duplicate the other cards", "no meta-commentary"],
+        "rules": rules,
     }, ensure_ascii=False)
     try:
         response = _create_with_usage(
