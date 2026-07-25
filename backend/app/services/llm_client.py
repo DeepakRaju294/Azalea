@@ -22,6 +22,71 @@ if not OPENAI_API_KEY:
     raise RuntimeError("OPENAI_API_KEY is not set in .env")
 
 
+# --- per-call model routing ------------------------------------------------------------------------------
+# Every call site passes a logical call-name (the `_current_call` context var); routing keys on it so
+# planning/classification, lesson content, and cheap utility calls can each run on a different model without
+# touching any call site. SAFE BY DEFAULT: every tier and every unlisted call falls back to OPENAI_MODEL, so
+# with no OPENAI_MODEL_* env vars set, behavior is identical to today. Flip a tier (or one call) via env only.
+_MODEL_TIER_ENV = {
+    "planning": "OPENAI_MODEL_PLANNING",
+    "content": "OPENAI_MODEL_CONTENT",
+    "utility": "OPENAI_MODEL_UTILITY",
+}
+
+# call-name -> tier. A call absent here inherits OPENAI_MODEL (the base default), never a surprise model.
+_CALL_TIER = {
+    # planning / classification — low volume, mostly cached, decides path structure
+    "topic_decomposition": "planning",
+    "structured_topics": "planning",
+    "topic_overlap_resolver": "planning",
+    "course_type_classification": "planning",
+    "prereq_scope_classification": "planning",
+    "prereq_relevance_classification": "planning",
+    "domain_classify": "planning",
+    # lesson content — learner-visible, volume driver
+    "structured_lesson": "content",
+    "lean_lesson": "content",
+    "single_card_backfill": "content",
+    "card_slot": "content",
+    "lesson_segment": "content",
+    "trace_narration": "content",
+    "class_qa": "content",
+    "worked_example_gf": "content",
+    "worked_example_legacy": "content",   # last-resort worked-example solver, learner-facing
+    "code_walkthrough": "content",        # coding-lesson explanation
+    "targeted_repair": "content",         # fixes flagged lesson cards
+    "follow_up_question": "content",      # learner Q&A follow-ups
+    "azalea_review_question": "content",  # learner-facing questions
+    "azalea_transfer_challenge": "content",
+    "azalea_transfer_challenge_eval": "content",  # grades a learner's transfer answer — accuracy matters
+    # utility — mechanical transforms / extractions, structured & checkable
+    "title": "utility",
+    "prereq_briefs": "utility",
+    "term_glosses": "utility",
+    "visual_patches": "utility",
+    "answer_anchor": "utility",
+    "answer_anchor_extract": "utility",
+    "canonical_translate": "utility",
+    "clean_code": "utility",
+}
+
+
+def _model_for(call_name: str | None) -> str:
+    """Resolve the model for a logical call-name. Precedence: per-call override
+    (OPENAI_MODEL_CALL_<NAME>) -> tier env (OPENAI_MODEL_PLANNING/CONTENT/UTILITY) -> OPENAI_MODEL base.
+    Any missing env var falls through to the base, so this is a no-op until a tier is explicitly set."""
+    name = call_name or ""
+    override = os.getenv(f"OPENAI_MODEL_CALL_{name.upper()}")
+    if override:
+        return override
+    tier = _CALL_TIER.get(name)
+    if tier:
+        tiered = os.getenv(_MODEL_TIER_ENV[tier])
+        if tiered:
+            return tiered
+    return OPENAI_MODEL
+
+
 # --- LaTeX-safe JSON decode ------------------------------------------------------------------------------
 # The model writes LaTeX with single backslashes ("\frac", "\theta") inside JSON strings. Some of those are
 # VALID-but-wrong JSON escapes (\f→form-feed, \b→backspace, \n \r \t), so json.loads silently corrupts them
@@ -211,6 +276,12 @@ try:
     _orig_responses_create = _Responses.create
 
     def _logged_responses_create(self, *args: Any, **kwargs: Any) -> Any:
+        # Central model routing: every call in the codebase reaches the SDK here (both `_create_with_usage`
+        # and direct `client.responses.create` inside `llm_call(...)` blocks), so keying on `_current_call`
+        # routes them all with no call-site edits. `_model_for` returns OPENAI_MODEL unless a tier/override
+        # env var is set, so this is inert by default.
+        if "model" in kwargs:
+            kwargs["model"] = _model_for(_current_call.get())
         started = time.perf_counter()
         response = _orig_responses_create(self, *args, **kwargs)
         wall_ms = int((time.perf_counter() - started) * 1000)
@@ -246,7 +317,10 @@ def _create_with_usage(
                 opts["max_retries"] = max_retries
             target = client.with_options(**opts)
         if _PATCH_APPLIED:
-            return target.responses.create(**kwargs)  # logged by the patch
+            return target.responses.create(**kwargs)  # logged AND model-routed by the patch
+        # patch inactive: route here so tier env vars still work on this path
+        if "model" in kwargs:
+            kwargs["model"] = _model_for(call_name)
         started = time.perf_counter()
         response = target.responses.create(**kwargs)
         wall_ms = int((time.perf_counter() - started) * 1000)
