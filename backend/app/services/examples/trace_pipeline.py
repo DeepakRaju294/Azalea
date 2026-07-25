@@ -551,6 +551,11 @@ def _fmt_state_val(v: Any) -> str:
     return str(v)
 
 
+# Internal bookkeeping flags an adapter carries in its state dict to drive the trace, but which are not
+# learner-facing "work" ("complete = False" on every step). Never rendered into a card's Work/Result.
+_INTERNAL_STATE_FIELDS = frozenset({"complete", "completed", "done", "finished", "terminated", "halted"})
+
+
 def _interpretation_note(adapter: Any, final_state: dict[str, Any]) -> str:
     """The adapter spec's deterministic interpretation of the final computed state, or ''. Best-effort — an
     interpretation must never break a verified example."""
@@ -586,12 +591,25 @@ def _apply_step_field_contract(cards: list[dict[str, Any]], trace: ContractTrace
         after = step.state_after if isinstance(step.state_after, dict) else {}
         if not after:
             continue
-        changed = [k for k in after if prior.get(k) != after.get(k)]
-        work = [f"{k}: {_fmt_state_val(prior.get(k))} → {_fmt_state_val(after[k])}" for k in changed]
-        work += [f"{k} = {_fmt_state_val(after[k])}" for k in after if k not in changed]
+        # Only LEARNER-MEANINGFUL state is Work: skip a field not yet computed (value is None → "integrand =
+        # none" noise) and an internal bookkeeping flag ("complete = False"). A field this step COMPUTES is
+        # shown as "k = value" (its first real value), not "k: none → value"; a field this step UPDATES from a
+        # prior real value keeps the "old → new" delta. Unchanged fields are not this step's work, so they are
+        # dropped rather than repeated on every card.
+        def _shown_field(k: str) -> bool:
+            return after.get(k) is not None and k not in _INTERNAL_STATE_FIELDS
+
+        def _work_line(k: str) -> str:
+            pv = prior.get(k)
+            if pv is None:
+                return f"{k} = {_fmt_state_val(after[k])}"
+            return f"{k}: {_fmt_state_val(pv)} → {_fmt_state_val(after[k])}"
+
+        changed = [k for k in after if prior.get(k) != after.get(k) and _shown_field(k)]
+        work = [_work_line(k) for k in changed]
         if work:
             card["work"] = work
-        shown = changed or list(after)
+        shown = changed or [k for k in after if _shown_field(k)]
         result = "; ".join(f"{k} = {_fmt_state_val(after[k])}" for k in shown)
         if idx == len(cards) - 1 and ans:
             # Don't restate an identical answer ("Re = 5532.27. Final answer: Re = 5532.27." read twice live).
