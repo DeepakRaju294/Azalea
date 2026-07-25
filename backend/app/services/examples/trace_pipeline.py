@@ -40,6 +40,21 @@ _META_TITLE_MARKERS = ("introduction to", "history of", "applications of", "appl
                        "pros and cons", "why use", "why do we use", "big picture", "big-picture")
 _NON_ROUTING_TYPES = ("study_path_introduction", "conceptual_overview", "topic_overview")
 
+# Unicode punctuation the title generator emits (curly apostrophe/quotes, en/em dashes) must be folded to
+# their ASCII equivalents BEFORE alias matching — routing aliases are authored with straight ASCII, so a
+# curly apostrophe silently broke the match (live: the GOAL topic "Stokes<U+2019> Theorem" routed to no
+# adapter and got slow gen_foundation generation instead of the verified stokes_theorem trace). Keys are
+# codepoints (never raw non-ASCII literals in source); values are ASCII.
+_ROUTING_PUNCT_FOLD = {
+    0x2019: "'", 0x2018: "'", 0x02BC: "'", 0x0060: "'", 0x00B4: "'",   # apostrophe/quote variants -> '
+    0x201C: '"', 0x201D: '"',                                           # curly double quotes -> "
+    0x2013: "-", 0x2014: "-", 0x2212: "-",                             # en/em dash, minus sign -> -
+}
+
+
+def _fold_routing_punct(text: str) -> str:
+    return text.translate(_ROUTING_PUNCT_FOLD)
+
 
 def route_adapter(topic: dict[str, Any]):
     """Explicit (non-fuzzy) routing: a topic enters the pipeline only when its slug/metadata or a tight
@@ -64,7 +79,8 @@ def route_adapter(topic: dict[str, Any]):
     # 'Energy Transfer...' joined with a space reads '...turbulence energy transfer...', which contains the
     # substring 'turbulence energy' (a real alias for a DIFFERENT adapter) though neither field said that on
     # its own. "|" cannot appear inside any alias, so it can never bridge a false match this way.
-    text = (slug + " | " + subject_key + " | " + str(topic.get("title") or topic.get("name") or "")).lower()
+    text = _fold_routing_punct(
+        slug + " | " + subject_key + " | " + str(topic.get("title") or topic.get("name") or "")).lower()
     # SAFETY: never route an intro/overview/meta topic to a computational adapter.
     ttype = str(topic.get("topic_type") or topic.get("course_type") or "").lower()
     if ttype in _NON_ROUTING_TYPES or any(m in text for m in _META_TITLE_MARKERS):
