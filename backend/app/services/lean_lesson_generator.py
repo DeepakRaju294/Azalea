@@ -3362,15 +3362,38 @@ def _ground_roadmap_card(cards: list[dict[str, Any]], topic: Topic) -> list[dict
     # SUBbullets, but the topics render as sibling main bullets — a false nesting cue (the system has only one
     # subbullet level). The card TITLE already frames it, so emit clean "Topic:" → subbullet-summary pairs,
     # which nest correctly.
-    points: list[str] = []
-    for s in siblings:
-        points.append(f"{str(s.title).strip()}:")
-        points.append(f"  - {_roadmap_summary_for(s)}.")
+    def _points_for(chunk: list[Any]) -> list[str]:
+        pts: list[str] = []
+        for s in chunk:
+            pts.append(f"{str(s.title).strip()}:")
+            pts.append(f"  - {_roadmap_summary_for(s)}.")
+        return pts
+
+    # When the intro splits the roadmap into "(part 1)"/"(part 2)" continuation cards, each MUST get a
+    # DISTINCT slice of the sibling list — the old code assigned the full list to every roadmap card, so
+    # both halves showed the identical topic list (live bug). Split the siblings into contiguous, even
+    # chunks, one per roadmap card, and drop any card whose chunk is empty (more cards than topics).
+    n_roadmap = sum(1 for c in cards if _lean_card_key(c) == "roadmap")
+    if n_roadmap <= 1:
+        chunks = [siblings]
+    else:
+        k, m = divmod(len(siblings), n_roadmap)
+        chunks = [siblings[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n_roadmap)]
+    kept_total = sum(1 for ch in chunks if ch)
     out: list[dict[str, Any]] = []
+    ci, kept_i = 0, 0
     for c in cards:
         if _lean_card_key(c) == "roadmap":
-            c = {**c, "points": points}
+            chunk = chunks[ci] if ci < len(chunks) else []
+            ci += 1
+            if not chunk:
+                continue                                   # drop an empty roadmap continuation card
+            c = {**c, "points": _points_for(chunk)}
             c.pop("bullets", None)
+            if str(c.get("continuation_group_id") or "").strip():
+                kept_i += 1
+                c["continuation_index"] = kept_i
+                c["continuation_total"] = kept_total
         out.append(c)
     return out
 
@@ -4280,6 +4303,83 @@ def _strip_prereq_named_intro_key_terms(cards: list[dict[str, Any]], topic: Topi
     return result
 
 
+# Generic words that don't distinguish one prerequisite CONCEPT from another — a name reduces to its
+# distinctive "core" tokens after these are removed, so "Vector operations (R^3)" and "Vector algebra in R^3"
+# both reduce to {r^3, vector} and collapse to a single prerequisite (one is effectively a prereq of the
+# other / a synonym). Kept deliberately small so genuinely distinct prereqs are never merged.
+_PREREQ_GENERIC_WORDS = frozenset({
+    "and", "or", "of", "in", "the", "a", "an", "to", "for", "with", "on", "at", "as", "into",
+    "operations", "operation", "algebra", "basic", "basics", "fundamentals", "fundamental",
+    "concepts", "concept", "review", "refresher", "intro", "introduction", "understanding",
+    "properties", "rules", "methods", "techniques", "skills",
+})
+
+
+def _prereq_core_key(name: str) -> tuple[str, ...]:
+    """The distinctive-token signature of a prerequisite name, used to catch exact AND near-duplicates
+    (including a prereq-of-a-prereq). Lowercase, strip a leading goal phrase, drop generic filler, keep
+    tokens like `r^3`. Empty tuple → treat as non-collapsible (never merge on an empty key)."""
+    text = _strip_prereq_goal_phrase(str(name or "")).lower()
+    tokens = re.findall(r"[a-z0-9]+(?:\^[a-z0-9]+)?", text)
+    core = [t for t in tokens if t not in _PREREQ_GENERIC_WORDS]
+    return tuple(sorted(set(core)))
+
+
+def _collapse_near_duplicate_prereqs(names: list[str]) -> list[str]:
+    """Drop a later prereq name whose distinctive-token signature already appeared — collapses exact repeats,
+    synonyms, and prereq-of-a-prereq pairs ('Vector operations (R^3)' vs 'Vector algebra in R^3'). Names with
+    an empty core key (all-generic) are always kept, so nothing distinct is silently lost."""
+    seen: set[tuple[str, ...]] = set()
+    out: list[str] = []
+    for name in names:
+        key = _prereq_core_key(name)
+        if key and key in seen:
+            continue
+        if key:
+            seen.add(key)
+        out.append(name)
+    return out
+
+
+def _is_prereq_subbullet(point: str) -> bool:
+    s = str(point)
+    return bool(re.match(r"\s", s)) or s.lstrip().startswith("-")
+
+
+def _dedup_prereqs_across_parts(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Only the FIRST prerequisites card is grounded; a '(part 2)' continuation keeps LLM prose, so the same
+    concept (and near-duplicates) reappear across the two cards. Remove any main prereq bullet — with its
+    indented sub-bullets — whose core concept key already appeared in an earlier prereq card; drop a card left
+    with no concepts. Runs after grounding + taught-topic stripping, before interactive-link emission."""
+    seen: set[tuple[str, ...]] = set()
+    out: list[dict[str, Any]] = []
+    for card in cards:
+        if not _is_prereq_card(card):
+            out.append(card)
+            continue
+        kept: list[str] = []
+        skipping = False
+        has_concept = False
+        for point in (card.get("points") or []):
+            if _is_prereq_subbullet(point):
+                if not skipping:
+                    kept.append(point)
+                continue
+            key = _prereq_core_key(point)
+            if key and key in seen:              # duplicate / near-duplicate concept from an earlier part
+                skipping = True
+                continue
+            if key:
+                seen.add(key)
+            skipping = False
+            has_concept = True
+            kept.append(point)
+        if has_concept:
+            out.append({**card, "points": kept})
+        # else: every concept was a repeat — drop the now-contentless continuation card
+    return out
+
+
 def _default_prereq_brief_fn(prereqs: list[str], goal: str) -> list[dict[str, str]]:
     from app.services.llm_client import generate_prereq_briefs
     return generate_prereq_briefs(prereqs, goal)
@@ -4410,6 +4510,10 @@ def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic, brief_fn=None
     worthy = [n for n in names if _study_worthy_prereq(n, glosses.get(n.lower()))]
     if worthy:
         names = worthy
+
+    # Collapse near-duplicate / prereq-of-a-prereq names ("Vector operations (R^3)" vs "Vector algebra in
+    # R^3") so a single concept is never listed twice under two phrasings.
+    names = _collapse_near_duplicate_prereqs(names)
 
     # One prereq = one idea group: the MAIN bullet is the bare topic name (also the interactive-link anchor —
     # the name of the study path the link opens), with the refresher ("what it is") and the actionable line
@@ -4989,6 +5093,11 @@ def _normalize_lean_card_order(
     # A path prerequisite can never be a topic the path teaches: drop a prose prereq bullet that names a taught
     # sibling topic (e.g. the intro listing "Recognition of Bayes' Theorem" when Bayes' Theorem is a later topic).
     normalized = _strip_taught_topics_from_prereq_card(normalized, topic)
+
+    # Only the first prereq card is grounded; a "(part 2)" continuation repeats concepts (and near-duplicates)
+    # already listed in part 1. Dedup across the prereq continuation parts before links are emitted (so a
+    # removed bullet never gets a dangling link).
+    normalized = _dedup_prereqs_across_parts(normalized)
 
     # Glossary popups (AZALEA_TERM_GLOSSES): LLM pass attaches popup_only glosses for undefined technical terms.
     # Runs BEFORE emission so the glosses flow through its popup validation + per-card cap. Off ⇒ no-op, no call.
