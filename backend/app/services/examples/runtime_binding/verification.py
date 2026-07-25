@@ -43,15 +43,22 @@ class VerificationVector:
     checks: tuple[VerificationCheck, ...]
 
     @property
-    def passed(self) -> bool:
+    def computationally_sound(self) -> bool:
+        """Everything EXCEPT reviewed-resolution: spec/execution/solvability/fitness and no failed check. A
+        computationally sound but not-reviewed-match result is `mechanically_verified_only` (diagnostic),
+        distinct from a genuine computational failure (`withheld`)."""
         return (
-            self.resolution_validity == "reviewed_match"
-            and self.specification_validity == "passed"
+            self.specification_validity == "passed"
             and self.execution_validity == "passed"
             and self.problem_solvability == "passed"
             and self.pedagogical_fitness == "passed"
             and all(c.status != "failed" for c in self.checks)
         )
+
+    @property
+    def passed(self) -> bool:
+        """Shipping-ready in v1: computationally sound AND a reviewed-match resolution."""
+        return self.computationally_sound and self.resolution_validity == "reviewed_match"
 
 
 def _recompute(binding: ValidatedBinding, visible: dict[str, Fraction]) -> Fraction:
