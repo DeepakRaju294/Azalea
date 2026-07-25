@@ -87,6 +87,47 @@ def _model_for(call_name: str | None) -> str:
     return OPENAI_MODEL
 
 
+# --- reasoning-effort control (GPT-5 / o-series only) ----------------------------------------------------
+# GPT-5-family models run a REASONING pass whose default effort is "medium"; that is the dominant latency on
+# the big structured calls (a 90s lean_lesson, a 130s topic_decomposition) — gpt-4o-mini had no reasoning
+# phase at all, so swapping models silently turned this on. Effort is set PER TIER so planning (cached, one
+# call, quality-critical) can stay richer while the high-volume content/utility calls run fast. Only injected
+# for reasoning-capable models; a non-reasoning model (gpt-4o-mini) never receives the param (it would error).
+_REASONING_MODEL_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+_REASONING_TIER_ENV = {
+    "planning": ("OPENAI_REASONING_PLANNING", "medium"),
+    "content": ("OPENAI_REASONING_CONTENT", "low"),
+    "utility": ("OPENAI_REASONING_UTILITY", "minimal"),
+}
+_VALID_EFFORTS = {"minimal", "low", "medium", "high"}
+
+
+def _reasoning_effort_for(call_name: str | None, model: str) -> str | None:
+    """The reasoning effort for a call, or None to leave the request untouched. Precedence: per-call override
+    (OPENAI_REASONING_CALL_<NAME>) -> tier env -> tier default. `off`/`none`/`default` (any tier or the global
+    OPENAI_REASONING_DEFAULT) disables injection so the model's own default applies. No-op for non-reasoning
+    models."""
+    if not model.startswith(_REASONING_MODEL_PREFIXES):
+        return None
+    name = call_name or ""
+    override = os.getenv(f"OPENAI_REASONING_CALL_{name.upper()}")
+    env_var, default = _REASONING_TIER_ENV.get(_CALL_TIER.get(name), (None, None))
+    value = (override or (os.getenv(env_var) if env_var else None)
+             or os.getenv("OPENAI_REASONING_DEFAULT") or default)
+    value = (value or "").strip().lower()
+    return value if value in _VALID_EFFORTS else None
+
+
+def _apply_reasoning(kwargs: dict[str, Any]) -> None:
+    """Inject `reasoning={'effort': ...}` for a reasoning-capable model, keyed on the resolved model + the
+    in-flight call name. Never overrides an explicit `reasoning` the caller already set."""
+    if "reasoning" in kwargs:
+        return
+    effort = _reasoning_effort_for(_current_call.get(), str(kwargs.get("model") or ""))
+    if effort:
+        kwargs["reasoning"] = {"effort": effort}
+
+
 # --- LaTeX-safe JSON decode ------------------------------------------------------------------------------
 # The model writes LaTeX with single backslashes ("\frac", "\theta") inside JSON strings. Some of those are
 # VALID-but-wrong JSON escapes (\f→form-feed, \b→backspace, \n \r \t), so json.loads silently corrupts them
@@ -282,6 +323,7 @@ try:
         # env var is set, so this is inert by default.
         if "model" in kwargs:
             kwargs["model"] = _model_for(_current_call.get())
+        _apply_reasoning(kwargs)             # per-tier reasoning effort (GPT-5/o-series) — the main latency lever
         started = time.perf_counter()
         response = _orig_responses_create(self, *args, **kwargs)
         wall_ms = int((time.perf_counter() - started) * 1000)
@@ -321,6 +363,7 @@ def _create_with_usage(
         # patch inactive: route here so tier env vars still work on this path
         if "model" in kwargs:
             kwargs["model"] = _model_for(call_name)
+        _apply_reasoning(kwargs)
         started = time.perf_counter()
         response = target.responses.create(**kwargs)
         wall_ms = int((time.perf_counter() - started) * 1000)
