@@ -1218,6 +1218,8 @@ def _normalize_card_title(
     blueprint_key: str,
     card_index: int,
 ) -> str:
+    from app.core.title_sanitizer import plain_language_title
+
     # Strip only TRAILING colons (LLM artifact like "Initial State:"), keep
     # mid-title colons such as "Step 1: Initial State".
     title = str(value or "").strip().rstrip(":").rstrip()
@@ -1255,7 +1257,12 @@ def _normalize_card_title(
             flags=re.IGNORECASE,
         )
 
-    return title or f"Card {card_index + 1}"
+    fallback = {
+        "formula": "Formula breakdown",
+        "formula_breakdown": "Formula breakdown",
+        "worked_example": "Worked example",
+    }.get(blueprint_key, f"Card {card_index + 1}")
+    return plain_language_title(title, fallback=fallback)
 
 
 def _build_visual_plan(
@@ -4357,6 +4364,29 @@ def _collapse_near_duplicate_prereqs(names: list[str]) -> list[str]:
     return out
 
 
+def _drop_subskill_prereqs(names: list[str], glosses: dict[str, str],
+                           requirements: dict[str, str]) -> list[str]:
+    """Drop a prereq that is a SUB-SKILL of another listed prereq — its multi-word name appears verbatim inside
+    another prereq's refresher / what-to-learn text ("Dot and cross products" listed alongside "Vector algebra
+    in R^3", whose what-to-learn is "compute dot and cross products, norms, unit vectors …"). Keep the broader
+    prereq, drop the contained sub-skill. Conservative: only a >=2-word whole-phrase match, never a MUTUAL drop
+    (both containing each other), and never empties the list."""
+    desc = {n: _norm_term(f"{glosses.get(n.lower(), '')} {requirements.get(n.lower(), '')}") for n in names}
+    drop: set[str] = set()
+    for a in names:
+        a_norm = _norm_term(a)
+        if len(a_norm.split()) < 2:
+            continue                                   # single-word names are too generic to match safely
+        for b in names:
+            if b is a or b in drop:
+                continue
+            if a_norm in desc.get(b, "") and _norm_term(b) not in desc.get(a, ""):
+                drop.add(a)                            # a is named inside b's description → a is b's sub-skill
+                break
+    kept = [n for n in names if n not in drop]
+    return kept or names
+
+
 def _is_prereq_subbullet(point: str) -> bool:
     s = str(point)
     return bool(re.match(r"\s", s)) or s.lstrip().startswith("-")
@@ -4530,6 +4560,9 @@ def _ground_prereq_card(cards: list[dict[str, Any]], topic: Topic, brief_fn=None
     # Collapse near-duplicate / prereq-of-a-prereq names ("Vector operations (R^3)" vs "Vector algebra in
     # R^3") so a single concept is never listed twice under two phrasings.
     names = _collapse_near_duplicate_prereqs(names)
+    # Drop a sub-skill already subsumed by a broader listed prereq ("Dot and cross products" when "Vector
+    # algebra in R^3" is also listed and names dot/cross products in its what-to-learn).
+    names = _drop_subskill_prereqs(names, glosses, requirements)
 
     # One prereq = one idea group: the MAIN bullet is the bare topic name (also the interactive-link anchor —
     # the name of the study path the link opens), with the refresher ("what it is") and the actionable line
@@ -9589,6 +9622,16 @@ def _polish_card_cosmetics(cards: list[dict[str, Any]], topic: Topic, *, grounde
         coding_topic = "coding" in _topic_type_key(topic)
         for card in cards:
             kind = _card_kind(card)
+            from app.core.title_sanitizer import plain_language_title
+
+            card["title"] = plain_language_title(
+                card.get("title"),
+                fallback={
+                    "formula": "Formula breakdown",
+                    "formula_breakdown": "Formula breakdown",
+                    "worked_example": "Worked example",
+                }.get(kind, "Lesson card"),
+            )
 
             # (2) Phantom visual reference in a body with no rendered visual.
             body = card.get("body")
