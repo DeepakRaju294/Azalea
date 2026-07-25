@@ -1,7 +1,15 @@
 # Grounded Runtime Binding Spec
 
-> **Status:** Draft v1.0.1 — architecture approved; ready for Phase 0 implementation. (Document revisions use
+> **Status:** Draft v1.0.3 — architecture approved; ready for Phase 0 implementation. (Document revisions use
 > three-part numbers from here on so they cannot be confused with the v1/v1.1 SHIPPING slices.)
+> v1.0.3: `path_plan_version` gets a defined v1 derivation so claims don't depend on unbuilt plan-versioning
+> machinery (§2.5), presentation labels get a single precedence order (§5.4), `ScenarioTemplate` gains review
+> provenance, pure-substitution rendering, and defined ref targets (§5.8).
+> v1.0.2 makes learner-facing problem semantics structured and grammar-owned (§3.3, §5.8–§6), replaces
+> authoritative free-text scenario hints with reviewed scenario-template selection (§5.4, §5.8), introduces
+> a versioned `SiblingExerciseClaim` and renames the freeze-time check to `claim_currency` (§2.5, §5.8,
+> §6.6), gives pedagogical constraints an executable schema (§5.8), and versions canonical delivery
+> serialization (§5.9–§5.10) and names the resulting fourth persistence table (§17.3, §19).
 > v1.0.1: `sibling_novelty` reframed as a claim-currency re-check so it is not tautological (§6.6), the
 > three-stage evaluation split is stated once explicitly (§6.6), and the frontend structured-claim renderer
 > conformance tests get a named home (§17.3).
@@ -323,6 +331,40 @@ contract/variant/intent operations. If product policy later requires path-wide n
 deterministic path-level seed allocation artifact defined before concurrent preparation—not an instance-digest
 race.
 
+Certification persists the result as:
+
+```text
+SiblingExerciseClaim {
+  claim_id: str
+  claim_version: int
+  path_plan_version: int
+  ownership_tuple: {
+    concept_contract_id: str
+    variant: str
+    grammar_id: str
+    lesson_intent_kind: str
+  }
+  owner_topic_id: str
+  status: active | lost | superseded
+  superseded_by_claim_id: str | null
+  created_at: datetime
+}
+```
+
+`PreparedRuntimeBinding` and `EvidencePackage` freeze the authorizing claim id/version. Evidence may freeze
+only while that exact claim remains active under the recorded path-plan version.
+
+Claim arbitration is transactional: at most one active claim may exist for a
+`(path_plan_version, ownership_tuple)`, and activating a replacement atomically marks the prior claim
+`superseded`. A claim change stales preparations and cache entries authorized by the older claim.
+
+`path_plan_version` source: the persisted study path has no explicit version column today, and the claim
+system must not block on building one. V1 derives it deterministically as a digest of the certified scope
+plan — canonical serialization of topic ids, owned scopes, roles, and ordering at certification time. Any
+re-certification that changes that serialization yields a new `path_plan_version` and therefore supersedes
+the plan's claims; a later explicit plan-version column may replace the digest without changing claim
+semantics.
+
 ---
 
 ## 3. Trust boundaries
@@ -359,6 +401,9 @@ race.
 | Allowed operations and control flow | Reviewed grammar |
 | Bindings proposal | Resolver/model |
 | Binding validation | Deterministic validator |
+| Problem semantics and target | Reviewed grammar + concept contract |
+| Problem display text | Deterministic problem renderer |
+| Scenario selection | Reviewed scenario-template catalog |
 | Execution and trace | Reviewed grammar |
 | Baseline invariants and tests | Reviewed grammar |
 | Supplementary check suggestions | Model, non-authoritative |
@@ -720,15 +765,23 @@ BindingProposal {
     input_labels: { symbol: str }
     result_label: str
     display_unit: str
-    scenario_hint: str
+    scenario_template_id: str | null
   }
   supplementary_checks: [NonAuthoritativeCheckSuggestion]
   proposal_source: deterministic | model
 }
 ```
 
-No verifier logic, arbitrary invariant, or executable function is accepted in this artifact.
-`scenario_hint` is stylistic and cannot supply, constrain, or override sampled givens.
+No verifier logic, arbitrary invariant, executable function, or authoritative free-text scenario is accepted
+in this artifact. `scenario_template_id` may select only a reviewed template declared compatible with the
+contract variant and grammar. Null selects the grammar's neutral formula-problem template.
+
+Label precedence is single and fixed — three sources can name the same symbol, and two implementations will
+disagree without an order: (1) a selected `ScenarioTemplate.given_label_templates` entry wins for the
+symbols it covers; (2) otherwise reviewed `SymbolContract` metadata applies; (3) `presentation.input_labels`
+from the proposal applies only where neither provides a label, and remains non-authoritative presentation
+that narration fidelity validates like any other prose. A proposal label can never override a template or
+contract label.
 
 V1a constructs this proposal deterministically:
 
@@ -736,6 +789,7 @@ V1a constructs this proposal deterministically:
 - input/output slots come from `NormalizedRelationship` and `SymbolContract.role`;
 - grammar and numeric/generation policies come from `GrammarManifest`;
 - conventions come from a single compatible reviewed contract selection;
+- scenario selection is null or one reviewed compatible `scenario_template_id`;
 - presentation labels come from reviewed symbol metadata, with narration allowed to paraphrase later.
 
 An LLM proposal is needed only when a later contract exposes multiple reviewed compatible mappings or
@@ -902,11 +956,43 @@ GenerationPolicy {
 PedagogicalPolicy {
   policy_id: str
   version: int
-  difficulty_rules: { topic_depth: DifficultyConstraintSet }
-  nontriviality_bounds: [Constraint]
-  readability_bounds: [Constraint]
-  prerequisite_rules: [Constraint]
-  objective_count_rules: [Constraint]
+  constraints: [PedagogicalConstraint]
+}
+
+PedagogicalConstraint {
+  constraint_id: str
+  check_type: difficulty | nontriviality | readability | prerequisite_compatibility | objective_count
+  applies_when: {
+    topic_depth: deep | overview | any
+    grammar_id: str | any
+  }
+  parameters: object
+  severity: blocking | warning
+  failure_disposition: reject_instance | reject_binding | withhold
+}
+
+ScenarioTemplate {
+  scenario_template_id: str
+  version: int
+  review_provenance: str
+  compatible_contract_variants: [str]
+  compatible_grammar_ids: [str]
+  context_claim_refs: [str]          # resolve to GroundedArtifact ids on the compatible contract(s)
+  given_label_templates: { symbol: str }
+  question_template: str
+}
+
+ProblemStatement {
+  problem_statement_id: str
+  template_id: str
+  scenario_template_id: str | null
+  given_refs: [str]
+  target_symbol: str
+  target_meaning_ref: str
+  requested_operation: str
+  requested_display_unit: str
+  visible_assumption_refs: [str]
+  question_display_text: str
 }
 
 GeneratedInstance {
@@ -952,16 +1038,16 @@ PedagogicalFitnessResult {
   operation_relevance: passed | failed
   single_primary_objective: passed | failed
   prerequisite_compatibility: passed | failed
-  sibling_novelty: passed | failed
+  claim_currency: passed | failed
   failures: [str]
 }
 ```
 
-The reviewed grammar owns instance generation. The model may supply a stylistic scenario hint, but it cannot
-choose authoritative values. Selection rejects trivial, singular, misleading, assumption-violating, or
-rounding-dominated candidates. `instance_digest` covers the binding/environment digests, seed, generation
-policy, pedagogical-policy version, raw/visible values, numeric policy, expected result, and instance-quality
-result.
+The reviewed grammar owns instance generation and deterministic `ProblemStatement` construction. The model
+cannot choose authoritative values or author authoritative scenario prose. Selection rejects trivial,
+singular, misleading, assumption-violating, or rounding-dominated candidates. `instance_digest` covers the
+binding/environment digests, seed, generation policy, pedagogical-policy version, raw/visible values, numeric
+policy, expected result, and instance-quality result.
 
 Generation policy sets `max_generation_attempts` and `max_rejected_samples_stored`. Production telemetry stores
 categorical counts and at most the bounded sample records, without raw rejected values. Full rejected values
@@ -970,14 +1056,27 @@ are retained only in fixture, failure-debug, or explicitly sampled diagnostic ru
 Instance generation owns only value-level checks available before wording exists: domain validity,
 nontriviality, numeric readability, and rounding stability. Learner-visible solvability and complete
 pedagogical fitness are evaluated later against the assembled evidence problem. Unused givens are rejected in
-v1; distractors require a later explicit practice policy. A stylistic `scenario_hint` is checked against
-contract assumptions and applicability conditions and is discarded or regenerated when it implies a
-conflicting regime.
+v1; distractors require a later explicit practice policy. A scenario is either the grammar's neutral template
+or a reviewed `ScenarioTemplate` whose compatibility metadata matches the contract variant and grammar.
+`question_display_text` is a deterministic rendering of the structured problem fields and is validated
+against them; it is never the source of target, operation, unit, or assumption identity.
+
+Template rendering is PURE SUBSTITUTION: placeholders are replaced with typed values and reviewed labels,
+nothing else. No expression evaluation, no nested/recursive templates, no conditionals, no access to any
+object beyond the declared placeholder set — a template is data and the problem renderer is its only
+executor, the same posture §2.2 takes toward expressions. `ProblemStatement.given_refs` resolve into
+`GeneratedInstance.visible_values` by symbol; `visible_assumption_refs` resolve to contract
+`GroundedArtifact` ids. A ref that fails to resolve fails specification validity, not rendering.
 
 Every grammar references a reviewed `PedagogicalPolicy`. Its version is included in the execution-environment
 digest, preparation identity, cache invalidation, evidence, and telemetry. Changing a difficulty,
 nontriviality, readability, prerequisite, or objective-count rule therefore cannot silently reuse an older
 passing artifact.
+
+Every blocking pedagogical check has an explicit predicate implementation keyed by `check_type` and validated
+parameters. Unknown check types or malformed parameters fail policy loading. V1 policy fixtures specify
+concrete bounds for `deep` and `overview` numeric/operation complexity, readable numerator/denominator and
+display lengths, required-prerequisite membership, and exactly one primary requested operation.
 
 ### 5.9 `EvidencePackage`
 
@@ -995,16 +1094,16 @@ EvidencePackage {
   resolution_entry_version: int
   pedagogical_policy_id: str
   pedagogical_policy_version: int
+  sibling_claim_id: str
+  sibling_claim_version: int
+  path_plan_version: int
   lesson_intent: LessonIntent
   concept_resolution: ContractConceptResolution
   concept_contract_refs: [str]
   generated_instance: GeneratedInstance
-  problem: {
-    visible_givens: [TypedValue]
-    question: str
-    assumptions_used: [str]
-    applicability_conditions_used: [str]
-  }
+  problem: ProblemStatement
+  visible_givens: [TypedValue]
+  applicability_conditions_used: [str]
   problem_solvability_report: ProblemSolvabilityResult
   pedagogical_fitness_report: PedagogicalFitnessResult
   execution_trace: ExecutionTrace
@@ -1022,6 +1121,7 @@ DeliveryEvidenceRecord {
   evidence_digest: str
   lesson_id: str
   canonical_delivery_payload_digest: str
+  canonical_delivery_serialization_version: int
   backend_sanitizer_version: str
   structured_renderer_contract_version: str
   narration_validator_version: str
@@ -1039,8 +1139,8 @@ to change `narration_fidelity` from `not_run`.
 
 `evidence_digest` is a SHA-256 digest over canonical serialization of every authoritative pre-narration field:
 resolution, contract/grammar versions, generated instance, problem, execution and teaching traces,
-solvability/fitness reports, pedagogical-policy identity, projection, checkpoints, final result, decision
-evidence, and the pre-narration verification vector.
+solvability/fitness reports, pedagogical-policy identity, sibling-claim/path-plan identity, projection,
+checkpoints, final result, decision evidence, and the pre-narration verification vector.
 Persistence is insert-only after verification. Regeneration creates a new evidence id/digest. A delivery
 trust label is derived only from the immutable package plus a passing delivery record.
 
@@ -1095,9 +1195,10 @@ renderer exists, enforced runtime-binding cards cannot ship.
 The delivery digest is not a DOM, HTML, CSS, or device-rendering hash. It covers canonical JSON for the exact
 structured lesson payload handed to the frontend after every backend sanitizer and normalization transform,
 including structured claims and `CardEvidenceLink` records. The delivery record separately pins the backend
-sanitizer, structured-renderer contract, and narration-validator versions. Frontend implementations may
-format that payload, but conformance tests must prove they preserve structured semantic identity; client-side
-layout differences do not change the delivery digest.
+sanitizer, structured-renderer contract, narration-validator, and canonical-serialization versions. The
+serialization version defines key ordering, number/unit encoding, null omission, Unicode normalization, and
+list-order semantics. Frontend implementations may format that payload, but conformance tests must prove they
+preserve structured semantic identity; client-side layout differences do not change the delivery digest.
 
 ---
 
@@ -1246,7 +1347,7 @@ because these are exactly the judgments that drift into model calls. Parameter s
 `PedagogicalPolicy`; instance-level `nontriviality` and `visible_number_readability` read that policy plus the
 generation policy's `quality_constraints`; `scope_relevance` and
 `operation_relevance` read the contract's applicability conditions plus the topic's owned `scope_in`;
-`sibling_novelty` consumes only the §2.5 ownership/intent arbitration result—it is NOT a second similarity
+`claim_currency` consumes only the §2.5 ownership/intent arbitration result—it is NOT a similarity
 heuristic and never compares concurrently generated instance digests. Because a topic that lost arbitration
 never reaches fitness evaluation at all, this check would be tautological if it merely restated the
 arbitration outcome; its actual predicate is CLAIM CURRENCY: at evidence-freeze time, the §2.5 claim that
@@ -1620,6 +1721,7 @@ Invalidation occurs when:
 - unit/type policy changes;
 - verification plan changes;
 - pedagogical policy changes;
+- authorizing sibling claim or path-plan version changes;
 - the contract-resolution registry version that produced the binding's resolution changes — a registry
   remap can point the same scope identity at a DIFFERENT contract while every identity inside the cached
   binding (contract id/version, grammar) still digest-matches, so the registry version must be part of the
@@ -1792,6 +1894,9 @@ It also records:
 preparation_identity_digest
 status_version
 resolution_entry_version
+sibling_claim_id
+sibling_claim_version
+path_plan_version
 safety_block_version
 superseded_by_preparation_id
 ```
@@ -1813,7 +1918,8 @@ Rules:
 - `failed`, timed-out, or stale preparation restores current withhold behavior.
 - Final enforcement trusts the frozen passing `EvidencePackage`, never the earlier eligibility stamp.
 - `preparation_identity_digest` covers topic/scope identity, resolution registry and entry versions,
-  contract/grammar/pedagogical-policy/environment versions, and claimant intent. At most one non-superseded
+  sibling-claim/path-plan versions, contract/grammar/pedagogical-policy/environment versions, and claimant
+  intent. At most one non-superseded
   `preparing|ready` row may exist for the same identity.
 - Status transitions use compare-and-swap on `status_version`. A worker prepared against an older registry,
   scope plan, safety-block version, or active preparation cannot mark itself ready.
@@ -1912,9 +2018,16 @@ reference another contract's relationship.
 - Same seed and binding produce identical trace and result.
 - Missing visible input, ambiguous requested output, hidden required assumption, or missing display unit fails
   problem solvability.
+- `question_display_text` that requests a different target, operation, or unit from its structured
+  `ProblemStatement` fails solvability/fidelity.
+- A required assumption present only in contract metadata but absent from `visible_assumption_refs` fails.
+- An unknown or contract-incompatible `scenario_template_id` is rejected; arbitrary scenario prose cannot
+  enter the authoritative problem.
+- More than one primary requested operation fails the v1 pedagogical policy.
 - A mathematically valid instance that is off-scope, trivial, prerequisite-incompatible, or duplicates a
   sibling-owned operation fails pedagogical fitness.
-- Concurrent sibling preparation order cannot change ownership or sibling-novelty outcomes.
+- Concurrent sibling preparation order cannot change ownership or claim-currency outcomes.
+- A superseded sibling claim or path-plan version fails `claim_currency` at evidence freeze.
 - Tampered final result fails independent recomputation.
 - Grammar-owned metamorphic failure rejects the binding/instance.
 - Generated supplementary invariant alone cannot authorize a binding.
@@ -1974,6 +2087,9 @@ instance_digest
 numeric_policy_id
 pedagogical_policy_id
 pedagogical_policy_version
+sibling_claim_id
+sibling_claim_version
+path_plan_version
 generation_policy_id
 verification_vector
 failed_checks
@@ -2074,6 +2190,8 @@ backend/app/services/examples/runtime_binding/
   artifacts.py
   resolver.py
   contract_store.py              # ConceptContract + ContractResolutionRegistry
+  scenario_store.py              # reviewed ScenarioTemplate catalog
+  problem_renderer.py            # deterministic ProblemStatement + display-text projection
   restricted_expression.py
   convergence.py                 # T6 wave classification + behavior-diff report
   validator.py
@@ -2090,11 +2208,13 @@ Expected persistence change:
 
 ```text
 backend/app/models/prepared_runtime_binding.py
+backend/app/models/sibling_exercise_claim.py    # versioned §2.5 ownership and supersession record
 backend/app/models/evidence_package.py         # §12.4's immutable evidence store — the most durable
                                                # artifact in the design needs a named home, not an implied one
 backend/app/models/delivery_evidence.py        # post-sanitization narration/card fidelity bound to evidence
-backend/app/db/base.py                         # import/register all three models
-database schema migration for prepared_runtime_bindings + evidence_packages + delivery_evidence
+backend/app/db/base.py                         # import/register all four models
+database schema migration for sibling_exercise_claims + prepared_runtime_bindings + evidence_packages
+  + delivery_evidence
 ```
 
 The repository currently has no Alembic migration tree and `Base.metadata.create_all()` does not alter
@@ -2169,11 +2289,12 @@ and continue catalog growth through the existing adapter system instead.
 4. What is the future product treatment for `mechanically_verified_only` after v1's withhold-only policy?
 5. The numeric value of the per-topic latency budget. (The structure — budget + automatic degradation +
    plan-time execution + binding cache — is decided in §13; only the number remains open.)
-6. Which explicit database-migration mechanism will create/update `prepared_runtime_bindings`,
-   `evidence_packages`, and `delivery_evidence` in existing deployments, including their foreign keys,
+6. Which explicit database-migration mechanism will create/update `sibling_exercise_claims`,
+   `prepared_runtime_bindings`, `evidence_packages`, and `delivery_evidence` in existing deployments,
+   including their foreign keys,
    append-only enforcement, atomic active-preparation constraint, and indexes? Blocking before persistence
    ships.
-   Recommendation: adopt Alembic once rather than a one-off guarded script — three new tables are already
+   Recommendation: adopt Alembic once rather than a one-off guarded script — four new tables are already
    required, Phase 3's contract store will add more, and an ad-hoc migration path becomes its own
    maintenance problem.
 
@@ -2192,6 +2313,8 @@ and continue catalog growth through the existing adapter system instead.
 - [ ] Generated instances and numeric policy make every example reproducible at displayed precision.
 - [ ] Verification dimensions are stored separately and derive an honest trust level.
 - [ ] Learner-visible problem solvability and pedagogical fitness are required shipping dimensions.
+- [ ] Authoritative problems use structured `ProblemStatement` semantics; display text is a deterministic
+      projection and free-text model scenarios cannot enter execution/evidence.
 - [ ] A reviewed/versioned pedagogical policy deterministically owns difficulty, nontriviality, readability,
       prerequisite, and objective-count thresholds and participates in digests/invalidation.
 - [ ] Concept/variant ambiguity cannot silently select a materially different formula.
@@ -2215,9 +2338,12 @@ and continue catalog growth through the existing adapter system instead.
       existing gating, and the `verified_gen_foundation` label/checks activate solely with the §4.3.2
       evidence migration (named deferred work, not a v1 obligation).
 - [ ] Contract ownership arbitration prevents sibling topics from repeating the same exercise (§2.5).
-- [ ] Sibling novelty is independent of concurrent worker completion order and generated numeric coincidence.
+- [ ] Versioned sibling claims are persisted and `claim_currency` is independent of worker completion order
+      and generated numeric coincidence.
 - [ ] Prepared binding state/version checks prevent stale or raced artifacts from shipping (§13.2).
 - [ ] Runtime-fallback end-to-end fixtures genuinely miss registered routing; registered T6 fixtures are used
       separately for substrate equivalence.
 - [ ] Structured claim rendering preserves semantic identity through backend and frontend transforms (§5.10).
+- [ ] Canonical delivery serialization is versioned and pins sanitizer, renderer-contract, and validator
+      versions.
 - [ ] Ships with `AZALEA_GROUNDED_RUNTIME_BINDING=shadow` as the default until Phase 2 criteria are met.
