@@ -163,6 +163,8 @@ class _LineIntegralCanonicalFormula:
 class LineIntegralAdapter(FamilyAdapterBase):
     slug = "line_integral"
     label_convention = "ints"
+    provides_narration = True   # ship the verified trace via deterministic narration (clean Work lines,
+    # offline, correct-by-construction) instead of the LLM formatter, which garbled the raw state dict into cards.
     _canonical_formula = _LineIntegralCanonicalFormula()
     example_spec = ExampleSpec(
         input=InstanceShape("field_curve_pair", count=(2, 2), structure=["line_integral"]),
@@ -418,6 +420,8 @@ class _SurfaceIntegralCanonicalFormula:
 class SurfaceIntegralAdapter(FamilyAdapterBase):
     slug = "surface_integral"
     label_convention = "ints"
+    provides_narration = True   # ship the verified trace via deterministic narration (clean Work lines,
+    # offline, correct-by-construction) instead of the LLM formatter, which garbled the raw state dict into cards.
     _canonical_formula = _SurfaceIntegralCanonicalFormula()
     example_spec = ExampleSpec(
         input=InstanceShape("field_surface_pair", count=(2, 2), structure=["surface_integral"]),
@@ -592,6 +596,8 @@ class SurfaceIntegralAdapter(FamilyAdapterBase):
 class StokesTheoremAdapter(FamilyAdapterBase):
     slug = "stokes_theorem"
     label_convention = "ints"
+    provides_narration = True   # ship the verified trace via deterministic narration (clean Work lines,
+    # offline, correct-by-construction) instead of the LLM formatter, which garbled the raw state dict into cards.
     _canonical_formula = _StokesCanonicalFormula()
     example_spec = ExampleSpec(
         input=InstanceShape("vector_field_surface_pair", count=(2, 2), structure=["stokes_theorem"]),
@@ -855,6 +861,8 @@ class _DivergenceCanonicalFormula:
 class DivergenceTheoremAdapter(FamilyAdapterBase):
     slug = "divergence_theorem"
     label_convention = "ints"
+    provides_narration = True   # ship the verified trace via deterministic narration (clean Work lines,
+    # offline, correct-by-construction) instead of the LLM formatter, which garbled the raw state dict into cards.
     _canonical_formula = _DivergenceCanonicalFormula()
     example_spec = ExampleSpec(
         input=InstanceShape("vector_field_region_pair", count=(2, 2), structure=["divergence_theorem"]),

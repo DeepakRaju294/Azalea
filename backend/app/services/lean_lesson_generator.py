@@ -9223,6 +9223,23 @@ def _sub_outside_math_spans(pattern: Any, repl: str, s: str) -> str:
     return "".join(out)
 
 
+# A SUPERSCRIPT bound stranded just OUTSIDE a closing math delimiter: the model closed the span after an
+# operator's lower limit and left the upper limit as literal text — "\(\int_{0}\)^{2π}" renders as "∫₀"
+# followed by a literal "^{2π}" (live on a line-integrals worked example). Pull the stray superscript back
+# INSIDE the span so the bounds render together. Only `^` — a stranded SUBSCRIPT ("\(\int\)_{S}") is the
+# INTENDED convention here (the frontend positions that subscript under the operator), so it is left alone.
+_MATH_CLOSE_ORPHAN_SCRIPT = re.compile(r"\\\)\s*(\^(?:\{[^{}]*\}|[A-Za-z0-9]))")
+
+
+def _pull_orphan_script_into_span(s: str) -> str:
+    for _ in range(4):                       # bounded: at most a few stranded scripts per span
+        new = _MATH_CLOSE_ORPHAN_SCRIPT.sub(r"\1\\)", s)
+        if new == s:
+            break
+        s = new
+    return s
+
+
 def _sanitize_math_in_text(text: str) -> str:
     """Make LLM-authored math render: strip unsupported `\\text{}`/`\\textbf{}`/`\\mathbf{}`-family commands,
     drop stray LaTeX line-break tokens, and wrap bare `\\frac`/`\\sqrt` (with an optional 'LHS =' prefix) and
@@ -9238,6 +9255,7 @@ def _sanitize_math_in_text(text: str) -> str:
     s = _DOUBLED_DELIM_ESCAPE.sub(lambda m: "\\", s)   # \\( \\) \\[ \\] -> \( \) \[ \] before anything else
     s = _DOUBLED_OPEN_DELIM.sub(r"\\(", s)
     s = _DOUBLED_CLOSE_DELIM.sub(r"\\)", s)
+    s = _pull_orphan_script_into_span(s)     # "\(\int_{0}\)^{2π}" -> "\(\int_{0}^{2π}\)"
     s = _STRAY_LATEX_LINEBREAK.sub(" ", s)
     # \begin{equation}/\end{align}-style environment markers are pure markup the frontend renderer has no
     # concept of — strip them (keeping any content), including the already-wrapped form "\(\begin{equation}\)"

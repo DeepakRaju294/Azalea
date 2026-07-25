@@ -297,10 +297,20 @@ def _norm_txt(s: str) -> str:
 _WORK_LABEL_RE = re.compile(
     r"^\s*(?:decision|required|aggregated[ _]supporting|aggregated|supporting|internal)\s*:\s*", re.I)
 _EMPTY_WORK = {"", "-", "—", "–", "*", "•", "…", "..."}
+# Raw-state leak guard: a formatter (esp. an LLM handed the step state) sometimes serializes the whole state
+# dict as Work bullets, including fields not yet computed ("integrand = none") and internal bookkeeping
+# ("complete = False"). Those are never learner-facing. Drop a bullet that is EXACTLY an unset field
+# ("<name> = none/null/None") or an internal completion flag ("complete = True/False"). A real value bullet
+# like "work = 1.0" or "integrand = 3t^2" is kept — only none-valued and the `complete` flag are stripped.
+_STATE_NOISE_RE = re.compile(r"^\s*(?:[A-Za-z_]\w*\s*=\s*(?:none|null)|complete\s*=\s*(?:true|false))\s*$", re.I)
 
 
 def _strip_work_label(line: str) -> str:
     return _WORK_LABEL_RE.sub("", str(line)).strip()
+
+
+def _is_state_noise(line: str) -> bool:
+    return bool(_STATE_NOISE_RE.match(str(line)))
 
 
 def _clean_work(card: dict[str, Any], fallback: str) -> tuple[list[str], Optional[list]]:
@@ -315,7 +325,8 @@ def _clean_work(card: dict[str, Any], fallback: str) -> tuple[list[str], Optiona
     code_lines = card.get("code_lines") if isinstance(card.get("code_lines"), list) else None
     if code_lines is not None:
         return [_strip_work_label(w) for w in raw], code_lines
-    cleaned = [s for w in raw if (s := _strip_work_label(w)) and s not in _EMPTY_WORK]
+    cleaned = [s for w in raw
+               if (s := _strip_work_label(w)) and s not in _EMPTY_WORK and not _is_state_noise(s)]
     if not cleaned and fallback:
         cleaned = [fallback.strip()]
     return cleaned, None
