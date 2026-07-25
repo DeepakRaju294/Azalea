@@ -1,10 +1,13 @@
 # Retrieval-Grounded Example Spec
 
-> **Status:** Draft v0.3 — revised against a SECOND external review (15 items + 4 required Phase-1-blocking
-> additions), itself following the v0.2 review (31 issues). Phase 0 (offline reproduction core) is IMPLEMENTED
-> and merged; Phase 0 experimentation continues. **Phase 1 is BLOCKED** until the §21 pre-Phase-1 checklist —
-> now including the four v0.3 blockers (typed payloads, versioned fingerprint spec, three-valued applicability
-> contract, per-kind/per-domain assurance policy) — is signed off. Review issues dispositioned in §22.
+> **Status:** Draft v0.4 — revised against a THIRD external review (10 executability/consistency corrections +
+> sub-gates + doc cleanup), which judged v0.3 "a credible implementation architecture" and Phase 1A "reasonable
+> to begin" after these corrections + adversarial G0 fixture expansion. Phase 0 (offline core + adversarial
+> checker corpus) is IMPLEMENTED and merged. **Phase 1A is unblocked once (a) the §21 checklist is signed off
+> and (b) the live fixture classes are expanded (§17).** v0.2 issues → §22; v0.3 → §23; v0.4 → §24.
+>
+> **"Signed off" means, per item:** an APPROVED typed schema (dataclass shapes frozen), an EXECUTABLE
+> acceptance test for its invariant (from §16), and architectural acceptance recorded here — not merely prose.
 >
 > **Governing principle (from the review, adopted verbatim as law):**
 > *Retrieval supplies candidate semantics; independent verification controls trust — and **verification
@@ -101,7 +104,7 @@ The determinacy gate ROUTES by kind; it never exempts a topic from having an exa
 - **Computational** (formula/algorithm): worked example with a checked final answer + checked trace (§9).
 - **Qualitative/conceptual**: a *sourced illustrative instance* — a concrete canonical scenario, span-grounded
   to a whitelisted source (an `EvidenceCheck`, not a full confirmation). Ships as `source_attributed`. This is a
-  real, attributable example that counts toward Visible/Resolved Coverage — distinct from `guided`.
+  real, attributable example that counts toward Visible and Policy-Satisfied Coverage — distinct from `guided`.
 - **Non-exampleable / unsafe / unsupported-kind**: excluded from `eligible_desired` with a categorized reason;
   gets `guided` and a queue item, never a fabricated example.
 
@@ -196,9 +199,14 @@ class SourceRef:
 
 # --- typed candidate payloads (v0.3 review issue 1 — the thing being verified is now typed, not Mapping[str,Any]) ---
 @dataclass(frozen=True)
-class Predicate:                        # a structured applicability condition (issue 9)
-    name: str                           # e.g. "velocity_perpendicular_to_field", "classical_regime"
-    expected: bool
+class Predicate:                        # a structured applicability condition — a restricted AST (v0.4 issue 4)
+    operator: Literal["eq", "neq", "lt", "lte", "gt", "gte", "in", "approximately", "boolean"]
+    subject: str                        # "temperature", "speed_over_c", "n", "angle_deg", "mass", "regime"
+    value: "StructuredValue"            # number / enum member / bool — never free text
+    tolerance: Optional[str] = None
+# Booleans alone can't express speed<<c, n>=1, angle==90, mass!=0, rate_period==compounding_period, or
+# enum regimes (laminar|turbulent). Satisfiability stays three-valued (satisfied|violated|unknown) and
+# deterministic — NO LLM at the applicability boundary (§10).
 
 @dataclass(frozen=True)
 class PublishedInstance:                # kind="published_instance"
@@ -225,44 +233,66 @@ class IllustrativeInstance:             # kind="illustrative_instance"
 CandidatePayload = Union[PublishedInstance, RelationshipArtifact, IllustrativeInstance]
 
 @dataclass(frozen=True)
-class GroundedClaim:                    # issue 6 — qualitative output is claim-structured, not one span
+class GroundedClaim:                    # v0.3 issue 6 + v0.4 issue 7 — durable, auditable span identity
     claim_id: str
     text: str
     supporting_source_id: str
-    supporting_span: str
+    source_snapshot_hash: str           # the EXACT bytes (source_id can change; hash can't)
+    start_offset: int                   # span located by offsets, not a string that may recur
+    end_offset: int
+    extraction_version: str
+    support_kind: Literal["verbatim_support", "direct_entailment", "inference"]   # HOW MUCH inference was needed
     entailment_status: Literal["supported", "unsupported", "ambiguous"]
 
 @dataclass(frozen=True)
-class AnswerComparison:                 # issue 14 — comparison policy travels WITH the answer
+class AnswerComparison:                 # v0.3 issue 14 + v0.4 issue 10 — normalized QUANTITY semantics, not a unit string
     kind: Literal["exact_numeric", "relative_tolerance", "absolute_tolerance", "symbolic_equivalence",
-                  "unordered_set", "interval", "textual_enum", "vector"]
+                  "unordered_set", "interval", "textual_enum", "vector", "complex", "angle_mod_2pi"]
+    quantity_kind: str                  # "temperature_absolute" vs "temperature_difference"; "percent" vs "percentage_points"
+    unit_dimension: str                 # dimensional signature the answer must carry
+    unit_semantics: Literal["absolute", "difference", "ratio", "dimensionless"]
+    allowed_units: tuple[str, ...]      # unit-equivalent acceptable answers (e.g. J, N*m)
+    coordinate_frame: Optional[str]     # vectors/complex — frame the answer is expressed in
     tolerance: Optional[str]            # Decimal-as-str
-    expected_unit: Optional[str]
-    rounding_rule: Optional[str]
+    rounding_rule: Optional[str]        # a REQUIRED rounding rule belongs to answer_semantics identity (§5 fingerprints)
 
 @dataclass(frozen=True)
 class CandidateArtifact:
     artifact_id: str
     concept: ConceptResolution
-    kind: Literal["published_instance", "relationship", "illustrative_instance"]
-    payload: CandidatePayload          # TYPED tagged union, invariants differ per kind
+    payload: CandidatePayload          # TYPED discriminated union; `kind` is DERIVED, not a free field (issue 9)
     fingerprints: "FingerprintSet"     # computed from canonical serialization, NOT a free string (issue 2)
     sources: tuple[SourceRef, ...]
+    @property
+    def kind(self) -> str:             # single source of truth — tag can never disagree with payload
+        return {PublishedInstance: "published_instance", RelationshipArtifact: "relationship",
+                IllustrativeInstance: "illustrative_instance"}[type(self.payload)]
 
-# --- fingerprints (issue 2 — the safety model depends on these; they are versioned + canonical, not free strings) ---
+# --- fingerprints (v0.3 issue 2; v0.4 issues 2,3 — several DISTINCT identities, versioned + canonical) ---
 @dataclass(frozen=True)
 class FingerprintSet:
-    semantic: str            # canonical mathematical/conceptual MEANING (excludes narration, source, formatting)
-    evidence_subject: str    # exact artifact representation a verifier checked (what EvidenceRecord.subject binds to)
-    source_snapshot: str     # exact retrieved evidence bytes (== SourceSnapshot.content_hash lineage)
-    presentation: str        # generated card text + formatting (changes freely without touching the others)
-    hash_version: str        # canonical-serialization + hash algorithm version
-# Canonicalization rules (documented + versioned): normalize whitespace; canonicalize algebraic form so
-# F=m*a and a=F/m share a `semantic` fingerprint under m!=0; normalize symbols by ROLE not source name;
-# canonicalize units to the declared unit_system; ORDER assumptions; source provenance affects `source_snapshot`
-# ONLY, never `semantic`; narration/rounding-policy affect `presentation` ONLY. For a Mode-A instance the
-# `semantic` fingerprint includes canonical inputs + target quantity + assumptions + comparison + expected
-# answer&unit, and EXCLUDES narration (issue 15: semantic, not textual, identity).
+    # relation vs execution-contract are SEPARATE (v0.4 issue 3): F=m*a and a=F/m are the same RELATION but
+    # different EXECUTION CONTRACTS (different output symbol, required inputs, singularities, goal). Cache reuse
+    # and generation key on `execution_contract`, NOT `relation_equivalence`.
+    relation_equivalence: str   # canonical mathematical relation (F=m*a ≡ a=F/m under m!=0)
+    execution_contract: str     # output_symbol + input roles + required knowns + domain constraints + unit_system + orientation
+    # answer identity is split from comparison policy (v0.4 issue 2): a required rounding/sig-fig rule that
+    # changes the correctness CONDITION lives with the answer semantics, NOT presentation.
+    answer_semantics: str       # canonical inputs + target quantity + assumptions + expected answer&unit + REQUIRED rounding/sig-figs
+    comparison_policy: str      # verification tolerance / comparison KIND (how closeness is judged)
+    evidence_subject: str       # exact artifact representation a verifier checked (EvidenceRecord binds to this)
+    source_snapshot: str        # exact retrieved evidence bytes (== SourceSnapshot.content_hash lineage)
+    presentation: str           # narration + COSMETIC number formatting only; changes freely, touches nothing above
+    hash_version: str           # canonical-serialization + hash algorithm version
+    @property
+    def semantic(self) -> str:  # the Mode-A instance identity = answer semantics under its execution contract
+        return f"{self.execution_contract}|{self.answer_semantics}"
+# Canonicalization (documented + versioned). PRESERVES identity: whitespace; cosmetic sci-notation formatting;
+# symbol renames (normalized by ROLE); reordering givens; unit-EQUIVALENT restatement under the same unit_system;
+# narration/prose->diagram. CHANGES identity: a different output target (execution_contract); a REQUIRED rounding
+# or significant-figure rule (answer_semantics — 1.047 vs "to 2 dp = 1.05" are NOT the same instance); a changed
+# verification tolerance (comparison_policy); different assumptions/regime (execution_contract). Source provenance
+# affects `source_snapshot` ONLY, never the semantic identities.
 
 # --- evidence vs assurance vs scope (issues 1, 3, 4) ---
 EvidenceCheck = Literal["source_span_match", "source_independence", "dimensional_balance",
@@ -280,8 +310,8 @@ class EvidenceRecord:
 AssuranceLevel = Literal["verified_execution", "verified_reproduction", "corroborated_relationship",
                          "source_attributed", "answer_anchored", "provisional", "guided"]   # renamed, issue 6
 
-# Explicit STRENGTH ORDER (issue 4) — "strongly verified" is not a flat bucket; downstream policy may not
-# treat corroboration and deterministic execution as interchangeable.
+# AUTOMATED strength ordering (v0.3 issue 4). Human review is DELIBERATELY NOT on this axis (v0.4 issue 6) —
+# it is orthogonal, so `if strength >= HUMAN_REVIEWED` can't accidentally flatten the profile.
 class AssuranceStrength(IntEnum):
     GUIDED = 0
     PROVISIONAL = 10
@@ -290,43 +320,46 @@ class AssuranceStrength(IntEnum):
     CORROBORATED = 30
     REPRODUCED_INSTANCE = 40
     EXECUTION_VERIFIED = 50
-    HUMAN_REVIEWED = 60
 
 @dataclass(frozen=True)
-class AssuranceProfile:                 # issue 5 — assurance is MULTI-DIMENSIONAL, not one linear axis
-    semantic_basis: Literal["single_source", "corroborated_sources", "reviewed_relationship"]
+class AssuranceProfile:                 # v0.3 issue 5 + v0.4 issue 6 — automated strength and review are ORTHOGONAL
+    automated_strength: AssuranceStrength
     computational_check: Literal["none", "endpoint", "reproduction", "deterministic_execution"]
-    pedagogical_review: bool
-    source_review: bool
-# A human-reviewed-but-non-executable relationship (pedagogical_review=True, computational_check="none") must
-# NOT silently equal an execution-verified one; policies read the profile, not just the headline level.
+    semantic_basis: Literal["single_source", "corroborated_sources", "reviewed_relationship"]
+    review_status: Literal["unreviewed", "approved", "corrected", "rejected"]
+    review_scope: Literal["instance", "relationship", "template", "none"]
+# required_threshold() reads BOTH dimensions, e.g. "automated_strength >= EXECUTION_VERIFIED OR (review_status
+# == approved AND review_scope covers this artifact)". A reviewed-but-non-executable relationship therefore
+# does NOT satisfy an execution-required high-risk threshold (§11).
 
 @dataclass(frozen=True)
 class AssuranceDecision:
     level: AssuranceLevel
-    strength: AssuranceStrength
-    profile: AssuranceProfile
+    profile: AssuranceProfile           # carries automated_strength + orthogonal review dims
     subject_fingerprint: str            # == the EvidenceRecords' subject_fingerprint
     reusable_scope: Literal["instance", "relationship", "template", "none"]   # issue 1/19
     policy_version: str
     verification_dependencies: Mapping[str, str]   # issue 8 — per-component versions for precise invalidation
     evidence_ids: tuple[str, ...]
 
-# --- delivery (issue 1 invariant, now an ASSERTION at every boundary — review strong-point 1) ---
+# --- delivery (v0.3 issue 1 invariant; v0.4 issue 1 — inspect ACTUAL evidence records, not profile labels) ---
 @dataclass(frozen=True)
 class DeliveredExample:
     fingerprints: FingerprintSet
     assurance: AssuranceDecision
     source_refs: tuple[SourceRef, ...]
     card_payload: Mapping[str, Any]
-def assert_delivery_scope(d: DeliveredExample) -> None:
-    """MUST be called at every delivery boundary (not just documented)."""
+def assert_delivery_scope(d: DeliveredExample, evidence_by_id: Mapping[str, "EvidenceRecord"]) -> None:
+    """MUST be called at every delivery boundary. The exception to the fingerprint identity is authorized by a
+    REAL deterministic_execution EvidenceRecord whose subject is THIS delivered instance — never by profile
+    metadata alone (a stale or relationship-level execution record must not satisfy it)."""
     if d.fingerprints.evidence_subject == d.assurance.subject_fingerprint:
         return
-    # the only legitimate divergence: a reusable relationship/template that deterministically produced this
-    # NEW instance AND re-checked it (deterministic_execution over the new inputs, §9).
     assert d.assurance.reusable_scope in ("relationship", "template"), "evidence/subject fingerprint mismatch"
-    assert d.assurance.profile.computational_check == "deterministic_execution", "new instance not re-executed"
+    records = [evidence_by_id[eid] for eid in d.assurance.evidence_ids if eid in evidence_by_id]
+    assert any(r.check == "deterministic_execution" and r.status == "confirm"
+               and r.subject_fingerprint == d.fingerprints.semantic for r in records), \
+        "no deterministic_execution evidence binds to THIS delivered instance"
 
 ResolutionOutcome = Union["DeliveredExample", "ProvisionalExample", "GuidedFallback"]
 
@@ -485,19 +518,33 @@ endpoint. A trace that fails is repaired or the example is downgraded — never 
   cards → regenerate or mark corrected → invalidate descendants → re-audit the source family`. Learners who saw
   a revoked example are identifiable for remediation.
 
-## 11. Assurance levels & shipping policy (issues 4, 7, 9, 14)
+## 11. Assurance levels & shipping policy (issues 4, 5, 7, 8, 9, 14)
 
-- **Ship as an example** iff level ∈ {`verified_execution`, `verified_reproduction`, `corroborated_relationship`,
-  `source_attributed`, `answer_anchored`, `provisional`}. All count as `delivered`. Strength is ordered
-  (`AssuranceStrength`, §5) — downstream policy reads the ordering + `AssuranceProfile`, never a flat
-  "strongly verified" bucket (issue 4).
+- **Relationship assurance ≠ delivered-instance assurance (v0.4 issue 8).** `corroborated_relationship` is a
+  CATALOG-level assurance — it authorizes deterministic GENERATION, it is provenance, NOT a learner example's
+  assurance. A delivered COMPUTATIONAL instance must earn its OWN level: `verified_execution` (new inputs
+  executed, the normal Mode-B outcome), `verified_reproduction` (Mode A), `answer_anchored`, or `provisional`.
+  A relationship's assurance never silently becomes the card's assurance without executing the new instance.
+- **Learner-example shipping levels** are therefore {`verified_execution`, `verified_reproduction`,
+  `source_attributed` (qualitative), `answer_anchored`*, `provisional`}. `corroborated_relationship` is a
+  catalog state, not a learner-example state. Strength is ordered (`AssuranceStrength`, §5) + read alongside
+  the orthogonal review dims — never a flat "strongly verified" bucket (issues 4, 6).
+- **`answer_anchored` is an INTERNAL result, not a durable learner state (v0.4 issue 5).** It ships to a
+  learner ONLY when a rollout policy explicitly permits below-threshold content, and when it does it is
+  represented as **`provisional` carrying endpoint evidence** (badged under-review, enqueued, TTL) — not a
+  separate permanent quasi-verified state. This prevents Visible Coverage being inflated by weak endpoint
+  agreement while Policy-Satisfied Coverage stays honest. (*shown above as a level for evidence-derivation
+  clarity; at the shipping boundary it materializes as provisional-with-endpoint-evidence.)
 - **Shipping threshold is per KIND and per DOMAIN RISK (issue 14 + required addition #4).** The minimum
   assurance to ship is `required_threshold(kind, domain_risk)`, not one universal bar:
 
+  Threshold reads BOTH the ordered `automated_strength` AND the orthogonal review dims (issue 6): "meets X" =
+  `automated_strength ≥ X` **OR** (`review_status == approved` AND `review_scope` covers this artifact).
+
   | kind / risk | ordinary educational | high-risk domain (medical, safety, legal, finance-advice) |
   |---|---|---|
-  | computational | ≥ CORROBORATED | ≥ EXECUTION_VERIFIED or HUMAN_REVIEWED |
-  | qualitative | ≥ SOURCE_ATTRIBUTED (all material claims grounded, §9/issue 6) | ≥ HUMAN_REVIEWED |
+  | computational | automated_strength ≥ REPRODUCED_INSTANCE, or approved review | automated_strength ≥ EXECUTION_VERIFIED, or approved review of instance scope |
+  | qualitative | ≥ SOURCE_ATTRIBUTED (all material claims grounded, §9/issue 6), or approved review | approved review required |
 
   **Policy-Satisfied Coverage** = `|artifacts meeting required_threshold(kind,risk)| / eligible_desired` —
   this replaces a single universal "resolved" bar so a `source_attributed` qualitative example can satisfy
@@ -547,7 +594,7 @@ policy (rewrites A10; A14/A15 test the two policy outcomes).
 ## 13. Decision trace & telemetry (issue 17)
 
 Every routing hop, check status, assurance derivation, and failure class is persisted via
-`record_lesson_decision` and surfaced by `explain_path.py`. Headline metrics: the three coverage numbers +
+`record_lesson_decision` and surfaced by `explain_path.py`. Headline metrics: the three coverage metrics (Visible, Policy-Satisfied, Verified) + the Provisional Exposure metric +
 Provisional Exposure (§1.5); per-check confirm/refute/indecisive/unsupported counts; per-escalation-state
 distribution; pipeline/cache hit rates; **provisional aging** (median time-to-promotion, correction rate,
 expired-provisional count, learner exposures before correction); audited soundness violations (target 0).
@@ -572,13 +619,18 @@ expired-provisional count, learner exposures before correction); audited soundne
   gates**, so V2 complexity never blocks useful V1 learning; each is an **async or sampled** observer over
   recorded/production misses, strict time+cost budgets + cancellation, NEVER a synchronous per-miss fan-out;
   shadow overhead measured independently of live latency:
-  - **1A** fixture-fed V1 shadow, instance scope only (the only thing G0 authorizes).
-  - **1B** immutable source snapshots + secured retrieval (SSRF/injection/sanitization, §6).
-  - **1C** qualitative source-span / claim-grounding path.
-  - **1D** relationship transcription + AST equivalence (V2).
-  - **1E** catalog candidate storage + three-valued applicability lookup.
-  - **1F** sampled PRODUCTION shadow (after 1A–1E prove out on recorded misses).
-  **Gate G1 (issue 31):** a written review protocol BEFORE launch — sample size, stratified selection,
+  Each sub-phase has its OWN named gate (v0.4 rollout feedback) so rollback + ownership are clear:
+  - **1A** fixture-fed V1 shadow, instance scope only (the only thing G0 authorizes). **G1A:** evidence
+    binding + assurance derivation correct on fixtures; `assert_delivery_scope` passes with real records.
+  - **1B** immutable source snapshots + secured retrieval. **G1B:** retrieval security + snapshot audit pass.
+  - **1C** qualitative source-span / claim-grounding path. **G1C:** claim grounding meets a precision target.
+  - **1D** relationship transcription + AST equivalence (V2). **G1D:** ZERO false-equivalence on adversarial
+    fixtures.
+  - **1E** catalog candidate storage + three-valued applicability lookup. **G1E:** ZERO permissive-`unknown`
+    cache hits.
+  - **1F** sampled PRODUCTION shadow (after 1A–1E). **G1F:** meets cost + precision + audit thresholds.
+  **Gate G1 (issue 31 — the umbrella audit protocol across the sub-gates):** a written review protocol BEFORE
+  launch — sample size, stratified selection,
   reviewer qualifications, severity classes, confidence bounds, disagreement handling. Oversample
   `answer_anchored`-only, unit-`unsupported`, cross-source, low-confidence concept resolutions, high-impact
   domains, provisional candidates. Pass = acceptable retrieval precision, useful V1/Mode-B + V2 confirm rates,
@@ -587,10 +639,10 @@ expired-provisional count, learner exposures before correction); audited soundne
   (§11/issue 9) shipped; review queue + offline promotion live. Per-path latency budgets enforced (issue 26):
   distinct budgets for V1-cached, V1-network, V2-cached, V2-network+transcription, qualitative-illustrative;
   with fetch concurrency, cancel-after-confirmation, max-sources, model timeout, retry, circuit breaker.
-  **Gate G2:** more verified examples, ZERO integrity violations (audited), Verified+Resolved Coverage up vs.
+  **Gate G2:** more verified examples, ZERO integrity violations (audited), Policy-Satisfied Coverage up vs.
   baseline, Provisional Exposure bounded, latency within budget.
 - **Phase 3 — completeness convergence.** Operate the queue; grow source families; let the cache absorb the
-  steady state. **Gate G3 (spec DONE):** Verified+Resolved Coverage ≥ target, Provisional Exposure small and
+  steady state. **Gate G3 (spec DONE):** Policy-Satisfied Coverage ≥ target, Provisional Exposure small and
   strictly decreasing, `guided` rate near zero, every remaining gap an explicit queue item.
 
 ## 15. Minimum vertical slices (deliberately separate — issues 1, 3, 15)
@@ -659,6 +711,18 @@ Keeping the scopes separate prevents the largest over-certification bug.
 | A32 | qualitative topic has authoritative canonical instance | resolve | sourced illustrative ships; counted apart from guided |
 | A33 | retrieval times out | resolve | infrastructure failure, not semantic refutation |
 | A34 | concurrent writes, different assurance | cache | higher valid assurance preserved; evidence merged (CAS) |
+| A35 | payload type disagrees with a supplied kind | construct | derived `kind` is authoritative; no way to disagree (issue 9) |
+| A36 | same equation, different output symbol | fingerprint | same relation_equivalence, DIFFERENT execution_contract (issue 3) |
+| A37 | required rounding rule changes correctness condition | fingerprint | answer_semantics + comparison identity changes (issue 2) |
+| A38 | applicability numeric constraint `unknown` | cache | MISS, never a hit (issue 4/9) |
+| A39 | profile says execution but no matching execution EvidenceRecord | deliver | `assert_delivery_scope` fails (issue 1) |
+| A40 | execution evidence is for an OLD generated instance | deliver | cannot authorize the new instance (subject fingerprint mismatch) |
+| A41 | qualitative claim span from a changed source snapshot | audit | old evidence still auditable; new claim needs new evidence (issue 7) |
+| A42 | human-reviewed instance, no computational check, high-risk domain | policy | cannot satisfy execution-required threshold (issue 6) |
+| A43 | `answer_anchored` below computational threshold | resolve | explicit below-threshold policy → provisional-with-endpoint-evidence (issue 5) |
+| A44 | corroborated relationship → deterministically checked new instance | generate | card gets `verified_execution`, not the relationship's level (issue 8) |
+| A45 | same formula, different unit system | cache | correct conversion or MISS (execution_contract differs) |
+| A46 | predicate `speed << c` cannot be established | applicability | `unknown` → no reuse (issue 4) |
 
 ## 17. Named fixtures — CLASSES not just examples (issue 30)
 
@@ -714,11 +778,17 @@ security. 8. Human review async state machine. 9. Answer-comparison policies. 10
 
 *v0.3 REQUIRED additions (the four hard Phase-1 blockers — drafted in §5/§8/§10/§11, tracked for sign-off):*
 **11. Typed candidate payloads** (`PublishedInstance|RelationshipArtifact|IllustrativeInstance`, no
-`Mapping[str,Any]`). **12. Versioned canonical fingerprint spec** (`FingerprintSet` — semantic/evidence_subject/
-source_snapshot/presentation + documented canonicalization + hash version). **13. Structured three-valued
-applicability contract** (`Predicate` satisfiability, `unknown`=miss, never an LLM boundary judgment). **14.
-Assurance policy per example KIND and DOMAIN RISK** (`required_threshold(kind,risk)`, `AssuranceStrength`
-ordering, `AssuranceProfile` — human review not on one linear axis).
+`Mapping[str,Any]`). **12. Versioned canonical fingerprint spec** (`FingerprintSet` + documented
+canonicalization + hash version). **13. Structured three-valued applicability contract** (`Predicate`
+satisfiability, `unknown`=miss, never an LLM boundary judgment). **14. Assurance policy per example KIND and
+DOMAIN RISK** (`required_threshold(kind,risk)`, `AssuranceStrength` ordering, `AssuranceProfile`).
+
+*v0.4 executability tightenings (fold into the above blockers' sign-off; §24):* evidence-inspecting
+`assert_delivery_scope`; relation-equivalence vs execution-contract fingerprints; predicate AST; orthogonal
+review dims (no `HUMAN_REVIEWED` on the strength axis); `corroborated_relationship` = catalog provenance, not
+card assurance; `answer_anchored` ships only as provisional-with-endpoint-evidence; enriched `GroundedClaim`
+and `AnswerComparison`; derived `kind`. Each blocker is "signed off" only with a frozen schema + an executable
+§16 test (A35–A46 cover the v0.4 invariants) + recorded acceptance.
 
 ## 22. Review disposition (external review issues 1–31)
 
@@ -783,4 +853,23 @@ ordering, `AssuranceProfile` — human review not on one linear axis).
 | REQUIRED three-valued applicability | ADOPTED | §10 |
 | REQUIRED per-kind/domain assurance | ADOPTED | §11 |
 | delivery invariant → executable assertion | ADOPTED — assert_delivery_scope | §5 |
+
+## 24. Third-review disposition (v0.4 — executability & consistency, items 1–10 + rollout + docs)
+
+| Item | Disposition | Section |
+|---|---|---|
+| 1 assert_delivery_scope inspects labels not records | ADOPTED — inspects real deterministic_execution EvidenceRecords bound to THIS instance | §5 |
+| 2 fingerprint/rounding contradiction | ADOPTED — answer_semantics vs comparison_policy vs presentation split | §5 |
+| 3 relation-equiv vs execution-contract | ADOPTED — separate fingerprints; cache/gen key on execution_contract | §5,§10 |
+| 4 Predicate too narrow | ADOPTED — restricted predicate AST (operator/subject/value/tolerance) | §5,§10 |
+| 5 policy/shipping misalignment | ADOPTED — answer_anchored internal-only; ships as provisional-with-endpoint-evidence | §11 |
+| 6 HUMAN_REVIEWED in linear enum | ADOPTED — removed; review orthogonal (automated_strength + review_status/scope) | §5,§11 |
+| 7 claim span identity weak | ADOPTED — snapshot hash + offsets + extraction_version + support_kind | §5 |
+| 8 relationship vs instance assurance | ADOPTED — corroborated_relationship is catalog provenance, not card assurance | §8,§11,§15 |
+| 9 tag/payload can disagree | ADOPTED — kind DERIVED from payload type | §5 |
+| 10 AnswerComparison lacks quantity semantics | ADOPTED — quantity_kind/unit_dimension/unit_semantics/frame/allowed_units | §5 |
+| rollout: named sub-gates | ADOPTED — G1A–G1F | §14 |
+| A35–A46 | ADOPTED | §16 |
+| doc: coverage-metric naming | ADOPTED — Policy-Satisfied Coverage throughout; metrics named precisely | §1.5,§1.7,§13,§14 |
+| doc: define "sign-off" | ADOPTED — schema + executable test + recorded acceptance | status |
 ```
