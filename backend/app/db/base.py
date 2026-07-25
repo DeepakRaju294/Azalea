@@ -16,3 +16,9 @@ from app.models.practice_attempt import PracticeAttempt
 from app.models.study_session import StudySession
 from app.models.quick_practice import QuickPracticeAttempt, QuickPracticeQuestion, QuickPracticeSession
 from app.models.preferences import UserPreference, StudyPathGeneration
+from app.models.runtime_binding import (  # Milestone C — grounded runtime binding
+    DeliveryEvidenceRecord,
+    EvidencePackageRecord,
+    PreparedRuntimeBinding,
+    SiblingExerciseClaim,
+)
