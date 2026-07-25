@@ -206,11 +206,17 @@ CARD_CHARTER_DEFAULTS: dict[str, CardCharter] = {
     "components_terms": CardCharter("*", "components_terms", "definition",
         job="Define the terms and notation this topic introduces.", expresses=("DEFINE_GLOBAL", "STRUCTURE"),
         scope_note="Define a term ONCE across the path; if an earlier card already defined it, reference it "
-                   "instead of repeating the definition."),
+                   "instead of repeating the definition. Describe each term by what it MEANS and its ROLE in "
+                   "this topic (the object it names and why it appears here) — NOT as a program variable, "
+                   "array, list, mesh, index, flag, or data structure, and not as an implementation/"
+                   "computational detail, UNLESS this topic is specifically about writing code."),
     "definition": CardCharter("*", "definition", "definition",           # alias: some blueprints key it "definition"
         job="Define the terms and notation this topic introduces.", expresses=("DEFINE_GLOBAL", "STRUCTURE"),
         scope_note="Define a term ONCE across the path; if an earlier card already defined it, reference it "
-                   "instead of repeating the definition."),
+                   "instead of repeating the definition. Describe each term by what it MEANS and its ROLE in "
+                   "this topic (the object it names and why it appears here) — NOT as a program variable, "
+                   "array, list, mesh, index, flag, or data structure, and not as an implementation/"
+                   "computational detail, UNLESS this topic is specifically about writing code."),
     "formula_breakdown": CardCharter("*", "formula_breakdown", "method_process",
         job="The formula/method and why it works.", expresses=("PROCEDURE", "DERIVE", "PRECONDITION")),
     "method_process": CardCharter("*", "method_process", "method_process",
