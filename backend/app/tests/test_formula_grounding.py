@@ -52,8 +52,8 @@ class FormulaGrounding(unittest.TestCase):
         self.assertTrue(_ground_formula_card(cards, _T("Stokes' Theorem")))
         fc = next(c for c in cards if c["blueprint_key"] == "formula_breakdown")
         joined = " ".join(str(p) for p in fc["points"])
-        self.assertIn(r"\int_{C} F \cdot dr = \int_{S} (\nabla \times F) \cdot dS", joined)
-        self.assertNotIn("int_{S} (", joined.replace("\\int_{S}", ""))   # broken free-prose form gone
+        self.assertIn(r"\oint_{C} F \cdot dr = \iint_{S} (\nabla \times F) \cdot dS", joined)
+        self.assertNotIn("int_{S} (", joined.replace("\\iint_{S}", ""))   # broken free-prose form gone
         self.assertTrue(fc.get("_formula_grounded"))
 
     def test_stokes_canonical_formula_does_not_change_trace_narration_slotting(self):
