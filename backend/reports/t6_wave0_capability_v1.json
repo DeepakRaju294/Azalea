@@ -1,0 +1,1388 @@
+{
+  "blocked_rows": [
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "multi_output_dependency_shape",
+        "requires_single_output"
+      ],
+      "family": "physics",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "ohms_law",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Pow"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_3",
+        "unsupported AST node: Call"
+      ],
+      "family": "physics",
+      "required_calls": [
+        "radians",
+        "sin"
+      ],
+      "required_wave": 3,
+      "slug": "projectile_range",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "custom_instance_predicate",
+        "custom_interpretation_callback"
+      ],
+      "family": "physics",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "reynolds_number",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "custom_instance_predicate"
+      ],
+      "family": "physics",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "laminar_pressure_drop",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "custom_instance_predicate"
+      ],
+      "family": "physics",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "turbulent_kinetic_energy",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "multi_output_dependency_shape",
+        "requires_single_output"
+      ],
+      "family": "finance",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "simple_interest",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Pow"
+      ],
+      "execution_shape_blockers": [
+        "power exponent must be a constant integer"
+      ],
+      "family": "finance",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "compound_interest",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Name",
+        "Pow"
+      ],
+      "execution_shape_blockers": [
+        "power exponent must be a constant integer"
+      ],
+      "family": "finance",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "present_value",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Pow"
+      ],
+      "execution_shape_blockers": [
+        "power exponent must be a constant integer"
+      ],
+      "family": "finance",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "future_value",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Call",
+        "Constant",
+        "Expression",
+        "Load",
+        "Name",
+        "Pow"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_2",
+        "unsupported AST node: Call"
+      ],
+      "family": "geometry",
+      "required_calls": [
+        "sqrt"
+      ],
+      "required_wave": 2,
+      "slug": "pythagorean",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Call",
+        "Constant",
+        "Expression",
+        "Load",
+        "Name",
+        "Pow",
+        "Sub"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_2",
+        "unsupported AST node: Call"
+      ],
+      "family": "geometry",
+      "required_calls": [
+        "sqrt"
+      ],
+      "required_wave": 2,
+      "slug": "coordinate_distance",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "multi_output_dependency_shape",
+        "requires_single_output"
+      ],
+      "family": "geometry",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "midpoint",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Call",
+        "Expression",
+        "Load",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "family": "discrete",
+      "required_calls": [
+        "factorial"
+      ],
+      "required_wave": null,
+      "slug": "factorial",
+      "unsupported_constructs": [
+        "unplanned_call:factorial"
+      ]
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Div",
+        "Expression",
+        "Load",
+        "Name",
+        "Sub"
+      ],
+      "execution_shape_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "family": "discrete",
+      "required_calls": [
+        "factorial"
+      ],
+      "required_wave": null,
+      "slug": "permutations",
+      "unsupported_constructs": [
+        "unplanned_call:factorial"
+      ]
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Sub"
+      ],
+      "execution_shape_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "family": "discrete",
+      "required_calls": [
+        "factorial"
+      ],
+      "required_wave": null,
+      "slug": "combinations",
+      "unsupported_constructs": [
+        "unplanned_call:factorial"
+      ]
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Call",
+        "Constant",
+        "Expression",
+        "Load",
+        "Name",
+        "Pow"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_2",
+        "unsupported AST node: Call"
+      ],
+      "family": "linear_algebra",
+      "required_calls": [
+        "sqrt"
+      ],
+      "required_wave": 2,
+      "slug": "vector_magnitude",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "GeneratorExp",
+        "Load",
+        "Name",
+        "Pow",
+        "Store",
+        "Sub",
+        "comprehension"
+      ],
+      "execution_shape_blockers": [
+        "dataset_input",
+        "multi_output_dependency_shape",
+        "requires_single_output",
+        "requires_wave_2"
+      ],
+      "family": "statistics",
+      "required_calls": [
+        "sqrt",
+        "sum"
+      ],
+      "required_wave": 2,
+      "slug": "descriptive_stats",
+      "unsupported_constructs": [
+        "unsupported_ast_node:GeneratorExp",
+        "unsupported_ast_node:Store",
+        "unsupported_ast_node:comprehension"
+      ]
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Expression",
+        "Load",
+        "Name",
+        "Sub"
+      ],
+      "execution_shape_blockers": [
+        "dataset_input",
+        "multi_output_dependency_shape",
+        "requires_single_output",
+        "requires_wave_1"
+      ],
+      "family": "statistics",
+      "required_calls": [
+        "max",
+        "median",
+        "min"
+      ],
+      "required_wave": 1,
+      "slug": "median_range",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "GeneratorExp",
+        "Load",
+        "Name",
+        "Pow",
+        "Store",
+        "Sub",
+        "comprehension"
+      ],
+      "execution_shape_blockers": [
+        "custom_instance_predicate",
+        "dataset_input",
+        "multi_output_dependency_shape",
+        "requires_single_output",
+        "requires_wave_2"
+      ],
+      "family": "statistics",
+      "required_calls": [
+        "max",
+        "sqrt",
+        "sum"
+      ],
+      "required_wave": 2,
+      "slug": "standardize_dataset",
+      "unsupported_constructs": [
+        "unsupported_ast_node:GeneratorExp",
+        "unsupported_ast_node:Store",
+        "unsupported_ast_node:comprehension"
+      ]
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "GeneratorExp",
+        "Load",
+        "Mult",
+        "Name",
+        "Pow",
+        "Store",
+        "Sub",
+        "comprehension"
+      ],
+      "execution_shape_blockers": [
+        "dataset_input",
+        "multi_output_dependency_shape",
+        "requires_single_output",
+        "requires_wave_2"
+      ],
+      "family": "statistics",
+      "required_calls": [
+        "sqrt",
+        "sum"
+      ],
+      "required_wave": 2,
+      "slug": "coefficient_of_variation",
+      "unsupported_constructs": [
+        "unsupported_ast_node:GeneratorExp",
+        "unsupported_ast_node:Store",
+        "unsupported_ast_node:comprehension"
+      ]
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Div",
+        "Expression",
+        "GeneratorExp",
+        "Load",
+        "Name",
+        "Store",
+        "Sub",
+        "comprehension"
+      ],
+      "execution_shape_blockers": [
+        "dataset_input",
+        "multi_output_dependency_shape",
+        "requires_single_output",
+        "requires_wave_1"
+      ],
+      "family": "statistics",
+      "required_calls": [
+        "abs",
+        "sum"
+      ],
+      "required_wave": 1,
+      "slug": "mean_absolute_deviation",
+      "unsupported_constructs": [
+        "unplanned_call:abs",
+        "unsupported_ast_node:GeneratorExp",
+        "unsupported_ast_node:Store",
+        "unsupported_ast_node:comprehension"
+      ]
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Div",
+        "Expression",
+        "GeneratorExp",
+        "Load",
+        "Mult",
+        "Name",
+        "Store",
+        "Tuple",
+        "comprehension"
+      ],
+      "execution_shape_blockers": [
+        "dataset_input",
+        "paired_dataset_input",
+        "requires_wave_1"
+      ],
+      "family": "statistics",
+      "required_calls": [
+        "sum",
+        "zip"
+      ],
+      "required_wave": 1,
+      "slug": "weighted_mean",
+      "unsupported_constructs": [
+        "unsupported_ast_node:GeneratorExp",
+        "unsupported_ast_node:Store",
+        "unsupported_ast_node:Tuple",
+        "unsupported_ast_node:comprehension"
+      ]
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Div",
+        "Expression",
+        "GeneratorExp",
+        "Load",
+        "Mult",
+        "Name",
+        "Store",
+        "Sub",
+        "Tuple",
+        "comprehension"
+      ],
+      "execution_shape_blockers": [
+        "dataset_input",
+        "multi_output_dependency_shape",
+        "paired_dataset_input",
+        "requires_single_output",
+        "requires_wave_1"
+      ],
+      "family": "statistics",
+      "required_calls": [
+        "sum",
+        "zip"
+      ],
+      "required_wave": 1,
+      "slug": "covariance",
+      "unsupported_constructs": [
+        "unsupported_ast_node:GeneratorExp",
+        "unsupported_ast_node:Store",
+        "unsupported_ast_node:Tuple",
+        "unsupported_ast_node:comprehension"
+      ]
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "unit_capability:affine unit is outside Wave-0: deg C"
+      ],
+      "family": "physics",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "celsius_to_fahrenheit",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Constant",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Pow",
+        "Sub"
+      ],
+      "execution_shape_blockers": [
+        "power exponent must be a constant integer"
+      ],
+      "family": "algebra",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "geometric_sequence_term",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_2",
+        "unsupported AST node: Call"
+      ],
+      "family": "physics",
+      "required_calls": [
+        "sqrt"
+      ],
+      "required_wave": 2,
+      "slug": "pendulum_period",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Constant",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Sub"
+      ],
+      "execution_shape_blockers": [
+        "custom_instance_predicate",
+        "multi_output_dependency_shape",
+        "requires_single_output"
+      ],
+      "family": "statistics",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "law_of_total_probability",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Sub"
+      ],
+      "execution_shape_blockers": [
+        "multi_output_dependency_shape",
+        "requires_single_output"
+      ],
+      "family": "statistics",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "bayes_theorem",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Div",
+        "Expression",
+        "Load",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "multi_output_dependency_shape",
+        "requires_single_output"
+      ],
+      "family": "statistics",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "conditional_probability",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Constant",
+        "Expression",
+        "Load",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "unit_capability:affine unit is outside Wave-0: deg C"
+      ],
+      "family": "physics",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "kelvin_conversion",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Sub"
+      ],
+      "execution_shape_blockers": [
+        "unit_capability:affine unit is outside Wave-0: deg F"
+      ],
+      "family": "physics",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "fahrenheit_to_celsius",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_2",
+        "unsupported AST node: Call"
+      ],
+      "family": "physics",
+      "required_calls": [
+        "sqrt"
+      ],
+      "required_wave": 2,
+      "slug": "spring_period",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "GeneratorExp",
+        "Load",
+        "Name",
+        "Pow",
+        "Store",
+        "comprehension"
+      ],
+      "execution_shape_blockers": [
+        "dataset_input",
+        "requires_wave_2"
+      ],
+      "family": "statistics",
+      "required_calls": [
+        "sqrt",
+        "sum"
+      ],
+      "required_wave": 2,
+      "slug": "root_mean_square",
+      "unsupported_constructs": [
+        "unsupported_ast_node:GeneratorExp",
+        "unsupported_ast_node:Store",
+        "unsupported_ast_node:comprehension"
+      ]
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Sub"
+      ],
+      "execution_shape_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "family": "statistics",
+      "required_calls": [
+        "abs"
+      ],
+      "required_wave": null,
+      "slug": "percent_error",
+      "unsupported_constructs": [
+        "unplanned_call:abs"
+      ]
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Constant",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_2",
+        "unsupported AST node: Call"
+      ],
+      "family": "physics",
+      "required_calls": [
+        "sqrt"
+      ],
+      "required_wave": 2,
+      "slug": "potential_to_kinetic",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Call",
+        "Constant",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Pow"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_2",
+        "unsupported AST node: Call"
+      ],
+      "family": "calculus",
+      "required_calls": [
+        "sqrt"
+      ],
+      "required_wave": 2,
+      "slug": "gradient_magnitude_xy",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Pow"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_2",
+        "unsupported AST node: Call"
+      ],
+      "family": "calculus",
+      "required_calls": [
+        "sqrt"
+      ],
+      "required_wave": 2,
+      "slug": "directional_derivative_xy",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Sub"
+      ],
+      "execution_shape_blockers": [
+        "multi_output_dependency_shape",
+        "requires_single_output"
+      ],
+      "family": "linear_algebra",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "cross_product_3d",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Pow",
+        "USub",
+        "UnaryOp"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_3",
+        "unsupported AST node: Call"
+      ],
+      "family": "linear_algebra",
+      "required_calls": [
+        "acos",
+        "degrees",
+        "max",
+        "min",
+        "sqrt"
+      ],
+      "required_wave": 3,
+      "slug": "angle_between_vectors",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Pow"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_2",
+        "unsupported AST node: Call"
+      ],
+      "family": "linear_algebra",
+      "required_calls": [
+        "sqrt"
+      ],
+      "required_wave": 2,
+      "slug": "cosine_similarity",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "GeneratorExp",
+        "Load",
+        "Mult",
+        "Name",
+        "Pow",
+        "Store",
+        "Sub",
+        "Tuple",
+        "comprehension"
+      ],
+      "execution_shape_blockers": [
+        "dataset_input",
+        "multi_output_dependency_shape",
+        "paired_dataset_input",
+        "requires_single_output",
+        "requires_wave_2"
+      ],
+      "family": "statistics",
+      "required_calls": [
+        "sqrt",
+        "sum",
+        "zip"
+      ],
+      "required_wave": 2,
+      "slug": "correlation_coefficient",
+      "unsupported_constructs": [
+        "unsupported_ast_node:GeneratorExp",
+        "unsupported_ast_node:Store",
+        "unsupported_ast_node:Tuple",
+        "unsupported_ast_node:comprehension"
+      ]
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name",
+        "Pow",
+        "Sub"
+      ],
+      "execution_shape_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "family": "statistics",
+      "required_calls": [
+        "factorial"
+      ],
+      "required_wave": null,
+      "slug": "binomial_probability",
+      "unsupported_constructs": [
+        "unplanned_call:factorial"
+      ]
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Name",
+        "Pow"
+      ],
+      "execution_shape_blockers": [
+        "power exponent must be a constant integer"
+      ],
+      "family": "finance",
+      "required_calls": [],
+      "required_wave": 0,
+      "slug": "discount_factor",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_3",
+        "unsupported AST node: Call"
+      ],
+      "family": "finance",
+      "required_calls": [
+        "exp"
+      ],
+      "required_wave": 3,
+      "slug": "forward_price",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Constant",
+        "Expression",
+        "Load",
+        "Name",
+        "Sub"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_1",
+        "unsupported AST node: Call"
+      ],
+      "family": "finance",
+      "required_calls": [
+        "max"
+      ],
+      "required_wave": 1,
+      "slug": "option_payoff_call",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Call",
+        "Constant",
+        "Expression",
+        "Load",
+        "Name",
+        "Pow"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_2",
+        "unsupported AST node: Call"
+      ],
+      "family": "physics",
+      "required_calls": [
+        "sqrt"
+      ],
+      "required_wave": 2,
+      "slug": "impedance_magnitude",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "Add",
+        "BinOp",
+        "Call",
+        "Constant",
+        "Div",
+        "Expression",
+        "Load",
+        "Name",
+        "Pow"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_2",
+        "unsupported AST node: Call"
+      ],
+      "family": "physics",
+      "required_calls": [
+        "sqrt"
+      ],
+      "required_wave": 2,
+      "slug": "power_factor",
+      "unsupported_constructs": []
+    },
+    {
+      "ast_nodes": [
+        "BinOp",
+        "Call",
+        "Constant",
+        "Expression",
+        "Load",
+        "Mult",
+        "Name"
+      ],
+      "execution_shape_blockers": [
+        "requires_wave_2",
+        "unsupported AST node: Call"
+      ],
+      "family": "physics",
+      "required_calls": [
+        "sqrt"
+      ],
+      "required_wave": 2,
+      "slug": "three_phase_power",
+      "unsupported_constructs": []
+    }
+  ],
+  "eligible_rows": [
+    "kinetic_energy",
+    "newtons_second_law",
+    "weight_force",
+    "momentum",
+    "work_done",
+    "gravitational_pe",
+    "centripetal_acceleration",
+    "wave_speed",
+    "pressure",
+    "mechanical_power",
+    "spring_pe",
+    "percent_change",
+    "break_even",
+    "profit_margin",
+    "circle_area",
+    "circle_circumference",
+    "rectangle_area",
+    "triangle_area",
+    "sphere_volume",
+    "cylinder_volume",
+    "slope",
+    "trapezoid_area",
+    "parallelogram_area",
+    "cone_volume",
+    "rectangle_perimeter",
+    "molarity",
+    "density",
+    "ideal_gas_pressure",
+    "dilution",
+    "percent_yield",
+    "moles_from_mass",
+    "combined_gas_law",
+    "ph_poh",
+    "percent_composition",
+    "determinant_2x2",
+    "dot_product_3d",
+    "z_score",
+    "distance_rate_time",
+    "average_speed",
+    "arithmetic_sequence_term",
+    "tangent_ratio",
+    "percent_of",
+    "discount_price",
+    "sales_tax_total",
+    "power_from_current",
+    "sector_area",
+    "arc_length",
+    "simple_roi",
+    "probability_simple",
+    "mole_fraction",
+    "ohms_power",
+    "moles_ideal_gas",
+    "frequency_from_period",
+    "boyles_law",
+    "charles_law",
+    "ohms_resistance",
+    "heat_energy",
+    "fluid_pressure",
+    "cube_volume",
+    "cube_surface_area",
+    "hookes_force",
+    "polygon_interior_angle",
+    "polygon_exterior_angle",
+    "efficiency",
+    "unit_price",
+    "impulse",
+    "free_fall_velocity",
+    "free_fall_distance",
+    "sphere_surface_area",
+    "mass_from_density",
+    "percent_increase",
+    "partial_derivative_xy",
+    "curl_2d_vector_field",
+    "divergence_2d_vector_field",
+    "determinant_3x3",
+    "matrix_trace",
+    "net_present_value",
+    "capm_expected_return",
+    "portfolio_return_two_asset",
+    "sharpe_ratio",
+    "series_resistance",
+    "parallel_resistance",
+    "voltage_divider",
+    "current_divider"
+  ],
+  "invalid_rows": [],
+  "policy": {
+    "affine_units": false,
+    "callback_policy": "blocked",
+    "constant_policy": "named_exact_value_with_reviewed_unit",
+    "domain_policy": "explicit_nonzero_constraints_from_division",
+    "max_abs_integer": 1000000000000,
+    "max_ast_depth": 24,
+    "max_ast_nodes": 128,
+    "max_fraction_bits": 4096,
+    "max_power": 12,
+    "nodes": [
+      "Literal",
+      "Variable",
+      "Negate",
+      "Add",
+      "Subtract",
+      "Multiply",
+      "Divide",
+      "IntegerPower"
+    ],
+    "numeric": "Fraction",
+    "numeric_unit_policy_digest": "c94ba514f40e5e9bf804a8d71490c39bb3393cd941ec041a66a302b8ce824aba",
+    "output_policy": "single_output_only",
+    "percentage_input_convention": "legacy_percentage_points",
+    "trace_policy": "legacy_two-stage_projection_must_match",
+    "unit_type": "multiplicative_dimension_vector",
+    "value_types": [
+      "integer",
+      "terminating_decimal",
+      "rational"
+    ],
+    "version": "rational_multiplicative_units_v1"
+  },
+  "schema_version": 1,
+  "summary": {
+    "eligible_execution_shapes": {
+      "Add": 2,
+      "Add+Div": 2,
+      "Add+Div+Mult": 7,
+      "Add+Div+Mult+Sub": 1,
+      "Add+Div+Pow+Sub": 1,
+      "Add+Mult": 3,
+      "Add+Mult+Sub": 3,
+      "Div": 11,
+      "Div+Mult": 11,
+      "Div+Mult+Pow": 6,
+      "Div+Mult+Sub": 5,
+      "Div+Pow": 2,
+      "Div+Sub": 4,
+      "Mult": 17,
+      "Mult+Pow": 5,
+      "Mult+Sub": 1,
+      "Pow": 1,
+      "Pow+Sub": 1,
+      "Sub": 1
+    },
+    "eligible_registered_percent": 63.64,
+    "eligible_registered_rows": 84,
+    "expected_reviewed_runtime_reuse": "exact scalar relationships using the same restricted grammar",
+    "family_representation": {
+      "algebra": {
+        "eligible": 3,
+        "registered": 4
+      },
+      "calculus": {
+        "eligible": 3,
+        "registered": 5
+      },
+      "chemistry": {
+        "eligible": 14,
+        "registered": 14
+      },
+      "discrete": {
+        "eligible": 0,
+        "registered": 3
+      },
+      "finance": {
+        "eligible": 12,
+        "registered": 19
+      },
+      "geometry": {
+        "eligible": 19,
+        "registered": 22
+      },
+      "linear_algebra": {
+        "eligible": 4,
+        "registered": 8
+      },
+      "physics": {
+        "eligible": 27,
+        "registered": 41
+      },
+      "statistics": {
+        "eligible": 2,
+        "registered": 16
+      }
+    },
+    "migration_complexity": {
+      "blocked": "later_wave_or_callback_design",
+      "eligible": "mechanical_compile",
+      "invalid": "authored_row_correction_required"
+    },
+    "registered_rows": 132,
+    "traffic_coverage": {
+      "by_source": {
+        "controlled_router_validation": {
+          "distinct_eligible_slugs": 10,
+          "distinct_slugs": 10,
+          "eligible": 100,
+          "eligible_percent": 100.0,
+          "total": 100
+        },
+        "historical_topic_replay": {
+          "distinct_eligible_slugs": 2,
+          "distinct_slugs": 15,
+          "eligible": 6,
+          "eligible_percent": 4.58,
+          "total": 131
+        }
+      },
+      "comparison_latency_p95_ms": 0.648,
+      "comparison_samples": 231,
+      "distinct_eligible_formula_slugs": 12,
+      "distinct_formula_slugs": 25,
+      "eligible_execution_percent": 45.89,
+      "eligible_formula_executions": 106,
+      "execution_mismatches": 0,
+      "quarantine_required": 0,
+      "source": "C:\\Users\\Deepa\\Azalea\\backend\\logs\\t6_substrate_shadow.jsonl",
+      "status": "available",
+      "substrate_exceptions": 0,
+      "substrate_executions": 106,
+      "total_formula_executions": 231
+    }
+  }
+}

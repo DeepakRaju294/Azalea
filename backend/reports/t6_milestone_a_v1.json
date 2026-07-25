@@ -1,0 +1,256 @@
+{
+  "benefits": [
+    "Eligible authored rows execute without formula_engine._eval.",
+    "Terminating decimals and rational operations are exact until display rounding.",
+    "Multiplicative units and output dimensions are validated before execution.",
+    "Division yields explicit nonzero constraints.",
+    "Canonical expression, policy, and execution-input identities support deterministic replay.",
+    "Execution and teaching-projection drift are reported independently."
+  ],
+  "cutover_demonstration": {
+    "events": [
+      {
+        "alert_required": false,
+        "mismatch_kind": null,
+        "mode": "legacy_primary",
+        "next_status": "shadow_only",
+        "next_status_version": 1,
+        "outcome": "match"
+      },
+      {
+        "alert_required": false,
+        "mismatch_kind": null,
+        "mode": "substrate_primary",
+        "next_status": "shadow_only",
+        "next_status_version": 1,
+        "outcome": "match"
+      },
+      {
+        "alert_required": true,
+        "mismatch_kind": "substrate_exception:TimeoutError",
+        "mode": "substrate_primary",
+        "next_status": "shadow_only",
+        "next_status_version": 1,
+        "outcome": "fallback"
+      },
+      {
+        "alert_required": true,
+        "mismatch_kind": "displayed_result",
+        "mode": "legacy_primary",
+        "next_status": "quarantined",
+        "next_status_version": 2,
+        "outcome": "quarantined"
+      }
+    ],
+    "fixture": "density",
+    "production_routing_connected": false
+  },
+  "decision": "pass",
+  "gates": [
+    {
+      "evidence": "132 registered rows; no duplicate slugs",
+      "gate": "registered_rows_deterministically_classified",
+      "passed": true
+    },
+    {
+      "evidence": "84 eligible registered rows (63.64%)",
+      "gate": "wave0_frozen_from_live_inventory",
+      "passed": true
+    },
+    {
+      "evidence": "84 rows; 2016 candidates",
+      "gate": "wave0_compiles_and_behavior_matches",
+      "passed": true
+    },
+    {
+      "evidence": "48 blocked registered rows retain AST/call/blocker evidence",
+      "gate": "later_waves_have_exact_capability_evidence",
+      "passed": true
+    },
+    {
+      "evidence": "{\"accepted_nonsemantic_drift\": {\"execution\": 0, \"teaching\": 0}, \"blocked\": {\"execution\": 49, \"teaching\": 49}, \"failed\": {\"execution\": 0, \"teaching\": 0}, \"pass\": {\"execution\": 84, \"teaching\": 84}}",
+      "gate": "equivalence_statuses_separate",
+      "passed": true
+    },
+    {
+      "evidence": "legacy-primary, substrate-primary, explicit fallback, and mismatch quarantine exercised",
+      "gate": "offline_staged_cutover_demonstrated",
+      "passed": true
+    },
+    {
+      "evidence": "231 FormulaSpec observations",
+      "gate": "production_execution_volume_coverage_available",
+      "passed": true
+    },
+    {
+      "evidence": "historical total=131; distinct slugs=15",
+      "gate": "historical_workload_cohort_sufficient",
+      "passed": true
+    },
+    {
+      "evidence": "controlled total=100; distinct eligible slugs=10",
+      "gate": "controlled_wave0_cohort_sufficient",
+      "passed": true
+    },
+    {
+      "evidence": "mismatches=0; exceptions=0; quarantine=0; p95_ms=0.648",
+      "gate": "shadow_correctness_and_latency",
+      "passed": true
+    },
+    {
+      "evidence": "one numeric executor; one numeric/unit policy; zero row-specific execution branches; raw cyclomatic diagnostic legacy=4, substrate=29",
+      "gate": "substrate_simplicity_evidence",
+      "passed": true
+    }
+  ],
+  "reviewed_fixture": {
+    "added_executable_semantics": false,
+    "domain_constraint_count": 1,
+    "expression_canonical_digest": "db479b9713d253ce56b8f8baf4294c9140d8096e19f0b971ed82a3d4a36d4646",
+    "relationship_id": "density",
+    "symbols": [
+      "V",
+      "m",
+      "rho"
+    ]
+  },
+  "schema_version": 1,
+  "summary": {
+    "blocked_rows": 48,
+    "candidates_checked": 2016,
+    "complexity": {
+      "legacy": [
+        {
+          "cyclomatic_complexity": 1,
+          "decision_nodes": 0,
+          "file": "backend/app/services/examples/trace_adapters/families/formula_engine.py",
+          "function": "_eval"
+        },
+        {
+          "cyclomatic_complexity": 3,
+          "decision_nodes": 2,
+          "file": "backend/app/services/examples/trace_adapters/families/formula_engine.py",
+          "function": "compute"
+        }
+      ],
+      "manifest": {
+        "baseline_commit": "f98c1a6956fcd5e33300cf5f105d62105c24a45d",
+        "command": "python scripts/report_t6_milestone_a.py",
+        "counting_method": "Per selected core function: 1 + If/For/While/IfExp/Except/comprehension branches, BoolOp extra paths, and Match cases, counted from Python stdlib ast.",
+        "generated_code_excluded": true,
+        "legacy_targets": {
+          "backend/app/services/examples/trace_adapters/families/formula_engine.py": [
+            "_eval",
+            "compute"
+          ]
+        },
+        "simplicity_gate_method": "Count distinct numeric operator executors, numeric/unit policy authorities, untyped-eval paths, and slug/row-specific execution branches. Raw cyclomatic totals are diagnostic because the legacy wrapper delegates hidden complexity to CPython eval.",
+        "substrate_targets": {
+          "backend/app/services/examples/runtime_binding/executor.py": [
+            "evaluate_expression",
+            "execute_descriptor"
+          ]
+        },
+        "tests_excluded": true,
+        "tool": "azalea_ast_cyclomatic_v1"
+      },
+      "schema_version": 1,
+      "substrate": [
+        {
+          "cyclomatic_complexity": 15,
+          "decision_nodes": 14,
+          "file": "backend/app/services/examples/runtime_binding/executor.py",
+          "function": "evaluate_expression"
+        },
+        {
+          "cyclomatic_complexity": 14,
+          "decision_nodes": 13,
+          "file": "backend/app/services/examples/runtime_binding/executor.py",
+          "function": "execute_descriptor"
+        }
+      ],
+      "summary": {
+        "legacy_core_total": 4,
+        "raw_cyclomatic_lower_or_equal": false,
+        "semantic_measurement": {
+          "duplicated_numeric_operator_semantics": false,
+          "legacy_untyped_eval_implementations": 1,
+          "migration_specific_row_branches": 0,
+          "numeric_unit_policy_implementation_count": 1,
+          "numeric_unit_policy_implementations": [
+            "runtime_binding.policy.NUMERIC_UNIT_POLICY"
+          ],
+          "substrate_numeric_operator_implementation_count": 1,
+          "substrate_numeric_operator_implementations": [
+            "runtime_binding.executor.evaluate_expression"
+          ],
+          "substrate_untyped_eval_implementations": 0,
+          "untyped_evaluation_increase": false
+        },
+        "simplicity_gate_pass": true,
+        "substrate_core_total": 29
+      }
+    },
+    "eligible_rows": 84,
+    "equivalence_counts": {
+      "accepted_nonsemantic_drift": {
+        "execution": 0,
+        "teaching": 0
+      },
+      "blocked": {
+        "execution": 49,
+        "teaching": 49
+      },
+      "failed": {
+        "execution": 0,
+        "teaching": 0
+      },
+      "pass": {
+        "execution": 84,
+        "teaching": 84
+      }
+    },
+    "failed_gates": [],
+    "invalid_rows": 0,
+    "registered_rows": 132,
+    "traffic_coverage": {
+      "by_source": {
+        "controlled_router_validation": {
+          "distinct_eligible_slugs": 10,
+          "distinct_slugs": 10,
+          "eligible": 100,
+          "eligible_percent": 100.0,
+          "total": 100
+        },
+        "historical_topic_replay": {
+          "distinct_eligible_slugs": 2,
+          "distinct_slugs": 15,
+          "eligible": 6,
+          "eligible_percent": 4.58,
+          "total": 131
+        }
+      },
+      "comparison_latency_p95_ms": 0.648,
+      "comparison_samples": 231,
+      "distinct_eligible_formula_slugs": 12,
+      "distinct_formula_slugs": 25,
+      "eligible_execution_percent": 45.89,
+      "eligible_formula_executions": 106,
+      "execution_mismatches": 0,
+      "quarantine_required": 0,
+      "source": "C:\\Users\\Deepa\\Azalea\\backend\\logs\\t6_substrate_shadow.jsonl",
+      "status": "available",
+      "substrate_exceptions": 0,
+      "substrate_executions": 106,
+      "total_formula_executions": 231
+    }
+  },
+  "unsupported_boundaries": [
+    "dataset and paired-dataset inputs",
+    "multi-output dependency graphs",
+    "dynamic powers and approximating functions",
+    "arbitrary calls and custom callbacks",
+    "affine temperature units",
+    "vectors, aggregates, and cross-currency conversion"
+  ]
+}

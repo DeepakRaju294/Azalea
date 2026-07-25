@@ -131,6 +131,7 @@ class FormulaSpec:
     dataset: Optional[Dataset] = None           # set for list-input (statistics) concepts; givens then usually []
     dataset2: Optional[Dataset] = None          # a SECOND aligned list (paired data: weighted mean, covariance)
     constants: dict[str, float] = field(default_factory=dict)   # named constants merged into env (e.g. g=9.8)
+    constant_units: dict[str, str] = field(default_factory=dict)  # reviewed units for named constants
     conventions: dict[str, str] = field(default_factory=dict)
     cases: list[Case] = field(default_factory=list)          # optional coverage cases keyed on the givens
     must_avoid: list[str] = field(default_factory=list)

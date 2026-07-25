@@ -71,7 +71,7 @@ NEWTONS_SECOND_LAW = FormulaSpec(
 
 WEIGHT_FORCE = FormulaSpec(
     slug="weight_force", title="weight from mass", family="physics",
-    aliases=["weight of an object", "weight force", "weight from mass", "w = mg"], priority=77, constants={"g": 9.8},
+    aliases=["weight of an object", "weight force", "weight from mass", "w = mg"], priority=77, constants={"g": 9.8}, constant_units={"g": "m/s^2"},
     problem_template="An object has mass m = {m} kg. Find its weight (g = 9.8 m/s^2).",
     givens=[Given("m", "kg", 1, 50)],
     outputs=[Output("W", "W = m*g", "m*g", "N", "compute_weight", "weight")],
@@ -106,7 +106,7 @@ WORK_DONE = FormulaSpec(
 
 GRAVITATIONAL_PE = FormulaSpec(
     slug="gravitational_pe", title="gravitational potential energy", family="physics",
-    aliases=["gravitational potential energy", "gravitational potential"], priority=74, constants={"g": 9.8},
+    aliases=["gravitational potential energy", "gravitational potential"], priority=74, constants={"g": 9.8}, constant_units={"g": "m/s^2"},
     problem_template="A mass m = {m} kg is raised to height h = {h} m. Find its gravitational potential energy "
                      "(g = 9.8 m/s^2).",
     givens=[Given("m", "kg", 1, 20), Given("h", "m", 1, 30)],
@@ -520,6 +520,7 @@ CIRCLE_AREA = FormulaSpec(
     aliases=["area of a circle", "circle area"], priority=69,
     problem_template="A circle has radius r = {r}. Find its area.",
     givens=[Given("r", "", 1, 20)],
+    constants={"pi": 3.141592653589793}, constant_units={"pi": ""},
     outputs=[Output("A", "A = pi*r^2", "pi*r**2", "sq units", "compute_area", "area")],
     conventions={"units": "square units", "pi": "3.14159..."},
     canonical_latex="A = \\pi r^2",
@@ -531,6 +532,7 @@ CIRCLE_CIRCUMFERENCE = FormulaSpec(
     aliases=["circumference"], priority=68,
     problem_template="A circle has radius r = {r}. Find its circumference.",
     givens=[Given("r", "", 1, 20)],
+    constants={"pi": 3.141592653589793}, constant_units={"pi": ""},
     outputs=[Output("C", "C = 2*pi*r", "2*pi*r", "units", "compute_circumference", "circumference")],
     conventions={"pi": "3.14159..."},
     canonical_latex="C = 2\\pi r",
@@ -581,6 +583,7 @@ SPHERE_VOLUME = FormulaSpec(
     aliases=["volume of a sphere", "sphere volume"], priority=64,
     problem_template="A sphere has radius r = {r}. Find its volume.",
     givens=[Given("r", "", 1, 12)],
+    constants={"pi": 3.141592653589793}, constant_units={"pi": ""},
     outputs=[Output("V", "V = (4/3)*pi*r^3", "(4/3)*pi*r**3", "cubic units", "compute_volume", "volume")],
     conventions={"pi": "3.14159..."})
 
@@ -589,6 +592,7 @@ CYLINDER_VOLUME = FormulaSpec(
     aliases=["volume of a cylinder", "cylinder volume"], priority=63,
     problem_template="A cylinder has radius r = {r} and height h = {h}. Find its volume.",
     givens=[Given("r", "", 1, 12), Given("h", "", 1, 20)],
+    constants={"pi": 3.141592653589793}, constant_units={"pi": ""},
     outputs=[Output("V", "V = pi*r^2*h", "pi*r**2*h", "cubic units", "compute_volume", "volume")],
     conventions={"pi": "3.14159..."})
 
@@ -619,7 +623,7 @@ DENSITY = FormulaSpec(
 
 IDEAL_GAS_PRESSURE = FormulaSpec(
     slug="ideal_gas_pressure", title="ideal gas law (solve for pressure)", family="chemistry",
-    aliases=["ideal gas", "gas law"], not_aliases=["combined"], priority=62, constants={"R": 0.0821},
+    aliases=["ideal gas", "gas law"], not_aliases=["combined"], priority=62, constants={"R": 0.0821}, constant_units={"R": "L*atm/mol/K"},
     problem_template="n = {n} mol of an ideal gas occupies V = {V} L at T = {T} K. Find the pressure "
                      "(R = 0.0821 L*atm/mol/K).",
     givens=[Given("n", "mol", 1, 10), Given("T", "K", 200, 500), Given("V", "L", 1, 20)],
@@ -860,7 +864,7 @@ STANDARDIZE_DATASET = FormulaSpec(
 # ======================================================================================================
 PROJECTILE_RANGE = FormulaSpec(
     slug="projectile_range", title="projectile range", family="physics",
-    aliases=["projectile range", "range of a projectile"], priority=59, constants={"g": 9.8},
+    aliases=["projectile range", "range of a projectile"], priority=59, constants={"g": 9.8}, constant_units={"g": "m/s^2"},
     problem_template="A projectile is launched at v = {v} m/s at angle theta = {theta} degrees. Find its range "
                      "on level ground (g = 9.8 m/s^2).",
     givens=[Given("v", "m/s", 5, 40), Given("theta", "deg", 15, 75)],
@@ -960,6 +964,7 @@ CONE_VOLUME = FormulaSpec(
     aliases=["volume of a cone", "cone volume"], priority=48,
     problem_template="A cone has radius r = {r} and height h = {h}. Find its volume.",
     givens=[Given("r", "", 1, 12), Given("h", "", 1, 20)],
+    constants={"pi": 3.141592653589793}, constant_units={"pi": ""},
     outputs=[Output("V", "V = (1/3)*pi*r^2*h", "(1/3)*pi*r**2*h", "cubic units", "compute_volume", "volume")],
     conventions={"pi": "3.14159..."})
 
@@ -1345,7 +1350,7 @@ POWER_FROM_CURRENT = FormulaSpec(
 
 PENDULUM_PERIOD = FormulaSpec(
     slug="pendulum_period", title="period of a simple pendulum", family="physics",
-    aliases=["pendulum", "period of a pendulum"], priority=21, constants={"g": 9.8},
+    aliases=["pendulum", "period of a pendulum"], priority=21, constants={"g": 9.8}, constant_units={"g": "m/s^2"},
     problem_template="A simple pendulum has length L = {L} m. Find its period (g = 9.8 m/s^2).",
     givens=[Given("L", "m", 1, 10)],
     outputs=[Output("T", "T = 2*pi*sqrt(L/g)", "2*pi*sqrt(L/g)", "s", "compute_period", "period")],
@@ -1357,6 +1362,7 @@ SECTOR_AREA = FormulaSpec(
     problem_template="A circular sector has radius r = {r} and central angle theta = {theta} degrees. "
                      "Find its area.",
     givens=[Given("r", "", 1, 15), Given("theta", "deg", 30, 300)],
+    constants={"pi": 3.141592653589793}, constant_units={"pi": ""},
     outputs=[Output("A", "A = (theta/360)*pi*r^2", "(theta/360)*pi*r**2", "sq units", "compute_area", "sector area")],
     conventions={"pi": "3.14159..."})
 
@@ -1366,6 +1372,7 @@ ARC_LENGTH = FormulaSpec(
     problem_template="A circular arc has radius r = {r} and central angle theta = {theta} degrees. "
                      "Find its length.",
     givens=[Given("r", "", 1, 15), Given("theta", "deg", 30, 300)],
+    constants={"pi": 3.141592653589793}, constant_units={"pi": ""},
     outputs=[Output("L", "L = (theta/360)*2*pi*r", "(theta/360)*2*pi*r", "units", "compute_length", "arc length")],
     conventions={"pi": "3.14159..."})
 
@@ -1674,7 +1681,7 @@ SPRING_PERIOD = FormulaSpec(
 
 MOLES_IDEAL_GAS = FormulaSpec(
     slug="moles_ideal_gas", title="moles of gas from the ideal gas law", family="chemistry",
-    aliases=["moles of gas", "moles from pv"], priority=11, constants={"R": 0.0821},
+    aliases=["moles of gas", "moles from pv"], priority=11, constants={"R": 0.0821}, constant_units={"R": "L*atm/mol/K"},
     problem_template="A gas at P = {P} atm occupies V = {V} L at T = {T} K. Find the number of moles "
                      "(R = 0.0821).",
     givens=[Given("P", "atm", 1, 5), Given("V", "L", 1, 20), Given("T", "K", 200, 400)],
@@ -1726,7 +1733,7 @@ HEAT_ENERGY = FormulaSpec(
 
 FLUID_PRESSURE = FormulaSpec(
     slug="fluid_pressure", title="hydrostatic pressure at depth", family="physics",
-    aliases=["fluid pressure", "pressure at depth", "hydrostatic pressure"], priority=4, constants={"g": 9.8},
+    aliases=["fluid pressure", "pressure at depth", "hydrostatic pressure"], priority=4, constants={"g": 9.8}, constant_units={"g": "m/s^2"},
     problem_template="Find the pressure at depth h = {h} m in a fluid of density rho = {rho} kg/m^3 "
                      "(g = 9.8 m/s^2).",
     givens=[Given("rho", "kg/m^3", 800, 1200), Given("h", "m", 1, 20)],
@@ -1824,7 +1831,7 @@ IMPULSE = FormulaSpec(
 FREE_FALL_VELOCITY = FormulaSpec(
     slug="free_fall_velocity", title="velocity of a freely falling object", family="physics",
     aliases=["free fall velocity", "velocity in free fall", "falling object velocity"], priority=44,
-    constants={"g": 9.8},
+    constants={"g": 9.8}, constant_units={"g": "m/s^2"},
     problem_template="An object is dropped and falls for t = {t} s. Find its velocity (g = 9.8 m/s^2).",
     givens=[Given("t", "s", 1, 10)],
     outputs=[Output("v", "v = g*t", "g*t", "m/s", "compute_velocity", "velocity")],
@@ -1833,7 +1840,7 @@ FREE_FALL_VELOCITY = FormulaSpec(
 FREE_FALL_DISTANCE = FormulaSpec(
     slug="free_fall_distance", title="distance a freely falling object drops", family="physics",
     aliases=["free fall distance", "distance fallen", "falling object distance"], priority=38,
-    constants={"g": 9.8},
+    constants={"g": 9.8}, constant_units={"g": "m/s^2"},
     problem_template="An object is dropped and falls for t = {t} s. Find the distance fallen (g = 9.8 m/s^2).",
     givens=[Given("t", "s", 1, 10)],
     outputs=[Output("d", "d = (g*t^2)/2", "(g*t**2)/2", "m", "compute_distance", "distance")],
@@ -1842,7 +1849,7 @@ FREE_FALL_DISTANCE = FormulaSpec(
 POTENTIAL_TO_KINETIC = FormulaSpec(
     slug="potential_to_kinetic", title="speed from a height drop (energy conservation)", family="physics",
     aliases=["speed from height", "velocity from height", "energy conservation speed"], priority=37,
-    constants={"g": 9.8},
+    constants={"g": 9.8}, constant_units={"g": "m/s^2"},
     problem_template="An object falls from rest through height h = {h} m. Find its speed at the bottom "
                      "(g = 9.8 m/s^2).",
     givens=[Given("h", "m", 1, 30)],
@@ -1854,6 +1861,7 @@ SPHERE_SURFACE_AREA = FormulaSpec(
     aliases=["surface area of a sphere", "sphere surface area"], priority=36,
     problem_template="A sphere has radius r = {r}. Find its surface area.",
     givens=[Given("r", "", 1, 15)],
+    constants={"pi": 3.141592653589793}, constant_units={"pi": ""},
     outputs=[Output("A", "A = 4*pi*r^2", "4*pi*r**2", "sq units", "compute_area", "surface area")],
     conventions={"pi": "3.14159..."})
 

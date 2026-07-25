@@ -1,0 +1,2304 @@
+{
+  "rows": [
+    {
+      "compile_blockers": [
+        "custom_coverage_cases",
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "formula",
+      "slug": "kinematics_const_accel",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "kinetic_energy",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "newtons_second_law",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "weight_force",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "momentum",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "work_done",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "gravitational_pe",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "physics",
+      "slug": "ohms_law",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "physics",
+      "slug": "projectile_range",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "centripetal_acceleration",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "wave_speed",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "pressure",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "mechanical_power",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "spring_pe",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "custom_instance_predicate",
+        "custom_interpretation_callback"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "physics",
+      "slug": "reynolds_number",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "custom_instance_predicate"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "physics",
+      "slug": "laminar_pressure_drop",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "custom_instance_predicate"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "physics",
+      "slug": "turbulent_kinetic_energy",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "finance",
+      "slug": "simple_interest",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "power exponent must be a constant integer"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "finance",
+      "slug": "compound_interest",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "power exponent must be a constant integer"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "finance",
+      "slug": "present_value",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "finance",
+      "slug": "percent_change",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "power exponent must be a constant integer"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "finance",
+      "slug": "future_value",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "finance",
+      "slug": "break_even",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "finance",
+      "slug": "profit_margin",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "circle_area",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "circle_circumference",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "rectangle_area",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "triangle_area",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "geometry",
+      "slug": "pythagorean",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "sphere_volume",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "cylinder_volume",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "geometry",
+      "slug": "coordinate_distance",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "geometry",
+      "slug": "midpoint",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "slope",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "trapezoid_area",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "parallelogram_area",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "cone_volume",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "rectangle_perimeter",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "chemistry",
+      "slug": "molarity",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "chemistry",
+      "slug": "density",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "chemistry",
+      "slug": "ideal_gas_pressure",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "chemistry",
+      "slug": "dilution",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "chemistry",
+      "slug": "percent_yield",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "chemistry",
+      "slug": "moles_from_mass",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "chemistry",
+      "slug": "combined_gas_law",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "chemistry",
+      "slug": "ph_poh",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "chemistry",
+      "slug": "percent_composition",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "discrete",
+      "slug": "factorial",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "discrete",
+      "slug": "permutations",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "discrete",
+      "slug": "combinations",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "linear_algebra",
+      "slug": "determinant_2x2",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "linear_algebra",
+      "slug": "vector_magnitude",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "linear_algebra",
+      "slug": "dot_product_3d",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "dataset_input",
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "statistics",
+      "slug": "descriptive_stats",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "dataset_input",
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "statistics",
+      "slug": "median_range",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "statistics",
+      "slug": "z_score",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "custom_instance_predicate",
+        "dataset_input",
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "statistics",
+      "slug": "standardize_dataset",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "dataset_input",
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "statistics",
+      "slug": "coefficient_of_variation",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "dataset_input",
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "statistics",
+      "slug": "mean_absolute_deviation",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "dataset_input"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "statistics",
+      "slug": "weighted_mean",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "dataset_input",
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "statistics",
+      "slug": "covariance",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "algebra",
+      "slug": "distance_rate_time",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "average_speed",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unit_capability:affine unit is outside Wave-0: deg C"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "physics",
+      "slug": "celsius_to_fahrenheit",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "algebra",
+      "slug": "arithmetic_sequence_term",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "power exponent must be a constant integer"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "algebra",
+      "slug": "geometric_sequence_term",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "tangent_ratio",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "algebra",
+      "slug": "percent_of",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "finance",
+      "slug": "discount_price",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "finance",
+      "slug": "sales_tax_total",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "power_from_current",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "physics",
+      "slug": "pendulum_period",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "sector_area",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "arc_length",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "finance",
+      "slug": "simple_roi",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "statistics",
+      "slug": "probability_simple",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "custom_instance_predicate",
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "statistics",
+      "slug": "law_of_total_probability",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "statistics",
+      "slug": "bayes_theorem",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "statistics",
+      "slug": "conditional_probability",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "chemistry",
+      "slug": "mole_fraction",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "ohms_power",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unit_capability:affine unit is outside Wave-0: deg C"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "physics",
+      "slug": "kelvin_conversion",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unit_capability:affine unit is outside Wave-0: deg F"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "physics",
+      "slug": "fahrenheit_to_celsius",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "physics",
+      "slug": "spring_period",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "chemistry",
+      "slug": "moles_ideal_gas",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "frequency_from_period",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "chemistry",
+      "slug": "boyles_law",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "chemistry",
+      "slug": "charles_law",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "ohms_resistance",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "heat_energy",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "fluid_pressure",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "cube_volume",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "cube_surface_area",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "hookes_force",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "dataset_input"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "statistics",
+      "slug": "root_mean_square",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "polygon_interior_angle",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "polygon_exterior_angle",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "efficiency",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "statistics",
+      "slug": "percent_error",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "finance",
+      "slug": "unit_price",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "impulse",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "free_fall_velocity",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "free_fall_distance",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "physics",
+      "slug": "potential_to_kinetic",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "geometry",
+      "slug": "sphere_surface_area",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "chemistry",
+      "slug": "mass_from_density",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "finance",
+      "slug": "percent_increase",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "calculus",
+      "slug": "partial_derivative_xy",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "calculus",
+      "slug": "gradient_magnitude_xy",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "calculus",
+      "slug": "directional_derivative_xy",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "calculus",
+      "slug": "curl_2d_vector_field",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "calculus",
+      "slug": "divergence_2d_vector_field",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "linear_algebra",
+      "slug": "cross_product_3d",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "linear_algebra",
+      "slug": "angle_between_vectors",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "linear_algebra",
+      "slug": "cosine_similarity",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "linear_algebra",
+      "slug": "determinant_3x3",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "linear_algebra",
+      "slug": "matrix_trace",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "dataset_input",
+        "requires_single_output"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "statistics",
+      "slug": "correlation_coefficient",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "statistics",
+      "slug": "binomial_probability",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "finance",
+      "slug": "net_present_value",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "power exponent must be a constant integer"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "finance",
+      "slug": "discount_factor",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "finance",
+      "slug": "capm_expected_return",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "finance",
+      "slug": "portfolio_return_two_asset",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "finance",
+      "slug": "forward_price",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "finance",
+      "slug": "option_payoff_call",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "finance",
+      "slug": "sharpe_ratio",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "series_resistance",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "parallel_resistance",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "voltage_divider",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [],
+      "compile_status": "compiled",
+      "execution": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      },
+      "family": "physics",
+      "slug": "current_divider",
+      "teaching": {
+        "candidates_checked": 24,
+        "issues": [],
+        "status": "pass"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "physics",
+      "slug": "impedance_magnitude",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "physics",
+      "slug": "power_factor",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    },
+    {
+      "compile_blockers": [
+        "unsupported AST node: Call"
+      ],
+      "compile_status": "blocked",
+      "execution": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      },
+      "family": "physics",
+      "slug": "three_phase_power",
+      "teaching": {
+        "candidates_checked": 0,
+        "issues": [],
+        "status": "blocked"
+      }
+    }
+  ],
+  "schema_version": 1,
+  "summary": {
+    "candidates_checked": 2016,
+    "compile_status_counts": {
+      "blocked": 49,
+      "compiled": 84
+    },
+    "execution_status_counts": {
+      "blocked": 49,
+      "pass": 84
+    },
+    "family_coverage": {
+      "algebra": {
+        "compiled": 3,
+        "total": 4
+      },
+      "calculus": {
+        "compiled": 3,
+        "total": 5
+      },
+      "chemistry": {
+        "compiled": 14,
+        "total": 14
+      },
+      "discrete": {
+        "compiled": 0,
+        "total": 3
+      },
+      "finance": {
+        "compiled": 12,
+        "total": 19
+      },
+      "formula": {
+        "compiled": 0,
+        "total": 1
+      },
+      "geometry": {
+        "compiled": 19,
+        "total": 22
+      },
+      "linear_algebra": {
+        "compiled": 4,
+        "total": 8
+      },
+      "physics": {
+        "compiled": 27,
+        "total": 41
+      },
+      "statistics": {
+        "compiled": 2,
+        "total": 16
+      }
+    },
+    "teaching_status_counts": {
+      "blocked": 49,
+      "pass": 84
+    },
+    "total_rows": 133,
+    "traffic_coverage": {
+      "reason": "No per-FormulaSpec production execution-volume source is wired into Milestone A yet.",
+      "status": "unavailable"
+    }
+  }
+}

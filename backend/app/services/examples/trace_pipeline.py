@@ -102,6 +102,13 @@ def _seed_for(topic: dict[str, Any]) -> int:
 def select_instance(adapter, seed: int) -> Optional[ContractTrace]:
     for attempt, cand in enumerate(adapter.candidates(seed), start=1):
         trace = adapter.reference(cand, candidate_id=str(cand.get("_id", "")), attempt=attempt, seed=seed)
+        # Additive, off-by-default FormulaSpec identity + substrate comparison telemetry. This can never
+        # alter the trace or learner-visible output; failures are contained inside the observer.
+        try:
+            from .runtime_binding.shadow import observe_formula_execution
+            observe_formula_execution(adapter, cand, trace, seed=seed, attempt=attempt)
+        except Exception:  # noqa: BLE001 - generation must not depend on shadow telemetry
+            pass
         if adapter.is_teaching_trace(trace):
             return trace
     return None

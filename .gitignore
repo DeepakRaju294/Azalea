@@ -35,3 +35,6 @@ frontend/dist/
 .claude/settings.local.json
 backend/app/services/examples/canonical_translations.json
 backend/logs/adapter_demand.jsonl
+
+# transient runtime caches / shadow telemetry
+backend/telemetry/
