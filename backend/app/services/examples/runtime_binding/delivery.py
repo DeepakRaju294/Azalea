@@ -109,3 +109,39 @@ def canonical_delivery_json(package: EvidencePackage) -> str:
 
 def canonical_delivery_payload_digest(package: EvidencePackage) -> str:
     return hashlib.sha256(canonical_delivery_json(package).encode("utf-8")).hexdigest()
+
+
+# ----------------------------------------------------------------------------------------------------------
+# Structured-claim semantic-identity oracle (spec §5.10)
+#
+# The conformance check the frontend structured-claim renderer must satisfy: it may FORMAT a claim payload
+# (whitespace, escaping, canonical spacing) but may NOT rewrite its semantic identity — claim kind, evidence
+# reference, and the typed/normalized display payload. Both the backend and a future frontend renderer test
+# assert against this same oracle so "the renderer preserves semantic identity" is machine-checkable rather
+# than assumed. Harmless byte differences (NFC-normalizable whitespace, an integer's trailing '.0') do not
+# break identity; a changed value/unit/kind/ref does.
+
+
+def _semantic_claim_key(claim: dict) -> tuple:
+    payload = unicodedata.normalize("NFC", str(claim.get("display_payload", "")))
+    payload = " ".join(payload.split())                      # collapse formatting-only whitespace
+    return (claim.get("claim_kind"), claim.get("evidence_ref"), _canon_number(payload))
+
+
+def structured_claims_semantically_identical(payload_a: dict, payload_b: dict) -> bool:
+    """True iff the two delivery payloads carry the SAME structured claims (kind/ref/normalized value) in the
+    same per-card order, ignoring formatting-only byte differences. Prose outside structured claims is not
+    compared (it is non-authoritative)."""
+    cards_a = payload_a.get("cards", [])
+    cards_b = payload_b.get("cards", [])
+    if [c.get("card_id") for c in cards_a] != [c.get("card_id") for c in cards_b]:
+        return False
+    for ca, cb in zip(cards_a, cards_b):
+        keys_a = [_semantic_claim_key(c) for c in ca.get("structured_claims", [])]
+        keys_b = [_semantic_claim_key(c) for c in cb.get("structured_claims", [])]
+        if keys_a != keys_b:
+            return False
+    return (
+        payload_a.get("result") == payload_b.get("result")
+        and payload_a.get("evidence_digest") == payload_b.get("evidence_digest")
+    )

@@ -83,5 +83,41 @@ class DeliverySerialization(unittest.TestCase):
                 self.assertEqual(set(claim), {"claim_kind", "display_payload", "evidence_ref"})
 
 
+class SemanticIdentityOracle(unittest.TestCase):
+    """The conformance check a frontend renderer must satisfy (spec §5.10): formatting may change, semantics
+    may not."""
+
+    def _payload(self):
+        from app.services.examples.runtime_binding.delivery import canonical_delivery_payload
+        return canonical_delivery_payload(_frozen())
+
+    def test_formatting_only_change_preserves_identity(self):
+        from app.services.examples.runtime_binding.delivery import structured_claims_semantically_identical
+        import copy
+        a = self._payload()
+        b = copy.deepcopy(a)
+        # a renderer that re-spaces the display payload keeps semantic identity
+        b["cards"][0]["structured_claims"][0]["display_payload"] = (
+            "  " + a["cards"][0]["structured_claims"][0]["display_payload"] + "   "
+        )
+        self.assertTrue(structured_claims_semantically_identical(a, b))
+
+    def test_changed_value_breaks_identity(self):
+        from app.services.examples.runtime_binding.delivery import structured_claims_semantically_identical
+        import copy
+        a = self._payload()
+        b = copy.deepcopy(a)
+        b["cards"][0]["structured_claims"][0]["display_payload"] += " 999"
+        self.assertFalse(structured_claims_semantically_identical(a, b))
+
+    def test_changed_result_breaks_identity(self):
+        from app.services.examples.runtime_binding.delivery import structured_claims_semantically_identical
+        import copy
+        a = self._payload()
+        b = copy.deepcopy(a)
+        b["result"]["value"] = "0"
+        self.assertFalse(structured_claims_semantically_identical(a, b))
+
+
 if __name__ == "__main__":
     unittest.main()
