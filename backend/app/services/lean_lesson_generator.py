@@ -785,6 +785,23 @@ def _correct_edge_case_failure_framing(text: str) -> str:
     return out
 
 
+def _normalize_card_bullet_points(raw_points: list[str], *, blueprint_key: str = "") -> list[str]:
+    """The shared bullet-shape + LaTeX normalization every card's points must pass through: split a crammed
+    'Term: def; role' bullet into a term main bullet + one sub-bullet per clause, merge fragments, re-inline
+    orphaned math, wrap bare LaTeX, sentence-case. Extracted so the BACKFILL path (which inserts a
+    separately-generated card straight into the lesson) gets the identical treatment — without it, a
+    backfilled components_terms card shipped its raw one-line 'B_field: array…; used to…' bullets unsplit."""
+    points = _normalize_bullet_shape(raw_points)
+    points = _merge_bullet_fragments(points)
+    points = _reinline_orphaned_math(points)
+    points = _rewrite_call_stack_syntax(points)
+    points = _sentence_case_bullet_starts(points)
+    points = [_wrap_bare_latex(_repair_latex_delimiters(p)) for p in points]
+    if blueprint_key == "edge_case":                    # correct false "the method fails here" framing (§6.4)
+        points = [_correct_edge_case_failure_framing(p) for p in points]
+    return points
+
+
 def _lean_card_to_legacy(
     lean_card: dict[str, Any],
     card_index: int,
@@ -809,14 +826,8 @@ def _lean_card_to_legacy(
         for p in (lean_card.get("points") or [])
         if str(p).strip()
     ]
-    points = _normalize_bullet_shape(raw_points)
-    points = _merge_bullet_fragments(points)
-    points = _reinline_orphaned_math(points)
-    points = _rewrite_call_stack_syntax(points)
-    points = _sentence_case_bullet_starts(points)
-    points = [_wrap_bare_latex(_repair_latex_delimiters(p)) for p in points]
-    if blueprint_key == "edge_case":                    # correct false "the method fails here" framing (§6.4)
-        points = [_correct_edge_case_failure_framing(p) for p in points]
+    points = _normalize_card_bullet_points(
+        [str(p) for p in raw_points], blueprint_key=blueprint_key)
 
     # Build styled_elements for code snippet
     styled_elements: list[dict[str, Any]] = []

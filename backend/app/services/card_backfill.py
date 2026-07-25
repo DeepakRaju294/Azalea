@@ -94,6 +94,7 @@ def backfill_missing_required_cards(
                 fn = single_card_fn or _default_single_card
                 card = fn(key, lesson_json, topic)
                 if card:
+                    _normalize_backfilled_card(card)   # same bullet-shape normalization as the main card path
                     _insert_at_blueprint_position(cards, card, key, full_sequence)
                     action = "regenerated"
         except Exception as exc:  # noqa: BLE001 — backfill must never break a lesson
@@ -166,3 +167,19 @@ def _default_worked_example(lesson_json: dict[str, Any], topic: dict[str, Any]) 
 def _default_single_card(key: str, lesson_json: dict[str, Any], topic: dict[str, Any]) -> Optional[dict[str, Any]]:
     from app.services.llm_client import generate_single_lesson_card
     return generate_single_lesson_card(key, lesson_json, topic)
+
+
+def _normalize_backfilled_card(card: dict[str, Any]) -> None:
+    """Run a backfilled card's bullets through the SAME normalization the main card-conversion path applies,
+    in place. A card regenerated here (a dropped components_terms card) otherwise ships its raw LLM bullets —
+    a crammed 'Term: definition; role.' one-liner never split into a term main bullet + one sub-bullet per
+    clause. Best-effort: any failure leaves the card as-is (backfill must never break a lesson)."""
+    pts = card.get("points")
+    if not isinstance(pts, list) or not pts:
+        return
+    try:
+        from app.services.lean_lesson_generator import _normalize_card_bullet_points
+        card["points"] = _normalize_card_bullet_points(
+            [str(p) for p in pts], blueprint_key=str(card.get("blueprint_key") or ""))
+    except Exception:  # noqa: BLE001
+        pass
