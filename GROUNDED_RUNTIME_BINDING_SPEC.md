@@ -1,6 +1,15 @@
 # Grounded Runtime Binding Spec
 
-> **Status:** Draft v0.9 — architecture approved; ready for implementation planning.
+> **Status:** Draft v1.0.1 — architecture approved; ready for Phase 0 implementation. (Document revisions use
+> three-part numbers from here on so they cannot be confused with the v1/v1.1 SHIPPING slices.)
+> v1.0.1: `sibling_novelty` reframed as a claim-currency re-check so it is not tautological (§6.6), the
+> three-stage evaluation split is stated once explicitly (§6.6), and the frontend structured-claim renderer
+> conformance tests get a named home (§17.3).
+> v1.0 moves learner-visible solvability and complete pedagogical-fitness reports to the evidence layer
+> (§5.8–§6), introduces a reviewed/versioned `PedagogicalPolicy` (§5.8), makes sibling novelty independent of
+> worker completion order (§2.5, §6.6, §13.2), defines the canonical post-backend delivery payload and digest
+> boundary (§5.9–§5.10), names all three persistence tables (§17.3, §19), and makes the post-v1 status of the
+> gen_foundation evidence migration unambiguous (§4.3.2, §13, §17.1).
 > v0.9 scopes the gen_foundation verification obligations: in v1 provenance decides route order only and the
 > live route keeps its current internal gating; the `verified_gen_foundation` label and its tests activate
 > with an explicitly named evidence-layer migration (§4.3.2, §9, §15, §17.1). Pedagogical-fitness checks are
@@ -307,6 +316,13 @@ machinery, not an existing adapter-claim service. Its implementation home is `_c
 full sibling set, owned scopes, and existing requirement/facet/dedup decisions are simultaneously visible.
 It prevents the same verified calculation from appearing in several lessons.
 
+Sibling novelty is decided entirely from this certified ownership tuple and materially different
+`LessonIntent`; it is not re-decided from generated numbers or worker completion order. Two siblings may
+coincidentally receive the same numeric values without becoming duplicate exercises when they own different
+contract/variant/intent operations. If product policy later requires path-wide numeric variety, it must use a
+deterministic path-level seed allocation artifact defined before concurrent preparation—not an instance-digest
+race.
+
 ---
 
 ## 3. Trust boundaries
@@ -513,8 +529,7 @@ v1:
   evidence plumbing;
 - the `verified_gen_foundation` derived label (§9), the forged-provenance withhold test, and the frozen-
   evidence obligation on this route all activate only with the **gen_foundation evidence migration** — named
-  deferred work, scheduled no earlier than Phase 2, with its own implementation unit and behavior-diff
-  against the pre-migration route;
+  post-v1 work, with its own rollout and behavior-diff against the pre-migration route;
 - until that migration, gen_foundation output carries its existing labeling, not a §9 derived level.
 
 ---
@@ -534,6 +549,7 @@ GrammarManifest {
   convention_schema: { key: [allowed_value] }
   numeric_policy_ref: str
   generation_policy_ref: str
+  pedagogical_policy_ref: str
   verification_profile_ref: str
   trace_contract_ref: str
   projection_contract_ref: str
@@ -792,8 +808,8 @@ execution-affecting convention selections, and constraints. Presentation labels 
 identity; a selected display unit does when it requires conversion rather than a label-only rendering.
 
 `execution_environment_digest` covers the unit-system version, numeric-policy version, verification-plan
-version, restricted-expression canonicalization version, and reviewed primitive implementation versions.
-Execution and narration reference both digests.
+version, pedagogical-policy version, restricted-expression canonicalization version, and reviewed primitive
+implementation versions. Execution and narration reference both digests.
 
 The supporting types are owned as follows:
 
@@ -883,6 +899,16 @@ GenerationPolicy {
   candidate_ordering: str
 }
 
+PedagogicalPolicy {
+  policy_id: str
+  version: int
+  difficulty_rules: { topic_depth: DifficultyConstraintSet }
+  nontriviality_bounds: [Constraint]
+  readability_bounds: [Constraint]
+  prerequisite_rules: [Constraint]
+  objective_count_rules: [Constraint]
+}
+
 GeneratedInstance {
   instance_id: str
   binding_digest: str
@@ -898,9 +924,16 @@ GeneratedInstance {
   rejected_candidate_samples: [{ candidate_id, rejection_code }]
   numeric_policy: NumericPolicy
   expected_result: TypedValue | StructuredResult
-  problem_solvability: ProblemSolvabilityResult
-  pedagogical_fitness: PedagogicalFitnessResult
+  instance_quality: InstanceQualityResult
   instance_digest: str
+}
+
+InstanceQualityResult {
+  domain_validity: passed | failed
+  nontriviality: passed | failed
+  visible_number_readability: passed | failed
+  rounding_stability: passed | failed
+  failures: [str]
 }
 
 ProblemSolvabilityResult {
@@ -917,8 +950,6 @@ PedagogicalFitnessResult {
   scope_relevance: passed | failed
   difficulty_fit: passed | failed
   operation_relevance: passed | failed
-  nontriviality: passed | failed
-  visible_number_readability: passed | failed
   single_primary_objective: passed | failed
   prerequisite_compatibility: passed | failed
   sibling_novelty: passed | failed
@@ -929,17 +960,24 @@ PedagogicalFitnessResult {
 The reviewed grammar owns instance generation. The model may supply a stylistic scenario hint, but it cannot
 choose authoritative values. Selection rejects trivial, singular, misleading, assumption-violating, or
 rounding-dominated candidates. `instance_digest` covers the binding/environment digests, seed, generation
-policy, raw/visible values, numeric policy, and expected result.
+policy, pedagogical-policy version, raw/visible values, numeric policy, expected result, and instance-quality
+result.
 
 Generation policy sets `max_generation_attempts` and `max_rejected_samples_stored`. Production telemetry stores
 categorical counts and at most the bounded sample records, without raw rejected values. Full rejected values
 are retained only in fixture, failure-debug, or explicitly sampled diagnostic runs.
 
-Every required free symbol must be supplied by a learner-visible given, a reviewed constant, or an explicitly
-traced prior value. Learner-visible information must deterministically reproduce the displayed result. Unused
-givens are rejected in v1; distractors require a later explicit practice policy. A stylistic `scenario_hint`
-is checked against contract assumptions and applicability conditions and is discarded or regenerated when it
-implies a conflicting regime.
+Instance generation owns only value-level checks available before wording exists: domain validity,
+nontriviality, numeric readability, and rounding stability. Learner-visible solvability and complete
+pedagogical fitness are evaluated later against the assembled evidence problem. Unused givens are rejected in
+v1; distractors require a later explicit practice policy. A stylistic `scenario_hint` is checked against
+contract assumptions and applicability conditions and is discarded or regenerated when it implies a
+conflicting regime.
+
+Every grammar references a reviewed `PedagogicalPolicy`. Its version is included in the execution-environment
+digest, preparation identity, cache invalidation, evidence, and telemetry. Changing a difficulty,
+nontriviality, readability, prerequisite, or objective-count rule therefore cannot silently reuse an older
+passing artifact.
 
 ### 5.9 `EvidencePackage`
 
@@ -955,6 +993,8 @@ EvidencePackage {
   instance_digest: str
   resolution_registry_version: int
   resolution_entry_version: int
+  pedagogical_policy_id: str
+  pedagogical_policy_version: int
   lesson_intent: LessonIntent
   concept_resolution: ContractConceptResolution
   concept_contract_refs: [str]
@@ -965,6 +1005,8 @@ EvidencePackage {
     assumptions_used: [str]
     applicability_conditions_used: [str]
   }
+  problem_solvability_report: ProblemSolvabilityResult
+  pedagogical_fitness_report: PedagogicalFitnessResult
   execution_trace: ExecutionTrace
   teaching_trace: TeachingTrace
   projection: TeachingProjection
@@ -979,7 +1021,10 @@ DeliveryEvidenceRecord {
   evidence_id: str
   evidence_digest: str
   lesson_id: str
-  rendered_card_digest: str
+  canonical_delivery_payload_digest: str
+  backend_sanitizer_version: str
+  structured_renderer_contract_version: str
+  narration_validator_version: str
   card_provenance_links: [CardEvidenceLink]
   narration_fidelity: passed | failed
   post_sanitization_validation_digest: str
@@ -994,7 +1039,8 @@ to change `narration_fidelity` from `not_run`.
 
 `evidence_digest` is a SHA-256 digest over canonical serialization of every authoritative pre-narration field:
 resolution, contract/grammar versions, generated instance, problem, execution and teaching traces,
-projection, checkpoints, final result, decision evidence, and the pre-narration verification vector.
+solvability/fitness reports, pedagogical-policy identity, projection, checkpoints, final result, decision
+evidence, and the pre-narration verification vector.
 Persistence is insert-only after verification. Regeneration creates a new evidence id/digest. A delivery
 trust label is derived only from the immutable package plus a passing delivery record.
 
@@ -1046,6 +1092,13 @@ Harmless escaping or canonical formatting may change bytes. Frontend display pas
 through a dedicated renderer that may format them but cannot rewrite their semantic payload. Until that
 renderer exists, enforced runtime-binding cards cannot ship.
 
+The delivery digest is not a DOM, HTML, CSS, or device-rendering hash. It covers canonical JSON for the exact
+structured lesson payload handed to the frontend after every backend sanitizer and normalization transform,
+including structured claims and `CardEvidenceLink` records. The delivery record separately pins the backend
+sanitizer, structured-renderer contract, and narration-validator versions. Frontend implementations may
+format that payload, but conformance tests must prove they preserve structured semantic identity; client-side
+layout differences do not change the delivery digest.
+
 ---
 
 ## 6. Verification model
@@ -1096,8 +1149,10 @@ For the v1 assurance profile:
 
 Passing one arbitrary check is not sufficient.
 
-`problem_solvability` proves the visible question contains sufficient, unambiguous information to reach the
-stored answer. `pedagogical_fitness` proves bounded instructional suitability, not factual correctness.
+`problem_solvability` proves the assembled evidence problem contains sufficient, unambiguous learner-visible
+information to reach the stored answer. `pedagogical_fitness` proves bounded instructional suitability, not
+factual correctness. Their detailed reports live in `EvidencePackage`, after `problem` exists; only the
+derived pass/fail dimensions live in `VerificationVector`.
 
 What this vector establishes must be stated honestly: for a direct formula, "independent recomputation"
 re-runs the same expression — it catches tampering and executor bugs, not a wrong formula. AST-derived
@@ -1177,8 +1232,9 @@ Reuse the trace-to-teaching checks:
 - No necessary assumption remains only in hidden metadata.
 - The instance directly exercises the topic's owned learning delta and requested operation.
 - Difficulty matches the certified topic depth and prerequisites.
-- Values are nontrivial, readable, and not dominated by incidental conversion or rounding.
-- The example has one primary learning objective and is materially distinct from sibling examples.
+- Values are nontrivial, readable, and not dominated by incidental conversion or rounding — enforced at
+  instance generation as `InstanceQualityResult` (§5.8), reported here, never re-implemented at this stage.
+- The example has one primary learning objective and its authorizing §2.5 claim is still current.
 
 Failure rejects and resamples the instance when instance-specific; a persistent scope/operation mismatch
 rejects the binding route for that topic.
@@ -1186,13 +1242,22 @@ rejects the binding route for that topic.
 Evaluator authority: every solvability and fitness sub-check is a DETERMINISTIC predicate over declared
 parameters — §7.1's "must not ask the model whether a result looks sensible" applies here with full force,
 because these are exactly the judgments that drift into model calls. Parameter sources are fixed:
-`difficulty_fit` and `prerequisite_compatibility` read the certified scope plan (topic depth, declared
-prerequisites); `nontriviality` and `visible_number_readability` read the generation policy's
-`quality_constraints` (value ranges, integer-size and rounding bounds); `scope_relevance` and
+`difficulty_fit` and `prerequisite_compatibility` read the certified scope plan through the versioned
+`PedagogicalPolicy`; instance-level `nontriviality` and `visible_number_readability` read that policy plus the
+generation policy's `quality_constraints`; `scope_relevance` and
 `operation_relevance` read the contract's applicability conditions plus the topic's owned `scope_in`;
-`sibling_novelty` consumes the §2.5 arbitration result plus instance-digest comparison against sibling-owned
-instances — it is NOT a second similarity heuristic. A fitness check whose predicate cannot be expressed
+`sibling_novelty` consumes only the §2.5 ownership/intent arbitration result—it is NOT a second similarity
+heuristic and never compares concurrently generated instance digests. Because a topic that lost arbitration
+never reaches fitness evaluation at all, this check would be tautological if it merely restated the
+arbitration outcome; its actual predicate is CLAIM CURRENCY: at evidence-freeze time, the §2.5 claim that
+authorized this preparation is still the active, non-superseded claim (a path regeneration or re-arbitration
+between certification and freeze invalidates it). A fitness check whose predicate cannot be expressed
 deterministically is dropped from the profile, not delegated to a model.
+
+The full evaluation pipeline is three-staged, each stage owning only what exists at that point: instance
+quality (value-level, §5.8) at generation; solvability and fitness against the assembled evidence problem at
+evidence freeze; narration fidelity against the canonical delivery payload at delivery (§5.9/§5.10). No
+check is evaluated at two stages.
 
 ### 6.7 Generated checks
 
@@ -1541,7 +1606,8 @@ A validated binding may be cached by:
 ```text
 (scope_concept_id, resolved_contract_concept_id, variant,
  resolution_registry_version, resolution_entry_version, concept_contract_version,
- grammar_id, grammar_version, binding_digest, execution_environment_digest)
+ grammar_id, grammar_version, pedagogical_policy_id, pedagogical_policy_version,
+ binding_digest, execution_environment_digest)
 ```
 
 The cache stores the validated binding—not one fixed learner example. Instance generation remains seeded and
@@ -1553,6 +1619,7 @@ Invalidation occurs when:
 - grammar changes;
 - unit/type policy changes;
 - verification plan changes;
+- pedagogical policy changes;
 - the contract-resolution registry version that produced the binding's resolution changes — a registry
   remap can point the same scope identity at a DIFFERENT contract while every identity inside the cached
   binding (contract id/version, grammar) still digest-matches, so the registry version must be part of the
@@ -1622,8 +1689,8 @@ embedded repeatedly in lesson cards.
 
 The evidence record is append-only once `verification_completed_at` is set. Narration/card validation is
 stored in an append-only delivery record. Final enforcement rejects a missing package or delivery record,
-digest mismatch, altered card provenance/rendered-card digest, or artifacts that did not jointly pass the
-route's required verification profile.
+digest mismatch, altered card provenance/canonical-delivery-payload digest, or artifacts that did not jointly
+pass the route's required verification profile.
 
 For v1, the stored package contains the generated instance, verification vector, teaching trace/checkpoints,
 and compact execution trace required for replay. Raw execution detail beyond that compact trace is retained
@@ -1677,6 +1744,9 @@ free. Only the numeric value of the budget remains open (§19 item 5).
 - Ship under `reviewed_family_binding`.
 - Start with several direct-formula concepts.
 
+The gen_foundation evidence migration is not part of this Phase 2 or the v1 definition of done. It begins only
+in a separately approved post-v1 rollout after runtime binding has completed its own enforced slice.
+
 ### Phase 3 — authoritative-grounding slice
 
 - Add grammar-directed extraction from approved sources.
@@ -1713,8 +1783,9 @@ not_requested -> preparing -> ready
 ready --------------------> stale
 ```
 
-`PreparedRuntimeBinding` records topic id, contract/grammar versions, the resolution-registry version its
-resolution was produced under, all digests, status, timestamps, failure reason, and claimant/ownership result.
+`PreparedRuntimeBinding` records topic id, contract/grammar/pedagogical-policy versions, the
+resolution-registry version its resolution was produced under, all digests, status, timestamps, failure
+reason, and claimant/ownership result.
 It also records:
 
 ```text
@@ -1742,7 +1813,7 @@ Rules:
 - `failed`, timed-out, or stale preparation restores current withhold behavior.
 - Final enforcement trusts the frozen passing `EvidencePackage`, never the earlier eligibility stamp.
 - `preparation_identity_digest` covers topic/scope identity, resolution registry and entry versions,
-  contract/grammar/environment versions, and claimant intent. At most one non-superseded
+  contract/grammar/pedagogical-policy/environment versions, and claimant intent. At most one non-superseded
   `preparing|ready` row may exist for the same identity.
 - Status transitions use compare-and-swap on `status_version`. A worker prepared against an older registry,
   scope plan, safety-block version, or active preparation cannot mark itself ready.
@@ -1813,6 +1884,7 @@ reference another contract's relationship.
 - Prove contract/runtime expressions never enter the authored `formula_engine._eval` string-evaluation path.
 - Binding digest changes when contract, relationship, grammar, convention, or slot binding changes.
 - Environment digest changes when numeric, unit, verification, parser, or primitive versions change.
+- Environment digest and preparation identity change when the pedagogical-policy version changes.
 - Instance digest changes when seed, generation policy, values, numeric policy, or expected result changes.
 - Every registered T6 row receives exactly one convergence wave and explicit required-node/function set.
 - Every registered T6 row also receives an execution-shape capability report; rational-only multi-output,
@@ -1842,6 +1914,7 @@ reference another contract's relationship.
   problem solvability.
 - A mathematically valid instance that is off-scope, trivial, prerequisite-incompatible, or duplicates a
   sibling-owned operation fails pedagogical fitness.
+- Concurrent sibling preparation order cannot change ownership or sibling-novelty outcomes.
 - Tampered final result fails independent recomputation.
 - Grammar-owned metamorphic failure rejects the binding/instance.
 - Generated supplementary invariant alone cannot authorize a binding.
@@ -1870,6 +1943,8 @@ reference another contract's relationship.
 - Post-migration only (§4.3.2): a forged positive gen_foundation provenance flag without replay/scope/
   fidelity evidence is withheld.
 - A valid evidence id paired with a mismatched evidence digest or altered card provenance is rejected.
+- A delivery record hashes the canonical post-backend structured payload, not DOM/HTML/layout output, and
+  pins sanitizer, renderer-contract, and narration-validator versions.
 - Accuracy-ladder `verification_level=model_only` is never interpreted as gen_foundation provenance.
 - Concurrent preparation uses atomic table transitions and stale versions cannot become active.
 - A resolution-registry version bump marks affected prepared bindings stale and invalidates their cache
@@ -1897,6 +1972,8 @@ binding_digest
 execution_environment_digest
 instance_digest
 numeric_policy_id
+pedagogical_policy_id
+pedagogical_policy_version
 generation_policy_id
 verification_vector
 failed_checks
@@ -1950,10 +2027,10 @@ Dashboards should answer:
    - Only after offline fixtures pass; compare model proposals to deterministic/reviewed expected bindings
      without affecting delivered lessons.
 
-Deferred beyond these units (explicitly NOT v1 scope): the **gen_foundation evidence migration** (§4.3.2) —
+Deferred to a separately approved post-v1 rollout (explicitly NOT v1 or its Phase 2 scope): the
+**gen_foundation evidence migration** (§4.3.2) —
 wrapping the live gen_foundation route in `EvidencePackage`/`DeliveryEvidenceRecord` so it can earn the
-`verified_gen_foundation` label. Scheduled no earlier than Phase 2, with a behavior-diff against the
-pre-migration route before cutover.
+`verified_gen_foundation` label, with a behavior-diff against the pre-migration route before cutover.
 
 ### 17.2 Initial reviewed fixture sets
 
@@ -2041,6 +2118,12 @@ Expected integration points:
 - `decision_trace.py`: record route and verification decisions.
 - `decision_trace_coverage.py` / `explain_path.py`: report instrumentation presence and actual decisions.
 - trace-to-teaching validator: verify evidence-linked cards.
+- frontend structured-claim renderer (§5.10) + its conformance tests: a dedicated test surface
+  (`frontend/components/structured-claims/` + a semantic-identity conformance suite run in CI alongside the
+  build) proving the renderer preserves claim kind, evidence reference, normalized expression AST, typed
+  value, and unit through formatting. This repo's frontend checks are thin (`tsc --noEmit` has false-greened
+  a real build break before), so these tests are named scope, not an assumed by-product — and §5.10 already
+  blocks enforced runtime-binding cards until the renderer exists.
 
 Do not modify the current formula engine to accept untrusted expression strings.
 
@@ -2086,8 +2169,10 @@ and continue catalog growth through the existing adapter system instead.
 4. What is the future product treatment for `mechanically_verified_only` after v1's withhold-only policy?
 5. The numeric value of the per-topic latency budget. (The structure — budget + automatic degradation +
    plan-time execution + binding cache — is decided in §13; only the number remains open.)
-6. Which explicit database-migration mechanism will create/update `prepared_runtime_bindings` and
-   `evidence_packages` in existing deployments? Blocking before the persistence units ship.
+6. Which explicit database-migration mechanism will create/update `prepared_runtime_bindings`,
+   `evidence_packages`, and `delivery_evidence` in existing deployments, including their foreign keys,
+   append-only enforcement, atomic active-preparation constraint, and indexes? Blocking before persistence
+   ships.
    Recommendation: adopt Alembic once rather than a one-off guarded script — three new tables are already
    required, Phase 3's contract store will add more, and an ad-hoc migration path becomes its own
    maintenance problem.
@@ -2107,6 +2192,8 @@ and continue catalog growth through the existing adapter system instead.
 - [ ] Generated instances and numeric policy make every example reproducible at displayed precision.
 - [ ] Verification dimensions are stored separately and derive an honest trust level.
 - [ ] Learner-visible problem solvability and pedagogical fitness are required shipping dimensions.
+- [ ] A reviewed/versioned pedagogical policy deterministically owns difficulty, nontriviality, readability,
+      prerequisite, and objective-count thresholds and participates in digests/invalidation.
 - [ ] Concept/variant ambiguity cannot silently select a materially different formula.
 - [ ] Grammar-owned boundary, property, and metamorphic tests run.
 - [ ] Evidence packages are immutable and cards carry required provenance.
@@ -2128,6 +2215,7 @@ and continue catalog growth through the existing adapter system instead.
       existing gating, and the `verified_gen_foundation` label/checks activate solely with the §4.3.2
       evidence migration (named deferred work, not a v1 obligation).
 - [ ] Contract ownership arbitration prevents sibling topics from repeating the same exercise (§2.5).
+- [ ] Sibling novelty is independent of concurrent worker completion order and generated numeric coincidence.
 - [ ] Prepared binding state/version checks prevent stale or raced artifacts from shipping (§13.2).
 - [ ] Runtime-fallback end-to-end fixtures genuinely miss registered routing; registered T6 fixtures are used
       separately for substrate equivalence.
