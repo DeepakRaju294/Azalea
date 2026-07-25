@@ -1,13 +1,24 @@
 # Retrieval-Grounded Example Spec
 
-> **Status:** Draft v0.4 — revised against a THIRD external review (10 executability/consistency corrections +
-> sub-gates + doc cleanup), which judged v0.3 "a credible implementation architecture" and Phase 1A "reasonable
-> to begin" after these corrections + adversarial G0 fixture expansion. Phase 0 (offline core + adversarial
-> checker corpus) is IMPLEMENTED and merged. **Phase 1A is unblocked once (a) the §21 checklist is signed off
-> and (b) the live fixture classes are expanded (§17).** v0.2 issues → §22; v0.3 → §23; v0.4 → §24.
+> **Status:** Draft v0.4 (consistency pass) — **BROAD ARCHITECTURAL REVISION IS CLOSED** per the third review's
+> final judgment ("stop broad revision before Phase 1A; further abstraction risks designing around hypothetical
+> complexity"). This pass applied only the genuine bug fix (fail-closed evidence integrity) + doc consistency +
+> A47–A60; deeper abstractions are explicitly DEFERRED to named sub-gates (§18.5), not folded in now.
 >
-> **"Signed off" means, per item:** an APPROVED typed schema (dataclass shapes frozen), an EXECUTABLE
-> acceptance test for its invariant (from §16), and architectural acceptance recorded here — not merely prose.
+> **The ONLY remaining Phase-1A blockers** (nothing broader): (1) expand + pass G0 on the adversarial/live
+> fixtures (§17); (2) canonical-fingerprint test vectors (A56); (3) strict evidence-reference integrity
+> (A47–A49, A57); (4) freeze the instance-level schemas (`PublishedInstance`, `AnswerComparison`,
+> `FingerprintSet`, `EvidenceRecord`, `AssuranceDecision`); (5) executable A35–A40 + missing/stale-evidence
+> tests. After those pass, begin Phase-1A shadow (Slice 1A: fixture → reproduction evidence → assurance →
+> report). v0.2 issues → §22; v0.3 → §23; v0.4 → §24.
+>
+> **Recommended implementation order (adopted):** expand+run adversarial fixtures → freeze 1A schemas →
+> canonical serialization with test vectors → evidence-integrity validation → Slice 1A only. Do NOT build
+> catalog reuse / predicate extraction / qualitative grounding / relationship transcription before their
+> sub-gates (§18.5).
+>
+> **"Signed off" means, per item:** an APPROVED frozen schema, an EXECUTABLE §16 test for its invariant, and
+> architectural acceptance recorded here — not prose.
 >
 > **Governing principle (from the review, adopted verbatim as law):**
 > *Retrieval supplies candidate semantics; independent verification controls trust — and **verification
@@ -85,9 +96,10 @@ not. **End-state (G3):** Policy-Satisfied Coverage ≥ target with Provisional E
 ## 1.6 Two machines: online resolution vs offline acquisition (issues 16, 24)
 
 ```
-ONLINE  resolve_worked_example(topic) -> one of:
-          DeliveredExample | ProvisionalExample | GuidedFallback | PendingAcquisition
-        never blocks on network-heavy acquisition or human review; returns best policy-allowed output NOW.
+ONLINE  resolve_worked_example(topic) -> ResolutionResult {
+          learner_output:    DeliveredExample | ProvisionalExample | GuidedFallback   # always visible NOW
+          acquisition_state: Optional[AcquisitionState]                               # metadata, not output
+        }  never blocks on network-heavy acquisition or human review.
 
 OFFLINE acquisition/promotion worker, driven by AcquisitionState:
           retrieval_pending -> verification_pending -> review_pending -> approved|corrected|rejected
@@ -285,8 +297,12 @@ class FingerprintSet:
     presentation: str           # narration + COSMETIC number formatting only; changes freely, touches nothing above
     hash_version: str           # canonical-serialization + hash algorithm version
     @property
-    def semantic(self) -> str:  # the Mode-A instance identity = answer semantics under its execution contract
-        return f"{self.execution_contract}|{self.answer_semantics}"
+    def semantic(self) -> str:  # Mode-A instance identity — a CANONICAL HASH (v0.4 issue 2), never a concat.
+        # hash_canonical({...}, version=hash_version): fixed serialization + text/numeric/Unicode normalization,
+        # decimal repr, tuple ordering, null-vs-missing rules. Phase-1A sign-off REQUIRES cross-environment
+        # test vectors (A56) that reproduce exact expected hashes.
+        return hash_canonical({"execution_contract": self.execution_contract,
+                               "answer_semantics": self.answer_semantics}, version=self.hash_version)
 # Canonicalization (documented + versioned). PRESERVES identity: whitespace; cosmetic sci-notation formatting;
 # symbol renames (normalized by ROLE); reordering givens; unit-EQUIVALENT restatement under the same unit_system;
 # narration/prose->diagram. CHANGES identity: a different output target (execution_contract); a REQUIRED rounding
@@ -301,10 +317,14 @@ EvidenceCheck = Literal["source_span_match", "source_independence", "dimensional
 
 @dataclass(frozen=True)
 class EvidenceRecord:
+    evidence_id: str
     check: EvidenceCheck
     status: Literal["confirm", "refute", "indecisive", "unsupported"]   # unsupported != pass (issue 12)
     subject_fingerprint: str           # the artifact THIS evidence is about
     verifier_version: str
+    policy_version: str                # the run/policy this record was produced under (v0.4 issue 1)
+    run_id: str                        # binds records to one validation run (A57)
+    revoked: bool                      # incident path can revoke (v0.4 issue 1 / §10)
     evidence: Mapping[str, Any]
 
 AssuranceLevel = Literal["verified_execution", "verified_reproduction", "corroborated_relationship",
@@ -350,13 +370,20 @@ class DeliveredExample:
     source_refs: tuple[SourceRef, ...]
     card_payload: Mapping[str, Any]
 def assert_delivery_scope(d: DeliveredExample, evidence_by_id: Mapping[str, "EvidenceRecord"]) -> None:
-    """MUST be called at every delivery boundary. The exception to the fingerprint identity is authorized by a
-    REAL deterministic_execution EvidenceRecord whose subject is THIS delivered instance — never by profile
-    metadata alone (a stale or relationship-level execution record must not satisfy it)."""
+    """MUST be called at every delivery boundary. FAILS CLOSED on a missing/incompatible/revoked evidence
+    reference (v0.4 issue 1) — persisted assurance may never point at unavailable evidence. The fingerprint
+    exception is authorized only by a REAL deterministic_execution record whose subject is THIS instance."""
+    # every referenced evidence id MUST resolve — a dangling reference is itself an integrity failure.
+    missing = set(d.assurance.evidence_ids) - evidence_by_id.keys()
+    assert not missing, f"missing assurance evidence: {sorted(missing)}"
+    records = [evidence_by_id[eid] for eid in d.assurance.evidence_ids]
+    # all records must belong to this decision's run + policy/verifier versions and not be revoked.
+    assert all(r.policy_version == d.assurance.policy_version and not r.revoked
+               and r.verifier_version in d.assurance.verification_dependencies.values() for r in records), \
+        "evidence from an incompatible run / version, or revoked"
     if d.fingerprints.evidence_subject == d.assurance.subject_fingerprint:
         return
     assert d.assurance.reusable_scope in ("relationship", "template"), "evidence/subject fingerprint mismatch"
-    records = [evidence_by_id[eid] for eid in d.assurance.evidence_ids if eid in evidence_by_id]
     assert any(r.check == "deterministic_execution" and r.status == "confirm"
                and r.subject_fingerprint == d.fingerprints.semantic for r in records), \
         "no deterministic_execution evidence binds to THIS delivered instance"
@@ -557,7 +584,7 @@ endpoint. A trace that fails is repaired or the example is downgraded — never 
   | verified_execution / verified_reproduction | (none / verified) | per invariant (§5) | no | none |
   | corroborated_relationship | sourced, corroborated | relationship (applicability) | optional/domain | source-version |
   | source_attributed | "sourced example" | exact illustration | optional/domain | source-version |
-  | answer_anchored | "checked answer, formula unverified" | exact INSTANCE only | **yes** | fixed TTL |
+  | answer_anchored (INTERNAL — materializes as provisional-with-endpoint-evidence at shipping, §11) | (as provisional) | exact INSTANCE only | **yes** | fixed TTL |
   | provisional | "under review" | exact artifact only | **mandatory** | shorter TTL |
   | guided | (not an example) | n/a | n/a (queue item) | n/a |
 - **`provisional` requires visible trust marking (issue 9) — a Phase-2 BLOCKING frontend dependency.** Phase 2
@@ -594,8 +621,8 @@ policy (rewrites A10; A14/A15 test the two policy outcomes).
 ## 13. Decision trace & telemetry (issue 17)
 
 Every routing hop, check status, assurance derivation, and failure class is persisted via
-`record_lesson_decision` and surfaced by `explain_path.py`. Headline metrics: the three coverage metrics (Visible, Policy-Satisfied, Verified) + the Provisional Exposure metric +
-Provisional Exposure (§1.5); per-check confirm/refute/indecisive/unsupported counts; per-escalation-state
+`record_lesson_decision` and surfaced by `explain_path.py`. Headline metrics: the three coverage metrics
+(Visible, Policy-Satisfied, Verified) + Provisional Exposure (§1.5); per-check confirm/refute/indecisive/unsupported counts; per-escalation-state
 distribution; pipeline/cache hit rates; **provisional aging** (median time-to-promotion, correction rate,
 expired-provisional count, learner exposures before correction); audited soundness violations (target 0).
 
@@ -723,6 +750,20 @@ Keeping the scopes separate prevents the largest over-certification bug.
 | A44 | corroborated relationship → deterministically checked new instance | generate | card gets `verified_execution`, not the relationship's level (issue 8) |
 | A45 | same formula, different unit system | cache | correct conversion or MISS (execution_contract differs) |
 | A46 | predicate `speed << c` cannot be established | applicability | `unknown` → no reuse (issue 4) |
+| A47 | assurance references a missing evidence id | deliver | integrity failure (fail-closed) |
+| A48 | matching execution evidence is revoked | deliver | rejected |
+| A49 | evidence from incompatible policy/verifier version | deliver | rejected / revalidation required |
+| A50 | same relationship, updated independent source evidence | catalog | semantic contract reused; assurance version updated (not a new contract) |
+| A51 | arbitrary/unknown predicate subject | construct | schema validation fails (deferred to 1E) |
+| A52 | model-proposed property is the only applicability support | applicability | `unknown`; no cache reuse (deferred to 1E) |
+| A53 | review approves pedagogy but not numeric correctness | policy | cannot satisfy computational execution threshold |
+| A54 | relationship assurance supplied as learner-card assurance | construct | type failure (kind-split, 1A schema freeze) |
+| A55 | answer_anchored internal result reaches shipping | ship | materializes as provisional-with-endpoint-evidence |
+| A56 | two canonical-serialization impls hash one fixture | fingerprint | identical expected hash (test vectors) |
+| A57 | evidence id belongs to another validation run | deliver | derivation/delivery fails (run_id) |
+| A58 | trace uses an unsupported operation | trace check | unsupported/escalate, never confirm (deferred to 1B/§9) |
+| A59 | cosmetic formatting change | fingerprint | presentation changes; semantic identities unchanged |
+| A60 | verification tolerance change | fingerprint | comparison_policy changes; execution/answer semantics unchanged |
 
 ## 17. Named fixtures — CLASSES not just examples (issue 30)
 
@@ -757,6 +798,33 @@ applicability, CAS/monotonic, tombstones), `acquisition.py` (offline state machi
   silent absence (an unconfirmable topic escalates and is counted as a `coverage_gap`, never dropped).
 - No `eligible_desired` topic exits the resolver without either a delivered example or a logged `coverage_gap`.
 - Retrieval never introduces new execution semantics or a second arithmetic engine.
+
+## 18.5 Deferred to named sub-gates — NOT Phase-1A (v0.4 review: stop broad revision before 1A)
+
+The third review's own guidance: stop adding abstractions before Phase 1A; defer catalog/applicability/V2/
+qualitative refinements to their sub-gates. Explicitly deferred (drafted-intent only, built when the sub-gate
+opens), so Phase 1A is not gated on them:
+- **Catalog identity split** — `ContractIdentity` (reusable semantics) vs a separate `CatalogAssuranceVersion`
+  (evidence snapshots + verifier deps + policy + validity), so new evidence refreshes assurance without a new
+  semantic contract. → **1E** (v0.4 issue 3, A50).
+- **Per-kind assurance enums** — split the single `AssuranceLevel` into `RelationshipAssurance` /
+  `InstanceAssurance` / `IllustrativeAssurance` / `InternalCheckDisposition` so a card can't hold a relationship
+  level. → resolved at the **1A schema freeze** for the instance enum; others at their sub-gates (issue 4, A54).
+- **Typed `PropertyKey` registry + `DerivedProperty` provenance/confidence** (model-proposed → `unknown` until
+  confirmed). → **1E** (issues 6, 7, A51/A52).
+- **Review-check dimensions** on the certificate (`semantic_correctness`/`numeric_execution`/…), so an
+  instance-scope review replaces execution only if the reviewer recomputed the trace. → when human review is
+  built (issue 5, A53).
+- **Capability-based thresholds** (required_evidence capabilities, enum for sorting only). → policy impl (issue 8).
+- **`TraceOperation` union** (Substitute/Evaluate/Rearrange/ConvertUnit/ApplyDefinition/Round/Compare) with a
+  validator per op, so `trace_consistency` is deterministic not an LLM judge. → **1B/§9** (issue 9, A58).
+
+## 18.6 Privacy (v0.4 issue 10)
+
+Correction/revocation (§10) needs card↔contract dependency links + exposure events, stored with the MINIMUM
+necessary identity. Per-user content-exposure tracking is NOT a hidden requirement: prefer lesson/card-level
+remediation; store learner identity only where the product explicitly requires user-level correction notices,
+with a defined retention limit. This is an Open Decision (§20), not a Phase-1A dependency.
 
 ## 19. Non-goals
 
@@ -872,4 +940,17 @@ and `AnswerComparison`; derived `kind`. Each blocker is "signed off" only with a
 | A35–A46 | ADOPTED | §16 |
 | doc: coverage-metric naming | ADOPTED — Policy-Satisfied Coverage throughout; metrics named precisely | §1.5,§1.7,§13,§14 |
 | doc: define "sign-off" | ADOPTED — schema + executable test + recorded acceptance | status |
+
+**v0.4 consistency-pass (fourth review — corrections only, broad revision CLOSED):**
+| Item | Disposition | Section |
+|---|---|---|
+| evidence lookup fails open | FIXED — fail-closed on missing/incompatible/revoked (EvidenceRecord gains policy_version/run_id/revoked) | §5 |
+| semantic = string concat | FIXED — canonical hash + required test vectors (A56) | §5 |
+| §13 duplicated "Provisional Exposure" | FIXED | §13 |
+| §1.6 stale online-output diagram | FIXED — ResolutionResult{learner_output, acquisition_state} | §1.6 |
+| §11 answer_anchored lifecycle row | FIXED — marked internal, materializes as provisional | §11 |
+| catalog id split / per-kind enums / PropertyKey / DerivedProperty / review-checks / capability thresholds / TraceOperation | DEFERRED to named sub-gates (not Phase-1A) | §18.5 |
+| privacy / data-retention | ADDED — minimum-identity, open decision, not a 1A dependency | §18.6 |
+| A47–A60 | ADOPTED | §16 |
+| "stop broad revision" | ADOPTED — status declares revision closed; only 5 concrete 1A blockers remain | status |
 ```

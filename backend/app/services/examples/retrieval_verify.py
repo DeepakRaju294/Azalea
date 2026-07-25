@@ -170,6 +170,24 @@ CHECKER_CASES: tuple[CheckerCase, ...] = (
     CheckerCase("unknown_unit", "ambiguous", "100 V", "100", True, "indecisive", "medium"),
     # non-numeric produced -> indecisive
     CheckerCase("non_numeric", "ambiguous", "100 V", "see the explanation", True, "indecisive", "low"),
+    # metric-prefix mismatch: same base unit token differs (kV vs V) -> magnitude differs 1000x -> refute
+    CheckerCase("prefix_kV_V", "prefix_mismatch", "5 kV", "5000 V", True, "refute", "medium"),
+    # sign error: -3 vs 3 (magnitude same but opposite) -> currently magnitude-abs matches? NO: _num keeps sign
+    CheckerCase("sign_flip", "wrong_answer", "-3 m/s", "3 m/s", False, "refute", "high", require_unit_match=False),
+    # near-miss WITHIN 1% tolerance (display rounding) -> confirm
+    CheckerCase("within_tol", "clean_numeric", "9.81 m/s^2", "9.8 m/s^2", True, "confirm", "low"),
+    # just OUTSIDE tolerance (~2%) -> refute (a real error, not rounding)
+    CheckerCase("outside_tol", "wrong_answer", "100 J", "102.5 J", False, "refute", "high"),
+    # order-of-magnitude error, same unit -> refute (the classic decimal-place slip)
+    CheckerCase("oom_error", "wrong_answer", "9.8 m/s^2", "98 m/s^2", False, "refute", "critical"),
+    # set / multi-valued answer the v0 checker can't parse -> INDECISIVE (safe), never a confirm
+    CheckerCase("set_answer", "multi_valued", "x = 2 or x = -2", "x = 2", True, "indecisive", "medium"),
+    # interval answer -> first-number extraction is meaningless here -> track as indecisive/refute, never confirm
+    CheckerCase("interval_answer", "interval", "between 3 and 5 m", "4 m", True, "refute", "low"),
+    # symbolic answer -> no magnitude -> indecisive
+    CheckerCase("symbolic", "symbolic", "v = sqrt(2*g*h)", "v equals root two g h", True, "indecisive", "low"),
+    # wrong quantity, magnitudes agree, both unitless-looking but different concept: torque N*m vs energy J
+    CheckerCase("torque_vs_energy", "wrong_unit", "10 J", "10 N*m", False, "refute", "high"),
 )
 
 
