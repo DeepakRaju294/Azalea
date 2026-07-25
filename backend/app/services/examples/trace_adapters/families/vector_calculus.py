@@ -66,7 +66,7 @@ class _StokesCanonicalFormula:
     "\\( F \\, dr = int_{S} (\\nabla \\times F) \\, dS\\)" — the line-integral side missing its integral sign
     entirely, `int` missing its backslash — free LLM prose misquoting the ONE equation the path exists to
     teach, directly beside the adapter-verified worked example of the correct one."""
-    canonical_latex = r"\int_{C} F \cdot dr = \int_{S} (\nabla \times F) \cdot dS"
+    canonical_latex = r"\oint_{C} F \cdot dr = \iint_{S} (\nabla \times F) \cdot dS"
     canonical_notes = [
         "C is the closed boundary curve of the surface S, traversed so that the surface stays on the "
         "left (the right-hand rule fixes the orientation).",

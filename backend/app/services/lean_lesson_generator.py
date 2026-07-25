@@ -9291,6 +9291,12 @@ def _ground_edge_case_card(cards: list[dict[str, Any]], topic: Topic) -> bool:
 # with no delimiters, so the learner sees raw LaTeX. The sanitizer fixes that.
 _GREEK_ATOM = (r"\\(?:mu|sigma|rho|pi|theta|lambda|alpha|beta|gamma|delta|Delta|phi|omega|epsilon|tau|nabla)"
                r"\b(?:_\{[^{}]+\}|\^\{[^{}]+\}|_[A-Za-z0-9]|\^[A-Za-z0-9])?")
+# A LaTeX operator command glued directly to the following symbol renders as an UNKNOWN command (live:
+# "\(F(r(t))\cdotr'(t)\)" -> the renderer sees "\cdotr"; "\(\nabla\timesF\)" -> "\timesF"). Insert a space
+# between the operator and the symbol. `\times`/`\nabla`/`\partial` have no letter-extension so they always
+# split; `\cdot` splits only when the next char is NOT s/p (those would be the real commands \cdots / \cdotp).
+_GLUED_OP_NO_EXT = re.compile(r"\\(times|nabla|partial|oint|iint|iiint)(?=[A-Za-z])")
+_GLUED_CDOT = re.compile(r"\\cdot(?=[A-Za-oq-rt-z])")
 _BARE_LATEX = re.compile(r"\\(?:frac|sqrt|sum|prod|int)\b|" + _GREEK_ATOM)
 # LHS (e.g. "I", "P(A|B)", "V_2") = a \frac{a}{b} or \sqrt{x} (single-level braces — deep nesting is rare in prose).
 # LHS prefix allows a function-call argument list ("C(n, r) =", "P(A|B) ="). The old class ([\w()|^]*) could
@@ -9475,6 +9481,10 @@ def _sanitize_math_in_text(text: str) -> str:
     if "\\bullet" in s:
         s = _sub_outside_math_spans(re.compile(r"\\bullet\b"), r"\\(\\cdot\\)", s)
         s = _MATH_SPAN_RE.sub(lambda m: m.group(0).replace("\\bullet", "\\cdot"), s)
+    # Un-glue an operator command run into the next symbol ("\cdotr'", "\timesF") — always safe (a space
+    # after these operators never changes meaning), so applied to the whole string, not just inside spans.
+    s = _GLUED_OP_NO_EXT.sub(r"\\\1 ", s)
+    s = _GLUED_CDOT.sub(r"\\cdot ", s)
     # Trailing delimiter DEBRIS around an equation the model half-delimited (live: a point ending
     # "State Stokes' Theorem: \(:" — an opener with nothing after it is always broken — and a sub-bullet
     # ending "... F \cdot dr \]" with no matching "\[" anywhere in the point).
