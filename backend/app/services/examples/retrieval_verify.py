@@ -35,11 +35,12 @@ _UNIT = re.compile(r"-?\d[\d.,eE^*x+\- ]*\s*([A-Za-z][A-Za-z/^0-9]*)")
 
 @dataclass(frozen=True)
 class ReproResult:
-    matched: Optional[bool]        # True/False, or None when a magnitude couldn't be extracted from one side
+    matched: Optional[bool]        # True (confirm) / False (refute) / None (indecisive — cannot judge)
     known_value: Optional[float]
     produced_value: Optional[float]
     known_unit: str
     produced_unit: str
+    unit_status: str               # "match" | "mismatch" | "unknown"  (external review issue 13)
     detail: str
 
     @property
@@ -74,29 +75,48 @@ def _close_rel(x: float, y: float, rel_tol: float, abs_floor: float) -> bool:
     return abs(x - y) <= max(rel_tol * max(abs(x), abs(y)), abs_floor)
 
 
+def _unit_status(known_unit: str, produced_unit: str) -> str:
+    if not known_unit or not produced_unit:
+        return "unknown"
+    return "match" if known_unit.lower() == produced_unit.lower() else "mismatch"
+
+
 def reproduction_check(
     known_answer: str,
     produced_answer: str,
     *,
     rel_tol: float = 0.01,
     abs_floor: float = 0.01,
+    require_unit_match: bool = True,
 ) -> ReproResult:
     """Does `produced_answer` reproduce the published `known_answer`? Magnitude comparison with relative
     tolerance, accepting the percent<->fraction convention (8.33 vs 0.0833) the answer anchor already accepts.
-    matched=None (not False) when either side has no extractable number — an INDECISIVE result, so a caller
-    that abstains-on-uncertainty never treats "couldn't compare" as "confirmed wrong"."""
+
+    Three-valued by design (external review issue 13 — a magnitude match with the WRONG unit is not a
+    reproduction: 1 J vs 1 W, 1 m vs 1 cm, 20% vs 0.20 rad/s vs Hz):
+      * matched=True  (CONFIRM)   magnitudes agree AND (unit matches OR unit unknown-and-not-required)
+      * matched=False (REFUTE)    magnitudes disagree, OR magnitudes agree but units KNOWN-MISMATCH
+      * matched=None  (INDECISIVE) a magnitude can't be extracted, or a required unit is UNKNOWN
+    `require_unit_match=True` (default, safe) treats an unknown unit as indecisive rather than a silent pass;
+    a caller with a trusted unit-free numeric context can relax it. INDECISIVE is never treated as confirmed
+    or refuted, so "couldn't compare" never becomes "confirmed" nor "confirmed wrong"."""
     kv, pv = extract_magnitude(known_answer), extract_magnitude(produced_answer)
     ku, pu = extract_unit(known_answer), extract_unit(produced_answer)
+    ustat = _unit_status(ku, pu)
     if kv is None or pv is None:
         which = "known" if kv is None else "produced"
-        return ReproResult(None, kv, pv, ku, pu, f"no numeric magnitude in {which} answer")
-    # same quantity under a different unit convention (percent vs fraction) counts as a match.
-    matched = any(_close_rel(pv, kv * scale, rel_tol, abs_floor) for scale in (1.0, 100.0, 0.01))
-    detail = ("within tolerance" if matched
-              else f"magnitude mismatch: produced {pv} vs known {kv}")
-    if matched and ku and pu and ku.lower() != pu.lower():
-        detail = f"magnitude matched but UNIT differs (known {ku!r} vs produced {pu!r})"
-    return ReproResult(matched, kv, pv, ku, pu, detail)
+        return ReproResult(None, kv, pv, ku, pu, ustat, f"no numeric magnitude in {which} answer")
+    mag_ok = any(_close_rel(pv, kv * scale, rel_tol, abs_floor) for scale in (1.0, 100.0, 0.01))
+    if not mag_ok:
+        return ReproResult(False, kv, pv, ku, pu, ustat, f"magnitude mismatch: produced {pv} vs known {kv}")
+    # magnitude agrees — now the unit decides confirm vs refute vs indecisive.
+    if ustat == "mismatch":
+        return ReproResult(False, kv, pv, ku, pu, ustat,
+                           f"magnitude agrees but UNIT differs (known {ku!r} vs produced {pu!r}) -> refuted")
+    if ustat == "unknown" and require_unit_match:
+        return ReproResult(None, kv, pv, ku, pu, ustat,
+                           "magnitude agrees but a unit is unknown; require_unit_match -> indecisive")
+    return ReproResult(True, kv, pv, ku, pu, ustat, "within tolerance; unit " + ustat)
 
 
 @dataclass(frozen=True)

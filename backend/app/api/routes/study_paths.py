@@ -252,11 +252,19 @@ def create_topic_from_generated_data(
     topic_data: dict[str, Any],
     db: Session,
 ) -> Topic:
+    from app.core.title_sanitizer import plain_language_title
+
+    topic_title = plain_language_title(topic_data.get("title"), fallback="Core concept")
+    unit_title = (
+        plain_language_title(topic_data.get("unit_title"), fallback=topic_title)
+        if topic_data.get("unit_title")
+        else None
+    )
     topic = Topic(
         study_path_id=study_path_id,
-        title=topic_data["title"],
+        title=topic_title,
         purpose=topic_data["purpose"],
-        unit_title=topic_data.get("unit_title"),
+        unit_title=unit_title,
         learner_outcome=topic_data.get("learner_outcome"),
         prerequisite_topics=topic_data.get("prerequisite_topics"),
         assumed_prerequisites=topic_data.get("assumed_prerequisites") or [],

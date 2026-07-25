@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db.base import Base
 
@@ -27,6 +27,15 @@ class Topic(Base):
 
     # Milestone 22: better topic generation metadata
     unit_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    @validates("title", "unit_title")
+    def _plain_language_titles(self, key: str, value: str | None) -> str | None:
+        """Titles render as plain text in the UI, so executable/math notation never belongs in them."""
+        if key == "unit_title" and value is None:
+            return None
+        from app.core.title_sanitizer import plain_language_title
+
+        return plain_language_title(value, fallback="Core concept")
     learner_outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     prerequisite_topics: Mapped[str | None] = mapped_column(Text, nullable=True)
     assumed_prerequisites: Mapped[list[str] | None] = mapped_column(

@@ -1,7 +1,22 @@
 # Grounded Runtime Binding Spec
 
-> **Status:** Draft v1.0.3 — architecture approved; ready for Phase 0 implementation. (Document revisions use
+> **Status:** Draft v1.0.6 — architecture frozen; substrate Milestone A approved. Offline runtime binding and
+> live delivery are conditionally approved, gated on substrate convergence and later persistence/latency
+> decisions. (Document revisions use
 > three-part numbers from here on so they cannot be confused with the v1/v1.1 SHIPPING slices.)
+> v1.0.6 freezes broad architecture and tightens only Milestone A: catalog inventory precedes capability
+> implementation, a reduced `AuthoredRelationshipDescriptor` is the compile input, execution and teaching
+> equivalence are reported separately, substantive drift is non-waivable, simplicity has measurable evidence,
+> early digest implementation is minimal, and Wave-0 cutover is dual-run (§2.3, §13, §15, §17, §20).
+> v1.0.5 freezes the architecture but narrows implementation into three hard-gated milestones (§13, §17.1),
+> makes the v1 shipping path model-free before narration (§0.1), defers contextual scenarios and persistence
+> beyond their prerequisite gates (§5.8, §12.3, §13), centralizes digest boundaries (§12.1), renames the
+> runtime trust level, and records gen_foundation's temporary legacy precedence as an explicit compatibility
+> exception (§4.3.2, §9, §16).
+> v1.0.4 makes claim identity a versioned digest over every arbitration-relevant path field (§2.5), qualifies
+> scenario compatibility by contract/version/variant and propagates template/renderer versions (§5.4,
+> §5.8–§5.9), declares a typed placeholder schema and discriminated pedagogical parameters (§5.8), and adds
+> their invalidation and acceptance contracts (§12.1, §15, §20).
 > v1.0.3: `path_plan_version` gets a defined v1 derivation so claims don't depend on unbuilt plan-versioning
 > machinery (§2.5), presentation labels get a single precedence order (§5.4), `ScenarioTemplate` gains review
 > provenance, pure-substitution rendering, and defined ref targets (§5.8).
@@ -95,12 +110,12 @@ because the runtime-binding route was selected.
 
 ```text
 v1a: reviewed contract -> deterministic binding -> execute and verify
-v1b: model proposes only nontrivial mappings/convention choices in shadow
+post-v1 experiment: model proposes only nontrivial mappings/convention choices in shadow
 ```
 
-The model is introduced only when deterministic mapping cannot resolve a reviewed choice. Presentation wording
-remains a separate narration concern. Shadow comparison must demonstrate that model proposals add coverage
-without reducing binding validity before they can affect delivered examples.
+The v1 shipping path contains no model call before narration. If deterministic mapping cannot resolve a
+reviewed choice, v1 degrades or withholds. Model-assisted mapping is a separately flagged post-v1 shadow
+experiment; it must demonstrate added coverage without reduced binding validity before it can affect delivery.
 
 ---
 
@@ -148,8 +163,8 @@ contract is the same order of effort as authoring a reviewed `FormulaSpec` row t
 already executes with routing, narration, gates, and registration for free. Therefore:
 
 - **V1's deliverable is infrastructure and trust-label plumbing, not coverage.** The restricted executor,
-  evidence packages, verification vector, and derived trust levels are the machinery Phase 3 extraction
-  needs. Coverage materially expands only when contracts stop requiring bespoke human authoring (Phase 3).
+  evidence packages, verification vector, and derived trust levels are the machinery post-v1 extraction
+  needs. Coverage materially expands only when contracts stop requiring bespoke human authoring.
 - The reason to author a `ConceptContract` instead of a `FormulaSpec` row must be one of: (a) the contract
   is pure declarative fact — draftable by a model and approvable in one human pass, with a measurably lower
   review bar than executable spec code; (b) one contract serves multiple grammars; (c) the concept needs the
@@ -163,6 +178,23 @@ marked runtime-routing fixture. Otherwise registration rejects it and directs th
 ---
 
 ## 2. Relationship to existing architecture
+
+Milestone A compiles authored T6 rows through a reduced substrate-facing descriptor; it does not implement the
+full runtime contract catalog:
+
+```text
+AuthoredRelationshipDescriptor {
+  relationship_id: str
+  expression: RestrictedExpression
+  symbols: { symbol: SymbolDescriptor }
+  units: { symbol: Unit }
+  domain_constraints: [Constraint]
+  numeric_policy_ref: str
+}
+```
+
+The full `ConceptContract`, grounding, assumptions, interpretations, conflations, resolution registry, and
+runtime binding artifacts remain architectural declarations until Milestone B.
 
 This system reuses the existing artifact chain:
 
@@ -271,19 +303,62 @@ must not be scheduled before it.
 
 #### 2.3.2 Behavior-diff equivalence
 
-The legacy authored engine is float/display based while Wave 0 is exact-rational internally. “Match” means:
+The legacy authored engine is float/display based while Wave 0 is exact-rational internally. Every row emits
+two independently classified reports:
 
-- both paths accept/reject the same seeded teaching candidates;
-- substrate canonical results, rounded with the row's existing display policy, equal the legacy displayed
-  results;
-- intermediate authoritative values agree at the declared display precision;
-- normalized units, operation order, terminal answer, trace coverage, and rendered authoritative fields agree;
-- exact rational equality is required between shared-substrate replay runs, not between rational and legacy
-  float internals;
-- any residual row-level drift is explicitly classified, reviewed, and either fixed or waived with a durable
-  reason before that row migrates.
+```text
+ExecutionEquivalence {
+  candidate_acceptance
+  canonical_result
+  displayed_result
+  units
+  domain_behavior
+  deterministic_replay
+}
 
-Bit-level float/rational equality is neither required nor used as the migration gate.
+TeachingProjectionEquivalence {
+  trace_stages
+  authoritative_intermediates
+  operation_order
+  rendered_authoritative_fields
+  checkpoint_coverage
+}
+```
+
+Each report status is `pass | accepted_nonsemantic_drift | blocked | failed`.
+
+- Final result, unit, domain acceptance, authoritative formula, or deterministic-replay drift is substantive,
+  non-waivable, and `failed`.
+- Only trace/presentation drift proven not to alter authoritative semantics may become
+  `accepted_nonsemantic_drift`, with reviewer, durable reason, affected fields, and expiry/recheck condition.
+- A waived row is reported separately and never counted as `pass`.
+- Unsupported expression/execution shape is `blocked`, not waived.
+- A row migrates only after explicit approval of both reports; presentation drift can never hide an execution
+  mismatch.
+- Exact rational equality is required between shared-substrate replay runs, not between rational and legacy
+  float internals. Bit-level float/rational equality is not required.
+
+#### 2.3.3 Wave-0 dual-run cutover
+
+```text
+Stage 1  offline: legacy primary + substrate comparison
+Stage 2  production shadow: legacy primary + substrate shadow
+Stage 3  guarded primary: substrate primary + legacy shadow/fallback
+Stage 4  substrate only: legacy retained behind rollback flag, then removed
+```
+
+Minimum v1 gates:
+
+- Stage 1 runs the full fixture suite and at least 100 seeded candidates per eligible row.
+- Stage 2 runs for at least seven days, with at least 50 executions per migrated row where traffic permits;
+  low-traffic rows supplement with seeded replay. It permits zero substantive mismatches.
+- Stage 3 runs for at least seven days with zero substantive mismatches, no error-rate regression, and
+  deterministic automatic legacy fallback on substrate infrastructure failure.
+- Stage 4 begins only after 30 stable days and one successful rollback drill. Legacy removal is a separate
+  reviewed change.
+
+Mismatch telemetry records row, candidate/input digest, report dimension, classification, selected primary,
+fallback action, and both results without retaining unnecessary learner data.
 
 ### 2.4 Certification timing and `we_policy`
 
@@ -324,6 +399,12 @@ machinery, not an existing adapter-claim service. Its implementation home is `_c
 full sibling set, owned scopes, and existing requirement/facet/dedup decisions are simultaneously visible.
 It prevents the same verified calculation from appearing in several lessons.
 
+Milestone C exposes this through a generic `PathExerciseOwnershipService`; runtime binding is its first
+consumer, not its semantic owner. The service accepts semantic exercise identity, lesson intent, and path-plan
+identity and returns a versioned claim. Exact adapters, trace-first generation, or practice systems may later
+consume the same interface. A separate `PATH_EXERCISE_OWNERSHIP_SPEC` is extracted when a second live consumer
+exists; v1 does not build runtime-binding-specific similarity logic.
+
 Sibling novelty is decided entirely from this certified ownership tuple and materially different
 `LessonIntent`; it is not re-decided from generated numbers or worker completion order. Two siblings may
 coincidentally receive the same numeric values without becoming duplicate exercises when they own different
@@ -337,7 +418,8 @@ Certification persists the result as:
 SiblingExerciseClaim {
   claim_id: str
   claim_version: int
-  path_plan_version: int
+  path_plan_digest: str
+  path_plan_serialization_version: int
   ownership_tuple: {
     concept_contract_id: str
     variant: str
@@ -352,24 +434,64 @@ SiblingExerciseClaim {
 ```
 
 `PreparedRuntimeBinding` and `EvidencePackage` freeze the authorizing claim id/version. Evidence may freeze
-only while that exact claim remains active under the recorded path-plan version.
+only while that exact claim remains active under the recorded path-plan digest.
 
 Claim arbitration is transactional: at most one active claim may exist for a
-`(path_plan_version, ownership_tuple)`, and activating a replacement atomically marks the prior claim
+`(path_plan_digest, ownership_tuple)`, and activating a replacement atomically marks the prior claim
 `superseded`. A claim change stales preparations and cache entries authorized by the older claim.
 
-`path_plan_version` source: the persisted study path has no explicit version column today, and the claim
-system must not block on building one. V1 derives it deterministically as a digest of the certified scope
-plan — canonical serialization of topic ids, owned scopes, roles, and ordering at certification time. Any
-re-certification that changes that serialization yields a new `path_plan_version` and therefore supersedes
-the plan's claims; a later explicit plan-version column may replace the digest without changing claim
-semantics.
+The persisted study path has no explicit version column today, and the claim system must not block on building
+one. V1 derives `path_plan_digest` from versioned canonical serialization of every field used by eligibility,
+ordering, or sibling arbitration:
+
+```text
+goal canonical identity;
+topic id, canonical identity, facet, role, depth, and course/topic type;
+scope_in and scope_out;
+prerequisite identities;
+topic ordering;
+lesson-intent kind and other ownership-tuple inputs.
+```
+
+Any re-certification that changes that serialization yields a new digest and supersedes the plan's claims.
+`path_plan_serialization_version` defines field inclusion, ordering, normalization, and null/list semantics.
+
+Its v1 field policy is explicit:
+
+```text
+INCLUDE (ownership-affecting)
+  goal canonical identity
+  topic id + canonical identity + facet
+  scope_in + scope_out
+  prerequisite canonical identities
+  role + depth + course/topic type
+  ordering
+  lesson-intent kind + ownership-tuple inputs
+
+EXCLUDE (presentation/operational only)
+  display title and prose description
+  UI metadata
+  estimated duration
+  visual metadata
+  generation timestamps
+  decision-trace prose
+```
+
+Adding an included field or moving a field between categories requires a new serialization version. An
+implementation may not hash the whole topic row as a shortcut.
+
+Each arbitration record receives a unique `claim_id`. `claim_version` increases monotonically for the same
+`(study_path_id, ownership_tuple)` lineage; `superseded_by_claim_id` points to the next record. It is never
+reset to 1 merely because a replacement receives a new id.
 
 ---
 
 ## 3. Trust boundaries
 
 ### 3.1 What the model may do
+
+Only narration is active in the v1 shipping path. The resolution/binding permissions below describe the
+separately gated post-v1 shadow experiment and do not authorize a pre-narration v1 model call.
 
 - Map the scope plan's identity to a reviewed executable contract concept and variant.
 - Select among reviewed grammar identifiers.
@@ -516,7 +638,7 @@ reviewed concept semantics and must not pay the runtime-grounding cost.
 ```
 
 The system never skips a higher-trust applicable tier merely because a lower tier is easier to generate.
-Trusted primitive composition is deferred to Phase 4 and is not part of the v1 live route.
+Trusted primitive composition is deferred to post-v1 work and is not part of the v1 live route.
 
 Hand-coded adapters and declarative engine rows are one registered lookup with two authoring shapes. Runtime
 binding begins only when both the initial and refined registered lookups miss.
@@ -577,6 +699,13 @@ v1:
   post-v1 work, with its own rollout and behavior-diff against the pre-migration route;
 - until that migration, gen_foundation output carries its existing labeling, not a §9 derived level.
 
+This temporary mismatch between route priority and shared verification semantics is named
+`legacy_route_precedence_exception`. It is a production-compatibility rule, not evidence that gen_foundation
+has stronger verification than a ready runtime binding. Whenever it wins while a runtime-binding candidate is
+ready, decision trace and telemetry record both candidates, gen_foundation provenance, runtime-binding trust
+state, winning route, exception reason, and latency spent in each route. The exception retires only through
+the separately gated gen_foundation evidence migration.
+
 ---
 
 ## 5. Core artifacts
@@ -595,6 +724,9 @@ GrammarManifest {
   numeric_policy_ref: str
   generation_policy_ref: str
   pedagogical_policy_ref: str
+  problem_template_ref: str
+  problem_renderer_version: int
+  scenario_catalog_version: int
   verification_profile_ref: str
   trace_contract_ref: str
   projection_contract_ref: str
@@ -766,6 +898,7 @@ BindingProposal {
     result_label: str
     display_unit: str
     scenario_template_id: str | null
+    scenario_template_version: int | null
   }
   supplementary_checks: [NonAuthoritativeCheckSuggestion]
   proposal_source: deterministic | model
@@ -773,8 +906,9 @@ BindingProposal {
 ```
 
 No verifier logic, arbitrary invariant, executable function, or authoritative free-text scenario is accepted
-in this artifact. `scenario_template_id` may select only a reviewed template declared compatible with the
-contract variant and grammar. Null selects the grammar's neutral formula-problem template.
+in this artifact. `scenario_template_id` and version may select only a reviewed template declared compatible
+with the full contract id/version/variant and grammar. Both null selects the grammar's neutral formula-problem
+template; exactly one null is invalid.
 
 Label precedence is single and fixed — three sources can name the same symbol, and two implementations will
 disagree without an order: (1) a selected `ScenarioTemplate.given_label_templates` entry wins for the
@@ -789,12 +923,15 @@ V1a constructs this proposal deterministically:
 - input/output slots come from `NormalizedRelationship` and `SymbolContract.role`;
 - grammar and numeric/generation policies come from `GrammarManifest`;
 - conventions come from a single compatible reviewed contract selection;
-- scenario selection is null or one reviewed compatible `scenario_template_id`;
+- scenario selection is null or one reviewed compatible `scenario_template_id` + version;
 - presentation labels come from reviewed symbol metadata, with narration allowed to paraphrase later.
 
 An LLM proposal is needed only when a later contract exposes multiple reviewed compatible mappings or
 conventions that cannot be resolved from scope evidence. Such proposals begin in shadow and may select only
 from those reviewed options.
+
+In v1, `proposal_source` must be `deterministic`; encountering a choice that would require `model` degrades or
+withholds. `proposal_source=model` is accepted only under the post-v1 shadow flag.
 
 ### 5.5 `RestrictedExpression`
 
@@ -858,12 +995,14 @@ ValidatedConstraintSet {
 
 `binding_digest` is a SHA-256 digest over canonical JSON containing the resolution-registry/entry versions,
 concept-contract id/version, relationship id, grammar id/version, normalized slot bindings,
-execution-affecting convention selections, and constraints. Presentation labels do not affect executable
-identity; a selected display unit does when it requires conversion rather than a label-only rendering.
+execution-affecting convention selections, selected scenario-template id/version, and constraints.
+Presentation labels do not affect executable identity; a selected display unit does when it requires
+conversion rather than label-only rendering.
 
 `execution_environment_digest` covers the unit-system version, numeric-policy version, verification-plan
 version, pedagogical-policy version, restricted-expression canonicalization version, and reviewed primitive
-implementation versions. Execution and narration reference both digests.
+implementation versions, plus the problem-template, problem-renderer, and scenario-catalog versions. Execution
+and narration reference both digests.
 
 The supporting types are owned as follows:
 
@@ -966,26 +1105,96 @@ PedagogicalConstraint {
     topic_depth: deep | overview | any
     grammar_id: str | any
   }
-  parameters: object
+  parameters: DifficultyParameters | NontrivialityParameters | ReadabilityParameters
+            | PrerequisiteParameters | ObjectiveCountParameters
   severity: blocking | warning
   failure_disposition: reject_instance | reject_binding | withhold
+}
+
+DifficultyParameters {
+  max_authoritative_operations: int
+  max_derived_intermediates: int
+  allowed_conversion_count: int
+}
+
+NontrivialityParameters {
+  forbidden_zero_inputs: [str]
+  forbidden_identity_results: [str]
+  minimum_distinct_input_values: int
+}
+
+ReadabilityParameters {
+  max_integer_digits: int
+  max_fraction_numerator_digits: int
+  max_fraction_denominator_digits: int
+  max_display_characters: int
+}
+
+PrerequisiteParameters {
+  required_prerequisite_concept_ids: [str]
+  allow_brief_refresh: bool
+}
+
+ObjectiveCountParameters {
+  minimum_primary_operations: int
+  maximum_primary_operations: int
+}
+
+ContractVariantRef {
+  contract_id: str
+  contract_version: int
+  variant: str
+}
+
+ReviewProvenance {
+  review_id: str
+  reviewer_id: str
+  reviewed_at: datetime
+  decision: approved | rejected | retired
+  source_refs: [str]
+  notes_digest: str
+}
+
+ScenarioPlaceholder {
+  source: given | reviewed_label | assumption | target
+  source_ref: str
+  value_type: str
+  required: bool
 }
 
 ScenarioTemplate {
   scenario_template_id: str
   version: int
-  review_provenance: str
-  compatible_contract_variants: [str]
+  review_provenance_ref: str          # resolves to an approved ReviewProvenance record
+  compatible_contract_variants: [ContractVariantRef]
   compatible_grammar_ids: [str]
   context_claim_refs: [str]          # resolve to GroundedArtifact ids on the compatible contract(s)
+  placeholders: { placeholder_name: ScenarioPlaceholder }
   given_label_templates: { symbol: str }
   question_template: str
 }
 
 ProblemStatement {
   problem_statement_id: str
-  template_id: str
+  problem_template_id: str
+  problem_template_version: int
+  problem_renderer_version: int
   scenario_template_id: str | null
+  scenario_template_version: int | null
+  given_refs: [str]
+  target_symbol: str
+  target_meaning_ref: str
+  requested_operation: str
+  requested_display_unit: str
+  visible_assumption_refs: [str]
+  question_display_text: str
+}
+
+NeutralFormulaProblemStatement {
+  problem_statement_id: str
+  problem_template_id: str
+  problem_template_version: int
+  problem_renderer_version: int
   given_refs: [str]
   target_symbol: str
   target_meaning_ref: str
@@ -1061,12 +1270,25 @@ or a reviewed `ScenarioTemplate` whose compatibility metadata matches the contra
 `question_display_text` is a deterministic rendering of the structured problem fields and is validated
 against them; it is never the source of target, operation, unit, or assumption identity.
 
+The first enforced live slice requires `scenario_template_id=null` and uses only the grammar-owned neutral
+problem template. The reviewed scenario catalog remains an architecture-compatible post-v1 extension; it is
+not required by Milestones A–C or the v1 definition of done.
+
+V1 implements and validates `NeutralFormulaProblemStatement` directly; deserialization rejects scenario
+fields rather than merely ignoring them. The broader `ProblemStatement`/`ScenarioTemplate` union activates
+only in the post-v1 contextual-scenario slice.
+
 Template rendering is PURE SUBSTITUTION: placeholders are replaced with typed values and reviewed labels,
 nothing else. No expression evaluation, no nested/recursive templates, no conditionals, no access to any
 object beyond the declared placeholder set — a template is data and the problem renderer is its only
 executor, the same posture §2.2 takes toward expressions. `ProblemStatement.given_refs` resolve into
 `GeneratedInstance.visible_values` by symbol; `visible_assumption_refs` resolve to contract
 `GroundedArtifact` ids. A ref that fails to resolve fails specification validity, not rendering.
+
+Template validation rejects missing or extra placeholders, duplicate semantic sources, source/type mismatch,
+undeclared template tokens, and any value unavailable from the frozen instance or reviewed contract.
+`review_provenance_ref` resolves to a structured human-review record; free-form provenance text cannot
+authorize a template.
 
 Every grammar references a reviewed `PedagogicalPolicy`. Its version is included in the execution-environment
 digest, preparation identity, cache invalidation, evidence, and telemetry. Changing a difficulty,
@@ -1077,6 +1299,23 @@ Every blocking pedagogical check has an explicit predicate implementation keyed 
 parameters. Unknown check types or malformed parameters fail policy loading. V1 policy fixtures specify
 concrete bounds for `deep` and `overview` numeric/operation complexity, readable numerator/denominator and
 display lengths, required-prerequisite membership, and exactly one primary requested operation.
+
+`parameters` is a discriminated union keyed by `check_type`; a mismatched parameter type fails policy loading.
+Valid severity/disposition combinations are: `warning` records diagnostics only, while `blocking` may
+`reject_instance`, `reject_binding`, or `withhold`. A warning with a blocking disposition is invalid.
+
+Every pedagogical predicate also declares one authority mode:
+
+```text
+upstream_equality_check       # confirm a certified scope/intent decision without reinterpreting it
+numeric_threshold             # apply reviewed numeric/readability bounds
+reviewed_allowlist_membership # check membership in contract/policy-owned ids
+derived_judgment              # prohibited in v1
+```
+
+Difficulty, prerequisite, scope, operation, and objective checks consume upstream certified fields or reviewed
+allowlists; they do not independently choose depth, prerequisites, scope, or lesson intent. The policy is a
+validator of planning authority, never a second scope planner.
 
 ### 5.9 `EvidencePackage`
 
@@ -1096,12 +1335,13 @@ EvidencePackage {
   pedagogical_policy_version: int
   sibling_claim_id: str
   sibling_claim_version: int
-  path_plan_version: int
+  path_plan_digest: str
+  path_plan_serialization_version: int
   lesson_intent: LessonIntent
   concept_resolution: ContractConceptResolution
   concept_contract_refs: [str]
   generated_instance: GeneratedInstance
-  problem: ProblemStatement
+  problem: NeutralFormulaProblemStatement  # v1; later evidence-schema version may admit ScenarioProblemStatement
   visible_givens: [TypedValue]
   applicability_conditions_used: [str]
   problem_solvability_report: ProblemSolvabilityResult
@@ -1495,9 +1735,9 @@ select reviewed grammar
 
 The first implementation does not attempt unrestricted normalization of arbitrary mathematical prose.
 
-### 8.1 Deferred extraction artifact (Phase 3)
+### 8.1 Deferred extraction artifact (post-v1)
 
-Runtime contract extraction is outside v1. Before Phase 3 it requires:
+Runtime contract extraction is outside v1. Before post-v1 extraction it requires:
 
 ```text
 ContractExtractionCandidate {
@@ -1563,11 +1803,11 @@ verification vector for routing and UI:
 
 | Derived level | Minimum conditions |
 |---|---|
-| `reviewed_adapter` | Exact reviewed adapter; all trace and narration checks pass |
+| `registered_reviewed_adapter` | Exact registered reviewed adapter; all trace and narration checks pass |
 | `verified_gen_foundation` | Post-migration only (§4.3.2): `trace_first` or `reference_backed` candidate; concept/scope match, replay, solvability, trace-to-teaching, and narration checks pass |
-| `reviewed_family_binding` | Runtime binding over a reviewed concept contract + reviewed grammar; all checks pass |
-| `grounded_runtime_binding` | Authoritative grounding matches validated runtime binding; execution and narration pass |
-| `user_source_grounded_binding` | Binding faithfully matches the declared user source; no independent authority claim |
+| `reviewed_contract_runtime_binding` | Deterministic runtime binding over a reviewed concept contract + reviewed grammar; all checks pass |
+| `authoritatively_grounded_runtime_binding` | Authoritative grounding matches validated runtime binding; execution and narration pass |
+| `user_source_grounded_runtime_binding` | Binding faithfully matches the declared user source; no independent authority claim |
 | `mechanically_verified_only` | Specification/execution/narration pass; conceptual grounding remains unresolved |
 | `illustrative` | No determinate claim presented as verified |
 | `withheld` | Required verification failed |
@@ -1578,11 +1818,11 @@ Rules:
   complete verification profile passes and a frozen evidence package exists. In v1, before the §4.3.2
   evidence migration, gen_foundation output keeps its existing labeling and never receives a §9 derived
   level.
-- `reviewed_family_binding` additionally requires `resolution_validity=reviewed_match`.
+- `reviewed_contract_runtime_binding` additionally requires `resolution_validity=reviewed_match`.
 - `mechanically_verified_only` must not display a generic “verified” badge.
 - In v1, `mechanically_verified_only` is diagnostic only: a determinate numeric worked example at that level
   is withheld rather than shipped. Later product treatment requires an explicit policy decision.
-- `user_source_grounded_binding` must be labeled as faithful to the provided source, not independently verified.
+- `user_source_grounded_runtime_binding` must be labeled as faithful to the provided source, not independently verified.
 - A determinate numeric example cannot ship when resolution or conceptual validity is unresolved.
 - Product policy may allow a clearly labeled illustrative scenario, but it must not contain an authoritative
   calculation derived from an ungrounded relationship.
@@ -1679,7 +1919,7 @@ runtime_binding.downgraded
 runtime_binding.withheld
 ```
 
-`runtime_binding.composition_selected` is reserved for Phase 4 and is not part of the v1 instrumentation
+`runtime_binding.composition_selected` is reserved for post-v1 composition and is not part of the v1 instrumentation
 contract or expected coverage.
 
 Each entry should include stable identifiers where applicable:
@@ -1721,12 +1961,40 @@ Invalidation occurs when:
 - unit/type policy changes;
 - verification plan changes;
 - pedagogical policy changes;
-- authorizing sibling claim or path-plan version changes;
+- problem template, problem renderer, selected scenario template, or scenario catalog changes;
+- authorizing sibling claim, path-plan digest, or path-plan serialization version changes;
 - the contract-resolution registry version that produced the binding's resolution changes — a registry
   remap can point the same scope identity at a DIFFERENT contract while every identity inside the cached
   binding (contract id/version, grammar) still digest-matches, so the registry version must be part of the
   cache key;
 - a safety incident blocks the binding.
+
+### 12.1.1 Digest registry
+
+Canonicalization implementations are versioned and shared; individual modules may not invent local digest
+boundaries.
+
+| Digest | Covers | Explicitly excludes | Primary use |
+|---|---|---|---|
+| `expression_canonical_digest` | Canonical restricted AST + reviewed constant/symbol identity | Values and presentation | Compiler equivalence |
+| `numeric_unit_policy_digest` | Exact numeric and multiplicative-unit policy versions | Formula and values | Substrate replay |
+| `execution_input_digest` | Compiled descriptor + typed inputs + substrate policy | Traces/cards/narration | Dual-run reproducibility |
+| `path_plan_digest` | Ownership-affecting certified path fields listed in §2.5 | Titles, UI/visual metadata, timestamps, trace prose | Claim currency |
+| `binding_digest` | Contract-to-grammar mapping, reviewed conventions, selected scenario identity | Instance values, cards, narration | Binding identity/cache |
+| `execution_environment_digest` | Executor, units, numeric/verification/pedagogical policies, template/renderer catalogs | Contract mapping and sampled values | Replay invalidation |
+| `instance_digest` | Seed, policies, typed raw/visible values, expected result, instance quality | Problem narration and cards | Problem reproducibility |
+| `evidence_digest` | Frozen authoritative pre-delivery problem, traces, reports, result, decisions | Narration/delivery transforms | Audit and evidence identity |
+| `canonical_delivery_payload_digest` | Exact canonical post-backend structured payload | DOM, CSS, layout, device rendering | Learner-visible fidelity |
+| `post_sanitization_validation_digest` | Validator version, canonical payload identity, validation result | Unvalidated UI state | Delivery audit |
+| `preparation_identity_digest` | Every readiness dependency and authorizing claim | Generated evidence and delivery | Race/staleness control |
+
+Each implementation declares producer, consumers, canonicalization version, included field schema, and replay
+requirements in one registry module. Digest fixtures prove that included-field changes alter identity and
+explicitly excluded-field changes do not.
+
+Milestone A implements only `expression_canonical_digest`, `numeric_unit_policy_digest`, and
+`execution_input_digest`. Binding, path-plan, preparation, evidence, delivery, and validation digests remain
+schema declarations until their milestone is authorized.
 
 ### 12.2 Promotion
 
@@ -1753,6 +2021,11 @@ nominates into the current catalog format so contracts, spec rows, and adapters 
 catalogs to maintain.
 
 ### 12.3 Persistence boundaries
+
+Production persistence is Milestone C work and must not begin before the substrate go/no-go and Milestone B
+offline evidence gates pass. Milestones A and B use immutable in-memory/fixture-backed artifacts with the same
+schemas. Alembic selection and production table design therefore cannot consume effort before the execution
+substrate has earned continuation.
 
 Persist for replay and audit:
 
@@ -1823,49 +2096,64 @@ decomposition, so contract resolution, binding validation, and the assurance pro
 with lesson generation rather than inline in the solve path, with the §12.1 cache making every repeat hit
 free. Only the numeric value of the budget remains open (§19 item 5).
 
-### Phase 0 — offline fixtures
+### Milestone A — shared substrate (the only work currently authorized)
 
-- Implement artifact schemas and restricted expression parser.
+- Inventory/classify the live T6 catalog before finalizing the substrate node and execution-shape set.
+- Freeze Wave-0 capability from measured catalog coverage and exact blockers.
+- Implement only `AuthoredRelationshipDescriptor`, canonical AST, numeric/unit core, compiler, and
+  substrate-required serialization/digests.
 - Implement the shared scalar executor, numeric policy, and unit registry.
-- Classify every authored T6 FormulaSpec row by convergence wave and emit blockers for non-Wave-0 rows.
-- Compile Wave-0 rows into the restricted AST in shadow and pass their behavior-diff gate.
-- Move Wave-0 authored T6 onto the shared substrate before v1 runtime binding can be enforced.
-- Implement `direct_formula_calculation` over that substrate.
-- Use reviewed fixture contracts only.
-- No LLM binding generation and no user impact.
+- Compile Wave-0 rows into the restricted AST and dual-run both equivalence reports.
+- Review blockers, waivers, and complexity evidence.
+- Cut over in stages: legacy primary/substrate shadow → substrate primary/legacy shadow → substrate only.
+- Prove one reviewed relationship fixture can compile to `AuthoredRelationshipDescriptor` and execute without
+  adding semantics; do not implement full `ConceptContract`.
+- Run the §17.4 go/no-go decision.
+- No runtime-binding routing, evidence persistence, sibling claims, preparation lifecycle, frontend work, or
+  LLM binding. Existing T6 user-visible behavior may change only at §2.3.3 Stage 3 after shadow gates pass,
+  with deterministic legacy fallback.
 
-### Phase 1 — shadow binding
+Milestone B may not begin unless every §17.4 condition passes. Failure stops this build and routes investment
+to richer `FormulaSpec` metadata.
 
-- On exact-adapter misses, generate and validate binding proposals.
-- Execute and compare results, but do not alter delivered lessons.
-- Record decision trace, latency, cost, match rate, and failure dimensions.
+### Milestone B — offline runtime-binding evidence
 
-### Phase 2 — reviewed-contract enforced slice
+- Implement the reviewed resolution registry and reviewed contract fixtures.
+- Implement deterministic binding, generated instances, verification, structured neutral problems, trace
+  integration, and immutable evidence in memory/fixture storage.
+- Run offline end-to-end fallback fixtures through normal lookup misses.
+- No live solver route, production database migration, sibling arbitration, preparation service, delivery
+  evidence, frontend renderer, or model-assisted binding.
+- Do not write production evidence records, change `we_policy`, alter live route ordering, expose generated
+  cards to users, or invoke production sanitization as a shipping gate. Production-like serialization and
+  sanitizer behavior may be exercised only in isolated fixtures.
 
-- Allow runtime binding only when a reviewed concept contract exists.
-- Ship under `reviewed_family_binding`.
-- Start with several direct-formula concepts.
+Milestone C may not begin until Milestone B passes all offline verification/replay fixtures and the persistence
+and latency decisions in §19 are closed.
 
-The gen_foundation evidence migration is not part of this Phase 2 or the v1 definition of done. It begins only
-in a separately approved post-v1 rollout after runtime binding has completed its own enforced slice.
+### Milestone C — live delivery
 
-### Phase 3 — authoritative-grounding slice
+- Implement generic path exercise ownership with runtime binding as its first consumer.
+- Implement persistence/migrations, prepared-binding lifecycle, solver/certification integration, delivery
+  evidence, neutral-template frontend rendering, decision traces, telemetry, and shadow rollout.
+- Enforce only after shadow criteria, latency budgets, rollback behavior, and final stripping behavior pass.
+- Ship reviewed contracts under `reviewed_contract_runtime_binding`.
+
+The gen_foundation evidence migration and contextual scenario catalog are separately approved post-v1 work.
+
+### Post-v1 — authoritative extraction and trusted composition
 
 - Add grammar-directed extraction from approved sources.
-- Ship only when conceptual validity reaches `grounded_match`.
-- Add the separately gated `discounted_cashflow` v1.1 slice after scalar formula binding is stable.
-
-### Phase 4 — trusted composition
-
+- Add the separately gated `discounted_cashflow` shipping slice after scalar binding is stable.
 - Add bounded DAG composition over reviewed primitives.
 - No branching, recursion, or custom iteration.
 - Repeated successful compositions become reviewed families.
 
-No phase begins until the prior phase's verification and decision-trace coverage are measurable.
+No milestone begins until the prior milestone's named gate is complete.
 
 ### 13.1 Deferred `CompositionPlan` boundary
 
-Composition is not implemented or routed in v1. Before Phase 4, this spec must be versioned with a concrete
+Composition is not implemented or routed in v1. Before post-v1 composition work, this spec must be versioned with a concrete
 `CompositionPlan` contract. Its minimum constraints are already binding:
 
 - directed acyclic graph;
@@ -1896,7 +2184,13 @@ status_version
 resolution_entry_version
 sibling_claim_id
 sibling_claim_version
-path_plan_version
+path_plan_digest
+path_plan_serialization_version
+problem_template_id
+problem_template_version
+problem_renderer_version
+scenario_template_id
+scenario_template_version
 safety_block_version
 superseded_by_preparation_id
 ```
@@ -1918,8 +2212,8 @@ Rules:
 - `failed`, timed-out, or stale preparation restores current withhold behavior.
 - Final enforcement trusts the frozen passing `EvidencePackage`, never the earlier eligibility stamp.
 - `preparation_identity_digest` covers topic/scope identity, resolution registry and entry versions,
-  sibling-claim/path-plan versions, contract/grammar/pedagogical-policy/environment versions, and claimant
-  intent. At most one non-superseded
+  sibling-claim/path-plan digest and serialization version, contract/grammar/pedagogical-policy/environment
+  versions, problem/scenario template versions, and claimant intent. At most one non-superseded
   `preparing|ready` row may exist for the same identity.
 - Status transitions use compare-and-swap on `status_version`. A worker prepared against an older registry,
   scope plan, safety-block version, or active preparation cannot mark itself ready.
@@ -1957,7 +2251,7 @@ Acceptance:
 - evidence package freezes;
 - every formula, number, unit, assumption, decision, and final result in cards maps to evidence;
 - decision trace reconstructs every route and verification decision;
-- final derived level is `reviewed_family_binding`.
+- final derived level is `reviewed_contract_runtime_binding`.
 - learner-visible problem solvability and pedagogical fitness pass.
 
 ### 14.2 Discounted cash flow (v1.1)
@@ -1984,13 +2278,22 @@ reference another contract's relationship.
 
 ### Artifact and parser
 
+- Semantically identical ASTs canonicalize identically; noncommutative operand order remains distinct.
 - Reject arbitrary calls, attributes, comprehensions, conditionals, loops, and undeclared symbols.
 - Reject ASTs above depth/node limits.
+- Reject unknown nodes during deserialization before execution.
+- Reject pathological nesting, large powers, and fraction bit growth before resource exhaustion.
+- Preserve reviewed constant identity and unit metadata through compilation.
+- Division compilation produces an explicit nonzero domain constraint.
+- Canonical serialization rejects noncanonical numeric representations.
 - Reject cyclic binding dependencies.
 - Prove contract/runtime expressions never enter the authored `formula_engine._eval` string-evaluation path.
 - Binding digest changes when contract, relationship, grammar, convention, or slot binding changes.
 - Environment digest changes when numeric, unit, verification, parser, or primitive versions change.
 - Environment digest and preparation identity change when the pedagogical-policy version changes.
+- V1 environment identity changes when the neutral problem-template or renderer version changes.
+- Post-v1 scenario slice: binding/preparation identity changes with the selected scenario-template version,
+  and environment identity changes with the scenario-catalog version.
 - Instance digest changes when seed, generation policy, values, numeric policy, or expected result changes.
 - Every registered T6 row receives exactly one convergence wave and explicit required-node/function set.
 - Every registered T6 row also receives an execution-shape capability report; rational-only multi-output,
@@ -1998,6 +2301,11 @@ reference another contract's relationship.
 - Every Wave-0 row matches legacy displayed results/intermediates under §2.3.2 rather than bit-level float
   equality.
 - A `sqrt` row is classified into Wave 2 and does not block the Wave-0 gate.
+- Terminating decimals convert exactly to `Fraction`; declared negative half-way rounding is stable.
+- Display rounding never changes canonical replay.
+- Multiplicative unit conversion before execution agrees with canonical execution plus result conversion.
+- Rejected legacy/substrate candidates expose classified reasons.
+- A presentation waiver cannot authorize final-result, unit, formula, domain, or acceptance drift.
 
 ### Concept resolution and grounding
 
@@ -2005,9 +2313,9 @@ reference another contract's relationship.
 - A wrong-but-unambiguous-looking resolution (single candidate contract, model-inferred mapping only) records
   `mechanically_verified_only` diagnostically and withholds the determinate example in v1.
 - Explicit Macaulay goal excludes modified/effective duration.
-- User-source-only grounding cannot produce `grounded_runtime_binding`.
+- User-source-only grounding cannot produce `authoritatively_grounded_runtime_binding`.
 - A relationship reference from a different contract/version fails conceptual matching.
-- Phase 3 extraction separately rejects a formula with correct symbols but wrong operator structure.
+- Post-v1 extraction separately rejects a formula with correct symbols but wrong operator structure.
 - Missing applicability conditions block verified shipping.
 
 ### Specification and execution
@@ -2021,13 +2329,20 @@ reference another contract's relationship.
 - `question_display_text` that requests a different target, operation, or unit from its structured
   `ProblemStatement` fails solvability/fidelity.
 - A required assumption present only in contract metadata but absent from `visible_assumption_refs` fails.
-- An unknown or contract-incompatible `scenario_template_id` is rejected; arbitrary scenario prose cannot
-  enter the authoritative problem.
+- V1 rejects every non-null `scenario_template_id`; arbitrary scenario prose cannot enter the authoritative
+  problem.
+- A neutral problem-template or renderer version bump invalidates preparation reuse and produces new evidence
+  identity.
+- Post-v1 scenario slice: incompatible contract refs, same-named cross-contract variants, and missing/extra/
+  unresolved/duplicate-source/type-mismatched placeholders are rejected.
 - More than one primary requested operation fails the v1 pedagogical policy.
 - A mathematically valid instance that is off-scope, trivial, prerequisite-incompatible, or duplicates a
   sibling-owned operation fails pedagogical fitness.
 - Concurrent sibling preparation order cannot change ownership or claim-currency outcomes.
-- A superseded sibling claim or path-plan version fails `claim_currency` at evidence freeze.
+- A superseded sibling claim or path-plan digest fails `claim_currency` at evidence freeze.
+- Changing goal identity, topic identity/facet, scope_in/out, prerequisites, depth/type, ordering, or
+  lesson-intent ownership inputs changes `path_plan_digest`; changing canonicalization rules changes
+  `path_plan_serialization_version`.
 - Tampered final result fails independent recomputation.
 - Grammar-owned metamorphic failure rejects the binding/instance.
 - Generated supplementary invariant alone cannot authorize a binding.
@@ -2089,7 +2404,13 @@ pedagogical_policy_id
 pedagogical_policy_version
 sibling_claim_id
 sibling_claim_version
-path_plan_version
+path_plan_digest
+path_plan_serialization_version
+problem_template_id
+problem_template_version
+problem_renderer_version
+scenario_template_id
+scenario_template_version
 generation_policy_id
 verification_vector
 failed_checks
@@ -2099,6 +2420,9 @@ final_route
 latency_by_stage
 model_calls_by_stage
 degradation_reason
+legacy_route_precedence_exception_applied
+legacy_route_precedence_exception_reason
+runtime_binding_candidate_ready_when_exception_applied
 ```
 
 Dashboards should answer:
@@ -2117,33 +2441,55 @@ Dashboards should answer:
 
 ### 17.1 Ordered implementation units
 
-1. **Artifact and manifest foundation**
-   - `GrammarManifest`, `ConceptContract`, `NormalizedRelationship`, symbol metadata,
-     `RestrictedExpression`, `NumericPolicy`, canonical serialization, and digesting.
+**Milestone A — shared substrate**
+
+1. **Inventory and capability freeze**
+   - Generate expression-node and execution-shape reports from every live T6 row before executor construction.
+   - Freeze Wave-0 only when measured coverage justifies the substrate.
+2. **Reduced artifact and core foundation**
+   - `AuthoredRelationshipDescriptor`, symbol metadata, `RestrictedExpression`, `NumericPolicy`, canonical
+     serialization, and only the Milestone A digest subset.
    - No model calls or lesson integration.
-2. **Restricted scalar executor**
+3. **Restricted scalar executor and T6 compiler**
    - Literal, variable, add, subtract, multiply, divide, integer power, and negation.
    - Decimal/rational arithmetic, domain constraints, canonical units, deterministic replay.
-3. **Authored T6 convergence**
-   - Classify every reviewed `FormulaSpec` row into a convergence wave.
-   - Parse Wave-0 rows into the restricted AST in shadow and run the declared behavior-diff policy.
-   - Move Wave-0 T6 rows onto the shared substrate only after equivalence is proven; report exact blockers for
-     every later-wave row.
-4. **Reviewed contract fixtures**
-   - Structurally diverse formulas; no runtime extraction.
-5. **Deterministic binding and instance generation**
-   - Derive binding where possible; seed control, quality rejection, raw/displayed values, reproducibility.
-6. **Existing trace-chain integration**
-   - Produce the existing execution/teaching traces, projection, and checkpoints; no narration yet.
-7. **Verification and evidence freezing**
-   - Assurance profile, recomputation, unit/domain/property checks, digests, immutable evidence.
-8. **Evidence-linked narration**
-   - Structured claim blocks and trace-to-teaching validation.
-9. **Shadow model binding**
-   - Only after offline fixtures pass; compare model proposals to deterministic/reviewed expected bindings
-     without affecting delivered lessons.
+   - Compile reviewed FormulaSpec rows into the reduced descriptor/AST.
+4. **Dual-run convergence and cutover report**
+   - Produce separate execution and teaching-projection equivalence reports.
+   - Report exact blockers and accepted nonsemantic drift separately.
+   - Exercise the staged cutover and fallback policy before substrate-only operation.
 
-Deferred to a separately approved post-v1 rollout (explicitly NOT v1 or its Phase 2 scope): the
+Stop and run §17.4. Milestone B units are unauthorized until the go/no-go passes.
+
+**Milestone B — offline runtime-binding evidence**
+
+5. **Reviewed contract fixtures**
+   - Structurally diverse formulas; no runtime extraction.
+6. **Deterministic binding and instance generation**
+   - Derive binding where possible; seed control, quality rejection, raw/displayed values, reproducibility.
+7. **Existing trace-chain integration**
+   - Produce the existing execution/teaching traces, projection, and checkpoints; no narration yet.
+8. **Verification and evidence freezing**
+   - Assurance profile, recomputation, unit/domain/property checks, digests, immutable evidence.
+   - In-memory/fixture-backed only; no production tables.
+9. **Offline evidence-linked narration fixtures**
+   - Structured claim blocks and trace-to-teaching validation without live delivery.
+
+Stop and run the Milestone B offline verification/replay gate.
+
+**Milestone C — live delivery**
+
+10. **Path ownership, persistence, preparation, and routing**
+   - Generic exercise claims, migrations, preparation lifecycle, certification/solver integration, shadow
+     routing, latency enforcement, decision trace, and telemetry.
+11. **Delivery evidence and frontend structured renderer**
+   - Canonical delivery payload, post-sanitization validation, renderer conformance tests, and enforced-slice
+     rollback controls.
+
+Model-assisted binding is a separately approved post-v1 shadow experiment and is not an implementation unit
+or shipping branch in Milestones A–C.
+
+Deferred to a separately approved post-v1 rollout (explicitly NOT Milestones A–C): the
 **gen_foundation evidence migration** (§4.3.2) —
 wrapping the live gen_foundation route in `EvidencePackage`/`DeliveryEvidenceRecord` so it can earn the
 `verified_gen_foundation` label, with a behavior-diff against the pre-migration route before cutover.
@@ -2190,7 +2536,7 @@ backend/app/services/examples/runtime_binding/
   artifacts.py
   resolver.py
   contract_store.py              # ConceptContract + ContractResolutionRegistry
-  scenario_store.py              # reviewed ScenarioTemplate catalog
+  scenario_store.py              # post-v1 reviewed ScenarioTemplate catalog; not built in Milestones A–C
   problem_renderer.py            # deterministic ProblemStatement + display-text projection
   restricted_expression.py
   convergence.py                 # T6 wave classification + behavior-diff report
@@ -2249,16 +2595,26 @@ Do not modify the current formula engine to accept untrusted expression strings.
 
 ### 17.4 Infrastructure go/no-go checkpoint
 
-After implementation units 1–3, continue to runtime binding only if all are true:
+After Milestone A units 1–4, continue to Milestone B only if all are true. This is a release gate, not an
+advisory review; no downstream persistence, routing, ownership, evidence-delivery, scenario, or frontend work
+may begin before it passes:
 
 - every registered T6 row is deterministically classified into a convergence wave;
+- Wave-0 capability was frozen from the live inventory rather than assumed in advance;
 - every Wave-0 row compiles to `RestrictedExpression` and passes the behavior-diff gate;
 - every later-wave row reports its exact unsupported nodes/functions;
 - behavior-diff tests show no unexplained execution, rounding, unit, trace, or display drift;
-- the shared substrate is simpler to reason about than maintaining two formula executors;
-- one reviewed `ConceptContract` can map onto it without adding executable semantics;
+- no substantive mismatch is waived; `accepted_nonsemantic_drift`, blocked, and failed rows are reported
+  separately from passes;
+- the staged dual-run cutover demonstrates mismatch telemetry, deterministic fallback to legacy, and explicit
+  criteria for disabling/removing the legacy path;
+- simplicity evidence shows one execution implementation for migrated rows, no duplicated operator semantics,
+  one numeric/unit policy, no untyped evaluation increase, no migration-only row branches, lower or equal core
+  execution cyclomatic complexity/code-path count, and documented unsupported capability boundaries;
+- one reviewed relationship fixture maps through `AuthoredRelationshipDescriptor` without adding executable
+  semantics; full `ConceptContract` remains Milestone B;
 - the proposed evidence/verification model supplies audit information unavailable from today's FormulaSpec
-  path and is clearly reusable by Phase 3 extraction.
+  path and is clearly reusable by post-v1 extraction.
 
 If these conditions fail, stop the runtime-binding build. Extend `FormulaSpec` with richer contract metadata
 and continue catalog growth through the existing adapter system instead.
@@ -2295,55 +2651,55 @@ and continue catalog growth through the existing adapter system instead.
    append-only enforcement, atomic active-preparation constraint, and indexes? Blocking before persistence
    ships.
    Recommendation: adopt Alembic once rather than a one-off guarded script — four new tables are already
-   required, Phase 3's contract store will add more, and an ad-hoc migration path becomes its own
+   required, post-v1 extraction will add more, and an ad-hoc migration path becomes its own
    maintenance problem.
 
 ---
 
-## 20. Definition of done for v1
+## 20. Independent milestone definitions of done
 
-- [ ] Exact adapters remain the first and exclusive source of truth when applicable.
-- [ ] Every Wave-0 T6 row and v1 runtime binding use the same restricted executor and numeric/unit substrate;
-      later-wave or execution-shape-incompatible rows are enumerated with exact blockers.
-- [ ] Runtime contract expressions cannot reach Python `eval` or arbitrary execution.
-- [ ] `direct_formula_calculation` executes a reviewed concept contract end to end.
-- [ ] v1 supports scalar typed values only; extraction, vectors, composition, and discounted cash flow remain
-      outside the shipping route.
-- [ ] Runtime proposals bind a contract-owned relationship and cannot supply formula semantics.
-- [ ] Generated instances and numeric policy make every example reproducible at displayed precision.
-- [ ] Verification dimensions are stored separately and derive an honest trust level.
-- [ ] Learner-visible problem solvability and pedagogical fitness are required shipping dimensions.
-- [ ] Authoritative problems use structured `ProblemStatement` semantics; display text is a deterministic
-      projection and free-text model scenarios cannot enter execution/evidence.
-- [ ] A reviewed/versioned pedagogical policy deterministically owns difficulty, nontriviality, readability,
-      prerequisite, and objective-count thresholds and participates in digests/invalidation.
-- [ ] Concept/variant ambiguity cannot silently select a materially different formula.
-- [ ] Grammar-owned boundary, property, and metamorphic tests run.
-- [ ] Evidence packages are immutable and cards carry required provenance.
-- [ ] Evidence packages have canonical pre-narration digests; lessons bind evidence id/digest plus an
-      append-only delivery record covering rendered cards and post-sanitization narration fidelity.
-- [ ] Narration cannot change formulas, values, units, assumptions, decisions, or conclusions.
-- [ ] Failed grounding or verification never falls to a from-scratch authoritative calculation.
-- [ ] Every material route and verification decision is persisted and explainable.
-- [ ] Runtime bindings remain nominations—not automatic additions—to the permanent catalog.
-- [ ] The live integration point is `solve_worked_example` (§17.3); nothing routes through the disabled
-      accuracy ladder.
-- [ ] Certification and `enforce_example_plan` are route-aware per §2.4; a runtime-binding example is never
-      generated on a topic that finalize will strip.
-- [ ] A per-topic latency budget with automatic degradation is enforced, and plan-time preparation plus the
-      binding cache keep the full-path build inside its current budget (§13).
-- [ ] V1 withholds every determinate example whose resolution is not `reviewed_match` (§5.2, §6, §9).
-- [ ] Gen_foundation outranks runtime binding only with `trace_first` or `reference_backed` provenance (§4.3).
-- [ ] Positive gen_foundation provenance decides route order only in v1; the live route ships under its
-      existing gating, and the `verified_gen_foundation` label/checks activate solely with the §4.3.2
-      evidence migration (named deferred work, not a v1 obligation).
-- [ ] Contract ownership arbitration prevents sibling topics from repeating the same exercise (§2.5).
-- [ ] Versioned sibling claims are persisted and `claim_currency` is independent of worker completion order
-      and generated numeric coincidence.
-- [ ] Prepared binding state/version checks prevent stale or raced artifacts from shipping (§13.2).
-- [ ] Runtime-fallback end-to-end fixtures genuinely miss registered routing; registered T6 fixtures are used
-      separately for substrate equivalence.
-- [ ] Structured claim rendering preserves semantic identity through backend and frontend transforms (§5.10).
-- [ ] Canonical delivery serialization is versioned and pins sanitizer, renderer-contract, and validator
-      versions.
-- [ ] Ships with `AZALEA_GROUNDED_RUNTIME_BINDING=shadow` as the default until Phase 2 criteria are met.
+### 20.1 Milestone A — shared substrate
+
+- [ ] Every live T6 row has expression-node, execution-shape, and blocker classification.
+- [ ] Wave-0 capability was frozen from inventory evidence.
+- [ ] Reduced descriptors compile without full runtime-contract infrastructure.
+- [ ] Restricted AST, exact numeric core, units, bounds, and minimal digests pass security/replay tests.
+- [ ] Execution and teaching-projection equivalence are reported separately.
+- [ ] No substantive mismatch is waived or hidden by presentation drift.
+- [ ] Dual-run stages, telemetry, fallback, and rollback gates pass.
+- [ ] Measurable simplicity evidence and every §17.4 condition pass.
+
+Milestone A is a meaningful completed deliverable even if the go/no-go rejects Milestone B.
+
+### 20.2 Milestone B — offline runtime-binding evidence
+
+- [ ] Reviewed resolution and contract fixtures bind deterministically with no pre-narration model call.
+- [ ] Normal adapter lookup genuinely misses before offline runtime binding executes.
+- [ ] Deterministic instances, neutral structured problems, verification, traces, and immutable in-memory
+      evidence replay end to end.
+- [ ] No production records, route ordering, `we_policy`, visible cards, or shipping sanitizer gate changes.
+- [ ] Every offline acceptance/replay test passes and the Milestone C persistence/latency decisions are ready.
+
+### 20.3 Milestone C — live delivery / v1
+
+The checklist below passes in shadow and then the enforced slice. It is not authorization to build Milestone
+B or C before their gates.
+
+- [ ] Exact registered adapters remain first and exclusive when applicable; runtime binding never reaches the
+      disabled accuracy ladder or unverified from-scratch solver.
+- [ ] Route-aware certification, generic exercise ownership, claim currency, and final stripping agree.
+- [ ] Alembic migrations, append-only evidence/delivery records, preparation activation, cache invalidation,
+      and stale/race protections pass.
+- [ ] Live routing uses only reviewed resolution, reviewed contracts, deterministic binding, scalar neutral
+      problems, and no model call before narration.
+- [ ] Evidence-linked narration and the frontend structured renderer preserve every authoritative formula,
+      value, unit, assumption, decision, result, and provenance reference after sanitization.
+- [ ] Canonical delivery serialization and all live digests pin their producer/consumer versions.
+- [ ] Latency budgets, plan-time preparation, automatic degradation, rollback, and full-path performance pass.
+- [ ] Every material route, verification, legacy-precedence exception, retry, degradation, and withhold is
+      persisted and explainable.
+- [ ] Shadow rollout shows no exact-adapter regressions, trust-label inflation, stale artifacts, or learner-
+      visible invalid examples.
+- [ ] Enforcement starts behind `AZALEA_GROUNDED_RUNTIME_BINDING=shadow|enforced` only after explicit Milestone
+      C approval; contextual scenarios, model-assisted binding, extraction, vectors, composition, and
+      gen-foundation evidence migration remain post-v1.

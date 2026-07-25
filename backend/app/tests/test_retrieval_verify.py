@@ -46,8 +46,8 @@ class ReproductionCheck(unittest.TestCase):
         self.assertTrue(reproduction_check("8.99e9 N", "8.99 x 10^9 N").matched)
 
     def test_percent_fraction_convention_matches(self):
-        # same quantity, different convention (8.33 vs 0.0833) — accepted, mirroring the answer anchor.
-        self.assertTrue(reproduction_check("8.33", "0.0833").matched)
+        # same quantity, different convention (8.33 vs 0.0833) — accepted in a unit-free numeric context.
+        self.assertTrue(reproduction_check("8.33", "0.0833", require_unit_match=False).matched)
 
     def test_real_error_rejected(self):
         # off by ~10% — a genuine wrong answer, must NOT be accepted.
@@ -56,7 +56,7 @@ class ReproductionCheck(unittest.TestCase):
         self.assertIn("mismatch", r.detail)
 
     def test_off_by_one_rejected(self):
-        self.assertFalse(reproduction_check("42", "41").matched)
+        self.assertFalse(reproduction_check("42", "41", require_unit_match=False).matched)
 
     def test_indecisive_when_no_magnitude(self):
         # a non-numeric produced answer is INDECISIVE (None), never a false 'wrong' — so abstention, not a
@@ -65,11 +65,26 @@ class ReproductionCheck(unittest.TestCase):
         self.assertIsNone(r.matched)
         self.assertFalse(r.decisive)
 
-    def test_unit_mismatch_flagged_even_when_magnitude_agrees(self):
-        # 1 V vs 1 A: magnitude agrees but the unit is wrong — surfaced in detail (v0 records; does not veto).
+    def test_unit_mismatch_REFUTES_even_when_magnitude_agrees(self):
+        # 1 V vs 1 A: magnitude agrees but the physical quantity is wrong — REFUTED, not confirmed
+        # (external review issue 13: a magnitude match with the wrong unit is not a reproduction).
         r = reproduction_check("1 V", "1 A")
+        self.assertFalse(r.matched)
+        self.assertEqual(r.unit_status, "mismatch")
+        self.assertIn("refuted", r.detail)
+
+    def test_unit_match_confirms(self):
+        r = reproduction_check("100 V", "100 V")
         self.assertTrue(r.matched)
-        self.assertIn("UNIT differs", r.detail)
+        self.assertEqual(r.unit_status, "match")
+
+    def test_unknown_unit_is_indecisive_by_default(self):
+        # magnitude agrees but the produced side carries no unit — INDECISIVE under the safe default, never a
+        # silent pass. A trusted unit-free context can opt out via require_unit_match=False.
+        r = reproduction_check("100 V", "100")
+        self.assertIsNone(r.matched)
+        self.assertEqual(r.unit_status, "unknown")
+        self.assertTrue(reproduction_check("100 V", "100", require_unit_match=False).matched)
 
 
 class Fixtures(unittest.TestCase):
@@ -93,7 +108,8 @@ class Fixtures(unittest.TestCase):
         for fx in KNOWN_ANSWER_FIXTURES:
             rhs = fx.canonical_formula.split("=", 1)[1].strip()
             value = eval(rhs, {"__builtins__": {}}, dict(env[fx.concept]))  # noqa: S307 — fixed local test data
-            r = reproduction_check(fx.known_answer, str(value))
+            # the computed value is unit-free by construction, so compare magnitude only here.
+            r = reproduction_check(fx.known_answer, str(value), require_unit_match=False)
             self.assertTrue(r.matched, f"{fx.concept}: computed {value} vs published {fx.known_answer} ({r.detail})")
 
     def test_fixture_domains_are_diverse(self):

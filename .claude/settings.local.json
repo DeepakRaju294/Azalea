@@ -12,7 +12,8 @@
       "PowerShell(ls \"C:\\\\Users\\\\Deepa\\\\Azalea\\\\frontend\" | where { $_.Name -ne 'node_modules' })",
       "Bash(xargs grep -l \"create_all\\\\|metadata\")",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Deepa\\\\Azalea\" -Directory)",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "Bash(OPENAI_API_KEY=dummy ./venv/Scripts/python.exe -m unittest discover -s app/tests -p \"test_*.py\")"
     ]
   }
 }

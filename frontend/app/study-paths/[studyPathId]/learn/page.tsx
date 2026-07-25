@@ -4613,7 +4613,7 @@ export default function StudyPathLearnPage() {
                               ? "🔒"
                               : "○"}
                       </span>
-                      {topic.title.replace(/:+$/, "")}
+                      {plainLanguageDisplayTitle(topic.title, "Topic")}
                       {!isCurrentTopic && isPreparing && (
                         <span className="ml-2 text-[11px] font-semibold text-muted-foreground">
                           preparing
@@ -5053,7 +5053,9 @@ export default function StudyPathLearnPage() {
               <ul className="max-h-64 space-y-1 overflow-y-auto">
                 {streamingPreviewCards.map((card, index) => (
                   <li key={index} className="rounded-lg bg-[#F6F2FF] px-3 py-1.5">
-                    <span className="font-bold text-foreground">{card.title || "Card"}</span>
+                    <span className="font-bold text-foreground">
+                      {plainLanguageDisplayTitle(card.title, "Card")}
+                    </span>
                     {card.points[0] && (
                       <span className="ml-1 text-muted-foreground">
                         — {card.points[0].replace(/^\s*-\s*/, "")}
@@ -6676,6 +6678,22 @@ function formatLatexForDisplayStrict(latex: string) {
   return output;
 }
 
+function plainLanguageDisplayTitle(value: string | undefined, fallback: string) {
+  let title = String(value || "").trim();
+  title = title.replace(/\$\$[\s\S]*?\$\$|\$[^$\n]*\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]/g, " ");
+  title = title.replace(/\s+(?:for|using|with|as|where)\s*$/i, "");
+
+  const mathStart = title.search(
+    /[∫∮∑∏√∞≈≠≤≥]|\\(?:int|oint|sum|prod|frac|sqrt|nabla)\b|(?:^|\s)[A-Za-z][A-Za-z0-9_{}()'′]*\s*(?:=|≈|≠|≤|≥|<|>)/,
+  );
+  if (mathStart >= 0) {
+    title = title.slice(0, mathStart).replace(/\s+(?:for|using|with|as|where)\s*$/i, "");
+  }
+
+  title = title.replace(/\s+/g, " ").replace(/[\s:;,.\u2014\u2013-]+$/g, "").trim();
+  return title || fallback;
+}
+
 function renderLatexExpression(latex: string, isDisplay: boolean, key: string) {
   // Equation rendering is being redesigned. Until then, never use the large centered display block
   // (it made short bullets look like standalone equations) — render ALL math inline regardless of
@@ -6703,6 +6721,20 @@ function renderLatexPartsStructured(latex: string, keyPrefix: string): ReactNode
   while (index < latex.length) {
     const key = `${keyPrefix}-${tokenIndex++}`;
     const char = latex[index];
+
+    // TeX spacing control symbols carry layout only. They must be consumed rather than rendered as
+    // literal punctuation (e.g. `r'(t) \, dt` previously displayed the source `\,`).
+    const spacingCommand = latex.slice(index).match(/^\\[,;:!> ]/);
+    if (spacingCommand) {
+      const spacingClass =
+        spacingCommand[0] === "\\!" ? "-ml-0.5"
+        : spacingCommand[0] === "\\," ? "inline-block w-1"
+        : spacingCommand[0] === "\\;" || spacingCommand[0] === "\\:" ? "inline-block w-1.5"
+        : "inline-block w-2";
+      parts.push(<span key={key} aria-hidden="true" className={spacingClass} />);
+      index += spacingCommand[0].length;
+      continue;
+    }
 
     if (/\s/.test(char)) {
       parts.push(<span key={key}> </span>);
@@ -8655,7 +8687,7 @@ function buildLearningStepsFromCards({
       nextCardLabel: card.next_card_label,
     };
 
-    const title = (card.title || `Card ${index + 1}`).replace(/:+$/, "");
+    const title = plainLanguageDisplayTitle(card.title, `Card ${index + 1}`);
 
     // Legacy quick_practice cards with an index into practiceQuestions
     if (

@@ -64,10 +64,17 @@ def main() -> int:
     for concept, known, produced, verdict, detail in rows:
         print(f"{concept:<22}{known:<14}{produced[:16]:<18}{verdict:<12}{detail}")
     print("-" * 96)
+    # G0 metric set (spec §14, external review issue 29). Every fixture here is a KNOWN-CORRECT example, so a
+    # MATCH is a correct decision and a MISS is the solver getting a known answer wrong. `false_confirmation`
+    # (a WRONG example confirmed) can only be measured once the negative fixture classes (§17) exist — until
+    # then it is the headline unknown, not a passing 0.
+    decisive = matched + mismatched
     print(f"MATCH {matched}/{total}   MISS {mismatched}   INDECISIVE {indecisive}")
-    print(f"reproduction hit rate (match / total): {100 * matched / total:.0f}%")
-    print(f"decisive accuracy (match / decisive):  "
-          f"{100 * matched / (matched + mismatched):.0f}%" if (matched + mismatched) else "n/a")
+    print(f"decision_rate     (decisive / total)          : {100 * decisive / total:.0f}%")
+    print(f"precision         (correct_decisive / decisive): {100 * matched / decisive:.0f}%" if decisive else "precision: n/a")
+    print(f"effective_success (correct_decisive / total)  : {100 * matched / total:.0f}%")
+    print("false_confirmation_rate: NOT MEASURABLE yet — needs negative fixtures (spec §17); the safety metric.")
+    print("NOTE: 10 clean fixtures gate PLUMBING, not architecture (issue 30). Expand corpus before G0 sign-off.")
     return 0
 
 
