@@ -36,7 +36,7 @@ def _solve_final_answer(fx) -> str:
 def main() -> int:
     key = os.getenv("OPENAI_API_KEY")
     if not key or key.strip().lower() == "dummy":
-        print("NO API KEY — this go/no-go runs live generation. Set OPENAI_API_KEY and re-run.")
+        print("NO API KEY -- this go/no-go runs live generation. Set OPENAI_API_KEY and re-run.")
         return 2
 
     matched = mismatched = indecisive = 0
