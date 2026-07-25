@@ -891,6 +891,16 @@ def solve_worked_example(
     except Exception:  # noqa: BLE001 — the shadow path must never break legacy generation
         pass
 
+    # GROUNDED_RUNTIME_BINDING_SPEC Milestone C — SHADOW ONLY, off by default
+    # (AZALEA_RUNTIME_BINDING_SHADOW=observe). After the registered-adapter route has missed, observe what a
+    # reviewed-contract runtime binding WOULD produce and record telemetry. It never substitutes a card,
+    # changes we_policy, or affects this function's result — the return value is deliberately ignored.
+    try:
+        from app.services.examples.runtime_binding.live_shadow import observe_runtime_binding
+        observe_runtime_binding(topic)
+    except Exception:  # noqa: BLE001 — the observer must never break generation
+        pass
+
     fn = solver or _default_solver
 
     if code:
