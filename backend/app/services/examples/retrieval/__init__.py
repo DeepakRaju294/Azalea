@@ -33,4 +33,5 @@ from app.services.examples.retrieval.compare import ComparisonOutcome, compare_a
 from app.services.examples.retrieval.compute_backend import (  # noqa: F401
     ComputationalApiBackend, parse_wolfram_answer, wolfram_transport,
 )
+from app.services.examples.retrieval.shadow import is_observing, observe_grounding  # noqa: F401
 from app.services.examples.retrieval import sources  # noqa: F401

@@ -1684,6 +1684,14 @@ def _verify_free_prose_example(topic: dict[str, Any], sol: Optional[dict[str, An
             _ANCHOR_ORACLE_SET = True
 
         final = str(sol.get("final_answer") or "")
+        # Retrieval-grounding shadow (RETRIEVAL_GROUNDED_EXAMPLE_SPEC §14, AZALEA_RETRIEVAL_GROUNDED_EXAMPLES=
+        # shadow) — observe what an authoritative-source reproduction WOULD conclude about this no-adapter
+        # answer; records telemetry, never changes `sol`. Off by default (no-op). Fail-closed.
+        try:
+            from app.services.examples.retrieval.shadow import observe_grounding
+            observe_grounding(topic, final)
+        except Exception:  # noqa: BLE001 — the observer must never affect generation
+            pass
         blob = f"{topic.get('title') or ''} {topic.get('subject_key') or ''} {topic.get('course_type') or ''}".lower()
         is_prob = any(k in blob for k in ("probab", "bayes", "conditional prob"))
         violations = check_worked_example(sol.get("cards") or [], final_answer=final, probability=is_prob)
