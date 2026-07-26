@@ -18,10 +18,23 @@ from openai import OpenAI
 # config never loaded → generation ran on base gpt-5-mini at medium reasoning no matter how many restarts).
 # Skip under a test runner: loading it would leak AZALEA_* behavior flags into the test process and flip
 # 'flag off by default' assertions (the known .env contamination landmine). Tests set OPENAI_API_KEY themselves.
-if "pytest" not in sys.modules and "unittest" not in sys.modules:
+def _running_under_test() -> bool:
+    """True ONLY when the process is actually a test runner — checked via the __main__ module (unittest sets it
+    to 'unittest.__main__'), NOT by mere presence of 'unittest' in sys.modules. The old `"unittest" not in
+    sys.modules` guard was fragile: a multiprocessing spawn worker (how generation runs under uvicorn --reload
+    on Windows) can have unittest transitively imported, so the guard wrongly SKIPPED the .env load and left
+    generation with an EMPTY config (diag: pid=21396 GF_env=None) — the real reason .env never reached the
+    generation calls. This checks __main__ instead, which is only unittest/pytest during an actual test run."""
+    if "pytest" in sys.modules:
+        return True
+    spec = getattr(sys.modules.get("__main__"), "__spec__", None)
+    return str(getattr(spec, "name", "") or "").startswith(("unittest", "pytest"))
+
+
+if not _running_under_test():
     # override=True: backend/.env is authoritative over any stale OPENAI_* vars in the shell/OS environment
-    # (load_dotenv defaults to override=False, which let a stale exported model win — the 'restarts don't help'
-    # symptom). app/main.py already loads it first for the server; this covers direct imports.
+    # (load_dotenv defaults to override=False). Runs in EVERY non-test process that imports llm_client —
+    # including the spawn worker that runs generation — so the config reaches the generation calls.
     load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=True)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
