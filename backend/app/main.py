@@ -1,4 +1,18 @@
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load backend/.env FIRST, before any app module imports (routes/services read model & flag config at import).
+# override=True so backend/.env is AUTHORITATIVE over any stale OPENAI_*/AZALEA_* vars left in the shell/OS
+# environment (a common cause of 'restarts don't change the model' — load_dotenv defaults to override=False,
+# so a stale exported OPENAI_MODEL/OPENAI_MODEL_CONTENT would otherwise win and every call fell back to it).
+load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=True)
+
+_gf_model = os.getenv("OPENAI_MODEL_CALL_WORKED_EXAMPLE_GF") or os.getenv("OPENAI_MODEL_CONTENT") or os.getenv("OPENAI_MODEL")
+print(f"[startup] backend/.env loaded — worked_example model={_gf_model!r}, "
+      f"reasoning_planning={os.getenv('OPENAI_REASONING_PLANNING')!r}, "
+      f"retrieval_grounding={os.getenv('AZALEA_RETRIEVAL_GROUNDED_EXAMPLES')!r}", flush=True)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

@@ -19,7 +19,10 @@ from openai import OpenAI
 # Skip under a test runner: loading it would leak AZALEA_* behavior flags into the test process and flip
 # 'flag off by default' assertions (the known .env contamination landmine). Tests set OPENAI_API_KEY themselves.
 if "pytest" not in sys.modules and "unittest" not in sys.modules:
-    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+    # override=True: backend/.env is authoritative over any stale OPENAI_* vars in the shell/OS environment
+    # (load_dotenv defaults to override=False, which let a stale exported model win — the 'restarts don't help'
+    # symptom). app/main.py already loads it first for the server; this covers direct imports.
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=True)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
