@@ -557,6 +557,14 @@ def _prose_validation_field(prose: Any) -> dict[str, Any]:
 def _fmt_state_val(v: Any) -> str:
     if v is None:
         return "none"
+    if isinstance(v, bool):
+        return str(v)
+    if isinstance(v, float):
+        # Render an integer-valued float as an integer so learner-facing math reads like math, not machine
+        # output: "curl = 0, 0, 1" not "0.0, 0.0, 1.0"; "area = 1" not "1.0". Non-integers keep a trimmed form.
+        if v == int(v) and abs(v) < 1e15:
+            return str(int(v))
+        return f"{v:g}"
     if isinstance(v, (list, tuple)):
         # Clean, bracket-free rendering — never JSON/Python list syntax leaking into learner prose (same
         # "never a repr" precedent as families/backtracking.py's _render_subset, extended to this SHARED

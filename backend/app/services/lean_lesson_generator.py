@@ -785,6 +785,23 @@ def _correct_edge_case_failure_framing(text: str) -> str:
     return out
 
 
+_CARD_FLAG_TOKENS = frozenset({"continuation-only", "repeatable", "optional"})
+
+
+def _clean_blueprint_key(key: str) -> str:
+    """Strip prompt flag-descriptors that leak into the model's blueprint_key/card_type. Base card keys never
+    contain spaces (background, comparison, worked_example, formula_breakdown, ...), while the card-plan prompt
+    annotates cards as e.g. 'continuation-only repeatable' — the model sometimes copies that whole string into
+    the key ('comparison continuation-only repeatable'). Return the base key only when every trailing token is
+    a known flag; otherwise leave an unexpected multi-word key untouched rather than silently mangling it."""
+    parts = str(key).split()
+    if len(parts) <= 1:
+        return key
+    if all(p in _CARD_FLAG_TOKENS for p in parts[1:]):
+        return parts[0]
+    return key
+
+
 def _normalize_card_bullet_points(raw_points: list[str], *, blueprint_key: str = "") -> list[str]:
     """The shared bullet-shape + LaTeX normalization every card's points must pass through: split a crammed
     'Term: def; role' bullet into a term main bullet + one sub-bullet per clause, merge fragments, re-inline
@@ -809,9 +826,9 @@ def _lean_card_to_legacy(
     topic_hint: str = "",
 ) -> dict[str, Any]:
     """Convert a single lean card to the LessonFlowCard shape the frontend expects."""
-    raw_type = str(lean_card.get("card_type") or "concept")
+    raw_type = _clean_blueprint_key(str(lean_card.get("card_type") or "concept"))
     card_type = _LEAN_TYPE_MAP.get(raw_type, raw_type)
-    blueprint_key = str(lean_card.get("blueprint_key") or raw_type).strip() or raw_type
+    blueprint_key = _clean_blueprint_key(str(lean_card.get("blueprint_key") or raw_type).strip()) or raw_type
     example_type = str(lean_card.get("example_type") or "none").strip() or "none"
     title = _normalize_card_title(
         value=lean_card.get("title"),

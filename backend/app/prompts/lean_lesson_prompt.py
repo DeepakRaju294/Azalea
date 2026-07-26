@@ -1144,10 +1144,13 @@ def _format_card_plan(blueprint: dict, stage_rules: dict, topic_hint: str = "",
 
     for index, card_key in enumerate(blueprint.get("default_card_sequence") or [], start=1):
         rule = stage_rules.get(card_key, {})
-        optional_text = " optional" if card_key in optional_cards else ""
-        repeat_text = " continuation-only repeatable"
-        lines.append(f"{index}. blueprint_key: {card_key}{optional_text}{repeat_text}")
+        # blueprint_key must be EXACTLY the card_key — flags go on a separate note line, never concatenated
+        # into the value (otherwise the model copies "comparison continuation-only repeatable" as the key).
+        flags = (["optional"] if card_key in optional_cards else []) + ["continuation-only repeatable"]
+        lines.append(f"{index}. blueprint_key: {card_key}")
         lines.append(f"   card_type: {card_key}")
+        lines.append(f"   card_flags ({', '.join(flags)}): keep blueprint_key EXACTLY \"{card_key}\" on every "
+                     f"card, including repeated continuation cards — do NOT append these flag words to it")
         if charters_by_card and card_key in charters_by_card:
             lines.extend(_charter_directive_lines(charters_by_card[card_key]))
         expected_example_types = example_usage_by_card.get(card_key) or ["none"]
