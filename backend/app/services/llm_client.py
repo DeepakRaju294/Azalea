@@ -113,7 +113,11 @@ def _model_for(call_name: str | None) -> str:
 # for reasoning-capable models; a non-reasoning model (gpt-4o-mini) never receives the param (it would error).
 _REASONING_MODEL_PREFIXES = ("gpt-5", "o1", "o3", "o4")
 _REASONING_TIER_ENV = {
-    "planning": ("OPENAI_REASONING_PLANNING", "medium"),
+    # planning default lowered medium->low in CODE (not just .env): topic_decomposition at medium reasoning is
+    # ~37s (the pre-first-topic wait); at low it's ~15s. Making it the code default means it's fast even when
+    # backend/.env's OPENAI_REASONING_PLANNING=low doesn't reach the generation process. Raise via env for
+    # richer planning when desired.
+    "planning": ("OPENAI_REASONING_PLANNING", "low"),
     "content": ("OPENAI_REASONING_CONTENT", "low"),
     "utility": ("OPENAI_REASONING_UTILITY", "minimal"),
 }
