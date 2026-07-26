@@ -10,9 +10,15 @@ import unittest
 os.environ.setdefault("OPENAI_API_KEY", "dummy")
 
 from app.services.examples.retrieval import sources
+from app.services.examples.retrieval.cache import VerifiedContractCache
 from app.services.examples.retrieval.model import CandidateArtifact, PublishedInstance
-from app.services.examples.retrieval.pipeline import resolve_and_assure
+from app.services.examples.retrieval.pipeline import resolve_and_assure as _resolve_and_assure
 from app.services.examples.retrieval.producer import try_resolve
+
+
+def resolve_and_assure(topic, produced_answer):
+    # isolate each call with a fresh cache so tests don't contaminate via the process-wide default cache.
+    return _resolve_and_assure(topic, produced_answer, cache=VerifiedContractCache())
 
 
 class Corpus(unittest.TestCase):

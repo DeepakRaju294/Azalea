@@ -52,6 +52,8 @@ def _concept_key(topic: dict[str, Any]) -> str | None:
 
 
 def try_resolve(topic: dict[str, Any]) -> CandidateArtifact | None:
-    """Return a curated candidate for this topic, or None on a miss / ambiguous concept resolution."""
-    key = _concept_key(topic)
-    return sources.lookup(key) if key else None
+    """Return a candidate for this topic from the registered source backends (curated corpus now; computational
+    API / web-fetch when live), or None on a miss / ambiguous concept resolution."""
+    from app.services.examples.retrieval.backends import resolve_candidate  # avoid import cycle at module load
+    cand, _backend = resolve_candidate(topic)
+    return cand
