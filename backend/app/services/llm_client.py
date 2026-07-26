@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 from pathlib import Path
 from threading import Lock
@@ -13,7 +14,12 @@ from typing import Any
 from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")   # backend/.env (was parents[3] = nonexistent repo-root .env)
+# Load backend/.env for the SERVER (was parents[3] = a nonexistent repo-root .env, so model/reasoning/flag
+# config never loaded → generation ran on base gpt-5-mini at medium reasoning no matter how many restarts).
+# Skip under a test runner: loading it would leak AZALEA_* behavior flags into the test process and flip
+# 'flag off by default' assertions (the known .env contamination landmine). Tests set OPENAI_API_KEY themselves.
+if "pytest" not in sys.modules and "unittest" not in sys.modules:
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
