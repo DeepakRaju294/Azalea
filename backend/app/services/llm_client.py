@@ -338,7 +338,28 @@ try:
 
     _orig_responses_create = _Responses.create
 
+    _diag_logged = [False]
+
     def _logged_responses_create(self, *args: Any, **kwargs: Any) -> Any:
+        # One-shot diagnostic (per process): reveals whether the GENERATION process has backend/.env's config.
+        # Compare pid + env here to the [startup] line — if the pid differs or GF_env is None, the .env loaded
+        # by main.py never reached the process that actually generates. Remove once the propagation is settled.
+        if not _diag_logged[0]:
+            _diag_logged[0] = True
+            try:
+                import threading as _thr
+                line = (f"pid={os.getpid()} thread={_thr.current_thread().name} call={_current_call.get()!r} "
+                        f"resolved_model={_model_for(_current_call.get())!r} "
+                        f"GF_env={os.getenv('OPENAI_MODEL_CALL_WORKED_EXAMPLE_GF')!r} "
+                        f"content_env={os.getenv('OPENAI_MODEL_CONTENT')!r} "
+                        f"reasoning_planning={os.getenv('OPENAI_REASONING_PLANNING')!r} "
+                        f"retrieval={os.getenv('AZALEA_RETRIEVAL_GROUNDED_EXAMPLES')!r}\n")
+                from pathlib import Path as _P
+                p = _P("logs/llm_env_diag.log"); p.parent.mkdir(parents=True, exist_ok=True)
+                with p.open("a", encoding="utf-8") as _f:
+                    _f.write(line)
+            except Exception:  # noqa: BLE001
+                pass
         # Central model routing: every call in the codebase reaches the SDK here (both `_create_with_usage`
         # and direct `client.responses.create` inside `llm_call(...)` blocks), so keying on `_current_call`
         # routes them all with no call-site edits. `_model_for` returns OPENAI_MODEL unless a tier/override

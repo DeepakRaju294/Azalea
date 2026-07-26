@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=True)
 
 _gf_model = os.getenv("OPENAI_MODEL_CALL_WORKED_EXAMPLE_GF") or os.getenv("OPENAI_MODEL_CONTENT") or os.getenv("OPENAI_MODEL")
-print(f"[startup] backend/.env loaded — worked_example model={_gf_model!r}, "
+print(f"[startup] pid={os.getpid()} backend/.env loaded — worked_example model={_gf_model!r}, "
       f"reasoning_planning={os.getenv('OPENAI_REASONING_PLANNING')!r}, "
       f"retrieval_grounding={os.getenv('AZALEA_RETRIEVAL_GROUNDED_EXAMPLES')!r}", flush=True)
 
