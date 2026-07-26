@@ -124,3 +124,37 @@ class PublishedInstance:
     published_answer: str
     comparison: AnswerComparison
     assumptions: tuple[InstanceAssumption, ...] = ()
+
+
+# ---- source provenance (curated local corpus — no live egress; §6) ----
+@dataclass(frozen=True)
+class SourceSnapshot:
+    content_hash: str                 # immutable identity of the exact ingested bytes
+    retrieved_at: str
+    retrieval_method_version: str
+    license_policy_version: str
+
+
+@dataclass(frozen=True)
+class SourceRef:
+    source_id: str
+    publisher_id: str
+    corpus_family: str                # independence group (V2 needs 2 distinct; N/A for a single published instance)
+    tier: Literal["textbook", "reference", "encyclopedic", "other"]
+    reuse_policy: Literal["internal_verification_only", "short_excerpt_allowed",
+                          "derived_example_allowed", "full_republication_allowed"]
+    snapshot: SourceSnapshot
+
+
+@dataclass(frozen=True)
+class CandidateArtifact:
+    """A retrieved candidate. Phase 1B = published_instance only (curated corpus); relationship/illustrative
+    kinds arrive at 1D/1C."""
+    artifact_id: str
+    concept_key: str
+    payload: PublishedInstance
+    sources: tuple[SourceRef, ...]
+
+    @property
+    def kind(self) -> str:
+        return "published_instance"

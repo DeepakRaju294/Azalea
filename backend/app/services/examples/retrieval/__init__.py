@@ -17,3 +17,6 @@ from app.services.examples.retrieval.validate import (  # noqa: F401
     derive_instance_assurance, validate_assurance_decision,
 )
 from app.services.examples.retrieval.slice1a import run_slice1a  # noqa: F401
+from app.services.examples.retrieval.producer import try_resolve  # noqa: F401
+from app.services.examples.retrieval.pipeline import resolve_and_assure  # noqa: F401
+from app.services.examples.retrieval import sources  # noqa: F401
