@@ -29,4 +29,5 @@ from app.services.examples.retrieval.delivery import (  # noqa: F401
 from app.services.examples.retrieval.escalation import (  # noqa: F401
     ResolutionResult, next_state, route_disposition, route_retrieval_miss,
 )
+from app.services.examples.retrieval.compare import ComparisonOutcome, compare_answer  # noqa: F401
 from app.services.examples.retrieval import sources  # noqa: F401

@@ -12,31 +12,17 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from app.services.examples.retrieval.compare import compare_answer
 from app.services.examples.retrieval.fingerprints import build_instance_fingerprints
 from app.services.examples.retrieval.model import (
     EvidenceRecord, PublishedInstance, VerifierDependency,
 )
 from app.services.examples.retrieval.validate import derive_instance_assurance
-from app.services.examples.retrieval_verify import reproduction_check
 
 # frozen contract/policy identities for Phase 1A (would be bumped when the check's meaning changes).
 REPRO_VERIFIER_VERSION = "reproduction_checker/1.0"
 REPRO_CHECK_CONTRACT_VERSION = "repro-contract/v1"
 ASSURANCE_POLICY_VERSION = "instance-assurance/v1"
-
-_STATUS = {True: "confirm", False: "refute", None: "indecisive"}
-
-
-def _comparison_params(inst: PublishedInstance) -> tuple[float, bool]:
-    """Derive reproduction_check params from the answer's comparison contract."""
-    rel_tol = 0.01
-    if inst.comparison.kind == "relative_tolerance" and inst.comparison.tolerance:
-        try:
-            rel_tol = float(inst.comparison.tolerance)
-        except (TypeError, ValueError):
-            rel_tol = 0.01
-    require_unit = inst.comparison.unit_semantics != "dimensionless" and inst.comparison.unit_dimension != ""
-    return rel_tol, require_unit
 
 
 def run_slice1a(inst: PublishedInstance, produced_answer: str, *, run_id: str | None = None) -> dict[str, Any]:
@@ -44,17 +30,15 @@ def run_slice1a(inst: PublishedInstance, produced_answer: str, *, run_id: str | 
     valid outcomes, not errors)."""
     run_id = run_id or f"run-{uuid.uuid4().hex[:12]}"
     fp = build_instance_fingerprints(inst, check_contract_version=REPRO_CHECK_CONTRACT_VERSION)
-    rel_tol, require_unit = _comparison_params(inst)
 
-    result = reproduction_check(inst.published_answer, produced_answer,
-                                rel_tol=rel_tol, require_unit_match=require_unit)
+    outcome = compare_answer(inst.published_answer, produced_answer, inst.comparison)
     record = EvidenceRecord(
         evidence_id=f"ev-{uuid.uuid4().hex[:12]}", check="published_answer_reproduction",
-        status=_STATUS[result.matched], subject_fingerprint=fp.evidence_subject,
+        status=outcome.status, subject_fingerprint=fp.evidence_subject,
         verifier_name="reproduction_checker", verifier_version=REPRO_VERIFIER_VERSION,
         check_contract_version=REPRO_CHECK_CONTRACT_VERSION, run_id=run_id,
         evidence={"published": inst.published_answer, "produced": produced_answer,
-                  "unit_status": result.unit_status, "detail": result.detail})
+                  "comparison_kind": inst.comparison.kind, "detail": outcome.detail})
 
     deps = {"reproduction_checker": VerifierDependency(REPRO_VERIFIER_VERSION, REPRO_CHECK_CONTRACT_VERSION)}
     decision = derive_instance_assurance(
@@ -66,11 +50,11 @@ def run_slice1a(inst: PublishedInstance, produced_answer: str, *, run_id: str | 
         "target": inst.target,
         "level": decision.level,
         "reproduction_status": record.status,
-        "unit_status": result.unit_status,
+        "comparison_kind": inst.comparison.kind,
         "fingerprints": {"semantic": fp.semantic, "evidence_subject": fp.evidence_subject,
                          "presentation": fp.presentation, "comparison_policy": fp.comparison_policy},
         "assurance_id": decision.assurance_id,
         "run_id": run_id,
         "evidence_id": record.evidence_id,
-        "detail": result.detail,
+        "detail": outcome.detail,
     }
