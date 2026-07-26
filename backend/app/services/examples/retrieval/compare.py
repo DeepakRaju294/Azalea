@@ -20,6 +20,21 @@ ComparisonStatus = Literal["confirm", "refute", "indecisive"]
 _UNSUPPORTED_KINDS = {"symbolic_equivalence", "unordered_set", "interval", "textual_enum", "vector",
                       "complex", "angle_mod_2pi"}
 
+# canonicalize spelled-out / symbol unit names so a compute-engine answer ("2 seconds", "1 volt") matches the
+# expected unit ("s", "V"). Built at runtime (no non-ASCII literals in source): the ohm sign maps to "ohm".
+_UNIT_SYNONYMS: dict[str, str] = {
+    "second": "s", "seconds": "s", "sec": "s", "volt": "v", "volts": "v", "ampere": "a", "amperes": "a",
+    "amp": "a", "amps": "a", "joule": "j", "joules": "j", "ohm": "ohm", "ohms": "ohm", "watt": "w",
+    "watts": "w", "meter": "m", "meters": "m", "metre": "m", "metres": "m", "newton": "n", "newtons": "n",
+    "tesla": "t", "teslas": "t", "weber": "wb", "webers": "wb", "henry": "h", "henries": "h",
+    "kelvin": "k", "pascal": "pa", "pascals": "pa", chr(0x3A9): "ohm",  # capital omega
+}
+
+
+def _canon_unit(u: str) -> str:
+    u = u.strip().lower()
+    return _UNIT_SYNONYMS.get(u, u)
+
 
 @dataclass(frozen=True)
 class ComparisonOutcome:
@@ -32,8 +47,8 @@ def _unit_ok(produced_unit: str, comparison: AnswerComparison) -> Literal["match
         return "match"                       # no unit expected
     if not produced_unit:
         return "unknown"
-    accepted = {u.lower() for u in comparison.allowed_units} | {comparison.unit_dimension.lower()}
-    return "match" if produced_unit.lower() in accepted else "mismatch"
+    accepted = {_canon_unit(u) for u in comparison.allowed_units} | {_canon_unit(comparison.unit_dimension)}
+    return "match" if _canon_unit(produced_unit) in accepted else "mismatch"
 
 
 def compare_answer(published: str, produced: str, comparison: AnswerComparison) -> ComparisonOutcome:

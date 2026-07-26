@@ -70,7 +70,8 @@ _ENTRIES: tuple[CandidateArtifact, ...] = (
         _cmp("A", "A")), source_id="openstax_physics:ohm", publisher="openstax", family="openstax_physics"),
     _entry("compound_interest", PublishedInstance(
         "1000 dollars is invested at 5% annual interest compounded yearly. Find the balance after 2 years.",
-        (("P", 1000.0), ("r", 0.05), ("t", 2)), "amount", "1102.50", _cmp("USD", "USD")),
+        (("P", 1000.0), ("r", 0.05), ("t", 2)), "amount", "1102.50",
+        _cmp("USD", "", semantics="dimensionless")),   # currency compared by magnitude (engine returns a bare number)
         source_id="finance_ref:compound", publisher="finance_ref", family="finance_ref"),
 )
 

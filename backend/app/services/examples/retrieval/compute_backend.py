@@ -25,15 +25,18 @@ from app.services.examples.retrieval.model import (
     CandidateArtifact, PublishedInstance, SourceRef, SourceSnapshot,
 )
 
-# concept_key -> the natural-language query sent to the compute engine. Reviewed, deterministic.
+# concept_key -> the query sent to the compute engine. Reviewed, deterministic. Formula expressions with an
+# explicit target unit ("... in volts") — validated live: the engine evaluates these to a clean answer in the
+# derived unit (vs. base units like m^2 T/s if the unit isn't forced), and concept-name phrasings that don't
+# parse are avoided.
 _QUERY_TEMPLATES: dict[str, str] = {
-    "motional_emf": "motional EMF for B=0.5 T, L=0.2 m, v=10 m/s",
-    "faraday_emf": "induced EMF for 200 turns, flux change 0.05 Wb, time 0.1 s",
-    "inductor_energy": "energy stored in a 2 H inductor with 3 A current",
-    "rl_time_constant": "time constant of an RL circuit with L=10 H and R=5 ohm",
-    "kinetic_energy": "kinetic energy of 2 kg at 3 m/s",
-    "ohms_law": "current for 12 V across 4 ohm",
-    "compound_interest": "1000 at 5% compounded annually for 2 years",
+    "motional_emf": "0.5 T * 0.2 m * 10 m/s in volts",
+    "faraday_emf": "200 * 0.05 Wb / 0.1 s in volts",
+    "inductor_energy": "1/2 * 2 H * (3 A)^2 in joules",
+    "rl_time_constant": "10 H / 5 ohm in seconds",
+    "kinetic_energy": "1/2 * 2 kg * (3 m/s)^2 in joules",
+    "ohms_law": "12 V / 4 ohm in amperes",
+    "compound_interest": "1000 * (1.05)^2",
 }
 
 # a transport takes the query string and returns the RAW response text (or None on any failure / no key).
@@ -50,7 +53,7 @@ def wolfram_transport(query: str, *, timeout: float = 8.0) -> Optional[str]:
     if not appid:
         return None
     params = urllib.parse.urlencode({"appid": appid, "input": query, "output": "json",
-                                     "format": "plaintext", "podtitle": "Result"})
+                                     "format": "plaintext"})
     try:
         with urllib.request.urlopen(f"{_WOLFRAM_URL}?{params}", timeout=timeout) as resp:  # noqa: S310 - fixed host
             if resp.status != 200:
