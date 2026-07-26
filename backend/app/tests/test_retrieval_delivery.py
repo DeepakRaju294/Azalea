@@ -53,11 +53,10 @@ class ShippingPolicyTests(unittest.TestCase):
     def test_verified_meets_ordinary(self):
         self.assertTrue(meets_threshold(_verified(), kind="computational", risk="ordinary", policy=ShippingPolicy()))
 
-    def test_verified_reproduction_does_not_meet_high_risk_without_review(self):
-        # high-risk needs EXECUTION_VERIFIED or approved review; reproduction alone is below.
-        self.assertFalse(meets_threshold(_verified(), kind="computational", risk="high", policy=ShippingPolicy()))
-        self.assertTrue(meets_threshold(_verified(), kind="computational", risk="high", policy=ShippingPolicy(),
-                                        review_approved=True))
+    def test_uniform_bar_verified_meets_every_risk(self):
+        # user decision: uniform bar — reproduction-verified is enough in ordinary AND high-risk domains.
+        for risk in ("ordinary", "high"):
+            self.assertTrue(meets_threshold(_verified(), kind="computational", risk=risk, policy=ShippingPolicy()))
 
     def test_disposition_verified_ships(self):
         self.assertEqual(ship_disposition(_verified()), "ship_verified")

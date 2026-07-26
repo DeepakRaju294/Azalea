@@ -26,16 +26,16 @@ ShippingDisposition = Literal["ship_verified", "ship_provisional", "withhold_gui
 
 @dataclass(frozen=True)
 class ShippingPolicy:
-    """Per-kind / per-domain-risk required assurance (§11). `allow_provisional` gates whether a below-threshold
-    producible example may ship as provisional (Phase-2 flag; also requires the frontend badge dependency)."""
-    policy_version: str = "shipping/v1"
+    """Required assurance to ship (§11). Operational policy (user decision 2026-07-25): a UNIFORM bar —
+    reproduction-verified is enough in EVERY domain, no elevated high-risk threshold — and producible-but-
+    unverified examples SHIP as provisional (badged 'under review'), maximizing coverage. `allow_provisional`
+    reflects that stance; going live still requires the frontend badge dependency (§11). `risk` is retained for
+    a future per-domain policy but is currently unused."""
+    policy_version: str = "shipping/v1-uniform"
     allow_provisional: bool = True
 
     def required_strength(self, kind: str, risk: DomainRisk) -> AssuranceStrength:
-        # computational instances: ordinary -> reproduced; high-risk -> executed (or approved review).
-        if risk == "high":
-            return AssuranceStrength.EXECUTION_VERIFIED
-        return AssuranceStrength.REPRODUCED_INSTANCE
+        return AssuranceStrength.REPRODUCED_INSTANCE   # uniform across domains (user decision)
 
 
 def meets_threshold(decision: InstanceAssuranceDecision, *, kind: str, risk: DomainRisk,

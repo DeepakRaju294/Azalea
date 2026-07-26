@@ -745,6 +745,12 @@ endpoint. A trace that fails is repaired or the example is downgraded — never 
   | computational | automated_strength ≥ REPRODUCED_INSTANCE, or approved review | automated_strength ≥ EXECUTION_VERIFIED, or approved review of instance scope |
   | qualitative | ≥ SOURCE_ATTRIBUTED (all material claims grounded, §9/issue 6), or approved review | approved review required |
 
+  **INITIAL OPERATIONAL POLICY (user decision 2026-07-25): UNIFORM bar** — the high-risk column is NOT elevated;
+  reproduction-verified is enough in every domain, and producible-but-unverified examples SHIP as `provisional`
+  (badged, gated on the frontend badge). The table above is the retained capability for enabling per-domain
+  strictness later; the shipped `ShippingPolicy` implements the uniform bar (`policy_version=shipping/v1-uniform`,
+  `allow_provisional=True`).
+
   **Policy-Satisfied Coverage** = `|artifacts meeting required_threshold(kind,risk)| / eligible_desired` —
   this replaces a single universal "resolved" bar so a `source_attributed` qualitative example can satisfy
   policy while the same level on a high-risk computational topic does not (issue 14).
