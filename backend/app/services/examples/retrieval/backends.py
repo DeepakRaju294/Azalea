@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Optional, Protocol, runtime_checkable
 
 from app.services.examples.retrieval import sources
+from app.services.examples.retrieval.compute_backend import ComputationalApiBackend
 from app.services.examples.retrieval.model import CandidateArtifact
 
 
@@ -19,11 +20,16 @@ class SourceBackend(Protocol):
     def fetch(self, topic: dict[str, Any]) -> Optional[CandidateArtifact]:
         """Return a candidate for this topic, or None on a miss. MUST be side-effect-free w.r.t. output and
         MUST fail closed (return None) rather than raise into generation."""
+    # optional: `available(self) -> bool` — a backend that needs config (e.g. an API key) reports False when
+    # unconfigured, and resolve_candidate skips it. Backends without the method are always available.
 
 
 class CuratedCorpusBackend:
     """Offline curated corpus (no network). The seed/fallback that always works."""
     name = "curated_corpus"
+
+    def available(self) -> bool:
+        return True
 
     def fetch(self, topic: dict[str, Any]) -> Optional[CandidateArtifact]:
         from app.services.examples.retrieval.producer import _concept_key  # local import avoids cycle
@@ -31,21 +37,30 @@ class CuratedCorpusBackend:
         return sources.lookup(key) if key else None
 
 
-# Priority order. Online backends (computational API, then web-fetch) are appended here when live.
-# NOTE placeholders — not registered until their online access exists:
-#   ComputationalApiBackend(name="compute_api")  -> authoritative computed answer, primary for computational
-#   WebFetchBackend(name="web_fetch")            -> whitelisted trusted-source retrieval, where compute N/A
-_BACKENDS: list[SourceBackend] = [CuratedCorpusBackend()]
+# Priority order (§3): the online computational API is PRIMARY (authoritative computed answer); the curated
+# corpus is the offline fallback. `compute_api` is UNAVAILABLE (skipped) until AZALEA_WOLFRAM_APPID is set, so
+# with no key this reduces to corpus-only and changes nothing. web-fetch (where compute is N/A) appends later.
+_BACKENDS: list[SourceBackend] = [ComputationalApiBackend(), CuratedCorpusBackend()]
 
 
 def registered_backends() -> tuple[SourceBackend, ...]:
     return tuple(_BACKENDS)
 
 
+def _is_available(backend: SourceBackend) -> bool:
+    avail = getattr(backend, "available", None)
+    try:
+        return bool(avail()) if callable(avail) else True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def resolve_candidate(topic: dict[str, Any]) -> tuple[Optional[CandidateArtifact], Optional[str]]:
-    """First backend that hits wins. Returns (candidate, backend_name) or (None, None). A backend that raises
-    is treated as a miss (fail-closed) so acquisition can never break generation."""
+    """First AVAILABLE backend that hits wins. Returns (candidate, backend_name) or (None, None). A backend
+    that raises is treated as a miss (fail-closed) so acquisition can never break generation."""
     for backend in _BACKENDS:
+        if not _is_available(backend):
+            continue
         try:
             cand = backend.fetch(topic)
         except Exception:  # noqa: BLE001 - a backend failure is a miss, never a crash
