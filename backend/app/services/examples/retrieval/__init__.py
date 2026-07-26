@@ -23,4 +23,10 @@ from app.services.examples.retrieval.backends import registered_backends, resolv
 from app.services.examples.retrieval.cache import (  # noqa: F401
     CachedContract, VerifiedContractCache, default_cache,
 )
+from app.services.examples.retrieval.delivery import (  # noqa: F401
+    DeliveredInstance, ShippingPolicy, assert_delivery_scope, ship_disposition, validate_shipping_eligibility,
+)
+from app.services.examples.retrieval.escalation import (  # noqa: F401
+    ResolutionResult, next_state, route_disposition, route_retrieval_miss,
+)
 from app.services.examples.retrieval import sources  # noqa: F401
