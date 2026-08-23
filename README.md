@@ -1,4 +1,4 @@
-# Azalea (local dev)
+# Canopy (local dev)
 
 This repo is a **Next.js** frontend (`frontend/`) + **FastAPI** backend
 (`backend/`) that uses **Supabase Auth** (JWT) and a **Postgres database**
